@@ -26,6 +26,7 @@
 #include "cursor.h"
 #include "server.h"
 #include "decoration.h"
+#include "menu.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -298,6 +299,20 @@ execute_mouse_action(struct wm_server *server,
 		}
 		break;
 	}
+
+	case WM_ACTION_ROOT_MENU:
+		wm_menu_show_root(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		break;
+
+	case WM_ACTION_WINDOW_MENU:
+		wm_menu_show_window(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		break;
+
+	case WM_ACTION_HIDE_MENUS:
+		wm_menu_hide_all(server);
+		break;
 
 	default:
 		/* Remaining actions are stubs or keyboard-only */

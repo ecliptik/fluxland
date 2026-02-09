@@ -14,6 +14,7 @@
 
 #include "config.h"
 #include "decoration.h"
+#include "rules.h"
 #include "server.h"
 #include "tabgroup.h"
 #include "view.h"
@@ -297,6 +298,16 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 				}
 			}
 		}
+	}
+
+	/* Apply per-window rules (workspace, geometry, state flags) */
+	wm_rules_apply(&view->server->rules, view);
+
+	/* Auto-group by rules (tab grouping) */
+	struct wm_view *group_peer = wm_rules_find_group(
+		&view->server->rules, view, view->server);
+	if (group_peer && group_peer->tab_group) {
+		wm_tab_group_add(group_peer->tab_group, view);
 	}
 
 	wlr_scene_node_set_enabled(&view->scene_tree->node, true);

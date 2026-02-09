@@ -19,10 +19,13 @@
 #include "server.h"
 #include "config.h"
 #include "decoration.h"
+#include "ipc.h"
 #include "keybind.h"
 #include "layer_shell.h"
+#include "menu.h"
 #include "output.h"
 #include "input.h"
+#include "rules.h"
 #include "style.h"
 #include "view.h"
 #include "workspace.h"
@@ -253,6 +256,32 @@ wm_server_init(struct wm_server *server)
 		server->config->workspace_count : WM_DEFAULT_WORKSPACE_COUNT;
 	wm_workspaces_init(server, ws_count);
 
+	/* Load per-window rules (Fluxbox apps file) */
+	wm_rules_init(&server->rules);
+	if (server->config && server->config->apps_file) {
+		if (wm_rules_load(&server->rules,
+				server->config->apps_file)) {
+			wlr_log(WLR_INFO, "loaded window rules from %s",
+				server->config->apps_file);
+		}
+	}
+
+	/* Load menus */
+	server->root_menu = NULL;
+	server->window_menu = NULL;
+	if (server->config && server->config->menu_file) {
+		server->root_menu = wm_menu_load(server,
+			server->config->menu_file);
+		if (server->root_menu) {
+			wlr_log(WLR_INFO, "loaded root menu from %s",
+				server->config->menu_file);
+		}
+	}
+	server->window_menu = wm_menu_create_window_menu(server);
+
+	/* IPC server */
+	wm_ipc_init(&server->ipc, server);
+
 	/* XWayland: X11 application support (compile-time optional) */
 	wm_xwayland_init(server);
 
@@ -289,6 +318,11 @@ wm_server_destroy(struct wm_server *server)
 {
 	wm_xwayland_finish(server);
 	wl_display_destroy_clients(server->wl_display);
+
+	wm_ipc_destroy(&server->ipc);
+	wm_menu_destroy(server->root_menu);
+	wm_menu_destroy(server->window_menu);
+	wm_rules_finish(&server->rules);
 
 	wm_layer_shell_finish(server);
 	wm_workspaces_finish(server);

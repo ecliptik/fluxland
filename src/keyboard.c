@@ -26,6 +26,7 @@
 #include "server.h"
 #include "config.h"
 #include "keybind.h"
+#include "menu.h"
 #include "tabgroup.h"
 #include "view.h"
 #include "workspace.h"
@@ -434,6 +435,20 @@ execute_action(struct wm_server *server,
 		}
 		return true;
 
+	case WM_ACTION_ROOT_MENU:
+		wm_menu_show_root(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_WINDOW_MENU:
+		wm_menu_show_window(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_HIDE_MENUS:
+		wm_menu_hide_all(server);
+		return true;
+
 	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
 	case WM_ACTION_SHADE:
@@ -447,9 +462,6 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_TOGGLE_DECOR:
 	case WM_ACTION_SET_DECOR:
 	case WM_ACTION_ACTIVATE_TAB:
-	case WM_ACTION_ROOT_MENU:
-	case WM_ACTION_WINDOW_MENU:
-	case WM_ACTION_HIDE_MENUS:
 	case WM_ACTION_NOP:
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:

@@ -25,6 +25,8 @@
 
 #include "keybind.h"
 #include "mousebind.h"
+#include "ipc.h"
+#include "rules.h"
 #include "xwayland.h"
 
 /* Forward declarations for types defined by other modules */
@@ -32,6 +34,7 @@ struct wm_view;
 struct wm_workspace;
 struct wm_config;
 struct wm_style;
+struct wm_menu;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -131,6 +134,16 @@ struct wm_server {
 	/* Mouse bindings */
 	struct wl_list mousebindings; /* wm_mousebind.link */
 	struct wm_mouse_state mouse_state;
+
+	/* Per-window rules (Fluxbox apps file) */
+	struct wm_rules rules;
+
+	/* IPC server */
+	struct wm_ipc_server ipc;
+
+	/* Menus */
+	struct wm_menu *root_menu;
+	struct wm_menu *window_menu;
 
 #ifdef WM_HAS_XWAYLAND
 	/* XWayland bridge */
