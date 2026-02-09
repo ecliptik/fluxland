@@ -29,6 +29,55 @@ Mod4 Shift 2 :SendToWorkspace 2
 Mod4 Shift 3 :SendToWorkspace 3
 Mod4 Shift 4 :SendToWorkspace 4
 
+# Window shading
+Mod4 s :Shade
+
+# Tab operations
+Mod4 Shift Tab :NextTab
+Mod4 Control Tab :PrevTab
+Mod4 Shift d :DetachClient
+
+# Move/resize by keyboard
+Mod4 Left :MoveLeft 20
+Mod4 Right :MoveRight 20
+Mod4 Up :MoveUp 20
+Mod4 Down :MoveDown 20
+
+# Next/previous workspace
+Mod4 bracketright :NextWorkspace
+Mod4 bracketleft :PrevWorkspace
+
 # Compositor control
 Mod4 r :Reconfigure
 Mod4 Shift e :Exit
+
+# Mouse bindings
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnTitlebar Move1 :StartMoving
+OnTitlebar Double1 :Shade
+OnTitlebar Mouse2 :StartTabbing
+OnTitlebar Mouse3 :WindowMenu
+
+OnDesktop Mouse3 :RootMenu
+OnDesktop Mouse4 :NextWorkspace
+OnDesktop Mouse5 :PrevWorkspace
+
+OnWindowBorder Move1 :StartResizing NearestCorner
+OnLeftGrip Move1 :StartResizing NearestCorner
+OnRightGrip Move1 :StartResizing NearestCorner
+
+# Alt+click move/resize (global)
+Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing NearestCorner}
+
+# Example key chain (uncomment to use):
+# Mod4 x Mod4 t :Exec foot
+# Mod4 x Mod4 f :Exec firefox
+
+# Example keymode (uncomment to use):
+# moving: h :MoveLeft 10
+# moving: l :MoveRight 10
+# moving: j :MoveDown 10
+# moving: k :MoveUp 10
+# moving: Escape :KeyMode default
+# Mod4 v :KeyMode moving Escape
