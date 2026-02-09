@@ -1,0 +1,34 @@
+# wm-wayland default keybindings
+# Format: [Modifier ...] key :Action [argument]
+#
+# Modifiers: Mod1 (Alt), Mod4 (Super), Control, Shift, None
+# Key names follow XKB naming conventions.
+# See fluxbox-keys(5) for detailed format documentation.
+
+# Application launcher
+Mod4 Return :Exec foot
+
+# Window management
+Mod4 Shift q :Close
+Mod4 f :Fullscreen
+Mod4 m :Maximize
+
+# Window focus cycling
+Mod4 Tab :NextWindow
+Mod4 Shift Tab :PrevWindow
+
+# Workspace switching
+Mod4 1 :Workspace 1
+Mod4 2 :Workspace 2
+Mod4 3 :Workspace 3
+Mod4 4 :Workspace 4
+
+# Send window to workspace
+Mod4 Shift 1 :SendToWorkspace 1
+Mod4 Shift 2 :SendToWorkspace 2
+Mod4 Shift 3 :SendToWorkspace 3
+Mod4 Shift 4 :SendToWorkspace 4
+
+# Compositor control
+Mod4 r :Reconfigure
+Mod4 Shift e :Exit
