@@ -1,0 +1,51 @@
+# wm-wayland per-window rules
+# Format: [app] (property=pattern) ... settings ... [end]
+# See fluxbox-apps(5) for format documentation.
+#
+# Properties (Wayland mapping):
+#   class  -> xdg_toplevel app_id
+#   name   -> xdg_toplevel app_id
+#   title  -> xdg_toplevel title
+#
+# Patterns use POSIX extended regular expressions.
+# Multiple patterns on one [app] line are AND-combined.
+# Use != for negated matching: (class!=firefox)
+#
+# Available settings:
+#   [Workspace]      {N}          - open on workspace N (0-based)
+#   [Dimensions]     {W H}        - initial size in pixels
+#   [Position]       (Anchor) {X Y} - initial position (Anchor: Center, etc.)
+#   [Deco]           {preset}     - NORMAL, NONE, BORDER, TAB, TINY, TOOL
+#   [Sticky]         {yes|no}     - visible on all workspaces
+#   [Layer]          {N}          - stacking layer
+#   [Alpha]          {focus unfocus} - transparency (0-255)
+#   [Maximized]      {yes|no}     - start maximized
+#   [Minimized]      {yes|no}     - start minimized
+#   [Fullscreen]     {yes|no}     - start fullscreen
+#   [Shaded]         {yes|no}     - start shaded (title bar only)
+#   [FocusNewWindow] {yes|no}     - focus when opened
+#   [Head]           {N}          - open on monitor N
+#
+# Auto-grouping (tab grouping):
+#   [group] (workspace)   <- optional: only group on same workspace
+#     [app] (class=pattern1)
+#     [app] (class=pattern2)
+#   [end]
+
+# Example: open Firefox on workspace 2
+# [app] (class=firefox)
+#   [Workspace] {2}
+# [end]
+
+# Example: make mpv borderless and fullscreen
+# [app] (class=mpv)
+#   [Deco] {NONE}
+#   [Fullscreen] {yes}
+# [end]
+
+# Example: auto-group terminal emulators
+# [group] (workspace)
+#   [app] (class=foot)
+#   [app] (class=Alacritty)
+#   [app] (class=kitty)
+# [end]
