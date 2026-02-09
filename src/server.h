@@ -23,6 +23,7 @@
 #include <wlr/util/box.h>
 
 #include "keybind.h"
+#include "mousebind.h"
 
 /* Forward declarations for types defined by other modules */
 struct wm_view;
@@ -115,6 +116,10 @@ struct wm_server {
 	struct wl_list keymodes;    /* wm_keymode.link */
 	char *current_keymode;      /* active keymode name ("default") */
 	struct wm_chain_state chain_state; /* multi-key chain state */
+
+	/* Mouse bindings */
+	struct wl_list mousebindings; /* wm_mousebind.link */
+	struct wm_mouse_state mouse_state;
 
 	/* Signal handlers */
 	struct wl_event_source *sigint_source;

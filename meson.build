@@ -118,6 +118,7 @@ wm_sources = files(
   'src/config.c',
   'src/rcparser.c',
   'src/keybind.c',
+  'src/mousebind.c',
   'src/style.c',
   'src/render.c',
   'src/decoration.c',

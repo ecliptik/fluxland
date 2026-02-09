@@ -67,6 +67,14 @@ handle_sighup(int signal_number, void *data)
 	free(server->current_keymode);
 	server->current_keymode = strdup("default");
 
+	/* Reload mouse bindings */
+	mousebind_destroy_list(&server->mousebindings);
+	wl_list_init(&server->mousebindings);
+	if (server->config && server->config->keys_file) {
+		mousebind_load(&server->mousebindings,
+			server->config->keys_file);
+	}
+
 	return 0;
 }
 
@@ -223,6 +231,14 @@ wm_server_init(struct wm_server *server)
 		}
 	}
 
+	/* Load mouse bindings from same keys file */
+	wl_list_init(&server->mousebindings);
+	memset(&server->mouse_state, 0, sizeof(server->mouse_state));
+	if (server->config && server->config->keys_file) {
+		mousebind_load(&server->mousebindings,
+			server->config->keys_file);
+	}
+
 	/* Initialize workspaces */
 	int ws_count = server->config ?
 		server->config->workspace_count : WM_DEFAULT_WORKSPACE_COUNT;
@@ -265,6 +281,7 @@ wm_server_destroy(struct wm_server *server)
 
 	keybind_destroy_all(&server->keymodes);
 	keybind_destroy_list(&server->keybindings);
+	mousebind_destroy_list(&server->mousebindings);
 	free(server->current_keymode);
 	if (server->chain_state.timeout)
 		wl_event_source_remove(server->chain_state.timeout);

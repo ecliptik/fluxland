@@ -414,6 +414,26 @@ execute_action(struct wm_server *server,
 		/* Tabbing is initiated by mouse action, not keyboard */
 		return true;
 
+	case WM_ACTION_FOCUS:
+		/* Focus is implicit in mouse binding dispatch */
+		if (view) {
+			wm_focus_view(view, NULL);
+		}
+		return true;
+
+	case WM_ACTION_START_MOVING:
+		if (view) {
+			wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
+		}
+		return true;
+
+	case WM_ACTION_START_RESIZING:
+		if (view) {
+			wm_view_begin_interactive(view, WM_CURSOR_RESIZE,
+				WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT);
+		}
+		return true;
+
 	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
 	case WM_ACTION_SHADE:
@@ -426,6 +446,10 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_SET_LAYER:
 	case WM_ACTION_TOGGLE_DECOR:
 	case WM_ACTION_SET_DECOR:
+	case WM_ACTION_ACTIVATE_TAB:
+	case WM_ACTION_ROOT_MENU:
+	case WM_ACTION_WINDOW_MENU:
+	case WM_ACTION_HIDE_MENUS:
 	case WM_ACTION_NOP:
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:

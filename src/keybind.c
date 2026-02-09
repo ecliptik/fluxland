@@ -32,13 +32,16 @@ struct action_map {
 };
 
 static const struct action_map actions[] = {
+	{"ActivateTab",        WM_ACTION_ACTIVATE_TAB},
 	{"Close",              WM_ACTION_CLOSE},
 	{"DetachClient",       WM_ACTION_DETACH_CLIENT},
 	{"Exec",               WM_ACTION_EXEC},
 	{"ExecCommand",        WM_ACTION_EXEC},
 	{"Execute",            WM_ACTION_EXEC},
 	{"Exit",               WM_ACTION_EXIT},
+	{"Focus",              WM_ACTION_FOCUS},
 	{"Fullscreen",         WM_ACTION_FULLSCREEN},
+	{"HideMenus",         WM_ACTION_HIDE_MENUS},
 	{"Iconify",            WM_ACTION_MINIMIZE},
 	{"KeyMode",            WM_ACTION_KEY_MODE},
 	{"Kill",               WM_ACTION_KILL},
@@ -67,6 +70,7 @@ static const struct action_map actions[] = {
 	{"Quit",               WM_ACTION_EXIT},
 	{"Raise",              WM_ACTION_RAISE},
 	{"RaiseLayer",         WM_ACTION_RAISE_LAYER},
+	{"RootMenu",           WM_ACTION_ROOT_MENU},
 	{"Reconfigure",        WM_ACTION_RECONFIGURE},
 	{"Resize",             WM_ACTION_RESIZE},
 	{"ResizeTo",           WM_ACTION_RESIZE_TO},
@@ -78,11 +82,14 @@ static const struct action_map actions[] = {
 	{"ShadeOn",            WM_ACTION_SHADE_ON},
 	{"ShadeWindow",        WM_ACTION_SHADE},
 	{"ShowDesktop",        WM_ACTION_SHOW_DESKTOP},
+	{"StartMoving",        WM_ACTION_START_MOVING},
+	{"StartResizing",      WM_ACTION_START_RESIZING},
 	{"StartTabbing",       WM_ACTION_START_TABBING},
 	{"Stick",              WM_ACTION_STICK},
 	{"StickWindow",        WM_ACTION_STICK},
 	{"ToggleCmd",          WM_ACTION_TOGGLE_CMD},
 	{"ToggleDecor",        WM_ACTION_TOGGLE_DECOR},
+	{"WindowMenu",         WM_ACTION_WINDOW_MENU},
 	{"Workspace",          WM_ACTION_WORKSPACE},
 };
 
