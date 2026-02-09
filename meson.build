@@ -61,8 +61,15 @@ math = cc.find_library('m')
 
 # --- Optional dependencies ---
 
-xwayland = dependency('xwayland', required: get_option('xwayland'))
-have_xwayland = xwayland.found()
+xwayland_opt = get_option('xwayland')
+have_xwayland = false
+if not xwayland_opt.disabled()
+  # Check that wlroots was built with xwayland support
+  have_xwayland = cc.has_header('wlr/xwayland/xwayland.h', dependencies: wlroots)
+  if not have_xwayland and xwayland_opt.enabled()
+    error('XWayland support requested but wlroots was not built with xwayland')
+  endif
+endif
 
 if have_xwayland
   xcb = dependency('xcb')
