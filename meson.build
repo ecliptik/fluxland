@@ -56,6 +56,7 @@ xkbcommon = dependency('xkbcommon')
 input = dependency('libinput', version: '>=1.14')
 pixman = dependency('pixman-1')
 pangocairo = dependency('pangocairo')
+libdrm = dependency('libdrm')
 math = cc.find_library('m')
 
 # --- Optional dependencies ---
@@ -101,6 +102,7 @@ wm_deps = [
   input,
   pixman,
   pangocairo,
+  libdrm,
   math,
 ]
 
@@ -118,6 +120,7 @@ wm_sources = files(
   'src/keybind.c',
   'src/style.c',
   'src/render.c',
+  'src/decoration.c',
   'src/tabgroup.c',
 )
 

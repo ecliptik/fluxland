@@ -13,6 +13,7 @@
 #include <wlr/util/log.h>
 
 #include "config.h"
+#include "decoration.h"
 #include "server.h"
 #include "tabgroup.h"
 #include "view.h"
@@ -42,6 +43,12 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 		if (prev_toplevel) {
 			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
 		}
+		/* Update decoration on previously focused view */
+		if (server->focused_view && server->focused_view->decoration) {
+			wm_decoration_set_focused(
+				server->focused_view->decoration, false,
+				server->style);
+		}
 	}
 
 	/* Move view to front of the views list (stacking order) */
@@ -56,6 +63,12 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 
 	/* Track focused view */
 	server->focused_view = view;
+
+	/* Update decoration on newly focused view */
+	if (view->decoration) {
+		wm_decoration_set_focused(view->decoration, true,
+			server->style);
+	}
 
 	/* Send keyboard focus */
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -255,6 +268,37 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, map);
 
+	/* Create server-side decorations */
+	if (!view->decoration && view->server->style) {
+		view->decoration = wm_decoration_create(view,
+			view->server->style);
+		if (view->decoration) {
+			/*
+			 * Position the client surface within the decoration
+			 * frame. The XDG surface tree needs to be offset by
+			 * the decoration extents.
+			 */
+			int top, bottom, left, right;
+			wm_decoration_get_extents(view->decoration,
+				&top, &bottom, &left, &right);
+
+			/*
+			 * Find the XDG surface tree (second child of
+			 * view->scene_tree, first is decoration->tree).
+			 * Iterate children to find the non-decoration tree.
+			 */
+			struct wlr_scene_node *child;
+			wl_list_for_each(child,
+				&view->scene_tree->children, link) {
+				if (child != &view->decoration->tree->node) {
+					wlr_scene_node_set_position(child,
+						left, top);
+					break;
+				}
+			}
+		}
+	}
+
 	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
 	wm_focus_view(view, view->xdg_toplevel->base->surface);
 }
@@ -308,6 +352,12 @@ static void
 handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, destroy);
+
+	/* Destroy decorations */
+	if (view->decoration) {
+		wm_decoration_destroy(view->decoration);
+		view->decoration = NULL;
+	}
 
 	/* Remove from tab group if grouped */
 	if (view->tab_group) {
@@ -471,6 +521,11 @@ handle_xdg_toplevel_set_title(struct wl_listener *listener, void *data)
 	free(view->title);
 	view->title = view->xdg_toplevel->title ?
 		strdup(view->xdg_toplevel->title) : NULL;
+
+	/* Re-render decoration to update title text */
+	if (view->decoration && view->server->style) {
+		wm_decoration_update(view->decoration, view->server->style);
+	}
 }
 
 static void

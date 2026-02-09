@@ -18,9 +18,11 @@
 
 #include "server.h"
 #include "config.h"
+#include "decoration.h"
 #include "keybind.h"
 #include "output.h"
 #include "input.h"
+#include "style.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -160,6 +162,9 @@ wm_server_init(struct wm_server *server)
 	/* Wire up XDG toplevel/popup listeners (view lifecycle) */
 	wm_view_init(server);
 
+	/* xdg-decoration: negotiate server-side decorations */
+	wm_xdg_decoration_init(server);
+
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");
 	if (!server->seat) {
@@ -190,6 +195,16 @@ wm_server_init(struct wm_server *server)
 		wlr_log(WLR_INFO, "config dir: %s",
 			server->config->config_dir ?
 			server->config->config_dir : "(none)");
+	}
+
+	/* Load style/theme */
+	server->style = style_create();
+	if (server->style && server->config && server->config->style_file) {
+		if (style_load(server->style,
+				server->config->style_file) == 0) {
+			wlr_log(WLR_INFO, "loaded style from %s",
+				server->config->style_file);
+		}
 	}
 
 	/* Load keybindings into keymode system */
@@ -253,6 +268,7 @@ wm_server_destroy(struct wm_server *server)
 	free(server->current_keymode);
 	if (server->chain_state.timeout)
 		wl_event_source_remove(server->chain_state.timeout);
+	style_destroy(server->style);
 	config_destroy(server->config);
 
 	wm_input_finish(server);

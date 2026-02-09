@@ -14,6 +14,7 @@
 struct wm_server;
 struct wm_workspace;
 struct wm_tab_group;
+struct wm_decoration;
 
 struct wm_view {
 	struct wl_list link; /* wm_server.views */
@@ -40,6 +41,9 @@ struct wm_view {
 	/* Tab group (Fluxbox-style window grouping) */
 	struct wm_tab_group *tab_group;
 	struct wl_list tab_link; /* wm_tab_group.views */
+
+	/* Server-side decorations */
+	struct wm_decoration *decoration;
 
 	/* XDG toplevel listeners */
 	struct wl_listener map;
