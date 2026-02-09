@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/render/allocator.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
@@ -45,13 +46,24 @@ handle_sighup(int signal_number, void *data)
 		server->focus_policy = server->config->focus_policy;
 	}
 
-	/* Reload keybindings */
+	/* Reload keymodes and keybindings */
+	keybind_destroy_all(&server->keymodes);
+	wl_list_init(&server->keymodes);
 	keybind_destroy_list(&server->keybindings);
 	wl_list_init(&server->keybindings);
 	if (server->config && server->config->keys_file) {
-		keybind_load(&server->keybindings,
+		keybind_load(&server->keymodes,
 			server->config->keys_file);
 	}
+	/* Reset chain and keymode */
+	server->chain_state.in_chain = false;
+	server->chain_state.current_level = NULL;
+	if (server->chain_state.timeout) {
+		wl_event_source_remove(server->chain_state.timeout);
+		server->chain_state.timeout = NULL;
+	}
+	free(server->current_keymode);
+	server->current_keymode = strdup("default");
 
 	return 0;
 }
@@ -180,10 +192,13 @@ wm_server_init(struct wm_server *server)
 			server->config->config_dir : "(none)");
 	}
 
-	/* Load keybindings */
+	/* Load keybindings into keymode system */
 	wl_list_init(&server->keybindings);
+	wl_list_init(&server->keymodes);
+	server->current_keymode = strdup("default");
+	memset(&server->chain_state, 0, sizeof(server->chain_state));
 	if (server->config && server->config->keys_file) {
-		if (keybind_load(&server->keybindings,
+		if (keybind_load(&server->keymodes,
 				server->config->keys_file) == 0) {
 			wlr_log(WLR_INFO, "loaded keybindings from %s",
 				server->config->keys_file);
@@ -233,7 +248,11 @@ wm_server_destroy(struct wm_server *server)
 
 	wm_workspaces_finish(server);
 
+	keybind_destroy_all(&server->keymodes);
 	keybind_destroy_list(&server->keybindings);
+	free(server->current_keymode);
+	if (server->chain_state.timeout)
+		wl_event_source_remove(server->chain_state.timeout);
 	config_destroy(server->config);
 
 	wm_input_finish(server);

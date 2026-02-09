@@ -18,6 +18,7 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
 
@@ -27,6 +28,7 @@
 struct wm_view;
 struct wm_workspace;
 struct wm_config;
+struct wm_style;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -58,6 +60,13 @@ struct wm_server {
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
+
+	/* xdg-decoration protocol (SSD negotiation) */
+	struct wlr_xdg_decoration_manager_v1 *xdg_decoration_mgr;
+	struct wl_listener new_xdg_decoration;
+
+	/* Theme/style for decorations */
+	struct wm_style *style;
 
 	struct wl_list outputs; /* wm_output.link */
 	struct wl_listener new_output;

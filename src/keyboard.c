@@ -1,10 +1,17 @@
 /*
  * wm-wayland - A Fluxbox-inspired Wayland compositor
  * keyboard.c - Keyboard input handling
+ *
+ * Handles key events, chain state for multi-key sequences,
+ * keymode switching, and action dispatch including MacroCmd/ToggleCmd.
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <signal.h>
 #include <unistd.h>
 #include <wlr/backend/session.h>
 #include <wlr/types/wlr_input_device.h>
@@ -39,15 +46,121 @@ exec_command(const char *cmd)
 	}
 }
 
+/*
+ * Reset chain state back to root level.
+ */
+static void
+chain_reset(struct wm_server *server)
+{
+	struct wm_chain_state *cs = &server->chain_state;
+	cs->in_chain = false;
+	cs->current_level = NULL;
+	if (cs->timeout) {
+		wl_event_source_remove(cs->timeout);
+		cs->timeout = NULL;
+	}
+}
+
+/*
+ * Timer callback: abort chain on timeout.
+ */
+static int
+chain_timeout_cb(void *data)
+{
+	struct wm_server *server = data;
+	wlr_log(WLR_DEBUG, "key chain timed out");
+	chain_reset(server);
+	return 0;
+}
+
+/*
+ * Start or restart the chain timeout timer.
+ */
+static void
+chain_start_timeout(struct wm_server *server)
+{
+	struct wm_chain_state *cs = &server->chain_state;
+	if (cs->timeout) {
+		wl_event_source_timer_update(cs->timeout,
+			WM_CHAIN_TIMEOUT_MS);
+		return;
+	}
+	cs->timeout = wl_event_loop_add_timer(server->wl_event_loop,
+		chain_timeout_cb, server);
+	if (cs->timeout) {
+		wl_event_source_timer_update(cs->timeout,
+			WM_CHAIN_TIMEOUT_MS);
+	}
+}
+
+/*
+ * Get the currently active keymode's binding list.
+ */
+static struct wl_list *
+get_active_bindings(struct wm_server *server)
+{
+	const char *mode_name = server->current_keymode;
+	if (!mode_name)
+		mode_name = "default";
+
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &server->keymodes, link) {
+		if (strcasecmp(mode->name, mode_name) == 0)
+			return &mode->bindings;
+	}
+	return NULL;
+}
+
+/*
+ * Forward declaration for recursive use by MacroCmd/ToggleCmd.
+ */
+static bool execute_action(struct wm_server *server,
+	enum wm_action action, const char *argument);
+
+/*
+ * Execute a keybind, including MacroCmd/ToggleCmd dispatch.
+ */
 static bool
 execute_keybind_action(struct wm_server *server,
 	struct wm_keybind *bind)
 {
+	if (bind->action == WM_ACTION_MACRO_CMD) {
+		struct wm_subcmd *cmd = bind->subcmds;
+		while (cmd) {
+			execute_action(server, cmd->action, cmd->argument);
+			cmd = cmd->next;
+		}
+		return true;
+	}
+
+	if (bind->action == WM_ACTION_TOGGLE_CMD) {
+		if (bind->subcmd_count > 0) {
+			struct wm_subcmd *cmd = bind->subcmds;
+			int idx = bind->toggle_index % bind->subcmd_count;
+			for (int i = 0; i < idx && cmd; i++)
+				cmd = cmd->next;
+			if (cmd) {
+				execute_action(server, cmd->action,
+					cmd->argument);
+			}
+			bind->toggle_index =
+				(bind->toggle_index + 1) % bind->subcmd_count;
+		}
+		return true;
+	}
+
+	return execute_action(server, bind->action, bind->argument);
+}
+
+static bool
+execute_action(struct wm_server *server,
+	enum wm_action action, const char *argument)
+{
 	struct wm_view *view = server->focused_view;
 
-	switch (bind->action) {
+	switch (action) {
 	case WM_ACTION_EXEC:
-		exec_command(bind->argument);
+		exec_command(argument);
 		return true;
 
 	case WM_ACTION_EXIT:
@@ -57,6 +170,22 @@ execute_keybind_action(struct wm_server *server,
 	case WM_ACTION_CLOSE:
 		if (view) {
 			wlr_xdg_toplevel_send_close(view->xdg_toplevel);
+		}
+		return true;
+
+	case WM_ACTION_KILL:
+		if (view) {
+			struct wl_resource *resource =
+				view->xdg_toplevel->base->resource;
+			struct wl_client *client =
+				wl_resource_get_client(resource);
+			if (client) {
+				pid_t pid;
+				wl_client_get_credentials(client,
+					&pid, NULL, NULL);
+				if (pid > 0)
+					kill(pid, SIGKILL);
+			}
 		}
 		return true;
 
@@ -71,7 +200,6 @@ execute_keybind_action(struct wm_server *server,
 
 	case WM_ACTION_MAXIMIZE:
 		if (view) {
-			/* Toggle maximize by sending the request event */
 			struct wl_listener *listener = &view->request_maximize;
 			listener->notify(listener, NULL);
 		}
@@ -100,15 +228,15 @@ execute_keybind_action(struct wm_server *server,
 		return true;
 
 	case WM_ACTION_WORKSPACE:
-		if (bind->argument) {
-			int ws = atoi(bind->argument) - 1;
+		if (argument) {
+			int ws = atoi(argument) - 1;
 			wm_workspace_switch(server, ws);
 		}
 		return true;
 
 	case WM_ACTION_SEND_TO_WORKSPACE:
-		if (bind->argument) {
-			int ws = atoi(bind->argument) - 1;
+		if (argument) {
+			int ws = atoi(argument) - 1;
 			wm_view_send_to_workspace(server, ws);
 		}
 		return true;
@@ -132,12 +260,20 @@ execute_keybind_action(struct wm_server *server,
 			config_reload(server->config);
 			server->focus_policy = server->config->focus_policy;
 		}
-		keybind_destroy_list(&server->keybindings);
-		wl_list_init(&server->keybindings);
+		/* Reload keymodes */
+		keybind_destroy_all(&server->keymodes);
+		wl_list_init(&server->keymodes);
 		if (server->config && server->config->keys_file) {
-			keybind_load(&server->keybindings,
+			keybind_load(&server->keymodes,
 				server->config->keys_file);
 		}
+		/* Also rebuild legacy flat list for any code still using it */
+		keybind_destroy_list(&server->keybindings);
+		wl_list_init(&server->keybindings);
+		/* Reset chain and keymode on reconfigure */
+		chain_reset(server);
+		free(server->current_keymode);
+		server->current_keymode = strdup("default");
 		wlr_log(WLR_INFO, "configuration reloaded");
 		return true;
 
@@ -154,6 +290,96 @@ execute_keybind_action(struct wm_server *server,
 		}
 		return true;
 
+	case WM_ACTION_MOVE_LEFT:
+		if (view && argument) {
+			int px = atoi(argument);
+			view->x -= px;
+			wlr_scene_node_set_position(
+				&view->scene_tree->node, view->x, view->y);
+		}
+		return true;
+
+	case WM_ACTION_MOVE_RIGHT:
+		if (view && argument) {
+			int px = atoi(argument);
+			view->x += px;
+			wlr_scene_node_set_position(
+				&view->scene_tree->node, view->x, view->y);
+		}
+		return true;
+
+	case WM_ACTION_MOVE_UP:
+		if (view && argument) {
+			int px = atoi(argument);
+			view->y -= px;
+			wlr_scene_node_set_position(
+				&view->scene_tree->node, view->x, view->y);
+		}
+		return true;
+
+	case WM_ACTION_MOVE_DOWN:
+		if (view && argument) {
+			int px = atoi(argument);
+			view->y += px;
+			wlr_scene_node_set_position(
+				&view->scene_tree->node, view->x, view->y);
+		}
+		return true;
+
+	case WM_ACTION_MOVE_TO:
+		if (view && argument) {
+			int x = 0, y = 0;
+			sscanf(argument, "%d %d", &x, &y);
+			view->x = x;
+			view->y = y;
+			wlr_scene_node_set_position(
+				&view->scene_tree->node, x, y);
+		}
+		return true;
+
+	case WM_ACTION_RESIZE_TO:
+		if (view && argument) {
+			int w = 0, h = 0;
+			sscanf(argument, "%d %d", &w, &h);
+			if (w > 0 && h > 0)
+				wlr_xdg_toplevel_set_size(
+					view->xdg_toplevel, w, h);
+		}
+		return true;
+
+	case WM_ACTION_SHOW_DESKTOP: {
+		struct wm_view *v;
+		wl_list_for_each(v, &server->views, link) {
+			if (v->workspace == server->current_workspace) {
+				struct wl_listener *listener =
+					&v->request_minimize;
+				listener->notify(listener, NULL);
+			}
+		}
+		return true;
+	}
+
+	case WM_ACTION_KEY_MODE:
+		if (argument) {
+			char mode_name[256];
+			const char *sp = argument;
+			while (*sp && !isspace((unsigned char)*sp))
+				sp++;
+			size_t len = sp - argument;
+			if (len >= sizeof(mode_name))
+				len = sizeof(mode_name) - 1;
+			memcpy(mode_name, argument, len);
+			mode_name[len] = '\0';
+
+			free(server->current_keymode);
+			server->current_keymode = strdup(mode_name);
+			chain_reset(server);
+			wlr_log(WLR_INFO, "keymode switched to: %s",
+				mode_name);
+		}
+		return true;
+
+	/* Tab group actions (from tabbing engineer) */
 	case WM_ACTION_NEXT_TAB:
 		if (view && view->tab_group) {
 			wm_tab_group_next(view->tab_group);
@@ -188,11 +414,21 @@ execute_keybind_action(struct wm_server *server,
 		/* Tabbing is initiated by mouse action, not keyboard */
 		return true;
 
+	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
 	case WM_ACTION_SHADE:
+	case WM_ACTION_SHADE_ON:
+	case WM_ACTION_SHADE_OFF:
 	case WM_ACTION_MAXIMIZE_VERT:
 	case WM_ACTION_MAXIMIZE_HORIZ:
+	case WM_ACTION_RAISE_LAYER:
+	case WM_ACTION_LOWER_LAYER:
+	case WM_ACTION_SET_LAYER:
+	case WM_ACTION_TOGGLE_DECOR:
+	case WM_ACTION_SET_DECOR:
 	case WM_ACTION_NOP:
+	case WM_ACTION_MACRO_CMD:
+	case WM_ACTION_TOGGLE_CMD:
 		return true;
 	}
 
@@ -204,9 +440,8 @@ handle_compositor_keybinding(struct wm_server *server,
 	uint32_t modifiers, xkb_keysym_t sym)
 {
 	/*
-	 * Check hardcoded emergency keybindings first, then check the
-	 * loaded keybinding list.  Hardcoded bindings are a safety net
-	 * to ensure the compositor is always controllable.
+	 * Check hardcoded emergency keybindings first.
+	 * These always work regardless of chain or keymode state.
 	 */
 
 	/* Ctrl+Alt+Fn: VT switch */
@@ -235,14 +470,52 @@ handle_compositor_keybinding(struct wm_server *server,
 		return true;
 	}
 
-	/* Check loaded keybindings */
-	struct wm_keybind *bind = keybind_find(&server->keybindings,
-		modifiers, sym);
-	if (bind) {
-		return execute_keybind_action(server, bind);
+	struct wm_chain_state *cs = &server->chain_state;
+
+	/* Escape aborts any active chain */
+	if (sym == XKB_KEY_Escape && cs->in_chain) {
+		wlr_log(WLR_DEBUG, "chain aborted by Escape");
+		chain_reset(server);
+		return true;
 	}
 
-	return false;
+	/* Determine which binding list to search */
+	struct wl_list *search_list;
+	if (cs->in_chain && cs->current_level) {
+		/* Mid-chain: search children of current node */
+		search_list = cs->current_level;
+	} else {
+		/* Search the active keymode's root bindings */
+		search_list = get_active_bindings(server);
+		if (!search_list) {
+			/* Fallback to legacy flat list */
+			search_list = &server->keybindings;
+		}
+	}
+
+	struct wm_keybind *bind = keybind_find(search_list, modifiers, sym);
+	if (!bind) {
+		/* No match — if we were in a chain, abort it */
+		if (cs->in_chain) {
+			wlr_log(WLR_DEBUG, "chain broken by unmatched key");
+			chain_reset(server);
+		}
+		return false;
+	}
+
+	/* Check if this is an intermediate chain node */
+	if (bind->action == WM_ACTION_NOP &&
+	    !wl_list_empty(&bind->children)) {
+		cs->in_chain = true;
+		cs->current_level = &bind->children;
+		chain_start_timeout(server);
+		wlr_log(WLR_DEBUG, "entered key chain");
+		return true;
+	}
+
+	/* Leaf node — execute the action and reset chain */
+	chain_reset(server);
+	return execute_keybind_action(server, bind);
 }
 
 static void
