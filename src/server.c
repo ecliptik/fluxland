@@ -20,11 +20,13 @@
 #include "config.h"
 #include "decoration.h"
 #include "keybind.h"
+#include "layer_shell.h"
 #include "output.h"
 #include "input.h"
 #include "style.h"
 #include "view.h"
 #include "workspace.h"
+#include "xwayland.h"
 
 #define WM_WLR_COMPOSITOR_VERSION 6
 
@@ -155,8 +157,12 @@ wm_server_init(struct wm_server *server)
 	}
 
 	/* Scene trees for z-ordering (bottom to top) */
+	server->layer_background = wlr_scene_tree_create(&server->scene->tree);
+	server->layer_bottom = wlr_scene_tree_create(&server->scene->tree);
 	server->view_tree = wlr_scene_tree_create(&server->scene->tree);
 	server->xdg_popup_tree = wlr_scene_tree_create(&server->scene->tree);
+	server->layer_top = wlr_scene_tree_create(&server->scene->tree);
+	server->layer_overlay = wlr_scene_tree_create(&server->scene->tree);
 
 	/* Output layout and scene integration */
 	wm_output_init(server);
@@ -172,6 +178,9 @@ wm_server_init(struct wm_server *server)
 
 	/* xdg-decoration: negotiate server-side decorations */
 	wm_xdg_decoration_init(server);
+
+	/* Layer shell: panels, wallpapers, lock screens, notifications */
+	wm_layer_shell_init(server);
 
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");
@@ -244,6 +253,9 @@ wm_server_init(struct wm_server *server)
 		server->config->workspace_count : WM_DEFAULT_WORKSPACE_COUNT;
 	wm_workspaces_init(server, ws_count);
 
+	/* XWayland: X11 application support (compile-time optional) */
+	wm_xwayland_init(server);
+
 	return true;
 }
 
@@ -275,8 +287,10 @@ wm_server_run(struct wm_server *server)
 void
 wm_server_destroy(struct wm_server *server)
 {
+	wm_xwayland_finish(server);
 	wl_display_destroy_clients(server->wl_display);
 
+	wm_layer_shell_finish(server);
 	wm_workspaces_finish(server);
 
 	keybind_destroy_all(&server->keymodes);

@@ -13,6 +13,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
+#include "layer_shell.h"
 #include "output.h"
 #include "server.h"
 
@@ -107,9 +108,17 @@ handle_new_output(struct wl_listener *listener, void *data)
 	wlr_scene_output_layout_add_output(
 		server->scene_layout, lo, output->scene_output);
 
+	/* Initialize usable area to full output dimensions */
+	wlr_output_effective_resolution(wlr_output,
+		&output->usable_area.width,
+		&output->usable_area.height);
+
 	wlr_log(WLR_INFO, "new output: %s (%dx%d)",
 		wlr_output->name,
 		wlr_output->width, wlr_output->height);
+
+	/* Arrange any existing layer surfaces on this output */
+	wm_layer_shell_arrange(output);
 }
 
 void

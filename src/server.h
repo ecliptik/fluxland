@@ -18,12 +18,14 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
 
 #include "keybind.h"
 #include "mousebind.h"
+#include "xwayland.h"
 
 /* Forward declarations for types defined by other modules */
 struct wm_view;
@@ -55,8 +57,12 @@ struct wm_server {
 	struct wlr_scene_output_layout *scene_layout;
 
 	/* Scene tree layers (bottom to top) */
+	struct wlr_scene_tree *layer_background;
+	struct wlr_scene_tree *layer_bottom;
 	struct wlr_scene_tree *view_tree;
 	struct wlr_scene_tree *xdg_popup_tree;
+	struct wlr_scene_tree *layer_top;
+	struct wlr_scene_tree *layer_overlay;
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
@@ -65,6 +71,11 @@ struct wm_server {
 	/* xdg-decoration protocol (SSD negotiation) */
 	struct wlr_xdg_decoration_manager_v1 *xdg_decoration_mgr;
 	struct wl_listener new_xdg_decoration;
+
+	/* Layer shell protocol (panels, wallpaper, lock screens) */
+	struct wlr_layer_shell_v1 *layer_shell;
+	struct wl_listener new_layer_surface;
+	struct wl_list layer_surfaces; /* wm_layer_surface.link */
 
 	/* Theme/style for decorations */
 	struct wm_style *style;
@@ -120,6 +131,15 @@ struct wm_server {
 	/* Mouse bindings */
 	struct wl_list mousebindings; /* wm_mousebind.link */
 	struct wm_mouse_state mouse_state;
+
+#ifdef WM_HAS_XWAYLAND
+	/* XWayland bridge */
+	struct wlr_xwayland *xwayland;
+	struct wl_listener xwayland_new_surface;
+	struct wl_listener xwayland_ready;
+	struct wl_list xwayland_views; /* wm_xwayland_view.link */
+	struct wm_xwayland_atoms xwayland_atoms;
+#endif
 
 	/* Signal handlers */
 	struct wl_event_source *sigint_source;

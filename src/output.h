@@ -9,6 +9,7 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/util/box.h>
 
 struct wm_server;
 
@@ -17,6 +18,9 @@ struct wm_output {
 	struct wm_server *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
+
+	/* Area available for window placement (full area minus exclusive zones) */
+	struct wlr_box usable_area;
 
 	struct wl_listener frame;
 	struct wl_listener request_state;

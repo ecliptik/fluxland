@@ -64,6 +64,13 @@ math = cc.find_library('m')
 xwayland = dependency('xwayland', required: get_option('xwayland'))
 have_xwayland = xwayland.found()
 
+if have_xwayland
+  xcb = dependency('xcb')
+  xcb_ewmh = dependency('xcb-ewmh')
+  xcb_icccm = dependency('xcb-icccm')
+  add_project_arguments('-DWM_HAS_XWAYLAND', language: 'c')
+endif
+
 conf_data = configuration_data()
 conf_data.set10('HAVE_XWAYLAND', have_xwayland)
 
@@ -123,7 +130,17 @@ wm_sources = files(
   'src/render.c',
   'src/decoration.c',
   'src/tabgroup.c',
+  'src/ipc.c',
+  'src/ipc_commands.c',
+  'src/rules.c',
+  'src/layer_shell.c',
+  'src/menu.c',
+  'src/xwayland.c',
 )
+
+if have_xwayland
+  wm_deps += [xcb, xcb_ewmh, xcb_icccm]
+endif
 
 # --- Build executable ---
 
@@ -132,6 +149,14 @@ executable(
   wm_sources,
   include_directories: [wm_inc],
   dependencies: wm_deps,
+  install: true,
+)
+
+# --- IPC client tool ---
+
+executable(
+  'wm-wayland-ctl',
+  files('tools/wm-wayland-ctl.c'),
   install: true,
 )
 
