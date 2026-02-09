@@ -1,0 +1,15 @@
+[begin] (wm-wayland)
+  [exec] (Terminal) {foot}
+  [exec] (File Manager) {thunar}
+  [exec] (Web Browser) {firefox}
+  [separator]
+  [submenu] (Styles)
+    [stylesdir] (~/.config/wm-wayland/styles)
+  [end]
+  [workspaces] (Workspaces)
+  [separator]
+  [config] (Configuration)
+  [reconfig] (Reload Config)
+  [restart] (Restart)
+  [exit] (Exit)
+[end]
