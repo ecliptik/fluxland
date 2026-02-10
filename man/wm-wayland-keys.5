@@ -141,6 +141,9 @@ Toggle fullscreen state.
 .B Minimize\fR, \fBIconify
 Minimize (iconify) the focused window.
 .TP
+.B Deiconify
+Restore the last minimized window.
+.TP
 .B Shade\fR, \fBShadeWindow
 Toggle window shade (collapse to title bar).
 .TP
@@ -209,6 +212,12 @@ Focus the next window in the stacking order.
 .B PrevWindow
 Focus the previous window.
 .TP
+.B FocusNext
+Focus the next window (same as NextWindow).
+.TP
+.B FocusPrev
+Focus the previous window (same as PrevWindow).
+.TP
 .B Focus
 Explicitly focus the window under the cursor (mouse bindings).
 .TP
@@ -226,6 +235,26 @@ Move down one layer.
 .TP
 .BI SetLayer " layer"
 Set the stacking layer explicitly.
+.I layer
+is one of
+.BR Desktop ,
+.BR Below " (or " Bottom ),
+.BR Normal ,
+or
+.BR Above " (or " Top ", " Dock ", " AboveDock ).
+.SS Window Arrangement
+.TP
+.B ArrangeWindows
+Tile all windows on the current workspace in a grid layout.
+.TP
+.B ArrangeWindowsVertical
+Tile windows in vertical columns.
+.TP
+.B ArrangeWindowsHorizontal
+Tile windows in horizontal rows.
+.TP
+.B CascadeWindows
+Cascade windows from the top-left corner.
 .SS Workspace Actions
 .TP
 .BI Workspace " N"
@@ -277,6 +306,9 @@ Show the root menu at the current cursor position.
 .TP
 .B WindowMenu
 Show the window menu at the current cursor position.
+.TP
+.B WindowList
+Show a menu listing all windows across all workspaces.
 .TP
 .B HideMenus
 Hide all visible menus.

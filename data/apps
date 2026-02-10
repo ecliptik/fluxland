@@ -100,6 +100,7 @@
   [Dimensions] {960 540}
   [Position] (Center) {0 0}
   [Deco] {NONE}
+  [Layer] {Above}
 [end]
 
 [app] (class=vlc)
@@ -165,6 +166,38 @@
   [Position] (Center) {0 0}
   [FocusNewWindow] {no}
 [end]
+
+# -------------------------------------------------------------------
+# Layer and decoration examples
+# -------------------------------------------------------------------
+
+# Desktop widgets: below normal windows, border-only decoration
+# [app] (class=conky)
+#   [Layer] {Below}
+#   [Deco] {BORDER}
+#   [Sticky] {yes}
+# [end]
+
+# Panels / docks: above normal windows, no decoration
+# [app] (class=lxpanel)
+#   [Layer] {Above}
+#   [Deco] {NONE}
+#   [Sticky] {yes}
+# [end]
+
+# Picture-in-picture: above layer, tiny decoration, small size
+# [app] (title=.*Picture.in.Picture.*)
+#   [Layer] {Above}
+#   [Deco] {TINY}
+#   [Dimensions] {480 270}
+#   [Position] (LowerRight) {0 0}
+#   [Sticky] {yes}
+# [end]
+
+# Start a window shaded (collapsed to title bar)
+# [app] (class=xclock)
+#   [Shaded] {yes}
+# [end]
 
 # -------------------------------------------------------------------
 # Auto-grouping: tab terminal emulators together

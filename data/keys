@@ -81,6 +81,10 @@ Mod4 Shift s :Stick
 # Toggle window decoration
 Mod4 t :ToggleDecor
 
+# Set specific decoration presets
+# Mod4 Shift t :SetDecor NONE
+# Mod4 Control t :SetDecor BORDER
+
 # Show desktop (minimize all on current workspace)
 Mod4 Shift d :ShowDesktop
 
@@ -91,6 +95,10 @@ Mod4 Shift d :ShowDesktop
 # Alt-Tab / Shift-Alt-Tab: cycle through windows
 Mod1 Tab :NextWindow
 Mod1 Shift Tab :PrevWindow
+
+# Alternative focus cycling (same as NextWindow/PrevWindow)
+# Mod4 j :FocusNext
+# Mod4 k :FocusPrev
 
 # -------------------------------------------------------------------
 # Window movement (keyboard)
@@ -114,8 +122,8 @@ Mod4 Shift Down :MoveDown 1
 # Window resizing (keyboard)
 # -------------------------------------------------------------------
 
-# Resize with Control+Super+Arrow (use ResizeTo for absolute)
-# Mod4 Control Left :ResizeTo 640 480
+# Resize to specific dimensions
+# Mod4 Control r :ResizeTo 640 480
 
 # -------------------------------------------------------------------
 # Window layer management
@@ -128,6 +136,34 @@ Mod4 Next :Lower
 # Move window up/down in stacking layers
 Mod4 Shift Prior :RaiseLayer
 Mod4 Shift Next :LowerLayer
+
+# Set layer explicitly via key chain: Mod4+l then a/n/b
+Mod4 l a :SetLayer Above
+Mod4 l n :SetLayer Normal
+Mod4 l b :SetLayer Below
+
+# -------------------------------------------------------------------
+# Window arrangement
+# -------------------------------------------------------------------
+
+# Tile all windows in a grid layout
+Mod4 g :ArrangeWindows
+
+# Tile windows in vertical columns
+Mod4 Shift v :ArrangeWindowsVertical
+
+# Tile windows in horizontal rows
+Mod4 Shift h :ArrangeWindowsHorizontal
+
+# Cascade windows from top-left
+Mod4 Shift c :CascadeWindows
+
+# -------------------------------------------------------------------
+# Window list
+# -------------------------------------------------------------------
+
+# Show window list menu
+Mod4 w :WindowList
 
 # -------------------------------------------------------------------
 # Tab operations
@@ -143,6 +179,11 @@ Mod4 Shift d :DetachClient
 # Reorder tabs
 Mod4 Control Left :MoveTabLeft
 Mod4 Control Right :MoveTabRight
+
+# Activate a specific tab by number (1-indexed)
+# Mod4 Control 1 :ActivateTab 1
+# Mod4 Control 2 :ActivateTab 2
+# Mod4 Control 3 :ActivateTab 3
 
 # -------------------------------------------------------------------
 # Workspace switching
@@ -189,6 +230,7 @@ Mod4 Shift e :Exit
 
 # Switch keyboard layout (for multi-layout XKB configurations)
 Mod4 space :NextLayout
+Mod4 Shift space :PrevLayout
 
 # -------------------------------------------------------------------
 # Menus
