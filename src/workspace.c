@@ -11,6 +11,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
+#include "ipc.h"
 #include "server.h"
 #include "view.h"
 #include "workspace.h"
@@ -128,6 +129,18 @@ wm_workspace_switch(struct wm_server *server, int index)
 
 	wlr_log(WLR_DEBUG, "workspace switch: %s -> %s",
 		old->name, target->name);
+
+	/* Broadcast workspace switch event via IPC */
+	{
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"workspace\","
+			"\"index\":%d,"
+			"\"name\":\"%s\"}",
+			target->index, target->name);
+		wm_ipc_broadcast_event(&server->ipc,
+			WM_IPC_EVENT_WORKSPACE, buf);
+	}
 
 	/*
 	 * Focus the topmost view on the new workspace.

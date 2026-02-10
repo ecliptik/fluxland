@@ -13,6 +13,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
+#include "ipc.h"
 #include "layer_shell.h"
 #include "output.h"
 #include "server.h"
@@ -44,6 +45,18 @@ static void
 handle_output_destroy(struct wl_listener *listener, void *data)
 {
 	struct wm_output *output = wl_container_of(listener, output, destroy);
+
+	/* Broadcast output remove event via IPC */
+	{
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"output_remove\","
+			"\"name\":\"%s\"}",
+			output->wlr_output->name ?
+				output->wlr_output->name : "");
+		wm_ipc_broadcast_event(&output->server->ipc,
+			WM_IPC_EVENT_OUTPUT_REMOVE, buf);
+	}
 
 	wl_list_remove(&output->link);
 	wl_list_remove(&output->frame.link);
@@ -116,6 +129,20 @@ handle_new_output(struct wl_listener *listener, void *data)
 	wlr_log(WLR_INFO, "new output: %s (%dx%d)",
 		wlr_output->name,
 		wlr_output->width, wlr_output->height);
+
+	/* Broadcast output add event via IPC */
+	{
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"output_add\","
+			"\"name\":\"%s\","
+			"\"width\":%d,"
+			"\"height\":%d}",
+			wlr_output->name ? wlr_output->name : "",
+			wlr_output->width, wlr_output->height);
+		wm_ipc_broadcast_event(&server->ipc,
+			WM_IPC_EVENT_OUTPUT_ADD, buf);
+	}
 
 	/* Arrange any existing layer surfaces on this output */
 	wm_layer_shell_arrange(output);

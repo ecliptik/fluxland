@@ -14,11 +14,67 @@
 
 #include "config.h"
 #include "decoration.h"
+#include "ipc.h"
+#include "placement.h"
 #include "rules.h"
 #include "server.h"
 #include "tabgroup.h"
 #include "view.h"
 #include "workspace.h"
+
+/* Escape a string for safe inclusion in JSON.
+ * Writes into dst (up to dst_size bytes including NUL).
+ * Escapes backslash, double-quote, and control characters. */
+static void
+json_escape(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) {
+		if (dst_size > 0)
+			dst[0] = '\0';
+		return;
+	}
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 1 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') {
+			if (j + 2 >= dst_size) break;
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c < 0x20) {
+			/* Skip control characters */
+			continue;
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
+
+/* --- Opacity helpers --- */
+
+static void
+set_buffer_opacity_iter(struct wlr_scene_buffer *buffer, int sx, int sy,
+	void *user_data)
+{
+	float *opacity = user_data;
+	wlr_scene_buffer_set_opacity(buffer, *opacity);
+}
+
+void
+wm_view_set_opacity(struct wm_view *view, int alpha)
+{
+	if (!view || !view->scene_tree) {
+		return;
+	}
+
+	/* Clamp to 0-255 */
+	if (alpha < 0) alpha = 0;
+	if (alpha > 255) alpha = 255;
+
+	float opacity = (float)alpha / 255.0f;
+	wlr_scene_node_for_each_buffer(&view->scene_tree->node,
+		set_buffer_opacity_iter, &opacity);
+}
 
 /* --- Focus Management --- */
 
@@ -50,6 +106,11 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 				server->focused_view->decoration, false,
 				server->style);
 		}
+		/* Apply unfocus opacity to previous view */
+		if (server->focused_view) {
+			wm_view_set_opacity(server->focused_view,
+				server->focused_view->unfocus_alpha);
+		}
 	}
 
 	/* Move view to front of the views list (stacking order) */
@@ -65,11 +126,32 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	/* Track focused view */
 	server->focused_view = view;
 
+	/* Broadcast focus event via IPC */
+	{
+		char esc_app[256], esc_title[256], buf[512];
+		json_escape(esc_app, sizeof(esc_app),
+			view->app_id);
+		json_escape(esc_title, sizeof(esc_title),
+			view->title);
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"window_focus\","
+			"\"id\":%u,"
+			"\"app_id\":\"%s\","
+			"\"title\":\"%s\"}",
+			(unsigned)(uintptr_t)view,
+			esc_app, esc_title);
+		wm_ipc_broadcast_event(&server->ipc,
+			WM_IPC_EVENT_WINDOW_FOCUS, buf);
+	}
+
 	/* Update decoration on newly focused view */
 	if (view->decoration) {
 		wm_decoration_set_focused(view->decoration, true,
 			server->style);
 	}
+
+	/* Apply focus opacity to newly focused view */
+	wm_view_set_opacity(view, view->focus_alpha);
 
 	/* Send keyboard focus */
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -310,8 +392,31 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 		wm_tab_group_add(group_peer->tab_group, view);
 	}
 
+	/* Apply automatic window placement */
+	wm_placement_apply(view->server, view);
+	wlr_scene_node_set_position(&view->scene_tree->node,
+		view->x, view->y);
+
 	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
 	wm_focus_view(view, view->xdg_toplevel->base->surface);
+
+	/* Broadcast window open event via IPC */
+	{
+		char esc_app[256], esc_title[256], buf[512];
+		json_escape(esc_app, sizeof(esc_app),
+			view->app_id);
+		json_escape(esc_title, sizeof(esc_title),
+			view->title);
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"window_open\","
+			"\"id\":%u,"
+			"\"app_id\":\"%s\","
+			"\"title\":\"%s\"}",
+			(unsigned)(uintptr_t)view,
+			esc_app, esc_title);
+		wm_ipc_broadcast_event(&view->server->ipc,
+			WM_IPC_EVENT_WINDOW_OPEN, buf);
+	}
 }
 
 static void
@@ -320,6 +425,17 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 	struct wm_view *view = wl_container_of(listener, view, unmap);
 
 	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+
+	/* Broadcast window close event via IPC */
+	{
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"window_close\","
+			"\"id\":%u}",
+			(unsigned)(uintptr_t)view);
+		wm_ipc_broadcast_event(&view->server->ipc,
+			WM_IPC_EVENT_WINDOW_CLOSE, buf);
+	}
 
 	/* If this was the grabbed view, cancel the grab */
 	if (view == view->server->grabbed_view) {
@@ -536,6 +652,20 @@ handle_xdg_toplevel_set_title(struct wl_listener *listener, void *data)
 	/* Re-render decoration to update title text */
 	if (view->decoration && view->server->style) {
 		wm_decoration_update(view->decoration, view->server->style);
+	}
+
+	/* Broadcast title change event via IPC */
+	{
+		char esc_title[256], buf[512];
+		json_escape(esc_title, sizeof(esc_title), view->title);
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"window_title\","
+			"\"id\":%u,"
+			"\"title\":\"%s\"}",
+			(unsigned)(uintptr_t)view,
+			esc_title);
+		wm_ipc_broadcast_event(&view->server->ipc,
+			WM_IPC_EVENT_WINDOW_TITLE, buf);
 	}
 }
 
