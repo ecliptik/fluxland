@@ -30,6 +30,7 @@
 #include "idle.h"
 #include "keybind.h"
 #include "menu.h"
+#include "protocols.h"
 #include "session_lock.h"
 #include "tabgroup.h"
 #include "view.h"
@@ -693,6 +694,53 @@ handle_key(struct wl_listener *listener, void *data)
 						wlr_session_change_vt(
 							server->session, vt);
 					}
+					handled = true;
+					break;
+				}
+			}
+		}
+		if (!handled) {
+			wlr_seat_set_keyboard(server->seat,
+				keyboard->wlr_keyboard);
+			wlr_seat_keyboard_notify_key(server->seat,
+				event->time_msec, event->keycode,
+				event->state);
+		}
+		return;
+	}
+
+	/*
+	 * When keyboard shortcuts are inhibited (e.g. games, remote
+	 * desktop), forward all keys to the client except emergency
+	 * combos: VT switch (Ctrl+Alt+Fn) and exit (Mod4+Shift+E).
+	 */
+	if (wm_protocols_kb_shortcuts_inhibited(server)) {
+		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+			for (int i = 0; i < nsyms; i++) {
+				/* VT switch: always allow */
+				if ((modifiers & (WLR_MODIFIER_CTRL |
+				    WLR_MODIFIER_ALT)) ==
+				    (WLR_MODIFIER_CTRL |
+				    WLR_MODIFIER_ALT) &&
+				    syms[i] >= XKB_KEY_XF86Switch_VT_1 &&
+				    syms[i] <= XKB_KEY_XF86Switch_VT_12) {
+					if (server->session) {
+						unsigned vt = syms[i] -
+							XKB_KEY_XF86Switch_VT_1 + 1;
+						wlr_session_change_vt(
+							server->session, vt);
+					}
+					handled = true;
+					break;
+				}
+				/* Emergency exit: always allow */
+				if ((modifiers & (WLR_MODIFIER_LOGO |
+				    WLR_MODIFIER_SHIFT)) ==
+				    (WLR_MODIFIER_LOGO |
+				    WLR_MODIFIER_SHIFT) &&
+				    syms[i] == XKB_KEY_e) {
+					wl_display_terminate(
+						server->wl_display);
 					handled = true;
 					break;
 				}

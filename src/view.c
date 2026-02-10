@@ -179,6 +179,10 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	wm_protocols_update_pointer_constraint(server,
 		view->xdg_toplevel->base->surface);
 
+	/* Update keyboard shortcuts inhibitor for the newly focused surface */
+	wm_protocols_update_kb_shortcuts_inhibitor(server,
+		view->xdg_toplevel->base->surface);
+
 	/* Update toolbar icon bar to reflect focus change */
 	wm_toolbar_update_iconbar(server->toolbar);
 }
@@ -199,6 +203,8 @@ wm_unfocus_current(struct wm_server *server)
 	wm_text_input_focus_change(server, NULL);
 	/* Deactivate pointer constraint when unfocusing */
 	wm_protocols_update_pointer_constraint(server, NULL);
+	/* Deactivate keyboard shortcuts inhibitor when unfocusing */
+	wm_protocols_update_kb_shortcuts_inhibitor(server, NULL);
 	server->focused_view = NULL;
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
