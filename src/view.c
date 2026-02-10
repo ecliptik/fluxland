@@ -20,6 +20,7 @@
 #include "rules.h"
 #include "server.h"
 #include "tabgroup.h"
+#include "text_input.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -168,6 +169,10 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 			&keyboard->modifiers);
 	}
 
+	/* Notify text input relay of focus change for IME */
+	wm_text_input_focus_change(server,
+		view->xdg_toplevel->base->surface);
+
 	/* Update pointer constraint for the newly focused surface */
 	wm_protocols_update_pointer_constraint(server,
 		view->xdg_toplevel->base->surface);
@@ -185,6 +190,8 @@ wm_unfocus_current(struct wm_server *server)
 			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
 		}
 	}
+	/* Notify text input relay of focus loss for IME */
+	wm_text_input_focus_change(server, NULL);
 	/* Deactivate pointer constraint when unfocusing */
 	wm_protocols_update_pointer_constraint(server, NULL);
 	server->focused_view = NULL;

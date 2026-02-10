@@ -151,6 +151,7 @@ wm_sources = files(
   'src/presentation.c',
   'src/screencopy.c',
   'src/session_lock.c',
+  'src/text_input.c',
   'src/viewporter.c',
   'src/menu.c',
   'src/toolbar.c',

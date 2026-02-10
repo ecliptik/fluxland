@@ -34,6 +34,7 @@
 #include "gamma_control.h"
 #include "screencopy.h"
 #include "session_lock.h"
+#include "text_input.h"
 #include "viewporter.h"
 #include "xwayland.h"
 
@@ -200,6 +201,9 @@ struct wm_server {
 
 	/* Presentation time (wp-presentation-time for frame timing) */
 	struct wlr_presentation *presentation;
+
+	/* Text input / input method relay (IME support) */
+	struct wm_text_input_relay text_input_relay;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;

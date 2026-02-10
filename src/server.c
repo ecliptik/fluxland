@@ -35,6 +35,7 @@
 #include "screencopy.h"
 #include "session_lock.h"
 #include "style.h"
+#include "text_input.h"
 #include "toolbar.h"
 #include "view.h"
 #include "viewporter.h"
@@ -247,6 +248,9 @@ wm_server_init(struct wm_server *server)
 	/* Primary selection, pointer constraints, relative pointer */
 	wm_protocols_init(server);
 
+	/* Text input / input method relay for IME support */
+	wm_text_input_init(server);
+
 	/* Load configuration */
 	server->config = config_create();
 	if (server->config) {
@@ -368,6 +372,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_menu_destroy(server->window_menu);
 	wm_rules_finish(&server->rules);
 
+	wm_text_input_finish(server);
 	wm_protocols_finish(server);
 	wm_output_management_finish(server);
 	wm_idle_finish(server);
