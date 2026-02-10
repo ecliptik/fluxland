@@ -11,11 +11,14 @@
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
 #include "protocols.h"
 #include "server.h"
+#include "keyboard.h"
 
 /* --- Primary selection --- */
 
@@ -99,6 +102,35 @@ handle_cursor_shape_request(struct wl_listener *listener, void *data)
 		shape_name);
 }
 
+/* --- Virtual keyboard --- */
+
+static void
+handle_new_virtual_keyboard(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server = wl_container_of(listener, server,
+		new_virtual_keyboard);
+	struct wlr_virtual_keyboard_v1 *vkbd = data;
+
+	/* Treat the virtual keyboard like any physical keyboard */
+	wm_keyboard_setup(server, &vkbd->keyboard.base);
+	wlr_log(WLR_INFO, "new virtual keyboard");
+}
+
+/* --- Virtual pointer --- */
+
+static void
+handle_new_virtual_pointer(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server = wl_container_of(listener, server,
+		new_virtual_pointer);
+	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
+
+	/* Attach the virtual pointer to the cursor like a physical pointer */
+	wlr_cursor_attach_input_device(server->cursor,
+		&event->new_pointer->pointer.base);
+	wlr_log(WLR_INFO, "new virtual pointer");
+}
+
 /* --- Public API --- */
 
 void
@@ -175,14 +207,35 @@ wm_protocols_init(struct wm_server *server)
 	wl_signal_add(&server->cursor_shape_mgr->events.request_set_shape,
 		&server->cursor_shape_request);
 
+	/* Virtual keyboard (virtual-keyboard-v1 for on-screen keyboards) */
+	server->virtual_keyboard_mgr =
+		wlr_virtual_keyboard_manager_v1_create(server->wl_display);
+
+	server->new_virtual_keyboard.notify = handle_new_virtual_keyboard;
+	wl_signal_add(
+		&server->virtual_keyboard_mgr->events.new_virtual_keyboard,
+		&server->new_virtual_keyboard);
+
+	/* Virtual pointer (virtual-pointer-v1 for remote input/automation) */
+	server->virtual_pointer_mgr =
+		wlr_virtual_pointer_manager_v1_create(server->wl_display);
+
+	server->new_virtual_pointer.notify = handle_new_virtual_pointer;
+	wl_signal_add(
+		&server->virtual_pointer_mgr->events.new_virtual_pointer,
+		&server->new_virtual_pointer);
+
 	wlr_log(WLR_INFO, "%s",
 		"initialized primary selection, pointer constraints, "
-		"relative pointer, cursor shape protocols");
+		"relative pointer, cursor shape, virtual keyboard, "
+		"virtual pointer protocols");
 }
 
 void
 wm_protocols_finish(struct wm_server *server)
 {
+	wl_list_remove(&server->new_virtual_pointer.link);
+	wl_list_remove(&server->new_virtual_keyboard.link);
 	wl_list_remove(&server->cursor_shape_request.link);
 	wl_list_remove(&server->request_set_primary_selection.link);
 	wl_list_remove(&server->new_pointer_constraint.link);

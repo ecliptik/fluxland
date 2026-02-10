@@ -57,6 +57,8 @@ struct wlr_viewporter;
 struct wlr_single_pixel_buffer_manager_v1;
 struct wlr_gamma_control_manager_v1;
 struct wlr_presentation;
+struct wlr_virtual_keyboard_manager_v1;
+struct wlr_virtual_pointer_manager_v1;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -120,6 +122,11 @@ struct wm_server {
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
 
+	/* Drag and drop */
+	struct wl_listener request_start_drag;
+	struct wl_listener start_drag;
+	struct wlr_scene_tree *drag_icon_tree;
+
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
 	struct wl_listener cursor_motion;
@@ -127,6 +134,13 @@ struct wm_server {
 	struct wl_listener cursor_button;
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_frame;
+
+	/* Touch input */
+	struct wl_listener cursor_touch_down;
+	struct wl_listener cursor_touch_up;
+	struct wl_listener cursor_touch_motion;
+	struct wl_listener cursor_touch_cancel;
+	struct wl_listener cursor_touch_frame;
 
 	/* Interactive move/resize state */
 	enum wm_cursor_mode cursor_mode;
@@ -214,6 +228,14 @@ struct wm_server {
 
 	/* Text input / input method relay (IME support) */
 	struct wm_text_input_relay text_input_relay;
+
+	/* Virtual keyboard (virtual-keyboard-v1 for on-screen keyboards) */
+	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
+	struct wl_listener new_virtual_keyboard;
+
+	/* Virtual pointer (virtual-pointer-v1 for remote input/automation) */
+	struct wlr_virtual_pointer_manager_v1 *virtual_pointer_mgr;
+	struct wl_listener new_virtual_pointer;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;
