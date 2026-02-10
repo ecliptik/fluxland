@@ -14,6 +14,7 @@
 
 #include "config.h"
 #include "decoration.h"
+#include "foreign_toplevel.h"
 #include "ipc.h"
 #include "placement.h"
 #include "rules.h"
@@ -110,6 +111,8 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 		if (server->focused_view) {
 			wm_view_set_opacity(server->focused_view,
 				server->focused_view->unfocus_alpha);
+			wm_foreign_toplevel_set_activated(
+				server->focused_view, false);
 		}
 	}
 
@@ -125,6 +128,9 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 
 	/* Track focused view */
 	server->focused_view = view;
+
+	/* Notify foreign toplevel (taskbar) of activation */
+	wm_foreign_toplevel_set_activated(view, true);
 
 	/* Broadcast focus event via IPC */
 	{
@@ -161,6 +167,10 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 			keyboard->keycodes, keyboard->num_keycodes,
 			&keyboard->modifiers);
 	}
+
+	/* Update pointer constraint for the newly focused surface */
+	wm_protocols_update_pointer_constraint(server,
+		view->xdg_toplevel->base->surface);
 }
 
 void
@@ -175,6 +185,8 @@ wm_unfocus_current(struct wm_server *server)
 			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
 		}
 	}
+	/* Deactivate pointer constraint when unfocusing */
+	wm_protocols_update_pointer_constraint(server, NULL);
 	server->focused_view = NULL;
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
@@ -242,6 +254,8 @@ wm_focus_update_for_cursor(struct wm_server *server,
 		if (server->focused_view) {
 			wm_view_set_opacity(server->focused_view,
 				server->focused_view->unfocus_alpha);
+			wm_foreign_toplevel_set_activated(
+				server->focused_view, false);
 		}
 
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, true);
@@ -249,6 +263,7 @@ wm_focus_update_for_cursor(struct wm_server *server,
 
 		/* Apply focus opacity to newly focused view */
 		wm_view_set_opacity(view, view->focus_alpha);
+		wm_foreign_toplevel_set_activated(view, true);
 
 		struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 		if (keyboard) {
@@ -426,12 +441,18 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 		wm_ipc_broadcast_event(&view->server->ipc,
 			WM_IPC_EVENT_WINDOW_OPEN, buf);
 	}
+
+	/* Create foreign toplevel handle for taskbar clients */
+	wm_foreign_toplevel_handle_create(view);
 }
 
 static void
 handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, unmap);
+
+	/* Destroy foreign toplevel handle (sends closed to taskbars) */
+	wm_foreign_toplevel_handle_destroy(view);
 
 	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
 
@@ -488,6 +509,9 @@ static void
 handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, destroy);
+
+	/* Destroy foreign toplevel handle if still alive */
+	wm_foreign_toplevel_handle_destroy(view);
 
 	/* Destroy decorations */
 	if (view->decoration) {
@@ -579,6 +603,7 @@ handle_xdg_toplevel_request_maximize(struct wl_listener *listener,
 
 	wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
 		view->maximized);
+	wm_foreign_toplevel_set_maximized(view, view->maximized);
 }
 
 static void
@@ -626,6 +651,7 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 
 	wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel,
 		view->fullscreen);
+	wm_foreign_toplevel_set_fullscreen(view, view->fullscreen);
 }
 
 static void
@@ -637,6 +663,7 @@ handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
 
 	/* Basic minimize: just hide the view */
 	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+	wm_foreign_toplevel_set_minimized(view, true);
 
 	/* Focus next view */
 	struct wm_view *next;
@@ -663,6 +690,9 @@ handle_xdg_toplevel_set_title(struct wl_listener *listener, void *data)
 		wm_decoration_update(view->decoration, view->server->style);
 	}
 
+	/* Update foreign toplevel handle */
+	wm_foreign_toplevel_update_title(view);
+
 	/* Broadcast title change event via IPC */
 	{
 		char esc_title[256], buf[512];
@@ -685,6 +715,9 @@ handle_xdg_toplevel_set_app_id(struct wl_listener *listener, void *data)
 	free(view->app_id);
 	view->app_id = view->xdg_toplevel->app_id ?
 		strdup(view->xdg_toplevel->app_id) : NULL;
+
+	/* Update foreign toplevel handle */
+	wm_foreign_toplevel_update_app_id(view);
 }
 
 /* --- New XDG toplevel handler --- */

@@ -15,6 +15,7 @@ struct wm_server;
 struct wm_workspace;
 struct wm_tab_group;
 struct wm_decoration;
+struct wlr_foreign_toplevel_handle_v1;
 
 struct wm_view {
 	struct wl_list link; /* wm_server.views */
@@ -45,6 +46,14 @@ struct wm_view {
 	/* Window opacity (0-255, 255 = fully opaque) */
 	int focus_alpha;
 	int unfocus_alpha;
+
+	/* Foreign toplevel handle (for external taskbars) */
+	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
+	struct wl_listener foreign_toplevel_request_activate;
+	struct wl_listener foreign_toplevel_request_maximize;
+	struct wl_listener foreign_toplevel_request_minimize;
+	struct wl_listener foreign_toplevel_request_fullscreen;
+	struct wl_listener foreign_toplevel_request_close;
 
 	/* Server-side decorations */
 	struct wm_decoration *decoration;
