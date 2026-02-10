@@ -183,6 +183,16 @@ executable(
   install: true,
 )
 
+# --- Man pages ---
+
+install_man(
+  'man/wm-wayland.1',
+  'man/wm-wayland-keys.5',
+  'man/wm-wayland-apps.5',
+  'man/wm-wayland-style.5',
+  'man/wm-wayland-menu.5',
+)
+
 # --- Tests ---
 
 subdir('tests')

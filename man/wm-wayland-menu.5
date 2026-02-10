@@ -1,0 +1,183 @@
+.TH WM-WAYLAND-MENU 5 "2026-02-10" "wm-wayland 0.1.0" "File Formats Manual"
+.SH NAME
+wm-wayland-menu \- menu configuration for wm-wayland
+.SH DESCRIPTION
+The menu file defines the root menu shown by the
+.B RootMenu
+action in
+.BR wm-wayland (1).
+The format is compatible with the Fluxbox menu file format.
+.PP
+By default, the file is located at
+.I ~/.config/wm-wayland/menu
+but the path can be overridden in the init file via
+.BR session.menuFile .
+.SH SYNTAX
+The menu file is a series of tagged entries enclosed by
+.B [begin]
+and
+.BR [end] .
+Blank lines and lines beginning with
+.B #
+are ignored.
+.PP
+Tags use square brackets.
+Arguments are enclosed in parentheses for labels, braces for
+commands/paths, and angle brackets for optional icons:
+.PP
+.RS 4
+.nf
+[\fItag\fP] (\fIlabel\fP) {\fIcommand\fP} <\fIicon\fP>
+.fi
+.RE
+.SH TAGS
+.TP
+.BI [begin] " (" title )
+Start of the root menu.
+The
+.I title
+is displayed at the top of the menu.
+.TP
+.B [end]
+End of the current menu or submenu block.
+.TP
+.BI [exec] " (" label ") {" command "}" " [<" icon ">]"
+Execute
+.I command
+via
+.BR /bin/sh .
+.TP
+.BI [submenu] " (" label ") [{" title "}] [<" icon ">]"
+Open a submenu.
+The optional
+.I title
+in braces is displayed as the submenu's title bar.
+The submenu body follows, terminated by
+.BR [end] .
+.TP
+.B [separator]
+Draw a horizontal separator line.
+.TP
+.BI [nop] " (" label )
+A disabled (greyed-out) label item.
+.TP
+.BI [style] " (" label ") {" path "}"
+Load the style file at
+.IR path .
+.TP
+.BI [stylesdir] " (" directory )
+Scan
+.I directory
+for style files and create a menu entry for each one.
+Tilde expansion is supported.
+.TP
+.BI [include] " (" path )
+Include another menu file at
+.IR path .
+Tilde expansion is supported.
+.TP
+.BI [workspaces] " (" label )
+Insert a workspace list submenu.
+.TP
+.BI [config] " (" label )
+Insert a configuration submenu.
+.TP
+.BI [reconfig] " (" label )
+Reload configuration files.
+.TP
+.BI [restart] " (" label ") [{" command "}]"
+Restart the compositor, optionally executing
+.I command
+instead.
+.TP
+.BI [exit] " (" label )
+Exit the compositor.
+.TP
+.BI [command] " (" label ") {" action }
+Execute a compositor action (same actions as in the keys file).
+.SS Window Menu Tags
+These tags are used in the built-in window context menu:
+.TP
+.BI [shade] " (" label )
+Toggle window shade.
+.TP
+.BI [stick] " (" label )
+Toggle sticky.
+.TP
+.BI [maximize] " (" label )
+Toggle maximize.
+.TP
+.BI [iconify] " (" label )
+Minimize window.
+.TP
+.BI [close] " (" label )
+Close window.
+.TP
+.BI [kill] " (" label )
+Kill the window's client.
+.TP
+.BI [raise] " (" label )
+Raise window.
+.TP
+.BI [lower] " (" label )
+Lower window.
+.TP
+.BI [sendto] " (" label )
+Insert a "Send to workspace" submenu.
+.TP
+.BI [layer] " (" label )
+Insert a stacking layer submenu.
+.SH MENU NAVIGATION
+When a menu is open, the following keys navigate it:
+.TP
+.BR Up ", " k
+Move selection up.
+.TP
+.BR Down ", " j
+Move selection down.
+.TP
+.BR Right ", " l
+Enter submenu.
+.TP
+.BR Left ", " h
+Go back to parent menu.
+.TP
+.BR Return ", " Enter
+Activate selected item or enter submenu.
+.TP
+.B Escape
+Close current submenu, or close all menus if at the root.
+.PP
+Mouse interaction: hover to select, click to activate, click outside to
+close.
+Hovering over a submenu item automatically opens it.
+.SH EXAMPLES
+.PP
+.RS 4
+.nf
+[begin] (wm-wayland)
+  [exec] (Terminal) {foot}
+  [exec] (File Manager) {thunar}
+  [exec] (Web Browser) {firefox}
+  [separator]
+  [submenu] (Editors)
+    [exec] (Vim) {foot vim}
+    [exec] (VS Code) {code}
+  [end]
+  [submenu] (Styles)
+    [stylesdir] (~/.config/wm-wayland/styles)
+  [end]
+  [workspaces] (Workspaces)
+  [separator]
+  [config] (Configuration)
+  [reconfig] (Reload Config)
+  [restart] (Restart)
+  [exit] (Exit)
+[end]
+.fi
+.RE
+.SH SEE ALSO
+.BR wm-wayland (1),
+.BR wm-wayland-keys (5),
+.BR wm-wayland-apps (5),
+.BR wm-wayland-style (5)

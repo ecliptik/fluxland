@@ -1,0 +1,286 @@
+.TH WM-WAYLAND 1 "2026-02-10" "wm-wayland 0.1.0" "General Commands Manual"
+.SH NAME
+wm-wayland \- a Fluxbox-inspired Wayland compositor
+.SH SYNOPSIS
+.B wm-wayland
+.RB [ \-s
+.IR command ]
+.RB [ \-d ]
+.RB [ \-v ]
+.RB [ \-h ]
+.SH DESCRIPTION
+.B wm-wayland
+is a Wayland compositor built on wlroots that provides a traditional
+stacking window management experience inspired by Fluxbox.
+It features tabbed windows, configurable key bindings with chains and
+keymodes, per-window rules, Fluxbox-compatible style themes, a toolbar
+with workspace switching and window list, a root menu, and slit
+support.
+.PP
+Configuration uses Fluxbox-compatible file formats: X resource database
+syntax for the init and style files, and the Fluxbox keys/apps/menu
+formats for key bindings, window rules, and menus respectively.
+.SH OPTIONS
+.TP
+.BI \-s " command" "\fR,\fP \-\-startup " command
+Run
+.I command
+via
+.B /bin/sh
+after the compositor starts and the Wayland socket is available.
+This is in addition to the
+.I startup
+script in the configuration directory.
+.TP
+.BR \-d ", " \-\-debug
+Enable debug logging.
+Without this flag, only error-level messages are printed.
+.TP
+.BR \-v ", " \-\-version
+Print the version string and exit.
+.TP
+.BR \-h ", " \-\-help
+Print a brief usage summary and exit.
+.SH ENVIRONMENT
+.TP
+.B WAYLAND_DISPLAY
+Set by the compositor to the name of the Wayland socket (e.g.\&
+.IR wayland-0 ).
+Child processes inherit this variable.
+.TP
+.B XDG_RUNTIME_DIR
+Must be set before starting the compositor.
+The Wayland socket is created in this directory.
+.TP
+.B XDG_CONFIG_HOME
+If set, configuration files are searched for in
+.IR $XDG_CONFIG_HOME/wm-wayland/ .
+.TP
+.B WM_WAYLAND_CONFIG_DIR
+If set, overrides all other configuration directory search paths.
+.TP
+.B HOME
+Used as a fallback to locate
+.IR ~/.config/wm-wayland/ .
+.SH SIGNALS
+.TP
+.B SIGHUP
+Reload configuration.
+The init file, key bindings, mouse bindings, and style are
+re-read from disk.
+This is equivalent to the
+.B Reconfigure
+action.
+.TP
+.B SIGTERM\fR, \fBSIGINT
+Terminate the compositor gracefully.
+.SH FILES
+Configuration files are searched in the following order:
+.PP
+.RS 4
+.nf
+$WM_WAYLAND_CONFIG_DIR/
+$XDG_CONFIG_HOME/wm-wayland/
+~/.config/wm-wayland/
+~/.fluxbox/     (Fluxbox compatibility fallback)
+.fi
+.RE
+.PP
+Within the configuration directory, the following files are used:
+.TP
+.B init
+Main configuration file using X resource database syntax.
+Controls workspaces, focus policy, placement, toolbar, XKB keyboard
+layout, and paths to other configuration files.
+.TP
+.B keys
+Key binding definitions.
+See
+.BR wm-wayland-keys (5).
+.TP
+.B apps
+Per-window rules for automatic placement, decoration, and tab grouping.
+See
+.BR wm-wayland-apps (5).
+.TP
+.B menu
+Root menu definition.
+See
+.BR wm-wayland-menu (5).
+.TP
+.B styles/default
+Default style/theme file.
+See
+.BR wm-wayland-style (5).
+.TP
+.B startup
+Shell script executed on compositor startup.
+If the file is executable, it is run directly; otherwise it is sourced
+by
+.BR /bin/sh .
+The
+.B WAYLAND_DISPLAY
+environment variable is set before the script runs.
+.SH EMERGENCY KEYBINDINGS
+The following keybindings are always active, regardless of key binding
+configuration, keymodes, or keyboard shortcut inhibition:
+.TP
+.B Ctrl+Alt+F1\fR\-\fBF12
+Switch virtual terminal (VT).
+.TP
+.B Mod4+Shift+E
+Exit the compositor.
+.SH INIT FILE FORMAT
+The init file uses X resource database syntax (key: value), with
+session-scoped keys.
+Boolean values are
+.BR true / false .
+.PP
+.B Workspace settings:
+.TP
+.B session.screen0.workspaces
+Number of workspaces (1\-32, default: 4).
+.TP
+.B session.screen0.workspaceNames
+Comma-separated workspace names.
+.TP
+.B session.screen0.workspacewarping
+Allow moving windows between workspaces by dragging to screen edges
+(default: true).
+.PP
+.B Focus settings:
+.TP
+.B session.screen0.focusModel
+One of
+.BR ClickToFocus " (default),"
+.BR MouseFocus " (sloppy),"
+or
+.BR StrictMouseFocus .
+.TP
+.B session.screen0.autoRaise
+Automatically raise windows on focus (default: false).
+.TP
+.B session.autoRaiseDelay
+Delay in milliseconds before auto-raising (default: 250).
+.TP
+.B session.screen0.clickRaises
+Clicking a window raises it (default: true).
+.TP
+.B session.screen0.focusNewWindows
+New windows receive focus (default: true).
+.PP
+.B Window behavior:
+.TP
+.B session.screen0.opaqueMove
+Show window contents while moving (default: true).
+.TP
+.B session.screen0.opaqueResize
+Show window contents while resizing (default: false).
+.TP
+.B session.screen0.edgeSnapThreshold
+Pixel distance for edge snapping (default: 10).
+.TP
+.B session.screen0.windowPlacement
+One of
+.BR RowSmartPlacement " (default),"
+.BR ColSmartPlacement ,
+.BR CascadePlacement ,
+or
+.BR UnderMousePlacement .
+.PP
+.B Toolbar settings:
+.TP
+.B session.screen0.toolbar.visible
+Show the toolbar (default: true).
+.TP
+.B session.screen0.toolbar.placement
+One of
+.BR TopLeft ,
+.BR TopCenter ,
+.BR TopRight ,
+.BR BottomLeft ,
+.BR BottomCenter " (default),"
+or
+.BR BottomRight .
+.TP
+.B session.screen0.toolbar.autoHide
+Auto-hide the toolbar (default: false).
+.TP
+.B session.screen0.toolbar.autoHideDelay
+Delay in milliseconds before hiding (default: 500).
+.TP
+.B session.screen0.toolbar.widthPercent
+Toolbar width as percentage of screen (10\-100, default: 100).
+.PP
+.B XKB keyboard layout:
+.TP
+.B session.xkb.rules
+XKB rules (e.g.\&
+.IR evdev ).
+.TP
+.B session.xkb.model
+Keyboard model (e.g.\&
+.IR pc105 ).
+.TP
+.B session.xkb.layout
+Keyboard layout, comma-separated for multiple layouts (e.g.\&
+.IR us,de ).
+.TP
+.B session.xkb.variant
+Layout variant (e.g.\&
+.IR ,nodeadkeys ).
+.TP
+.B session.xkb.options
+XKB options (e.g.\&
+.IR grp:alt_shift_toggle,caps:escape ).
+.PP
+.B File paths:
+.TP
+.B session.keyFile
+Path to key bindings file.
+.TP
+.B session.appsFile
+Path to window rules file.
+.TP
+.B session.menuFile
+Path to menu file.
+.TP
+.B session.styleFile
+Path to style/theme file.
+.SH EXAMPLES
+Start the compositor with a terminal on startup:
+.PP
+.RS 4
+.nf
+wm-wayland \-s foot
+.fi
+.RE
+.PP
+Start with debug logging:
+.PP
+.RS 4
+.nf
+wm-wayland \-d
+.fi
+.RE
+.PP
+Example init file:
+.PP
+.RS 4
+.nf
+session.screen0.workspaces: 6
+session.screen0.workspaceNames: Web,Code,Term,Chat,Media,Misc
+session.screen0.focusModel: MouseFocus
+session.screen0.edgeSnapThreshold: 15
+session.screen0.toolbar.placement: BottomCenter
+session.xkb.layout: us,de
+session.xkb.options: grp:alt_shift_toggle,caps:escape
+.fi
+.RE
+.SH SEE ALSO
+.BR wm-wayland-keys (5),
+.BR wm-wayland-apps (5),
+.BR wm-wayland-style (5),
+.BR wm-wayland-menu (5)
+.SH AUTHORS
+The wm-wayland project.

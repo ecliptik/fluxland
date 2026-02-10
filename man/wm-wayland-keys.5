@@ -1,0 +1,407 @@
+.TH WM-WAYLAND-KEYS 5 "2026-02-10" "wm-wayland 0.1.0" "File Formats Manual"
+.SH NAME
+wm-wayland-keys \- key binding configuration for wm-wayland
+.SH DESCRIPTION
+The keys file defines keyboard and mouse bindings for
+.BR wm-wayland (1).
+The format is compatible with the Fluxbox keys file format.
+.PP
+By default, the file is located at
+.I ~/.config/wm-wayland/keys
+but the path can be overridden in the init file via
+.BR session.keyFile .
+.SH SYNTAX
+Each line defines one binding.
+Blank lines and lines beginning with
+.B #
+or
+.B !
+are ignored.
+.PP
+The general format is:
+.PP
+.RS 4
+.RI [ Modifier " ...] " keyname " :" Action " [" argument ]
+.RE
+.PP
+The colon before the action name is required.
+.SH MODIFIERS
+The following modifier names are recognized (case-insensitive):
+.TP
+.B Mod1
+Alt key.
+.TP
+.B Mod4
+Super (Logo/Windows) key.
+.TP
+.B Control\fR, \fBCtrl
+Control key.
+.TP
+.B Shift
+Shift key.
+.TP
+.B None
+No modifiers.
+Use this to bind an unmodified key.
+.PP
+Multiple modifiers can be combined by listing them separated by spaces:
+.PP
+.RS 4
+.nf
+Mod4 Shift q :Close
+Control Mod1 t :Exec foot
+.fi
+.RE
+.SH KEY NAMES
+Key names follow the XKB naming convention as used by
+.BR xkbcommon .
+Common examples:
+.PP
+.RS 4
+.nf
+Return, space, Tab, Escape, BackSpace, Delete
+a\-z, 0\-9
+F1\-F12
+Left, Right, Up, Down
+Home, End, Page_Up, Page_Down
+bracketleft, bracketright, minus, equal, slash
+.fi
+.RE
+.PP
+Key names are case-insensitive.
+.SH KEY CHAINS
+Multiple key segments can be listed before the action to create a
+chained (multi-key) binding.
+The user presses each key combination in sequence:
+.PP
+.RS 4
+.nf
+Mod4 x Mod4 t :Exec foot
+Mod4 x Mod4 f :Exec firefox
+.fi
+.RE
+.PP
+After pressing
+.BR Mod4+x ,
+the compositor waits up to 3 seconds for the next key in the chain.
+Pressing
+.B Escape
+aborts the chain.
+If no matching continuation is found, the chain is also aborted.
+.SH KEYMODES
+A keymode is a named set of bindings that replaces the default bindings
+when activated.
+The default mode is called
+.BR default .
+.PP
+Keymode bindings are prefixed with the mode name followed by a colon:
+.PP
+.RS 4
+.nf
+moving: h :MoveLeft 10
+moving: l :MoveRight 10
+moving: j :MoveDown 10
+moving: k :MoveUp 10
+moving: Escape :KeyMode default
+Mod4 v :KeyMode moving Escape
+.fi
+.RE
+.PP
+In this example, pressing
+.B Mod4+v
+enters the
+.I moving
+mode, where
+.BR h / j / k / l
+move the focused window.
+Pressing
+.B Escape
+returns to the default mode.
+.SH ACTIONS
+.SS Window Management
+.TP
+.B Close
+Send a close request to the focused window.
+.TP
+.B Kill\fR, \fBKillWindow
+Forcefully kill the focused window's process (SIGKILL).
+.TP
+.B Maximize
+Toggle maximize state.
+.TP
+.B MaximizeVertical
+Toggle vertical maximize.
+.TP
+.B MaximizeHorizontal
+Toggle horizontal maximize.
+.TP
+.B Fullscreen
+Toggle fullscreen state.
+.TP
+.B Minimize\fR, \fBIconify
+Minimize (iconify) the focused window.
+.TP
+.B Shade\fR, \fBShadeWindow
+Toggle window shade (collapse to title bar).
+.TP
+.B ShadeOn
+Shade the focused window.
+.TP
+.B ShadeOff
+Unshade the focused window.
+.TP
+.B Stick\fR, \fBStickWindow
+Toggle sticky state (visible on all workspaces).
+.TP
+.B ToggleDecor
+Toggle window decorations on/off.
+.TP
+.BI SetDecor " preset"
+Set decoration preset.
+.I preset
+is one of
+.BR NORMAL ,
+.BR NONE ,
+.BR BORDER ,
+.BR TAB ,
+.BR TINY ,
+or
+.BR TOOL .
+.SS Window Movement and Resizing
+.TP
+.B Move
+Begin interactive (mouse) move of the focused window.
+.TP
+.B Resize
+Begin interactive (mouse) resize of the focused window.
+.TP
+.B StartMoving
+Begin interactive move (used in mouse bindings).
+.TP
+.BI StartResizing " [edge]"
+Begin interactive resize (used in mouse bindings).
+.TP
+.BI MoveLeft " pixels"
+Move the focused window left by
+.I pixels
+pixels.
+.TP
+.BI MoveRight " pixels"
+Move right.
+.TP
+.BI MoveUp " pixels"
+Move up.
+.TP
+.BI MoveDown " pixels"
+Move down.
+.TP
+.BI MoveTo " x y"
+Move to absolute position
+.RI ( x ", " y ).
+.TP
+.BI ResizeTo " width height"
+Resize to the given dimensions.
+.SS Focus and Stacking
+.TP
+.B NextWindow
+Focus the next window in the stacking order.
+.TP
+.B PrevWindow
+Focus the previous window.
+.TP
+.B Focus
+Explicitly focus the window under the cursor (mouse bindings).
+.TP
+.B Raise
+Raise the focused window to the top.
+.TP
+.B Lower
+Lower the focused window to the bottom.
+.TP
+.B RaiseLayer
+Move the focused window up one stacking layer.
+.TP
+.B LowerLayer
+Move down one layer.
+.TP
+.BI SetLayer " layer"
+Set the stacking layer explicitly.
+.SS Workspace Actions
+.TP
+.BI Workspace " N"
+Switch to workspace
+.I N
+(1-based).
+.TP
+.BI SendToWorkspace " N"
+Send the focused window to workspace
+.I N
+(1-based).
+.TP
+.B NextWorkspace
+Switch to the next workspace.
+.TP
+.B PrevWorkspace
+Switch to the previous workspace.
+.TP
+.B ShowDesktop
+Minimize all windows on the current workspace.
+.SS Tab Actions
+.TP
+.B NextTab
+Switch to the next tab in the focused tab group.
+.TP
+.B PrevTab
+Switch to the previous tab.
+.TP
+.BI ActivateTab " N"
+Activate tab number
+.I N
+(1-based).
+.TP
+.B DetachClient
+Detach the focused window from its tab group.
+.TP
+.B MoveTabLeft
+Move the current tab one position to the left.
+.TP
+.B MoveTabRight
+Move the current tab one position to the right.
+.TP
+.B StartTabbing
+Initiate tab-drag mode (mouse binding).
+.SS Menu Actions
+.TP
+.B RootMenu
+Show the root menu at the current cursor position.
+.TP
+.B WindowMenu
+Show the window menu at the current cursor position.
+.TP
+.B HideMenus
+Hide all visible menus.
+.SS Keyboard Layout Actions
+.TP
+.B NextLayout
+Switch to the next XKB keyboard layout.
+.TP
+.B PrevLayout
+Switch to the previous XKB keyboard layout.
+.SS Meta-Actions
+.TP
+.BI Exec " command"
+Execute
+.I command
+via
+.BR /bin/sh .
+Aliases:
+.BR ExecCommand ,
+.BR Execute .
+.TP
+.BI MacroCmd " {cmd1} {cmd2} ..."
+Execute multiple actions in sequence.
+Each sub-command is enclosed in braces:
+.PP
+.RS 8
+.nf
+Mod4 Return :MacroCmd {Raise} {Focus} {Exec foot}
+.fi
+.RE
+.TP
+.BI ToggleCmd " {cmd1} {cmd2} ..."
+Cycle through actions on each invocation.
+The first press executes
+.IR cmd1 ,
+the second
+.IR cmd2 ,
+and so on, wrapping around.
+.TP
+.BI KeyMode " name"
+Switch to the named keymode.
+See the
+.B KEYMODES
+section above.
+.SS Compositor Control
+.TP
+.B Reconfigure
+Reload all configuration files.
+.TP
+.B Exit\fR, \fBQuit
+Terminate the compositor.
+.SH MOUSE BINDINGS
+Mouse bindings use the same syntax but begin with a context prefix
+instead of modifier+key.
+Mouse bindings are parsed from the keys file but handled by the
+mouse binding subsystem.
+.PP
+The general format is:
+.PP
+.RS 4
+.nf
+.I Context
+.RI [ Modifier " ...] " ButtonEvent " :" Action " [" argument ]
+.fi
+.RE
+.SS Contexts
+.TP
+.B OnTitlebar
+Window title bar.
+.TP
+.B OnDesktop
+Root (empty desktop) area.
+.TP
+.B OnWindowBorder
+Window border.
+.TP
+.B OnLeftGrip\fR, \fBOnRightGrip
+Corner resize grips.
+.SS Button Events
+.TP
+.B Mouse1\fR, \fBMouse2\fR, \fBMouse3
+Button press events (left, middle, right).
+.TP
+.B Move1
+Drag with button 1 held.
+.TP
+.B Double1
+Double-click button 1.
+.TP
+.B Mouse4\fR, \fBMouse5
+Scroll wheel up/down.
+.SH EXAMPLES
+.PP
+.RS 4
+.nf
+# Launch terminal
+Mod4 Return :Exec foot
+
+# Close focused window
+Mod4 Shift q :Close
+
+# Workspace switching
+Mod4 1 :Workspace 1
+Mod4 2 :Workspace 2
+
+# Move window by keyboard
+Mod4 Left :MoveLeft 20
+Mod4 Right :MoveRight 20
+
+# Key chain
+Mod4 x Mod4 t :Exec foot
+Mod4 x Mod4 f :Exec firefox
+
+# Mouse: titlebar click raises and focuses
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnTitlebar Move1 :StartMoving
+OnTitlebar Double1 :Shade
+
+# Alt+click move/resize
+Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing NearestCorner}
+.fi
+.RE
+.SH SEE ALSO
+.BR wm-wayland (1),
+.BR wm-wayland-apps (5),
+.BR wm-wayland-style (5),
+.BR wm-wayland-menu (5)

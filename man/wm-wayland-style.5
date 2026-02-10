@@ -1,0 +1,391 @@
+.TH WM-WAYLAND-STYLE 5 "2026-02-10" "wm-wayland 0.1.0" "File Formats Manual"
+.SH NAME
+wm-wayland-style \- theme/style configuration for wm-wayland
+.SH DESCRIPTION
+Style files define the visual appearance of window decorations, menus,
+and the toolbar in
+.BR wm-wayland (1).
+The format is compatible with Fluxbox style files, using X resource
+database syntax (key: value pairs).
+.PP
+By default, the style is loaded from
+.I ~/.config/wm-wayland/styles/default
+but the path can be overridden in the init file via
+.BR session.styleFile .
+.PP
+A style can be a single file or a directory containing a
+.I theme.cfg
+or
+.I style.cfg
+file.
+Directory-based styles allow pixmap paths to be resolved relative to
+the style directory.
+.SH SYNTAX
+Each line has the form:
+.PP
+.RS 4
+.nf
+\fIresource.key\fP: \fIvalue\fP
+.fi
+.RE
+.PP
+Blank lines and lines beginning with
+.B #
+or
+.B !
+are comments.
+Wildcard matching is supported: a key starting with
+.B *
+matches any prefix (e.g.\&
+.B *.textColor
+matches all text color resources).
+.SH TEXTURE DESCRIPTIONS
+Texture values are space-separated keywords:
+.PP
+.RS 4
+.RI [ appearance "] [" fill "] [" gradient_type "] [" bevel "] [interlaced]"
+.RE
+.SS Appearance
+.TP
+.B Flat
+No 3D effect.
+.TP
+.B Raised
+Raised border effect (default).
+.TP
+.B Sunken
+Sunken border effect.
+.SS Fill Type
+.TP
+.B Solid
+Single solid color.
+.TP
+.B Gradient
+Two-color gradient.
+.TP
+.B Pixmap
+Image file.
+.TP
+.B ParentRelative
+Inherit from the parent element's texture.
+.SS Gradient Types
+.BR Horizontal ,
+.BR Vertical ,
+.BR Diagonal ,
+.BR CrossDiagonal ,
+.BR PipeCross ,
+.BR Elliptic ,
+.BR Rectangle ,
+.BR Pyramid .
+.SS Bevel
+.TP
+.B Bevel1
+Standard bevel (default for raised/sunken).
+.TP
+.B Bevel2
+Alternative bevel style.
+.SS Additional
+.TP
+.B Interlaced
+Apply an interlacing effect.
+.PP
+Example: \fBRaised Gradient Vertical Bevel1\fP
+.SH COLOR FORMAT
+Colors can be specified in several formats:
+.TP
+.B #RRGGBB
+Hexadecimal RGB (e.g.\&
+.IR #3465A4 ).
+.TP
+.B #RGB
+Short hexadecimal (each digit is doubled).
+.TP
+.B rgb:R/G/B
+Decimal or hexadecimal components (e.g.\&
+.IR rgb:52/101/164 ).
+.TP
+.I named
+The names
+.BR white ,
+.BR black ,
+.BR red ,
+.BR green ,
+.BR blue ,
+.BR grey ,
+and
+.B gray
+are recognized.
+.SH FONT FORMAT
+Fonts are specified as:
+.PP
+.RS 4
+.nf
+\fIfamily\fP\-\fIsize\fP[:\fIstyle\fP[:\fIstyle\fP]]
+.fi
+.RE
+.PP
+The
+.I style
+modifiers are
+.B bold
+and
+.BR italic ,
+separated by colons.
+.PP
+Examples:
+.nf
+    sans\-10
+    monospace\-12:bold
+    DejaVu Sans\-11:bold:italic
+.fi
+.PP
+Each font resource also supports shadow properties:
+.PP
+.RS 4
+.nf
+\fIfont_key\fP.shadow.x: \fIN\fP
+\fIfont_key\fP.shadow.y: \fIN\fP
+\fIfont_key\fP.shadow.color: \fIcolor\fP
+.fi
+.RE
+.SH RESOURCES
+.SS Window Title Bar
+.TP
+.B window.title.focus
+Texture for the focused window title bar.
+.TP
+.B window.title.unfocus
+Texture for unfocused windows.
+.TP
+.B window.title.height
+Title bar height in pixels (0 = auto from font size).
+.SS Window Label (Title Text Area)
+.TP
+.B window.label.focus
+Texture for the focused label area.
+.TP
+.B window.label.unfocus
+Unfocused label texture.
+.TP
+.B window.label.active
+Active tab label texture (in tab groups).
+.TP
+.B window.label.focus.textColor
+Focused label text color.
+.TP
+.B window.label.unfocus.textColor
+Unfocused label text color.
+.TP
+.B window.label.active.textColor
+Active tab label text color.
+.TP
+.B window.label.focus.font
+Focused label font.
+.TP
+.B window.label.unfocus.font
+Unfocused label font.
+.TP
+.B window.justify
+Title text justification:
+.BR Left " (default),"
+.BR Center ,
+or
+.BR Right .
+.SS Window Buttons
+.TP
+.B window.button.focus
+Texture for focused window buttons.
+.TP
+.B window.button.unfocus
+Unfocused button texture.
+.TP
+.B window.button.pressed
+Pressed button texture.
+.TP
+.B window.button.focus.picColor
+Icon color for focused buttons.
+.TP
+.B window.button.unfocus.picColor
+Icon color for unfocused buttons.
+.TP
+.B window.button.pressed.picColor
+Icon color for pressed buttons.
+.PP
+Per-button pixmaps can be specified for close, maximize, iconify, shade,
+and stick buttons:
+.PP
+.RS 4
+.nf
+window.close.pixmap: close.xpm
+window.close.unfocus.pixmap: close_unfocus.xpm
+window.close.pressed.pixmap: close_pressed.xpm
+window.maximize.pixmap: max.xpm
+window.iconify.pixmap: icon.xpm
+window.shade.pixmap: shade.xpm
+window.stick.pixmap: stick.xpm
+.fi
+.RE
+.PP
+Relative paths are resolved from the style directory.
+.SS Window Handle and Grips
+.TP
+.B window.handle.focus
+Focused handle (bottom bar) texture.
+.TP
+.B window.handle.unfocus
+Unfocused handle texture.
+.TP
+.B window.handleWidth
+Handle height in pixels (default: 6).
+.TP
+.B window.grip.focus
+Focused corner grip texture.
+.TP
+.B window.grip.unfocus
+Unfocused grip texture.
+.SS Window Frame and Borders
+.TP
+.B window.frame.focusColor
+Focused window frame color.
+.TP
+.B window.frame.unfocusColor
+Unfocused frame color.
+.TP
+.B window.borderColor
+Window border color.
+.TP
+.B window.borderWidth
+Border width in pixels (default: 1).
+.TP
+.B window.bevelWidth
+Bevel width in pixels (default: 1).
+.TP
+.B window.roundCorners
+Rounded corners bitmask as a string containing any of:
+.BR TopLeft ,
+.BR TopRight ,
+.BR BottomLeft ,
+.BR BottomRight .
+.SS Menu
+.TP
+.B menu.title
+Menu title bar texture.
+.TP
+.B menu.title.textColor
+Menu title text color.
+.TP
+.B menu.title.font
+Menu title font.
+.TP
+.B menu.title.justify
+Menu title justification
+.RB ( Left ", " Center ", " Right ).
+.TP
+.B menu.frame
+Menu items area texture.
+.TP
+.B menu.frame.textColor
+Menu item text color.
+.TP
+.B menu.frame.font
+Menu item font.
+.TP
+.B menu.hilite
+Selection highlight texture.
+.TP
+.B menu.hilite.textColor
+Selected item text color.
+.TP
+.B menu.borderColor
+Menu border color.
+.TP
+.B menu.borderWidth
+Menu border width (default: 1).
+.SS Toolbar
+.TP
+.B toolbar
+Toolbar background texture.
+.TP
+.B toolbar.textColor
+Toolbar text color.
+.TP
+.B toolbar.font
+Toolbar font.
+.TP
+.B toolbar.iconbar.focused.color
+Background color for the focused window entry in the icon bar.
+.TP
+.B toolbar.iconbar.focused.textColor
+Text color for the focused window entry.
+.TP
+.B toolbar.iconbar.unfocused.color
+Background color for unfocused window entries.
+.TP
+.B toolbar.iconbar.unfocused.textColor
+Text color for unfocused entries.
+.SH TEXTURE COLORS
+Each texture resource supports
+.B .color
+and
+.B .colorTo
+sub-keys for the primary and gradient-end colors:
+.PP
+.RS 4
+.nf
+window.title.focus: Raised Gradient Vertical
+window.title.focus.color: #3465A4
+window.title.focus.colorTo: #204A87
+.fi
+.RE
+.SH EXAMPLES
+A simple dark theme:
+.PP
+.RS 4
+.nf
+# Window title
+window.title.focus: Raised Gradient Vertical
+window.title.focus.color: #333333
+window.title.focus.colorTo: #222222
+window.title.unfocus: Flat Solid
+window.title.unfocus.color: #1a1a1a
+
+# Label
+window.label.focus.textColor: #e0e0e0
+window.label.unfocus.textColor: #888888
+window.label.focus.font: sans-10:bold
+window.justify: Center
+
+# Buttons
+window.button.focus: Raised Solid
+window.button.focus.color: #444444
+window.button.focus.picColor: #ffffff
+window.button.unfocus.picColor: #666666
+
+# Borders
+window.borderColor: #000000
+window.borderWidth: 1
+window.handleWidth: 4
+
+# Menu
+menu.title: Raised Gradient Vertical
+menu.title.color: #3465A4
+menu.title.colorTo: #204A87
+menu.title.textColor: #ffffff
+menu.frame: Flat Solid
+menu.frame.color: #222222
+menu.frame.textColor: #cccccc
+menu.hilite: Flat Solid
+menu.hilite.color: #3465A4
+menu.hilite.textColor: #ffffff
+
+# Toolbar
+toolbar: Flat Solid
+toolbar.color: #2e2e2e
+toolbar.textColor: #e0e0e0
+.fi
+.RE
+.SH SEE ALSO
+.BR wm-wayland (1),
+.BR wm-wayland-keys (5),
+.BR wm-wayland-apps (5),
+.BR wm-wayland-menu (5)

@@ -1,0 +1,217 @@
+.TH WM-WAYLAND-APPS 5 "2026-02-10" "wm-wayland 0.1.0" "File Formats Manual"
+.SH NAME
+wm-wayland-apps \- per-window rules configuration for wm-wayland
+.SH DESCRIPTION
+The apps file defines per-window rules that are automatically applied
+when windows are mapped.
+The format is compatible with the Fluxbox apps file format.
+.PP
+By default, the file is located at
+.I ~/.config/wm-wayland/apps
+but the path can be overridden in the init file via
+.BR session.appsFile .
+.PP
+The file contains two types of blocks:
+.B [app]
+blocks for window rules, and
+.B [group]
+blocks for automatic tab grouping.
+.SH SYNTAX
+Blank lines and lines beginning with
+.B #
+or
+.B !
+are ignored.
+.SS Window Rule Blocks
+.PP
+.RS 4
+.nf
+[app] (\fIproperty\fP=\fIpattern\fP) [(\fIproperty\fP=\fIpattern\fP) ...]
+  [\fISetting\fP] {\fIvalue\fP}
+  ...
+[end]
+.fi
+.RE
+.PP
+Multiple match patterns on the
+.B [app]
+line are AND-combined: all patterns must match for the rule to apply.
+The first matching rule wins; subsequent rules are not evaluated.
+.SS Group Blocks
+.PP
+.RS 4
+.nf
+[group] [(workspace)]
+  [app] (\fIproperty\fP=\fIpattern\fP)
+  [app] (\fIproperty\fP=\fIpattern\fP)
+  ...
+[end]
+.fi
+.RE
+.PP
+Group blocks define automatic tab grouping.
+Windows matching any
+.B [app]
+pattern within a group block are grouped together into tabs.
+The optional
+.B (workspace)
+modifier restricts grouping to windows on the same workspace.
+.SH MATCH PROPERTIES
+Patterns use POSIX extended regular expressions.
+.TP
+.B class
+Matches the XDG toplevel
+.IR app_id .
+.TP
+.B name
+Alias for
+.BR class .
+.TP
+.B title
+Matches the window title.
+.TP
+.B transient
+Matches
+.B yes
+or
+.B no
+based on whether the window is a transient (child) window.
+.PP
+Negated matching is supported with
+.BR != :
+.PP
+.RS 4
+.nf
+[app] (class!=firefox)
+.fi
+.RE
+.SH SETTINGS
+Settings are placed inside
+.B [app]
+blocks, one per line.
+Each setting has the form
+.BI [ Name "] {" value }
+with an optional modifier in parentheses.
+.TP
+.BI [Workspace] " {" N }
+Open the window on workspace
+.I N
+(0-based).
+.TP
+.BI [Dimensions] " {" "W H" }
+Set initial window size to
+.I W
+by
+.I H
+pixels.
+.TP
+.BI [Position] " (" anchor ") {" "X Y" }
+Set initial position.
+The optional
+.I anchor
+is one of
+.BR Center ,
+.BR UpperLeft ,
+.BR UpperRight ,
+.BR LowerLeft ,
+or
+.BR LowerRight .
+The coordinates are relative to the anchor point.
+.TP
+.BI [Deco] " {" preset }
+Set decoration preset:
+.BR NORMAL " (full decorations),"
+.BR NONE " (no decorations),"
+.BR BORDER " (border only),"
+.BR TAB " (tab only),"
+.BR TINY " (minimal),"
+or
+.BR TOOL " (tool window)."
+.TP
+.BI [Sticky] " {" yes | no }
+Visible on all workspaces.
+.TP
+.BI [Layer] " {" N }
+Stacking layer number.
+.TP
+.BI [Alpha] " {" "focus [unfocus]" }
+Window opacity (0\-255).
+If only one value is given, it is used for both focused and unfocused states.
+.TP
+.BI [Maximized] " {" yes | no }
+Start maximized.
+.TP
+.BI [Minimized] " {" yes | no }
+Start minimized.
+.TP
+.BI [Fullscreen] " {" yes | no }
+Start fullscreen.
+.TP
+.BI [Shaded] " {" yes | no }
+Start shaded (title bar only).
+.TP
+.BI [FocusNewWindow] " {" yes | no }
+Whether the window receives focus when opened.
+.TP
+.BI [Head] " {" N }
+Open on monitor number
+.IR N .
+.SH EXAMPLES
+Open Firefox on workspace 2:
+.PP
+.RS 4
+.nf
+[app] (class=firefox)
+  [Workspace] {2}
+[end]
+.fi
+.RE
+.PP
+Make mpv borderless and fullscreen:
+.PP
+.RS 4
+.nf
+[app] (class=mpv)
+  [Deco] {NONE}
+  [Fullscreen] {yes}
+[end]
+.fi
+.RE
+.PP
+Center new dialog windows:
+.PP
+.RS 4
+.nf
+[app] (transient=yes)
+  [Position] (Center) {0 0}
+[end]
+.fi
+.RE
+.PP
+Set terminal emulator opacity:
+.PP
+.RS 4
+.nf
+[app] (class=foot)
+  [Alpha] {230 200}
+[end]
+.fi
+.RE
+.PP
+Auto-group terminal emulators into tabs (same workspace only):
+.PP
+.RS 4
+.nf
+[group] (workspace)
+  [app] (class=foot)
+  [app] (class=Alacritty)
+  [app] (class=kitty)
+[end]
+.fi
+.RE
+.SH SEE ALSO
+.BR wm-wayland (1),
+.BR wm-wayland-keys (5),
+.BR wm-wayland-style (5),
+.BR wm-wayland-menu (5),
+.BR regex (7)
