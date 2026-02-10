@@ -53,6 +53,7 @@ enum wm_menu_item_type {
 	WM_MENU_LOWER,
 	WM_MENU_SENDTO,	/* workspace list submenu */
 	WM_MENU_LAYER,		/* layer selection submenu */
+	WM_MENU_WINDOW_ENTRY,	/* window list entry (focus/deiconify) */
 };
 
 /* --- Menu item --- */
@@ -63,6 +64,7 @@ struct wm_menu_item {
 	char *command;		/* for exec, style, restart, command */
 	char *icon_path;	/* optional icon */
 	struct wm_menu *submenu;	/* for submenu type */
+	void *data;		/* opaque data (e.g. view ptr for window list) */
 	struct wl_list link;	/* wm_menu.items */
 };
 
@@ -111,6 +113,11 @@ struct wm_menu *wm_menu_create_window_menu(struct wm_server *server);
  * Create a dynamic workspace list menu.
  */
 struct wm_menu *wm_menu_create_workspace_menu(struct wm_server *server);
+
+/*
+ * Create a dynamic window list menu grouped by workspace.
+ */
+struct wm_menu *wm_menu_create_window_list(struct wm_server *server);
 
 /* --- Menu display --- */
 
@@ -195,5 +202,11 @@ void wm_menu_show_root(struct wm_server *server, int x, int y);
  * Show the window menu for the focused view.
  */
 void wm_menu_show_window(struct wm_server *server, int x, int y);
+
+/*
+ * Show the window list menu at the given position.
+ * Creates a dynamic menu listing all views grouped by workspace.
+ */
+void wm_menu_show_window_list(struct wm_server *server, int x, int y);
 
 #endif /* WM_MENU_H */

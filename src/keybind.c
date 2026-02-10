@@ -98,6 +98,7 @@ static const struct action_map actions[] = {
 	{"StickWindow",        WM_ACTION_STICK},
 	{"ToggleCmd",          WM_ACTION_TOGGLE_CMD},
 	{"ToggleDecor",        WM_ACTION_TOGGLE_DECOR},
+	{"WindowList",         WM_ACTION_WINDOW_LIST},
 	{"WindowMenu",         WM_ACTION_WINDOW_MENU},
 	{"Workspace",          WM_ACTION_WORKSPACE},
 };

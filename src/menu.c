@@ -21,7 +21,9 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "config.h"
+#include "foreign_toplevel.h"
 #include "menu.h"
+#include "output.h"
 #include "render.h"
 #include "server.h"
 #include "style.h"
@@ -712,6 +714,88 @@ wm_menu_create_workspace_menu(struct wm_server *server)
 	return menu;
 }
 
+/* --- Window list menu --- */
+
+struct wm_menu *
+wm_menu_create_window_list(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, "Windows");
+	if (!menu) {
+		return NULL;
+	}
+
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &server->workspaces, link) {
+		/* Collect views on this workspace */
+		bool has_views = false;
+		struct wm_view *view;
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace == ws || view->sticky) {
+				has_views = true;
+				break;
+			}
+		}
+		if (!has_views) {
+			continue;
+		}
+
+		/* Add workspace header as a nop/separator label */
+		char ws_label[128];
+		snprintf(ws_label, sizeof(ws_label), "%d: %s",
+			ws->index + 1,
+			ws->name ? ws->name : "Workspace");
+		struct wm_menu_item *header = menu_item_create(
+			WM_MENU_NOP, ws_label);
+		if (header) {
+			wl_list_insert(menu->items.prev, &header->link);
+		}
+
+		/* Add each view on this workspace */
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace != ws && !view->sticky) {
+				continue;
+			}
+			const char *title = view->title;
+			if (!title || !*title) {
+				title = view->app_id ? view->app_id :
+					"(untitled)";
+			}
+
+			bool is_iconified =
+				!view->scene_tree->node.enabled;
+			bool is_focused =
+				(view == server->focused_view);
+
+			char entry_label[256];
+			if (is_iconified) {
+				snprintf(entry_label, sizeof(entry_label),
+					"[%s]", title);
+			} else if (is_focused) {
+				snprintf(entry_label, sizeof(entry_label),
+					"* %s", title);
+			} else {
+				snprintf(entry_label, sizeof(entry_label),
+					"  %s", title);
+			}
+
+			struct wm_menu_item *item = menu_item_create(
+				WM_MENU_WINDOW_ENTRY, entry_label);
+			if (item) {
+				item->data = view;
+				/* Store workspace index for switching */
+				char cmd[32];
+				snprintf(cmd, sizeof(cmd), "%d",
+					ws->index);
+				item->command = strdup(cmd);
+				wl_list_insert(menu->items.prev,
+					&item->link);
+			}
+		}
+	}
+
+	return menu;
+}
+
 /* --- Rendering --- */
 
 /*
@@ -1008,8 +1092,44 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 
 	menu_compute_layout(menu, style);
 
-	/* Clamp to screen bounds if possible */
-	/* TODO: get output bounds properly; for now use reasonable defaults */
+	/* Clamp menu position to the output containing the cursor */
+	int out_x = 0, out_y = 0;
+	int out_w = 0, out_h = 0;
+	struct wlr_output *wlr_output =
+		wlr_output_layout_output_at(server->output_layout, x, y);
+	if (wlr_output) {
+		/* Find our wm_output wrapper for usable area */
+		struct wm_output *wm_out;
+		wl_list_for_each(wm_out, &server->outputs, link) {
+			if (wm_out->wlr_output == wlr_output) {
+				/* Get output position in layout */
+				struct wlr_box out_box;
+				wlr_output_layout_get_box(
+					server->output_layout,
+					wlr_output, &out_box);
+				out_x = out_box.x + wm_out->usable_area.x;
+				out_y = out_box.y + wm_out->usable_area.y;
+				out_w = wm_out->usable_area.width;
+				out_h = wm_out->usable_area.height;
+				break;
+			}
+		}
+	}
+	if (out_w > 0 && out_h > 0) {
+		if (x + menu->width > out_x + out_w) {
+			x = out_x + out_w - menu->width;
+		}
+		if (y + menu->height > out_y + out_h) {
+			y = out_y + out_h - menu->height;
+		}
+		if (x < out_x) {
+			x = out_x;
+		}
+		if (y < out_y) {
+			y = out_y;
+		}
+	}
+
 	menu->x = x;
 	menu->y = y;
 	menu->selected_index = -1;
@@ -1094,6 +1214,10 @@ wm_menu_hide_all(struct wm_server *server)
 	}
 	if (server->window_menu && server->window_menu->visible) {
 		wm_menu_hide(server->window_menu);
+	}
+	if (server->window_list_menu) {
+		wm_menu_destroy(server->window_list_menu);
+		server->window_list_menu = NULL;
 	}
 }
 
@@ -1349,6 +1473,30 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		}
 		break;
 
+	case WM_MENU_WINDOW_ENTRY: {
+		/* Switch to workspace and focus the target view */
+		struct wm_view *target = item->data;
+		if (!target) {
+			break;
+		}
+		/* Switch to the view's workspace */
+		if (item->command) {
+			int ws_idx = atoi(item->command);
+			wm_workspace_switch(server, ws_idx);
+		}
+		/* De-iconify if minimized */
+		if (!target->scene_tree->node.enabled) {
+			wlr_scene_node_set_enabled(
+				&target->scene_tree->node, true);
+			wm_foreign_toplevel_set_minimized(target, false);
+		}
+		/* Focus and raise */
+		wm_focus_view(target,
+			target->xdg_toplevel->base->surface);
+		wm_view_raise(target);
+		break;
+	}
+
 	case WM_MENU_CONFIG:
 	case WM_MENU_WORKSPACES:
 	case WM_MENU_SENDTO:
@@ -1361,6 +1509,53 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		/* These are handled structurally, not as actions */
 		break;
 	}
+}
+
+/* --- Submenu positioning helper --- */
+
+/*
+ * Compute the position for a submenu, flipping to the left if it would
+ * go off the right edge of the output.
+ */
+static void
+submenu_position(struct wm_menu *parent, int item_y_offset,
+	int *out_x, int *out_y)
+{
+	struct wm_server *server = parent->server;
+	int sub_x = parent->x + parent->width;
+	int sub_y = parent->y + parent->border_width +
+		parent->title_height + item_y_offset;
+
+	/* Get output bounds at the parent menu position */
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(
+		server->output_layout, parent->x, parent->y);
+	if (wlr_output) {
+		struct wm_output *wm_out;
+		wl_list_for_each(wm_out, &server->outputs, link) {
+			if (wm_out->wlr_output == wlr_output) {
+				struct wlr_box out_box;
+				wlr_output_layout_get_box(
+					server->output_layout,
+					wlr_output, &out_box);
+				int out_right = out_box.x +
+					wm_out->usable_area.x +
+					wm_out->usable_area.width;
+				int out_left = out_box.x +
+					wm_out->usable_area.x;
+				/* Flip to left side if overflowing right */
+				if (sub_x + parent->width > out_right) {
+					sub_x = parent->x - parent->width;
+					if (sub_x < out_left) {
+						sub_x = out_left;
+					}
+				}
+				break;
+			}
+		}
+	}
+
+	*out_x = sub_x;
+	*out_y = sub_y;
 }
 
 /* --- Keyboard interaction --- */
@@ -1376,6 +1571,10 @@ wm_menu_handle_key(struct wm_server *server, uint32_t keycode,
 	}
 
 	/* Dispatch to whichever menu is currently visible */
+	if (server->window_list_menu && server->window_list_menu->visible) {
+		return wm_menu_handle_key_for(server->window_list_menu, sym);
+	}
+
 	if (server->window_menu && server->window_menu->visible) {
 		return wm_menu_handle_key_for(server->window_menu, sym);
 	}
@@ -1448,9 +1647,6 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 		struct wm_menu_item *item = menu_get_item(menu,
 			menu->selected_index);
 		if (item && item->submenu) {
-			int sub_x = menu->x + menu->width;
-			int sub_y = menu->y + menu->border_width +
-				menu->title_height;
 			/* Offset to the selected item */
 			int y_off = 0;
 			int idx = 0;
@@ -1466,7 +1662,9 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 				}
 				idx++;
 			}
-			wm_menu_show(item->submenu, sub_x, sub_y + y_off);
+			int sub_x, sub_y;
+			submenu_position(menu, y_off, &sub_x, &sub_y);
+			wm_menu_show(item->submenu, sub_x, sub_y);
 			/* Select first non-separator in submenu */
 			int first = 0;
 			struct wm_menu_item *si;
@@ -1541,7 +1739,15 @@ wm_menu_handle_motion(struct wm_server *server, double lx, double ly)
 		return false;
 	}
 
-	/* Check window menu first (it's typically on top) */
+	/* Check window list menu first (it's typically on top) */
+	if (server->window_list_menu && server->window_list_menu->visible) {
+		if (wm_menu_handle_motion_for(server->window_list_menu,
+			lx, ly)) {
+			return true;
+		}
+	}
+
+	/* Check window menu next */
 	if (server->window_menu && server->window_menu->visible) {
 		if (wm_menu_handle_motion_for(server->window_menu, lx, ly)) {
 			return true;
@@ -1588,9 +1794,6 @@ wm_menu_handle_motion_for(struct wm_menu *root_menu, double lx, double ly)
 		/* Auto-open submenu on hover */
 		struct wm_menu_item *item = menu_get_item(hit_menu, idx);
 		if (item && item->submenu) {
-			int sub_x = hit_menu->x + hit_menu->width;
-			int sub_y = hit_menu->y + hit_menu->border_width +
-				hit_menu->title_height;
 			int y_off = 0;
 			int i = 0;
 			struct wm_menu_item *it;
@@ -1605,7 +1808,10 @@ wm_menu_handle_motion_for(struct wm_menu *root_menu, double lx, double ly)
 				}
 				i++;
 			}
-			wm_menu_show(item->submenu, sub_x, sub_y + y_off);
+			int sub_x, sub_y;
+			submenu_position(hit_menu, y_off,
+				&sub_x, &sub_y);
+			wm_menu_show(item->submenu, sub_x, sub_y);
 		}
 	}
 
@@ -1620,7 +1826,15 @@ wm_menu_handle_button(struct wm_server *server, double lx, double ly,
 		return false;
 	}
 
-	/* Check window menu first (it's typically on top) */
+	/* Check window list menu first (it's typically on top) */
+	if (server->window_list_menu && server->window_list_menu->visible) {
+		if (wm_menu_handle_button_for(server->window_list_menu,
+			lx, ly, button, pressed)) {
+			return true;
+		}
+	}
+
+	/* Check window menu next */
 	if (server->window_menu && server->window_menu->visible) {
 		if (wm_menu_handle_button_for(server->window_menu, lx, ly,
 			button, pressed)) {
@@ -1679,9 +1893,6 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 			hit_menu->selected_index = idx;
 			menu_update_render(hit_menu);
 
-			int sub_x = hit_menu->x + hit_menu->width;
-			int sub_y = hit_menu->y + hit_menu->border_width +
-				hit_menu->title_height;
 			int y_off = 0;
 			int i = 0;
 			struct wm_menu_item *it;
@@ -1696,7 +1907,10 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 				}
 				i++;
 			}
-			wm_menu_show(item->submenu, sub_x, sub_y + y_off);
+			int sub_x, sub_y;
+			submenu_position(hit_menu, y_off,
+				&sub_x, &sub_y);
+			wm_menu_show(item->submenu, sub_x, sub_y);
 		}
 		return true;
 	}
@@ -1744,6 +1958,9 @@ wm_menu_is_open(struct wm_server *server)
 	if (server->window_menu && server->window_menu->visible) {
 		return true;
 	}
+	if (server->window_list_menu && server->window_list_menu->visible) {
+		return true;
+	}
 	return false;
 }
 
@@ -1773,4 +1990,23 @@ wm_menu_show_window(struct wm_server *server, int x, int y)
 	wm_menu_hide_all(server);
 
 	wm_menu_show(server->window_menu, x, y);
+}
+
+void
+wm_menu_show_window_list(struct wm_server *server, int x, int y)
+{
+	if (!server) {
+		return;
+	}
+
+	/* Hide any existing menus first */
+	wm_menu_hide_all(server);
+
+	/* Build a fresh window list menu (it's dynamic) */
+	server->window_list_menu = wm_menu_create_window_list(server);
+	if (!server->window_list_menu) {
+		return;
+	}
+
+	wm_menu_show(server->window_list_menu, x, y);
 }

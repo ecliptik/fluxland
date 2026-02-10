@@ -465,6 +465,11 @@ execute_action(struct wm_server *server,
 			(int)server->cursor->x, (int)server->cursor->y);
 		return true;
 
+	case WM_ACTION_WINDOW_LIST:
+		wm_menu_show_window_list(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
 	case WM_ACTION_HIDE_MENUS:
 		wm_menu_hide_all(server);
 		return true;
