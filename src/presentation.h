@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * presentation.h - wp-presentation-time protocol support
  */
 

@@ -1,6 +1,6 @@
-# Research Summary: wm-wayland
+# Research Summary: fluxland
 
-> Synthesized findings from all research tracks for the wm-wayland project —
+> Synthesized findings from all research tracks for the fluxland project —
 > a Fluxbox-inspired Wayland compositor.
 
 ---
@@ -176,12 +176,12 @@ Support Fluxbox config files by parsing and translating to internal format:
 - X11 WM_CLASS mapped to Wayland app-id
 - X11-specific actions warned/skipped
 - Users can choose native or Fluxbox-compatible config
-- Ship a `wm-wayland-import` migration utility
+- Ship a `fluxland-import` migration utility
 
 ### 5.4 IPC: Unix Socket + D-Bus
 
 Two complementary IPC channels:
-- **Command socket**: Synchronous request/response for scripting (`wm-wayland-ctl`)
+- **Command socket**: Synchronous request/response for scripting (`fluxland-ctl`)
 - **Event socket**: Async event broadcast for status bars and automation
 - **D-Bus**: Desktop integration (portals, notifications, screen lock)
 
@@ -232,7 +232,7 @@ The QA research emphasizes test infrastructure before features:
 - IPC (command socket + event socket)
 - Toolbar (built-in or external via layer-shell)
 - Session lock protocol
-- `wm-wayland-import` migration tool
+- `fluxland-import` migration tool
 - D-Bus interface
 
 ### Phase 6: Polish and Release
@@ -304,4 +304,4 @@ The QA research emphasizes test infrastructure before features:
 
 ---
 
-*This summary was generated from research conducted in February 2026 for the wm-wayland project.*
+*This summary was generated from research conducted in February 2026 for the fluxland project.*

@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * presentation.c - wp-presentation-time protocol support
  *
  * Provides frame timing feedback to clients via the wp_presentation

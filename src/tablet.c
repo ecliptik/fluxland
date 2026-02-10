@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * tablet.c - Tablet/stylus input support via tablet-v2 protocol
  *
  * Handles tablet tool (stylus) and tablet pad devices using the

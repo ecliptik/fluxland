@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * viewporter.c - Viewporter and single-pixel-buffer protocol support
  *
  * Viewporter allows clients to crop and scale their surface buffers.

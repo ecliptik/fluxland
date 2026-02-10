@@ -1,7 +1,7 @@
 # TODO - Future Work
 
 This is the backlog of planned features, improvements, and infrastructure
-work for wm-wayland. Items are grouped by category and roughly ordered
+work for fluxland. Items are grouped by category and roughly ordered
 by priority within each section.
 
 ## CI/CD
@@ -69,7 +69,7 @@ by priority within each section.
 
 ## Quality of life
 
-- [ ] Configuration file validation tool (`wm-wayland --check-config`)
+- [ ] Configuration file validation tool (`fluxland --check-config`)
 - [ ] Runtime config reload for more options (currently partial)
 - [ ] IPC event subscriptions for style/theme changes
 - [ ] Mouse button remapping in config

@@ -1,15 +1,15 @@
-.TH WM-WAYLAND-MENU 5 "2026-02-10" "wm-wayland 0.1.0" "File Formats Manual"
+.TH FLUXLAND-MENU 5 "2026-02-10" "fluxland 0.1.0" "File Formats Manual"
 .SH NAME
-wm-wayland-menu \- menu configuration for wm-wayland
+fluxland-menu \- menu configuration for fluxland
 .SH DESCRIPTION
 The menu file defines the root menu shown by the
 .B RootMenu
 action in
-.BR wm-wayland (1).
+.BR fluxland (1).
 The format is compatible with the Fluxbox menu file format.
 .PP
 By default, the file is located at
-.I ~/.config/wm-wayland/menu
+.I ~/.config/fluxland/menu
 but the path can be overridden in the init file via
 .BR session.menuFile .
 .SH SYNTAX
@@ -155,7 +155,7 @@ Hovering over a submenu item automatically opens it.
 .PP
 .RS 4
 .nf
-[begin] (wm-wayland)
+[begin] (fluxland)
   [exec] (Terminal) {foot}
   [exec] (File Manager) {thunar}
   [exec] (Web Browser) {firefox}
@@ -165,7 +165,7 @@ Hovering over a submenu item automatically opens it.
     [exec] (VS Code) {code}
   [end]
   [submenu] (Styles)
-    [stylesdir] (~/.config/wm-wayland/styles)
+    [stylesdir] (~/.config/fluxland/styles)
   [end]
   [workspaces] (Workspaces)
   [separator]
@@ -177,7 +177,7 @@ Hovering over a submenu item automatically opens it.
 .fi
 .RE
 .SH SEE ALSO
-.BR wm-wayland (1),
-.BR wm-wayland-keys (5),
-.BR wm-wayland-apps (5),
-.BR wm-wayland-style (5)
+.BR fluxland (1),
+.BR fluxland-keys (5),
+.BR fluxland-apps (5),
+.BR fluxland-style (5)

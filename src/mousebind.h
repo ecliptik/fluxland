@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  *
  * mousebind.h - Mouse binding types and declarations
  *

@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * output_management.c - wlr-output-management-unstable-v1 protocol support
  *
  * Enables display configuration tools (wlr-randr, kanshi) to query

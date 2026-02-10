@@ -77,9 +77,9 @@ setup_paths(void)
 	snprintf(test_config_home, sizeof(test_config_home),
 		 "%s/config", test_base);
 	snprintf(test_config_dir, sizeof(test_config_dir),
-		 "%s/config/wm-wayland", test_base);
+		 "%s/config/fluxland", test_base);
 	snprintf(test_init_file, sizeof(test_init_file),
-		 "%s/config/wm-wayland/init", test_base);
+		 "%s/config/fluxland/init", test_base);
 }
 
 static void
@@ -114,7 +114,7 @@ cleanup(void)
 
 	/* Clean up IPC socket */
 	char ipc_path[512];
-	snprintf(ipc_path, sizeof(ipc_path), "%s/wm-wayland-ipc.sock",
+	snprintf(ipc_path, sizeof(ipc_path), "%s/fluxland-ipc.sock",
 		 test_runtime);
 	unlink(ipc_path);
 
@@ -165,12 +165,12 @@ main(void)
 	 * (for meson test), then fall back to PATH.
 	 */
 	const char *compositor_bin = NULL;
-	if (access("/tmp/claude-1001/wm-build/wm-wayland", X_OK) == 0)
-		compositor_bin = "/tmp/claude-1001/wm-build/wm-wayland";
-	else if (access("../wm-wayland", X_OK) == 0)
-		compositor_bin = "../wm-wayland";
+	if (access("/tmp/claude-1001/wm-build/fluxland", X_OK) == 0)
+		compositor_bin = "/tmp/claude-1001/wm-build/fluxland";
+	else if (access("../fluxland", X_OK) == 0)
+		compositor_bin = "../fluxland";
 	else
-		compositor_bin = "wm-wayland";
+		compositor_bin = "fluxland";
 
 	printf("  Starting compositor (headless)...\n");
 	printf("  Binary: %s\n", compositor_bin);
@@ -196,7 +196,7 @@ main(void)
 		freopen("/dev/null", "w", stdout);
 		freopen("/dev/null", "w", stderr);
 
-		execl(compositor_bin, "wm-wayland", (char *)NULL);
+		execl(compositor_bin, "fluxland", (char *)NULL);
 		/* If exec fails, exit with a distinguishable code */
 		_exit(127);
 	}

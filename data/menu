@@ -1,4 +1,4 @@
-[begin] (wm-wayland)
+[begin] (fluxland)
 
   [submenu] (Terminals)
     [exec] (foot) {foot}
@@ -45,7 +45,7 @@
   [separator]
 
   [submenu] (Styles)
-    [stylesdir] (~/.config/wm-wayland/styles)
+    [stylesdir] (~/.config/fluxland/styles)
   [end]
 
   [workspaces] (Workspaces)
@@ -54,7 +54,7 @@
 
   [separator]
 
-  [submenu] (wm-wayland)
+  [submenu] (fluxland)
     [reconfig] (Reload Config)
     [restart] (Restart)
     [separator]

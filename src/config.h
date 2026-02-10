@@ -1,13 +1,13 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  *
  * config.h - Configuration struct and loading
  *
  * Loads Fluxbox-compatible init files using X resource database format.
  * Search order:
- *   1. $WM_WAYLAND_CONFIG_DIR/
- *   2. $XDG_CONFIG_HOME/wm-wayland/
- *   3. ~/.config/wm-wayland/
+ *   1. $FLUXLAND_CONFIG_DIR/
+ *   2. $XDG_CONFIG_HOME/fluxland/
+ *   3. ~/.config/fluxland/
  *   4. ~/.fluxbox/ (Fluxbox compat fallback)
  */
 

@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * layer_shell.c - wlr-layer-shell-unstable-v1 protocol support
  *
  * Implements the layer shell protocol for external panels, wallpaper

@@ -1,4 +1,4 @@
-# wm-wayland keybindings
+# fluxland keybindings
 # Format: [Modifier ...] key :Action [argument]
 #
 # Modifiers: Mod1 (Alt), Mod4 (Super), Control, Shift, None

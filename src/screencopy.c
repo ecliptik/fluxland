@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * screencopy.c - Screen capture protocol support
  *
  * Enables screenshot tools (grim) and screen recorders by providing:

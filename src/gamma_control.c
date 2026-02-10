@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * gamma_control.c - Gamma control protocol for color temperature tools
  *
  * Enables tools like gammastep, wlsunset, and redshift-wayland to

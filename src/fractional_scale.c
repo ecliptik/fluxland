@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * fractional_scale.c - wp-fractional-scale-v1 protocol support
  *
  * Provides fractional scale information to Wayland clients so they can

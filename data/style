@@ -1,6 +1,6 @@
-# wm-wayland default style (theme)
+# fluxland default style (theme)
 # A clean, modern Fluxbox-inspired theme with dark colors.
-# Place custom styles in: ~/.config/wm-wayland/styles/
+# Place custom styles in: ~/.config/fluxland/styles/
 #
 # Texture syntax:
 #   Flat, Raised, or Sunken

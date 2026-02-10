@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * protocols.c - Primary selection, pointer constraints, relative pointer,
  *               XDG activation, tearing control, output power management,
  *               keyboard shortcuts inhibit

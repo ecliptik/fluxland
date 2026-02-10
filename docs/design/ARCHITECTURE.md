@@ -1,8 +1,8 @@
-# wm-wayland Architecture Overview
+# fluxland Architecture Overview
 
 ## Introduction
 
-wm-wayland is a Wayland compositor built on the wlroots library, designed to replicate and extend the Fluxbox window management experience. This document describes the high-level architecture, component design, data flow, and key technical decisions.
+fluxland is a Wayland compositor built on the wlroots library, designed to replicate and extend the Fluxbox window management experience. This document describes the high-level architecture, component design, data flow, and key technical decisions.
 
 ## Architecture Principles
 
@@ -16,7 +16,7 @@ wm-wayland is a Wayland compositor built on the wlroots library, designed to rep
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         wm-wayland compositor                       │
+│                         fluxland compositor                       │
 │                                                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────────┐ │
 │  │ Config Engine │  │  Fluxbox     │  │     Theme / Style Engine  │ │
@@ -64,7 +64,7 @@ wm-wayland is a Wayland compositor built on the wlroots library, designed to rep
 
 ### 1. wlroots Interface Layer
 
-The foundation of wm-wayland. Wraps wlroots to provide:
+The foundation of fluxland. Wraps wlroots to provide:
 
 - **Output management**: Multi-monitor support, mode setting, arrangement, and hotplug
 - **Seat / Input**: Keyboard, pointer, touch, and tablet input via libinput
@@ -93,7 +93,7 @@ The central orchestrator that implements Fluxbox-style window management:
 
 Parses and manages all configuration:
 
-- Reads configuration from `~/.config/wm-wayland/`
+- Reads configuration from `~/.config/fluxland/`
 - Supports live reloading via signal or IPC command
 - Validates configuration and provides clear error messages
 - Falls back to sensible defaults for missing values
@@ -106,8 +106,8 @@ A dedicated subsystem for Fluxbox config format support:
 - **Init file parser**: Reads Fluxbox `init` resource-style configuration
 - **Menu file parser**: Reads Fluxbox menu definition format
 - **Apps file parser**: Reads Fluxbox `apps` window rules format
-- **Style/Theme translator**: Converts Fluxbox style definitions to wm-wayland theme format
-- **Action mapper**: Maps Fluxbox actions to wm-wayland equivalents, warning on unsupported actions
+- **Style/Theme translator**: Converts Fluxbox style definitions to fluxland theme format
+- **Action mapper**: Maps Fluxbox actions to fluxland equivalents, warning on unsupported actions
 
 ### 5. Theme / Style Engine
 
@@ -281,13 +281,13 @@ Distribute updated config to subsystems
 
 **Decision**: Support Fluxbox config files by parsing them and translating to internal configuration, rather than using Fluxbox's config format as the native format.
 
-**Rationale**: Fluxbox's config formats have X11-specific concepts (e.g., X11 modifier names, X11-specific actions). A translation layer lets us support the familiar format while internally using Wayland-appropriate concepts. It also allows us to extend the configuration beyond what Fluxbox supports. Users can choose to use either native wm-wayland config or Fluxbox-compatible config.
+**Rationale**: Fluxbox's config formats have X11-specific concepts (e.g., X11 modifier names, X11-specific actions). A translation layer lets us support the familiar format while internally using Wayland-appropriate concepts. It also allows us to extend the configuration beyond what Fluxbox supports. Users can choose to use either native fluxland config or Fluxbox-compatible config.
 
 ### 6. IPC Protocol
 
 **Decision**: Implement an IPC protocol inspired by sway/i3 IPC.
 
-**Rationale**: The sway/i3 IPC protocol is well-documented, widely supported by tools (waybar, rofi, etc.), and familiar to the Wayland/tiling WM community. Adopting a compatible subset ensures wm-wayland works with existing ecosystem tools out of the box.
+**Rationale**: The sway/i3 IPC protocol is well-documented, widely supported by tools (waybar, rofi, etc.), and familiar to the Wayland/tiling WM community. Adopting a compatible subset ensures fluxland works with existing ecosystem tools out of the box.
 
 ## Technology Stack
 

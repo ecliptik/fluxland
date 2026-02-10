@@ -1,10 +1,10 @@
 # Fluxbox Compatibility Matrix
 
-This document details which Fluxbox features and configuration formats wm-wayland will support, the migration path for Fluxbox users, and known incompatibilities.
+This document details which Fluxbox features and configuration formats fluxland will support, the migration path for Fluxbox users, and known incompatibilities.
 
 ## Overview
 
-wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. While 100% compatibility is not possible (due to fundamental differences between X11 and Wayland), we target a high degree of configuration and behavioral compatibility so that Fluxbox users feel immediately at home.
+fluxland aims to be the spiritual successor to Fluxbox in the Wayland world. While 100% compatibility is not possible (due to fundamental differences between X11 and Wayland), we target a high degree of configuration and behavioral compatibility so that Fluxbox users feel immediately at home.
 
 **Compatibility approach**: Import and translate Fluxbox configuration files, mapping X11-specific concepts to their Wayland equivalents where possible, and warning clearly about unsupported features.
 
@@ -12,7 +12,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Window Management
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Window tabbing/grouping | Full | Core feature - first-class support |
 | Tab drag between windows | Full | Drag tab to group/ungroup windows |
@@ -33,7 +33,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Workspace Management
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Multiple workspaces | Full | Named virtual desktops |
 | Workspace names | Full | Configurable workspace names |
@@ -44,7 +44,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Toolbar
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Workspace name display | Full | |
 | Window list / icon bar | Full | Show icons of windows on current workspace |
@@ -58,7 +58,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Slit
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Dock window maker dockapps | Partial | Via XWayland compatibility; native dockapp protocol TBD |
 | Slit placement | Full | Configurable screen position |
@@ -68,7 +68,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Window Decorations / Themes
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Titlebar | Full | Configurable titlebar with text and buttons |
 | Titlebar buttons (close, max, min, shade, stick) | Full | All standard buttons |
@@ -85,7 +85,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Menu System
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Root menu (right-click desktop) | Full | Customizable desktop context menu |
 | Window menu (titlebar right-click) | Full | Window operations menu |
@@ -100,7 +100,7 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Key Bindings
 
-| Fluxbox Feature | wm-wayland Support | Notes |
+| Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
 | Mod1 (Alt) | Full | Mapped to Alt |
 | Mod4 (Super) | Full | Mapped to Super/Meta |
@@ -119,29 +119,29 @@ wm-wayland aims to be the spiritual successor to Fluxbox in the Wayland world. W
 
 ### Supported Config Files
 
-| File | Fluxbox Path | wm-wayland Path | Compatibility |
+| File | Fluxbox Path | fluxland Path | Compatibility |
 |---|---|---|---|
-| `keys` | `~/.fluxbox/keys` | `~/.config/wm-wayland/keys` | High - most bindings translate directly |
-| `init` | `~/.fluxbox/init` | `~/.config/wm-wayland/init` | High - resource format supported, X11-specific resources ignored |
-| `menu` | `~/.fluxbox/menu` | `~/.config/wm-wayland/menu` | Full - menu format is display-server agnostic |
-| `apps` | `~/.fluxbox/apps` | `~/.config/wm-wayland/apps` | High - window matching uses app-id instead of WM_CLASS where appropriate |
-| `startup` | `~/.fluxbox/startup` | `~/.config/wm-wayland/startup` | Full - shell script format, directly compatible |
-| `windowmenu` | `~/.fluxbox/windowmenu` | `~/.config/wm-wayland/windowmenu` | Full |
+| `keys` | `~/.fluxbox/keys` | `~/.config/fluxland/keys` | High - most bindings translate directly |
+| `init` | `~/.fluxbox/init` | `~/.config/fluxland/init` | High - resource format supported, X11-specific resources ignored |
+| `menu` | `~/.fluxbox/menu` | `~/.config/fluxland/menu` | Full - menu format is display-server agnostic |
+| `apps` | `~/.fluxbox/apps` | `~/.config/fluxland/apps` | High - window matching uses app-id instead of WM_CLASS where appropriate |
+| `startup` | `~/.fluxbox/startup` | `~/.config/fluxland/startup` | Full - shell script format, directly compatible |
+| `windowmenu` | `~/.fluxbox/windowmenu` | `~/.config/fluxland/windowmenu` | Full |
 | `overlay` | `~/.fluxbox/overlay` | N/A | Not supported (X11-specific theme overlays) |
 
 ### Import Tool
 
-wm-wayland ships with `wm-wayland-import`, a migration utility:
+fluxland ships with `fluxland-import`, a migration utility:
 
 ```sh
 # Import all Fluxbox configuration
-wm-wayland-import --from ~/.fluxbox --to ~/.config/wm-wayland
+fluxland-import --from ~/.fluxbox --to ~/.config/fluxland
 
 # Import only key bindings
-wm-wayland-import --keys ~/.fluxbox/keys
+fluxland-import --keys ~/.fluxbox/keys
 
 # Dry-run showing what would be imported and any warnings
-wm-wayland-import --dry-run --from ~/.fluxbox
+fluxland-import --dry-run --from ~/.fluxbox
 ```
 
 The import tool:
@@ -154,7 +154,7 @@ The import tool:
 
 ### Modifier Mapping
 
-| Fluxbox Modifier | wm-wayland Equivalent | Notes |
+| Fluxbox Modifier | fluxland Equivalent | Notes |
 |---|---|---|
 | `Mod1` | `Alt` | Standard Alt key |
 | `Mod4` | `Super` | Super/Windows/Meta key |
@@ -167,7 +167,7 @@ The import tool:
 
 ### Action Mapping
 
-| Fluxbox Action | wm-wayland Action | Notes |
+| Fluxbox Action | fluxland Action | Notes |
 |---|---|---|
 | `Exec {command}` | `exec {command}` | Direct mapping |
 | `Maximize` | `maximize` | |
@@ -222,7 +222,7 @@ The import tool:
 ### Fundamental (X11 vs Wayland)
 
 1. **Window positioning by clients**: Wayland does not allow clients to set their own position. Windows that relied on X11 positioning APIs will be placed by the compositor.
-2. **Global keyboard shortcuts while focused on client**: Wayland's security model means some key combinations may be intercepted by clients. wm-wayland handles this through the compositor's privileged key binding mechanism.
+2. **Global keyboard shortcuts while focused on client**: Wayland's security model means some key combinations may be intercepted by clients. fluxland handles this through the compositor's privileged key binding mechanism.
 3. **Screen capture**: X11's open screen access is replaced by Wayland's screencopy/PipeWire protocols requiring explicit user consent.
 4. **Pointer warping**: X11 allows programs to move the mouse cursor; Wayland restricts this for security.
 5. **Root window drawing**: X11 root window concepts (wallpaper, root menu triggers) are replaced by layer-shell protocol surfaces.
@@ -239,7 +239,7 @@ The import tool:
 
 1. **WM_CLASS → app-id**: Window matching in Fluxbox uses X11 WM_CLASS. In Wayland, the equivalent is app-id. The import tool will note where WM_CLASS values need to be updated.
 2. **xterm/urxvt → Wayland terminals**: Config files referencing X11 terminal emulators should be updated to Wayland-native terminals (foot, alacritty, kitty).
-3. **xdotool/wmctrl → wm-wayland IPC**: X11 scripting tools don't work in Wayland. Use `wm-wayland-msg` IPC client instead.
+3. **xdotool/wmctrl → fluxland IPC**: X11 scripting tools don't work in Wayland. Use `fluxland-msg` IPC client instead.
 4. **feh/nitrogen → swaybg/swww**: X11 wallpaper tools are replaced by Wayland wallpaper tools using the layer-shell protocol.
 5. **xrandr → wlr-randr/kanshi**: Monitor configuration uses Wayland-native tools.
 

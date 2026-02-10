@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * idle.c - Idle notification and idle inhibit protocol support
  *
  * Implements ext-idle-notify-v1 for swayidle-style idle managers

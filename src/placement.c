@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * placement.c - Window placement and edge snapping
  *
  * Implements Fluxbox-style window placement policies and edge

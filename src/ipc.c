@@ -1,8 +1,8 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * ipc.c - Unix socket IPC server
  *
- * Creates a Unix domain socket for external tools (wm-wayland-ctl)
+ * Creates a Unix domain socket for external tools (fluxland-ctl)
  * to query compositor state and execute commands.
  */
 
@@ -190,7 +190,7 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 	ipc->socket_fd = -1;
 	wl_list_init(&ipc->clients);
 
-	/* Build socket path: $XDG_RUNTIME_DIR/wm-wayland.$WAYLAND_DISPLAY.sock */
+	/* Build socket path: $XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock */
 	const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
 	if (!runtime_dir) {
 		wlr_log(WLR_ERROR, "IPC: %s", "XDG_RUNTIME_DIR not set");
@@ -205,13 +205,13 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 		wl_display = "wayland-0";
 	}
 
-	size_t path_len = strlen(runtime_dir) + strlen("/wm-wayland.") +
+	size_t path_len = strlen(runtime_dir) + strlen("/fluxland.") +
 		strlen(wl_display) + strlen(".sock") + 1;
 	ipc->socket_path = malloc(path_len);
 	if (!ipc->socket_path) {
 		return -1;
 	}
-	snprintf(ipc->socket_path, path_len, "%s/wm-wayland.%s.sock",
+	snprintf(ipc->socket_path, path_len, "%s/fluxland.%s.sock",
 		runtime_dir, wl_display);
 
 	/* Remove stale socket */
@@ -260,7 +260,7 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 		WL_EVENT_READABLE, handle_new_connection, ipc);
 
 	/* Set environment variable for child processes */
-	setenv("WM_WAYLAND_SOCK", ipc->socket_path, 1);
+	setenv("FLUXLAND_SOCK", ipc->socket_path, 1);
 
 	wlr_log(WLR_INFO, "IPC server listening on %s", ipc->socket_path);
 	return 0;
@@ -296,7 +296,7 @@ wm_ipc_destroy(struct wm_ipc_server *ipc)
 		free(ipc->socket_path);
 	}
 
-	unsetenv("WM_WAYLAND_SOCK");
+	unsetenv("FLUXLAND_SOCK");
 }
 
 void

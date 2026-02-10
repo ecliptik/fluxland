@@ -1,4 +1,4 @@
-# Linux System Programming Research for wm-wayland
+# Linux System Programming Research for fluxland
 
 ## Overview
 
@@ -62,7 +62,7 @@ security, performance, and dependency management.
 
 **Ecosystem examples:** Smithay, COSMIC (System76), Niri, Xfwl4
 
-### Recommendation for wm-wayland
+### Recommendation for fluxland
 
 **C++ is the recommended choice** for this project:
 
@@ -102,7 +102,7 @@ tests/meson.build        # Test suite
 
 **Key patterns from wlroots meson.build:**
 ```meson
-project('wm-wayland', 'cpp',
+project('fluxland', 'cpp',
   version: '0.1.0',
   default_options: [
     'cpp_std=c++20',
@@ -447,7 +447,7 @@ has no equivalent, we need a custom IPC channel.
 **Recommended approach: Hyprland-style dual socket**
 
 ```
-$XDG_RUNTIME_DIR/wm-wayland/$INSTANCE/
+$XDG_RUNTIME_DIR/fluxland/$INSTANCE/
 ├── command.sock    # Synchronous command/response (like hyprctl)
 └── event.sock      # Asynchronous event broadcast (like hyprland events)
 ```
@@ -466,19 +466,19 @@ $XDG_RUNTIME_DIR/wm-wayland/$INSTANCE/
   `window-focused`, `config-reloaded`, etc.
 - Enables status bars, scripts, and automation tools
 
-**CLI tool (wm-wayland-ctl):**
+**CLI tool (fluxland-ctl):**
 - Equivalent to `fluxbox-remote` and `hyprctl`
 - Connects to command socket, sends command, prints response
-- Example: `wm-wayland-ctl workspace 3`
+- Example: `fluxland-ctl workspace 3`
 
 **Fluxbox compatibility mapping:**
 
-| Fluxbox | wm-wayland equivalent |
+| Fluxbox | fluxland equivalent |
 |---------|-----------------------|
-| `fluxbox-remote` | `wm-wayland-ctl` |
-| `fbrun` | `wm-wayland-run` (or use external launcher like rofi/fuzzel) |
+| `fluxbox-remote` | `fluxland-ctl` |
+| `fbrun` | `fluxland-run` (or use external launcher like rofi/fuzzel) |
 | X11 ClientMessage | UNIX domain socket command |
-| `~/.fluxbox/startup` | `~/.config/wm-wayland/autostart` |
+| `~/.fluxbox/startup` | `~/.config/fluxland/autostart` |
 
 ### 6.3 D-Bus Interface
 
@@ -533,7 +533,7 @@ void launch_application(const std::string& command) {
 
 **Environment setup for children:**
 - `WAYLAND_DISPLAY` — Wayland socket name
-- `XDG_CURRENT_DESKTOP=wm-wayland`
+- `XDG_CURRENT_DESKTOP=fluxland`
 - `XDG_SESSION_TYPE=wayland`
 - Clear `DISPLAY` unless Xwayland is running (then set it)
 
@@ -581,7 +581,7 @@ void handle_signal(int sfd) {
 
 **Autostart mechanism (Fluxbox-compatible):**
 ```
-~/.config/wm-wayland/autostart
+~/.config/fluxland/autostart
 ```
 
 Contents executed line-by-line at compositor startup:

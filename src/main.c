@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * main.c - Entry point
  */
 
@@ -15,7 +15,7 @@
 #include "server.h"
 
 static const char usage[] =
-	"Usage: wm-wayland [options...]\n"
+	"Usage: fluxland [options...]\n"
 	"  -s, --startup <cmd>  Run command on startup\n"
 	"  -d, --debug          Enable debug logging\n"
 	"  -v, --version        Show version and exit\n"
@@ -46,7 +46,7 @@ main(int argc, char *argv[])
 			verbosity = WLR_DEBUG;
 			break;
 		case 'v':
-			printf("wm-wayland %s\n", WM_WAYLAND_VERSION);
+			printf("fluxland %s\n", FLUXLAND_VERSION);
 			return 0;
 		case 'h':
 		default:

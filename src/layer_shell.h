@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * layer_shell.h - wlr-layer-shell-unstable-v1 protocol support
  *
  * Handles external panels (waybar), wallpaper setters (swaybg),

@@ -1,6 +1,6 @@
-# wm-wayland init file
+# fluxland init file
 # Format: resource.key: value
-# Place your copy at: ~/.config/wm-wayland/init
+# Place your copy at: ~/.config/fluxland/init
 #
 # This file controls compositor-wide settings. After editing,
 # press Mod4+r (Reconfigure) or restart the compositor to apply.
@@ -102,7 +102,7 @@ session.screen0.toolbar.widthPercent: 100
 # File paths (usually auto-detected; override if needed)
 # -------------------------------------------------------------------
 
-# session.keyFile: ~/.config/wm-wayland/keys
-# session.appsFile: ~/.config/wm-wayland/apps
-# session.menuFile: ~/.config/wm-wayland/menu
-# session.styleFile: ~/.config/wm-wayland/styles/default
+# session.keyFile: ~/.config/fluxland/keys
+# session.appsFile: ~/.config/fluxland/apps
+# session.menuFile: ~/.config/fluxland/menu
+# session.styleFile: ~/.config/fluxland/styles/default

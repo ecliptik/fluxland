@@ -1,5 +1,5 @@
 project(
-  'wm-wayland',
+  'fluxland',
   'c',
   version: '0.1.0-dev',
   license: 'MIT',
@@ -41,7 +41,7 @@ if git.found()
     version = '"@0@"'.format(git_commit.stdout().strip())
   endif
 endif
-add_project_arguments('-DWM_WAYLAND_VERSION=@0@'.format(version), language: 'c')
+add_project_arguments('-DFLUXLAND_VERSION=@0@'.format(version), language: 'c')
 
 # --- Core dependencies ---
 
@@ -178,15 +178,15 @@ executable(
 # --- IPC client tool ---
 
 executable(
-  'wm-wayland-ctl',
-  files('tools/wm-wayland-ctl.c'),
+  'fluxland-ctl',
+  files('tools/fluxland-ctl.c'),
   install: true,
 )
 
 # --- Install data files ---
 
 install_data(
-  'data/wm-wayland.desktop',
+  'data/fluxland.desktop',
   install_dir: get_option('datadir') / 'wayland-sessions',
 )
 
@@ -201,17 +201,17 @@ example_configs = [
 
 install_data(
   example_configs,
-  install_dir: get_option('datadir') / 'wm-wayland' / 'examples',
+  install_dir: get_option('datadir') / 'fluxland' / 'examples',
 )
 
 # --- Man pages ---
 
 install_man(
-  'man/wm-wayland.1',
-  'man/wm-wayland-keys.5',
-  'man/wm-wayland-apps.5',
-  'man/wm-wayland-style.5',
-  'man/wm-wayland-menu.5',
+  'man/fluxland.1',
+  'man/fluxland-keys.5',
+  'man/fluxland-apps.5',
+  'man/fluxland-style.5',
+  'man/fluxland-menu.5',
 )
 
 # --- Tests ---

@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * text_input.c - Text input v3 and input method v2 relay for IME support
  *
  * Implements the relay between text-input-v3 (from application clients)

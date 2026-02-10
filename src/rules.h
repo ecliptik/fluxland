@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * rules.h - Per-window rules and auto-grouping (Fluxbox apps file)
  *
  * Parses the Fluxbox-compatible apps file to define per-window rules

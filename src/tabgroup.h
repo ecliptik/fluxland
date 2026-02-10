@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * tabgroup.h - Window tabbing/grouping (Fluxbox-style tab groups)
  *
  * Multiple windows can be combined into a single decoration frame with

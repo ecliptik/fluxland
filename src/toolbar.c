@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  *
  * toolbar.c - Built-in toolbar with workspace switcher, icon bar, and clock
  */

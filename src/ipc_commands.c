@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * ipc_commands.c - IPC command dispatch and handlers
  *
  * Parses incoming JSON requests and builds JSON responses using

@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * foreign_toplevel.h - wlr-foreign-toplevel-management-v1 for taskbars
  */
 

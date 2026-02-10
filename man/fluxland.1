@@ -1,15 +1,15 @@
-.TH WM-WAYLAND 1 "2026-02-10" "wm-wayland 0.1.0" "General Commands Manual"
+.TH FLUXLAND 1 "2026-02-10" "fluxland 0.1.0" "General Commands Manual"
 .SH NAME
-wm-wayland \- a Fluxbox-inspired Wayland compositor
+fluxland \- a Fluxbox-inspired Wayland compositor
 .SH SYNOPSIS
-.B wm-wayland
+.B fluxland
 .RB [ \-s
 .IR command ]
 .RB [ \-d ]
 .RB [ \-v ]
 .RB [ \-h ]
 .SH DESCRIPTION
-.B wm-wayland
+.B fluxland
 is a Wayland compositor built on wlroots that provides a traditional
 stacking window management experience inspired by Fluxbox.
 It features tabbed windows, configurable key bindings with chains and
@@ -54,14 +54,14 @@ The Wayland socket is created in this directory.
 .TP
 .B XDG_CONFIG_HOME
 If set, configuration files are searched for in
-.IR $XDG_CONFIG_HOME/wm-wayland/ .
+.IR $XDG_CONFIG_HOME/fluxland/ .
 .TP
-.B WM_WAYLAND_CONFIG_DIR
+.B FLUXLAND_CONFIG_DIR
 If set, overrides all other configuration directory search paths.
 .TP
 .B HOME
 Used as a fallback to locate
-.IR ~/.config/wm-wayland/ .
+.IR ~/.config/fluxland/ .
 .SH SIGNALS
 .TP
 .B SIGHUP
@@ -79,9 +79,9 @@ Configuration files are searched in the following order:
 .PP
 .RS 4
 .nf
-$WM_WAYLAND_CONFIG_DIR/
-$XDG_CONFIG_HOME/wm-wayland/
-~/.config/wm-wayland/
+$FLUXLAND_CONFIG_DIR/
+$XDG_CONFIG_HOME/fluxland/
+~/.config/fluxland/
 ~/.fluxbox/     (Fluxbox compatibility fallback)
 .fi
 .RE
@@ -96,22 +96,22 @@ layout, and paths to other configuration files.
 .B keys
 Key binding definitions.
 See
-.BR wm-wayland-keys (5).
+.BR fluxland-keys (5).
 .TP
 .B apps
 Per-window rules for automatic placement, decoration, and tab grouping.
 See
-.BR wm-wayland-apps (5).
+.BR fluxland-apps (5).
 .TP
 .B menu
 Root menu definition.
 See
-.BR wm-wayland-menu (5).
+.BR fluxland-menu (5).
 .TP
 .B styles/default
 Default style/theme file.
 See
-.BR wm-wayland-style (5).
+.BR fluxland-style (5).
 .TP
 .B startup
 Shell script executed on compositor startup.
@@ -252,7 +252,7 @@ Start the compositor with a terminal on startup:
 .PP
 .RS 4
 .nf
-wm-wayland \-s foot
+fluxland \-s foot
 .fi
 .RE
 .PP
@@ -260,7 +260,7 @@ Start with debug logging:
 .PP
 .RS 4
 .nf
-wm-wayland \-d
+fluxland \-d
 .fi
 .RE
 .PP
@@ -278,9 +278,9 @@ session.xkb.options: grp:alt_shift_toggle,caps:escape
 .fi
 .RE
 .SH SEE ALSO
-.BR wm-wayland-keys (5),
-.BR wm-wayland-apps (5),
-.BR wm-wayland-style (5),
-.BR wm-wayland-menu (5)
+.BR fluxland-keys (5),
+.BR fluxland-apps (5),
+.BR fluxland-style (5),
+.BR fluxland-menu (5)
 .SH AUTHORS
-The wm-wayland project.
+The fluxland project.

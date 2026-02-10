@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * cursor.c - Pointer/cursor input handling
  *
  * Handles mouse events with context-sensitive binding dispatch.

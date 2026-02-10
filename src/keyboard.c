@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * keyboard.c - Keyboard input handling
  *
  * Handles key events, chain state for multi-key sequences,

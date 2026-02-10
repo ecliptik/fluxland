@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * foreign_toplevel.c - wlr-foreign-toplevel-management-v1 for external taskbars
  *
  * Provides the wlr-foreign-toplevel-management protocol so that external

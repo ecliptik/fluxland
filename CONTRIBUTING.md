@@ -1,6 +1,6 @@
-# Contributing to wm-wayland
+# Contributing to fluxland
 
-Thank you for your interest in contributing to wm-wayland! This document
+Thank you for your interest in contributing to fluxland! This document
 covers the development workflow, project architecture, and how to add
 common types of features.
 
@@ -58,13 +58,13 @@ ninja -C build
 
 ```sh
 # In a TTY (DRM backend):
-./build/wm-wayland
+./build/fluxland
 
 # Nested in another Wayland compositor (for development):
-WLR_BACKENDS=wayland ./build/wm-wayland
+WLR_BACKENDS=wayland ./build/fluxland
 
 # Headless (for testing):
-WLR_BACKENDS=headless WLR_RENDERER=pixman ./build/wm-wayland
+WLR_BACKENDS=headless WLR_RENDERER=pixman ./build/fluxland
 ```
 
 ### Running tests

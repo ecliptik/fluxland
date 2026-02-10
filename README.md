@@ -1,4 +1,4 @@
-# wm-wayland
+# fluxland
 
 A lightweight, highly configurable Wayland compositor inspired by Fluxbox.
 
@@ -9,19 +9,19 @@ A lightweight, highly configurable Wayland compositor inspired by Fluxbox.
 
 ## About
 
-wm-wayland brings the Fluxbox experience to the Wayland display protocol. For
+fluxland brings the Fluxbox experience to the Wayland display protocol. For
 years, Fluxbox has been the window manager of choice for users who value
 simplicity, speed, and deep configurability. As the Linux desktop ecosystem
-transitions from X11 to Wayland, wm-wayland provides a familiar home for
+transitions from X11 to Wayland, fluxland provides a familiar home for
 Fluxbox users while embracing modern display server capabilities.
 
-Built on wlroots 0.18, wm-wayland implements 30+ Wayland protocols and delivers
+Built on wlroots 0.18, fluxland implements 30+ Wayland protocols and delivers
 first-class support for server-side decorations with Fluxbox theme
 compatibility, key chains and modal keybindings, window tabbing, a configurable
 toolbar with icon bar, the slit (dockapp container), and per-window rules. It
 reads Fluxbox configuration files directly, making migration straightforward.
 
-wm-wayland targets users who want a fast, keyboard-driven stacking compositor
+fluxland targets users who want a fast, keyboard-driven stacking compositor
 with the depth of configuration that Fluxbox is known for, without sacrificing
 the benefits of a modern Wayland session.
 
@@ -42,7 +42,7 @@ the benefits of a modern Wayland session.
 - **Smart window placement** -- row-smart, column-smart, cascade, and under-mouse placement policies
 - **Workspace management** -- up to 32 named virtual desktops with edge warping
 - **XKB keyboard layout** -- full XKB configuration with multi-layout support and runtime switching
-- **IPC** via Unix socket with JSON protocol; includes `wm-wayland-ctl` command-line client
+- **IPC** via Unix socket with JSON protocol; includes `fluxland-ctl` command-line client
 - **Event subscriptions** -- subscribe to window, workspace, and output events for scripting
 - **XWayland support** -- run X11 applications alongside native Wayland clients
 - **Live reconfiguration** -- reload all config files at runtime (keys, apps, menu, style, init) via `Mod4+r` or `SIGHUP`
@@ -121,26 +121,26 @@ ninja -C build
 
 ## Quick Start
 
-1. **Install dependencies** (see above) and build wm-wayland.
+1. **Install dependencies** (see above) and build fluxland.
 
 2. **Create a config directory** and copy the example configuration:
 
    ```sh
-   mkdir -p ~/.config/wm-wayland
-   cp /path/to/wm-wayland/data/* ~/.config/wm-wayland/
-   chmod +x ~/.config/wm-wayland/startup
+   mkdir -p ~/.config/fluxland
+   cp /path/to/fluxland/data/* ~/.config/fluxland/
+   chmod +x ~/.config/fluxland/startup
    ```
 
 3. **Start the compositor** from a TTY or from within another compositor:
 
    ```sh
-   wm-wayland
+   fluxland
    ```
 
    Or with a startup command:
 
    ```sh
-   wm-wayland -s foot
+   fluxland -s foot
    ```
 
 4. **Essential default keybindings:**
@@ -161,14 +161,14 @@ ninja -C build
 
    `Mod4` is the Super/Windows key. `Mod1` is Alt.
 
-5. **Environment:** wm-wayland sets `WAYLAND_DISPLAY` automatically. The startup
-   script (`~/.config/wm-wayland/startup`) runs once on launch -- use it for
+5. **Environment:** fluxland sets `WAYLAND_DISPLAY` automatically. The startup
+   script (`~/.config/fluxland/startup`) runs once on launch -- use it for
    wallpaper, bars, and background services.
 
 ### Command-line options
 
 ```
-wm-wayland [options...]
+fluxland [options...]
   -s, --startup <cmd>  Run command on startup
   -d, --debug          Enable debug logging
   -v, --version        Show version and exit
@@ -177,11 +177,11 @@ wm-wayland [options...]
 
 ## Configuration
 
-wm-wayland reads configuration from the first directory found:
+fluxland reads configuration from the first directory found:
 
-1. `$WM_WAYLAND_CONFIG_DIR/`
-2. `$XDG_CONFIG_HOME/wm-wayland/`
-3. `~/.config/wm-wayland/`
+1. `$FLUXLAND_CONFIG_DIR/`
+2. `$XDG_CONFIG_HOME/fluxland/`
+3. `~/.config/fluxland/`
 4. `~/.fluxbox/` (Fluxbox compatibility fallback)
 
 ### Config files
@@ -211,11 +211,11 @@ See the man pages below for detailed format documentation.
 - **Per-window rules** -- same `[app]`/`[end]` block syntax with property matching and settings.
 - **Themes** -- Fluxbox style files work directly; texture syntax (Raised, Flat, Gradient, etc.) is preserved.
 - **Menu format** -- `[exec]`, `[submenu]`, `[separator]`, `[stylesdir]`, `[reconfig]`, `[exit]` entries.
-- **Config directory** -- wm-wayland falls back to `~/.fluxbox/` if no wm-wayland config directory exists.
+- **Config directory** -- fluxland falls back to `~/.fluxbox/` if no fluxland config directory exists.
 
 ### What is different
 
-- **Wayland-only** -- no X11 root window, no `xprop`/`xdotool`; use `wm-wayland-ctl` for IPC and scripting.
+- **Wayland-only** -- no X11 root window, no `xprop`/`xdotool`; use `fluxland-ctl` for IPC and scripting.
 - **app_id replaces WM_CLASS** -- in `apps` rules, the `class` property matches the Wayland `app_id` (e.g. "firefox", "foot") rather than the X11 WM_CLASS.
 - **No `screen0` at runtime** -- while `init` still uses `session.screen0.*` keys for compatibility, Wayland outputs are managed per-monitor via `wlr-output-management`.
 - **Slit uses layer-shell** -- dockable applications use the Wayland layer-shell protocol instead of X11 docking.
@@ -224,48 +224,48 @@ See the man pages below for detailed format documentation.
 
 ## IPC
 
-wm-wayland provides a Unix socket IPC interface with JSON messages. The
-`wm-wayland-ctl` command-line tool handles socket discovery and message
+fluxland provides a Unix socket IPC interface with JSON messages. The
+`fluxland-ctl` command-line tool handles socket discovery and message
 formatting.
 
 ### Examples
 
 ```sh
 # Execute compositor actions
-wm-wayland-ctl action Close
-wm-wayland-ctl action Workspace 3
-wm-wayland-ctl action Exec foot
+fluxland-ctl action Close
+fluxland-ctl action Workspace 3
+fluxland-ctl action Exec foot
 
 # Query state
-wm-wayland-ctl get_windows
-wm-wayland-ctl get_workspaces
-wm-wayland-ctl get_outputs
-wm-wayland-ctl get_config
+fluxland-ctl get_windows
+fluxland-ctl get_workspaces
+fluxland-ctl get_outputs
+fluxland-ctl get_config
 
 # Subscribe to events (streams JSON to stdout)
-wm-wayland-ctl subscribe window workspace
+fluxland-ctl subscribe window workspace
 
 # List all available actions
-wm-wayland-ctl list-actions
+fluxland-ctl list-actions
 
 # Test connectivity
-wm-wayland-ctl ping
+fluxland-ctl ping
 ```
 
-The socket path is auto-detected from `$WM_WAYLAND_SOCK` or
-`$XDG_RUNTIME_DIR/wm-wayland.$WAYLAND_DISPLAY.sock`. Override with `-s <path>`.
+The socket path is auto-detected from `$FLUXLAND_SOCK` or
+`$XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock`. Override with `-s <path>`.
 
 ## Man Pages
 
 | Page | Section | Description |
 |---|---|---|
-| wm-wayland(1) | 1 | Compositor usage and command-line options |
-| wm-wayland-keys(5) | 5 | Key and mouse binding configuration |
-| wm-wayland-apps(5) | 5 | Per-window rules and auto-grouping |
-| wm-wayland-style(5) | 5 | Theme/style file format |
-| wm-wayland-menu(5) | 5 | Menu definition format |
+| fluxland(1) | 1 | Compositor usage and command-line options |
+| fluxland-keys(5) | 5 | Key and mouse binding configuration |
+| fluxland-apps(5) | 5 | Per-window rules and auto-grouping |
+| fluxland-style(5) | 5 | Theme/style file format |
+| fluxland-menu(5) | 5 | Menu definition format |
 
-After installation, access with `man wm-wayland`, `man wm-wayland-keys`, etc.
+After installation, access with `man fluxland`, `man fluxland-keys`, etc.
 
 ## Contributing
 
@@ -274,7 +274,7 @@ guidelines on code style, commit messages, and the development workflow.
 
 ## License
 
-wm-wayland is released under the [MIT License](LICENSE).
+fluxland is released under the [MIT License](LICENSE).
 
 ## Acknowledgments
 

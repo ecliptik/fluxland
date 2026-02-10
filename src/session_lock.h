@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  * session_lock.h - ext-session-lock-v1 protocol support
  *
  * Handles screen lockers (swaylock, waylock) by providing the

@@ -1,5 +1,5 @@
 /*
- * wm-wayland - A Fluxbox-inspired Wayland compositor
+ * fluxland - A Fluxbox-inspired Wayland compositor
  *
  * config.c - Configuration loading and management
  */
@@ -155,9 +155,9 @@ dir_exists(const char *path)
 
 /*
  * Find the config directory, searching in order:
- *   1. $WM_WAYLAND_CONFIG_DIR
- *   2. $XDG_CONFIG_HOME/wm-wayland
- *   3. ~/.config/wm-wayland
+ *   1. $FLUXLAND_CONFIG_DIR
+ *   2. $XDG_CONFIG_HOME/fluxland
+ *   3. ~/.config/fluxland
  *   4. ~/.fluxbox (Fluxbox compat fallback)
  */
 static char *
@@ -166,13 +166,13 @@ find_config_dir(void)
 	const char *env;
 	char path[4096];
 
-	env = getenv("WM_WAYLAND_CONFIG_DIR");
+	env = getenv("FLUXLAND_CONFIG_DIR");
 	if (env && dir_exists(env))
 		return strdup(env);
 
 	env = getenv("XDG_CONFIG_HOME");
 	if (env) {
-		snprintf(path, sizeof(path), "%s/wm-wayland", env);
+		snprintf(path, sizeof(path), "%s/fluxland", env);
 		if (dir_exists(path))
 			return strdup(path);
 	}
@@ -181,7 +181,7 @@ find_config_dir(void)
 	if (!home)
 		return NULL;
 
-	snprintf(path, sizeof(path), "%s/.config/wm-wayland", home);
+	snprintf(path, sizeof(path), "%s/.config/fluxland", home);
 	if (dir_exists(path))
 		return strdup(path);
 
@@ -190,7 +190,7 @@ find_config_dir(void)
 		return strdup(path);
 
 	/* Default to XDG location even if it doesn't exist yet */
-	snprintf(path, sizeof(path), "%s/.config/wm-wayland", home);
+	snprintf(path, sizeof(path), "%s/.config/fluxland", home);
 	return strdup(path);
 }
 
