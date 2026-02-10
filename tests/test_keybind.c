@@ -192,11 +192,11 @@ test_actions(void)
 	assert(bind && bind->action == WM_ACTION_SEND_TO_WORKSPACE);
 
 	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_Tab);
-	assert(bind && bind->action == WM_ACTION_FOCUS_NEXT);
+	assert(bind && bind->action == WM_ACTION_NEXT_WINDOW);
 
 	bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_Tab);
-	assert(bind && bind->action == WM_ACTION_FOCUS_PREV);
+	assert(bind && bind->action == WM_ACTION_PREV_WINDOW);
 
 	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_Right);
 	assert(bind && bind->action == WM_ACTION_NEXT_WORKSPACE);
