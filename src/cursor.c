@@ -18,6 +18,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
@@ -463,6 +464,16 @@ handle_cursor_motion(struct wl_listener *listener, void *data)
 	wm_idle_notify_activity(server);
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 		event->delta_x, event->delta_y);
+
+	/* Forward relative motion for games/3D apps */
+	if (server->relative_pointer_mgr) {
+		wlr_relative_pointer_manager_v1_send_relative_motion(
+			server->relative_pointer_mgr, server->seat,
+			(uint64_t)event->time_msec * 1000,
+			event->delta_x, event->delta_y,
+			event->unaccel_dx, event->unaccel_dy);
+	}
+
 	process_cursor_motion(server, event->time_msec);
 }
 
