@@ -1,7 +1,7 @@
 /*
  * wm-wayland - A Fluxbox-inspired Wayland compositor
  *
- * toolbar.c - Built-in toolbar with workspace switcher, window title, and clock
+ * toolbar.c - Built-in toolbar with workspace switcher, icon bar, and clock
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -121,6 +121,21 @@ get_primary_output(struct wm_server *server)
 		link);
 }
 
+/* --- Helper: compute layout widths --- */
+
+static void
+compute_layout(int total_width, int *ws_width, int *iconbar_width,
+	int *clock_width)
+{
+	*ws_width = total_width / 4;
+	*clock_width = total_width / 6;
+
+	if (*ws_width < 60) *ws_width = 60;
+	if (*clock_width < 50) *clock_width = 50;
+	*iconbar_width = total_width - *ws_width - *clock_width;
+	if (*iconbar_width < 0) *iconbar_width = 0;
+}
+
 /* --- Render workspace buttons --- */
 
 static struct wlr_buffer *
@@ -238,20 +253,60 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 	return wlr_buffer_from_cairo(surface);
 }
 
-/* --- Render window title --- */
+/* --- Collect icon bar entries for the current workspace --- */
+
+static int
+collect_iconbar_entries(struct wm_toolbar *toolbar)
+{
+	struct wm_server *server = toolbar->server;
+	struct wm_workspace *current_ws = server->current_workspace;
+	int count = 0;
+
+	free(toolbar->ib_entries);
+	toolbar->ib_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
+		sizeof(struct wm_iconbar_entry));
+	if (!toolbar->ib_entries) {
+		toolbar->ib_count = 0;
+		return 0;
+	}
+
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (count >= WM_TOOLBAR_ICONBAR_MAX) {
+			break;
+		}
+
+		/* Show views on current workspace or sticky views */
+		if (view->workspace != current_ws && !view->sticky) {
+			continue;
+		}
+
+		/* Must have a valid xdg surface to be a real window */
+		if (!view->xdg_toplevel || !view->xdg_toplevel->base) {
+			continue;
+		}
+
+		struct wm_iconbar_entry *entry = &toolbar->ib_entries[count];
+		entry->view = view;
+		entry->focused = (view == server->focused_view);
+		entry->iconified = !view->scene_tree->node.enabled;
+		count++;
+	}
+
+	toolbar->ib_count = count;
+	return count;
+}
+
+/* --- Render icon bar (window list) --- */
 
 static struct wlr_buffer *
-render_title(struct wm_toolbar *toolbar, int width, int height)
+render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 {
 	struct wm_server *server = toolbar->server;
 	struct wm_style *style = server->style;
 
-	const char *title = "";
-	if (server->focused_view && server->focused_view->title) {
-		title = server->focused_view->title;
-	}
+	collect_iconbar_entries(toolbar);
 
-	/* Render background (transparent, text only) */
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
@@ -264,19 +319,151 @@ render_title(struct wm_toolbar *toolbar, int width, int height)
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-	if (*title) {
+	int count = toolbar->ib_count;
+	if (count == 0) {
+		/* No windows — return empty surface */
+		cairo_destroy(cr);
+		/* Free old hit boxes */
+		free(toolbar->ib_boxes);
+		toolbar->ib_boxes = NULL;
+		return wlr_buffer_from_cairo(surface);
+	}
+
+	int entry_width = width / count;
+	if (entry_width < 1) entry_width = 1;
+
+	/* Allocate hit boxes */
+	free(toolbar->ib_boxes);
+	toolbar->ib_boxes = calloc(count, sizeof(struct wlr_box));
+
+	/* Get icon bar colors (fall back to toolbar defaults) */
+	struct wm_color focused_bg_color;
+	struct wm_color focused_text_color;
+	struct wm_color unfocused_bg_color;
+	struct wm_color unfocused_text_color;
+
+	if (style->toolbar_iconbar_has_focused_color) {
+		focused_bg_color = style->toolbar_iconbar_focused_color;
+	} else {
+		/* Default: brighter variant of toolbar color */
+		focused_bg_color = (struct wm_color){
+			.r = 80, .g = 80, .b = 100, .a = 255
+		};
+	}
+	if (style->toolbar_iconbar_focused_text_color.a > 0) {
+		focused_text_color = style->toolbar_iconbar_focused_text_color;
+	} else {
+		focused_text_color = style->toolbar_text_color;
+	}
+
+	if (style->toolbar_iconbar_has_unfocused_color) {
+		unfocused_bg_color = style->toolbar_iconbar_unfocused_color;
+	} else {
+		/* Default: transparent (no fill) */
+		unfocused_bg_color = (struct wm_color){
+			.r = 0, .g = 0, .b = 0, .a = 0
+		};
+	}
+	if (style->toolbar_iconbar_unfocused_text_color.a > 0) {
+		unfocused_text_color =
+			style->toolbar_iconbar_unfocused_text_color;
+	} else {
+		unfocused_text_color = style->toolbar_text_color;
+	}
+
+	for (int i = 0; i < count; i++) {
+		struct wm_iconbar_entry *entry = &toolbar->ib_entries[i];
+		int ex = i * entry_width;
+		int ew = (i == count - 1) ? (width - ex) : entry_width;
+
+		/* Background */
+		struct wm_color *bg_color = entry->focused ?
+			&focused_bg_color : &unfocused_bg_color;
+		struct wm_color *text_color = entry->focused ?
+			&focused_text_color : &unfocused_text_color;
+
+		if (entry->focused) {
+			/* Active window: render with toolbar texture +
+			 * bright overlay */
+			cairo_surface_t *bg =
+				wm_render_texture(&style->toolbar_texture,
+					ew, height, 1.0f);
+			if (bg) {
+				cairo_t *bcr = cairo_create(bg);
+				cairo_set_source_rgba(bcr, 1, 1, 1, 0.2);
+				cairo_paint(bcr);
+				cairo_destroy(bcr);
+				cairo_set_source_surface(cr, bg, ex, 0);
+				cairo_paint(cr);
+				cairo_surface_destroy(bg);
+			} else {
+				cairo_set_source_rgba(cr,
+					bg_color->r / 255.0,
+					bg_color->g / 255.0,
+					bg_color->b / 255.0,
+					bg_color->a / 255.0);
+				cairo_rectangle(cr, ex, 0, ew, height);
+				cairo_fill(cr);
+			}
+		} else if (bg_color->a > 0) {
+			cairo_set_source_rgba(cr,
+				bg_color->r / 255.0,
+				bg_color->g / 255.0,
+				bg_color->b / 255.0,
+				bg_color->a / 255.0);
+			cairo_rectangle(cr, ex, 0, ew, height);
+			cairo_fill(cr);
+		}
+
+		/* Separator line */
+		if (i > 0) {
+			cairo_set_source_rgba(cr,
+				style->toolbar_text_color.r / 255.0,
+				style->toolbar_text_color.g / 255.0,
+				style->toolbar_text_color.b / 255.0, 0.3);
+			cairo_set_line_width(cr, 1.0);
+			cairo_move_to(cr, ex + 0.5, 2);
+			cairo_line_to(cr, ex + 0.5, height - 2);
+			cairo_stroke(cr);
+		}
+
+		/* Build display title */
+		const char *raw_title = entry->view->title;
+		if (!raw_title || !*raw_title) {
+			raw_title = "(untitled)";
+		}
+
+		char title_buf[256];
+		if (entry->iconified) {
+			/* Wrap iconified window titles in parentheses */
+			snprintf(title_buf, sizeof(title_buf),
+				"(%s)", raw_title);
+		} else {
+			snprintf(title_buf, sizeof(title_buf),
+				"%s", raw_title);
+		}
+
+		/* Render text */
 		int tw, th;
-		cairo_surface_t *text = wm_render_text(title,
-			&style->toolbar_font, &style->toolbar_text_color,
-			width - 8, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
+		cairo_surface_t *text = wm_render_text(title_buf,
+			&style->toolbar_font, text_color,
+			ew - 6, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
 		if (text) {
-			int tx = (width - tw) / 2;
+			int tx = ex + (ew - tw) / 2;
 			int ty = (height - th) / 2;
-			if (tx < 0) tx = 0;
+			if (tx < ex + 2) tx = ex + 2;
 			if (ty < 0) ty = 0;
 			cairo_set_source_surface(cr, text, tx, ty);
 			cairo_paint(cr);
 			cairo_surface_destroy(text);
+		}
+
+		/* Store hit box (in iconbar-local coords) */
+		if (toolbar->ib_boxes) {
+			toolbar->ib_boxes[i].x = ex;
+			toolbar->ib_boxes[i].y = 0;
+			toolbar->ib_boxes[i].width = ew;
+			toolbar->ib_boxes[i].height = height;
 		}
 	}
 
@@ -361,16 +548,11 @@ toolbar_render(struct wm_toolbar *toolbar)
 		wlr_buffer_drop(bg);
 	}
 
-	/* Layout: workspace buttons (left 25%), title (center 50%),
-	 * clock (right 25%) */
-	int ws_width = w / 4;
-	int clock_width = w / 6;
-	int title_width = w - ws_width - clock_width;
+	/* Layout: workspace buttons (left), icon bar (center), clock (right) */
+	int ws_width, iconbar_width, clock_width;
+	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
 
-	if (ws_width < 60) ws_width = 60;
-	if (clock_width < 50) clock_width = 50;
-	title_width = w - ws_width - clock_width;
-	if (title_width < 0) title_width = 0;
+	toolbar->ib_x_offset = ws_width;
 
 	/* Workspace buttons */
 	struct wlr_buffer *ws_buf = render_workspace_buttons(toolbar,
@@ -381,13 +563,14 @@ toolbar_render(struct wm_toolbar *toolbar)
 	}
 	wlr_scene_node_set_position(&toolbar->workspace_buf->node, 0, 0);
 
-	/* Title */
-	struct wlr_buffer *title = render_title(toolbar, title_width, h);
-	wlr_scene_buffer_set_buffer(toolbar->title_buf, title);
-	if (title) {
-		wlr_buffer_drop(title);
+	/* Icon bar */
+	struct wlr_buffer *ib_buf = render_iconbar(toolbar, iconbar_width, h);
+	wlr_scene_buffer_set_buffer(toolbar->iconbar_buf, ib_buf);
+	if (ib_buf) {
+		wlr_buffer_drop(ib_buf);
 	}
-	wlr_scene_node_set_position(&toolbar->title_buf->node, ws_width, 0);
+	wlr_scene_node_set_position(&toolbar->iconbar_buf->node,
+		ws_width, 0);
 
 	/* Clock */
 	toolbar->cached_clock[0] = '\0'; /* force redraw */
@@ -459,7 +642,7 @@ wm_toolbar_create(struct wm_server *server)
 	toolbar->bg_buf = wlr_scene_buffer_create(toolbar->scene_tree, NULL);
 	toolbar->workspace_buf = wlr_scene_buffer_create(
 		toolbar->scene_tree, NULL);
-	toolbar->title_buf = wlr_scene_buffer_create(
+	toolbar->iconbar_buf = wlr_scene_buffer_create(
 		toolbar->scene_tree, NULL);
 	toolbar->clock_buf = wlr_scene_buffer_create(
 		toolbar->scene_tree, NULL);
@@ -498,6 +681,8 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 	}
 
 	free(toolbar->ws_boxes);
+	free(toolbar->ib_boxes);
+	free(toolbar->ib_entries);
 	free(toolbar->cached_title);
 	free(toolbar);
 }
@@ -519,28 +704,36 @@ wm_toolbar_update_workspace(struct wm_toolbar *toolbar)
 	if (ws_buf) {
 		wlr_buffer_drop(ws_buf);
 	}
+
+	/* Workspace change also affects the icon bar window list */
+	wm_toolbar_update_iconbar(toolbar);
 }
 
 void
 wm_toolbar_update_title(struct wm_toolbar *toolbar)
+{
+	/* Title changes affect the icon bar */
+	wm_toolbar_update_iconbar(toolbar);
+}
+
+void
+wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 {
 	if (!toolbar || !toolbar->visible) {
 		return;
 	}
 
 	int w = toolbar->width;
-	int ws_width = w / 4;
-	int clock_width = w / 6;
-	if (ws_width < 60) ws_width = 60;
-	if (clock_width < 50) clock_width = 50;
-	int title_width = w - ws_width - clock_width;
-	if (title_width < 0) title_width = 0;
+	int ws_width, iconbar_width, clock_width;
+	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
 
-	struct wlr_buffer *title = render_title(toolbar, title_width,
+	toolbar->ib_x_offset = ws_width;
+
+	struct wlr_buffer *ib_buf = render_iconbar(toolbar, iconbar_width,
 		toolbar->height);
-	wlr_scene_buffer_set_buffer(toolbar->title_buf, title);
-	if (title) {
-		wlr_buffer_drop(title);
+	wlr_scene_buffer_set_buffer(toolbar->iconbar_buf, ib_buf);
+	if (ib_buf) {
+		wlr_buffer_drop(ib_buf);
 	}
 }
 
@@ -597,6 +790,31 @@ wm_toolbar_handle_click(struct wm_toolbar *toolbar, double lx, double ly)
 		if (local_x >= box->x && local_x < box->x + box->width &&
 		    local_y >= box->y && local_y < box->y + box->height) {
 			wm_workspace_switch(toolbar->server, i);
+			return true;
+		}
+	}
+
+	/* Check icon bar entries */
+	double ib_local_x = local_x - toolbar->ib_x_offset;
+	for (int i = 0; i < toolbar->ib_count; i++) {
+		if (!toolbar->ib_boxes) {
+			break;
+		}
+		struct wlr_box *box = &toolbar->ib_boxes[i];
+		if (ib_local_x >= box->x &&
+		    ib_local_x < box->x + box->width &&
+		    local_y >= box->y &&
+		    local_y < box->y + box->height) {
+			struct wm_view *view = toolbar->ib_entries[i].view;
+			if (toolbar->ib_entries[i].iconified) {
+				/* De-iconify: re-enable scene node */
+				wlr_scene_node_set_enabled(
+					&view->scene_tree->node, true);
+			}
+			wm_focus_view(view,
+				view->xdg_toplevel->base->surface);
+			wm_view_raise(view);
+			wm_toolbar_update_iconbar(toolbar);
 			return true;
 		}
 	}

@@ -13,6 +13,7 @@
 
 #include "ipc.h"
 #include "server.h"
+#include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -130,6 +131,9 @@ wm_workspace_switch(struct wm_server *server, int index)
 	wlr_log(WLR_DEBUG, "workspace switch: %s -> %s",
 		old->name, target->name);
 
+	/* Update toolbar workspace buttons and icon bar */
+	wm_toolbar_update_workspace(server->toolbar);
+
 	/* Broadcast workspace switch event via IPC */
 	{
 		char buf[256];
@@ -196,6 +200,9 @@ wm_view_move_to_workspace(struct wm_view *view,
 	/* Reparent the view's scene tree to the new workspace tree */
 	view->workspace = workspace;
 	wlr_scene_node_reparent(&view->scene_tree->node, workspace->tree);
+
+	/* Update toolbar icon bar (view changed workspace) */
+	wm_toolbar_update_iconbar(view->server->toolbar);
 }
 
 void

@@ -22,6 +22,7 @@
 #include "server.h"
 #include "tabgroup.h"
 #include "text_input.h"
+#include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -177,6 +178,9 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	/* Update pointer constraint for the newly focused surface */
 	wm_protocols_update_pointer_constraint(server,
 		view->xdg_toplevel->base->surface);
+
+	/* Update toolbar icon bar to reflect focus change */
+	wm_toolbar_update_iconbar(server->toolbar);
 }
 
 void
@@ -595,6 +599,9 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 		/* No other views, clear focus */
 		wlr_seat_keyboard_notify_clear_focus(view->server->seat);
 	}
+
+	/* Update toolbar icon bar (window removed from list) */
+	wm_toolbar_update_iconbar(view->server->toolbar);
 }
 
 static void
@@ -783,6 +790,9 @@ handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
 		}
 	}
 	wlr_seat_keyboard_notify_clear_focus(view->server->seat);
+
+	/* Update toolbar icon bar (window iconified) */
+	wm_toolbar_update_iconbar(view->server->toolbar);
 }
 
 static void
@@ -814,6 +824,9 @@ handle_xdg_toplevel_set_title(struct wl_listener *listener, void *data)
 		wm_ipc_broadcast_event(&view->server->ipc,
 			WM_IPC_EVENT_WINDOW_TITLE, buf);
 	}
+
+	/* Update toolbar icon bar to reflect title change */
+	wm_toolbar_update_iconbar(view->server->toolbar);
 }
 
 static void
