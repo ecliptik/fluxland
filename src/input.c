@@ -41,6 +41,10 @@ handle_new_input(struct wl_listener *listener, void *data)
 	case WLR_INPUT_DEVICE_POINTER:
 		handle_new_pointer(server, device);
 		break;
+	case WLR_INPUT_DEVICE_TOUCH:
+		wlr_cursor_attach_input_device(server->cursor, device);
+		wlr_log(WLR_INFO, "new touch device: %s", device->name);
+		break;
 	default:
 		break;
 	}
@@ -55,6 +59,14 @@ handle_new_input(struct wl_listener *listener, void *data)
 		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
 	}
 	caps |= WL_SEAT_CAPABILITY_POINTER;
+	/*
+	 * Once a touch device has been seen, keep advertising touch
+	 * capability (even if other device types are added later).
+	 */
+	if (device->type == WLR_INPUT_DEVICE_TOUCH ||
+	    (server->seat->capabilities & WL_SEAT_CAPABILITY_TOUCH)) {
+		caps |= WL_SEAT_CAPABILITY_TOUCH;
+	}
 	wlr_seat_set_capabilities(server->seat, caps);
 }
 
