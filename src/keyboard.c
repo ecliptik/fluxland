@@ -481,16 +481,37 @@ execute_action(struct wm_server *server,
 		wm_keyboard_prev_layout(server);
 		return true;
 
+	case WM_ACTION_MAXIMIZE_VERT:
+		if (view) {
+			wm_view_maximize_vert(view);
+		}
+		return true;
+
+	case WM_ACTION_MAXIMIZE_HORIZ:
+		if (view) {
+			wm_view_maximize_horiz(view);
+		}
+		return true;
+
+	case WM_ACTION_TOGGLE_DECOR:
+		if (view) {
+			wm_view_toggle_decoration(view);
+		}
+		return true;
+
+	case WM_ACTION_ACTIVATE_TAB:
+		if (view && argument) {
+			int idx = atoi(argument) - 1;
+			wm_view_activate_tab(view, idx);
+		}
+		return true;
+
 	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
-	case WM_ACTION_MAXIMIZE_VERT:
-	case WM_ACTION_MAXIMIZE_HORIZ:
 	case WM_ACTION_RAISE_LAYER:
 	case WM_ACTION_LOWER_LAYER:
 	case WM_ACTION_SET_LAYER:
-	case WM_ACTION_TOGGLE_DECOR:
 	case WM_ACTION_SET_DECOR:
-	case WM_ACTION_ACTIVATE_TAB:
 	case WM_ACTION_NOP:
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:

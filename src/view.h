@@ -17,6 +17,15 @@ struct wm_tab_group;
 struct wm_decoration;
 struct wlr_foreign_toplevel_handle_v1;
 
+/* Fluxbox-inspired window layers (bottom to top) */
+enum wm_view_layer {
+	WM_LAYER_DESKTOP = 0,
+	WM_LAYER_BELOW,
+	WM_LAYER_NORMAL,
+	WM_LAYER_ABOVE,
+	WM_LAYER_COUNT, /* sentinel */
+};
+
 struct wm_view {
 	struct wl_list link; /* wm_server.views */
 	struct wm_server *server;
@@ -30,6 +39,11 @@ struct wm_view {
 	struct wlr_box saved_geometry;
 	bool maximized;
 	bool fullscreen;
+	bool maximized_vert;
+	bool maximized_horiz;
+
+	/* Decoration visibility toggle */
+	bool show_decoration; /* default true */
 
 	/* Metadata */
 	char *title;
@@ -38,6 +52,9 @@ struct wm_view {
 	/* Workspace tracking */
 	struct wm_workspace *workspace;
 	bool sticky; /* visible on all workspaces */
+
+	/* Layer stacking (Fluxbox layer model) */
+	enum wm_view_layer layer;
 
 	/* Tab group (Fluxbox-style window grouping) */
 	struct wm_tab_group *tab_group;
@@ -108,6 +125,32 @@ void wm_focus_next_view(struct wm_server *server);
 void wm_view_raise(struct wm_view *view);
 
 /*
+ * Lower the given view to the bottom of its layer's stacking order.
+ */
+void wm_view_lower(struct wm_view *view);
+
+/*
+ * Set the view's layer and reparent its scene node accordingly.
+ */
+void wm_view_set_layer(struct wm_view *view, enum wm_view_layer layer);
+
+/*
+ * Move the view up one layer (e.g. Normal -> Above).
+ */
+void wm_view_raise_layer(struct wm_view *view);
+
+/*
+ * Move the view down one layer (e.g. Normal -> Below).
+ */
+void wm_view_lower_layer(struct wm_view *view);
+
+/*
+ * Parse a layer name string (e.g. "Above", "Normal") to enum.
+ * Returns WM_LAYER_NORMAL if unrecognized.
+ */
+enum wm_view_layer wm_view_layer_from_name(const char *name);
+
+/*
  * Called on cursor motion: if sloppy focus is enabled, focus
  * the view under the pointer without raising it.
  */
@@ -130,5 +173,25 @@ void wm_view_begin_interactive(struct wm_view *view,
  * alpha is 0-255 (0 = transparent, 255 = fully opaque).
  */
 void wm_view_set_opacity(struct wm_view *view, int alpha);
+
+/*
+ * Toggle vertical maximization (fill output height, keep x/width).
+ */
+void wm_view_maximize_vert(struct wm_view *view);
+
+/*
+ * Toggle horizontal maximization (fill output width, keep y/height).
+ */
+void wm_view_maximize_horiz(struct wm_view *view);
+
+/*
+ * Toggle decoration visibility on/off.
+ */
+void wm_view_toggle_decoration(struct wm_view *view);
+
+/*
+ * Activate the nth tab (0-based index) in the view's tab group.
+ */
+void wm_view_activate_tab(struct wm_view *view, int index);
 
 #endif /* WM_VIEW_H */

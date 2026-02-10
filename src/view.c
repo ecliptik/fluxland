@@ -223,8 +223,9 @@ void
 wm_focus_update_for_cursor(struct wm_server *server,
 	double cursor_x, double cursor_y)
 {
-	/* Only apply sloppy focus policy */
-	if (server->focus_policy != WM_FOCUS_SLOPPY) {
+	/* Only apply focus-follows-mouse policies (sloppy or strict) */
+	if (server->focus_policy != WM_FOCUS_SLOPPY &&
+	    server->focus_policy != WM_FOCUS_STRICT_MOUSE) {
 		return;
 	}
 
@@ -478,6 +479,14 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 	if (view == view->server->grabbed_view) {
 		view->server->cursor_mode = WM_CURSOR_PASSTHROUGH;
 		view->server->grabbed_view = NULL;
+	}
+
+	/* Cancel pending auto-raise if this view was the target */
+	if (view == view->server->auto_raise_view) {
+		if (view->server->auto_raise_timer)
+			wl_event_source_timer_update(
+				view->server->auto_raise_timer, 0);
+		view->server->auto_raise_view = NULL;
 	}
 
 	/* If this was the focused view, focus the next one */
@@ -749,6 +758,9 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 	view->focus_alpha = 255;
 	view->unfocus_alpha = 255;
 
+	/* Decorations shown by default */
+	view->show_decoration = true;
+
 	/* Initialize tab group link (not in any group yet) */
 	wl_list_init(&view->tab_link);
 
@@ -866,6 +878,166 @@ handle_new_xdg_popup(struct wl_listener *listener, void *data)
 		wlr_scene_xdg_surface_create(parent_tree, popup->base);
 	if (popup_tree) {
 		popup->base->data = popup_tree;
+	}
+}
+
+/* --- Maximize vertical/horizontal --- */
+
+void
+wm_view_maximize_vert(struct wm_view *view)
+{
+	if (!view) {
+		return;
+	}
+
+	if (view->maximized_vert) {
+		/* Restore saved y and height */
+		view->y = view->saved_geometry.y;
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+			0, view->saved_geometry.height);
+		wlr_scene_node_set_position(&view->scene_tree->node,
+			view->x, view->y);
+		view->maximized_vert = false;
+	} else {
+		/* Save current geometry */
+		struct wlr_box geo;
+		wm_view_get_geometry(view, &geo);
+		view->saved_geometry.y = view->y;
+		view->saved_geometry.height = geo.height;
+
+		struct wlr_output *output =
+			wlr_output_layout_output_at(
+				view->server->output_layout,
+				view->server->cursor->x,
+				view->server->cursor->y);
+		if (output) {
+			struct wlr_box output_box;
+			wlr_output_layout_get_box(
+				view->server->output_layout,
+				output, &output_box);
+			view->y = output_box.y;
+			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+				0, output_box.height);
+			wlr_scene_node_set_position(
+				&view->scene_tree->node,
+				view->x, view->y);
+		}
+		view->maximized_vert = true;
+	}
+}
+
+void
+wm_view_maximize_horiz(struct wm_view *view)
+{
+	if (!view) {
+		return;
+	}
+
+	if (view->maximized_horiz) {
+		/* Restore saved x and width */
+		view->x = view->saved_geometry.x;
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+			view->saved_geometry.width, 0);
+		wlr_scene_node_set_position(&view->scene_tree->node,
+			view->x, view->y);
+		view->maximized_horiz = false;
+	} else {
+		/* Save current geometry */
+		struct wlr_box geo;
+		wm_view_get_geometry(view, &geo);
+		view->saved_geometry.x = view->x;
+		view->saved_geometry.width = geo.width;
+
+		struct wlr_output *output =
+			wlr_output_layout_output_at(
+				view->server->output_layout,
+				view->server->cursor->x,
+				view->server->cursor->y);
+		if (output) {
+			struct wlr_box output_box;
+			wlr_output_layout_get_box(
+				view->server->output_layout,
+				output, &output_box);
+			view->x = output_box.x;
+			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+				output_box.width, 0);
+			wlr_scene_node_set_position(
+				&view->scene_tree->node,
+				view->x, view->y);
+		}
+		view->maximized_horiz = true;
+	}
+}
+
+/* --- Toggle decoration --- */
+
+void
+wm_view_toggle_decoration(struct wm_view *view)
+{
+	if (!view || !view->decoration) {
+		return;
+	}
+
+	view->show_decoration = !view->show_decoration;
+
+	if (view->show_decoration) {
+		/* Show decoration and adjust view position for border */
+		wlr_scene_node_set_enabled(
+			&view->decoration->tree->node, true);
+
+		int top, bottom, left, right;
+		wm_decoration_get_extents(view->decoration,
+			&top, &bottom, &left, &right);
+
+		/* Offset the client surface tree within the decoration frame */
+		struct wlr_scene_node *child;
+		wl_list_for_each(child,
+			&view->scene_tree->children, link) {
+			if (child != &view->decoration->tree->node) {
+				wlr_scene_node_set_position(child,
+					left, top);
+				break;
+			}
+		}
+	} else {
+		/* Hide decoration and reset client surface offset */
+		wlr_scene_node_set_enabled(
+			&view->decoration->tree->node, false);
+
+		/* Move client surface back to origin of scene tree */
+		struct wlr_scene_node *child;
+		wl_list_for_each(child,
+			&view->scene_tree->children, link) {
+			if (child != &view->decoration->tree->node) {
+				wlr_scene_node_set_position(child, 0, 0);
+				break;
+			}
+		}
+	}
+}
+
+/* --- Activate tab by index --- */
+
+void
+wm_view_activate_tab(struct wm_view *view, int index)
+{
+	if (!view || !view->tab_group || index < 0) {
+		return;
+	}
+
+	struct wm_tab_group *group = view->tab_group;
+	if (index >= group->count) {
+		return;
+	}
+
+	int i = 0;
+	struct wm_view *tab_view;
+	wl_list_for_each(tab_view, &group->views, tab_link) {
+		if (i == index) {
+			wm_tab_group_activate(group, tab_view);
+			return;
+		}
+		i++;
 	}
 }
 
