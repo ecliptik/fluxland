@@ -275,27 +275,7 @@ execute_action(struct wm_server *server,
 		return true;
 
 	case WM_ACTION_RECONFIGURE:
-		if (server->config) {
-			config_reload(server->config);
-			server->focus_policy = server->config->focus_policy;
-		}
-		/* Reload keymodes */
-		keybind_destroy_all(&server->keymodes);
-		wl_list_init(&server->keymodes);
-		if (server->config && server->config->keys_file) {
-			keybind_load(&server->keymodes,
-				server->config->keys_file);
-		}
-		/* Also rebuild legacy flat list for any code still using it */
-		keybind_destroy_list(&server->keybindings);
-		wl_list_init(&server->keybindings);
-		/* Reset chain and keymode on reconfigure */
-		chain_reset(server);
-		free(server->current_keymode);
-		server->current_keymode = strdup("default");
-		/* Reapply XKB keyboard layout from config */
-		wm_keyboard_apply_config(server);
-		wlr_log(WLR_INFO, "configuration reloaded");
+		wm_server_reconfigure(server);
 		return true;
 
 	case WM_ACTION_MOVE:

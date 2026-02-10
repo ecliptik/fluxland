@@ -20,6 +20,7 @@
 #include "server.h"
 #include "config.h"
 #include "decoration.h"
+#include "keyboard.h"
 #include "foreign_toplevel.h"
 #include "ipc.h"
 #include "keybind.h"
@@ -59,15 +60,21 @@ static int
 handle_sighup(int signal_number, void *data)
 {
 	struct wm_server *server = data;
-
 	wlr_log(WLR_INFO, "SIGHUP received, reloading configuration");
+	wm_server_reconfigure(server);
+	return 0;
+}
 
+void
+wm_server_reconfigure(struct wm_server *server)
+{
+	/* 1. Reload config file */
 	if (server->config) {
 		config_reload(server->config);
 		server->focus_policy = server->config->focus_policy;
 	}
 
-	/* Reload keymodes and keybindings */
+	/* 2. Reload keymodes and keybindings */
 	keybind_destroy_all(&server->keymodes);
 	wl_list_init(&server->keymodes);
 	keybind_destroy_list(&server->keybindings);
@@ -76,6 +83,7 @@ handle_sighup(int signal_number, void *data)
 		keybind_load(&server->keymodes,
 			server->config->keys_file);
 	}
+
 	/* Reset chain and keymode */
 	server->chain_state.in_chain = false;
 	server->chain_state.current_level = NULL;
@@ -86,7 +94,7 @@ handle_sighup(int signal_number, void *data)
 	free(server->current_keymode);
 	server->current_keymode = strdup("default");
 
-	/* Reload mouse bindings */
+	/* 3. Reload mouse bindings */
 	mousebind_destroy_list(&server->mousebindings);
 	wl_list_init(&server->mousebindings);
 	if (server->config && server->config->keys_file) {
@@ -94,7 +102,55 @@ handle_sighup(int signal_number, void *data)
 			server->config->keys_file);
 	}
 
-	return 0;
+	/* 4. Reload style */
+	if (server->style && server->config && server->config->style_file) {
+		style_load(server->style, server->config->style_file);
+	}
+
+	/* 5. Reload menus */
+	wm_menu_hide_all(server);
+	if (server->root_menu) {
+		wm_menu_destroy(server->root_menu);
+		server->root_menu = NULL;
+	}
+	if (server->window_menu) {
+		wm_menu_destroy(server->window_menu);
+		server->window_menu = NULL;
+	}
+	if (server->config && server->config->menu_file) {
+		server->root_menu = wm_menu_load(server,
+			server->config->menu_file);
+	}
+	server->window_menu = wm_menu_create_window_menu(server);
+
+	/* 6. Reload rules */
+	wm_rules_finish(&server->rules);
+	wm_rules_init(&server->rules);
+	if (server->config && server->config->apps_file) {
+		wm_rules_load(&server->rules,
+			server->config->apps_file);
+	}
+
+	/* 7. Reapply XKB keyboard layout from config */
+	wm_keyboard_apply_config(server);
+
+	/* 8. Refresh toolbar with new style */
+	if (server->toolbar) {
+		wm_toolbar_relayout(server->toolbar);
+	}
+
+	/* 9. Refresh all view decorations with new style */
+	if (server->style) {
+		struct wm_view *view;
+		wl_list_for_each(view, &server->views, link) {
+			if (view->decoration) {
+				wm_decoration_update(view->decoration,
+					server->style);
+			}
+		}
+	}
+
+	wlr_log(WLR_INFO, "configuration reloaded");
 }
 
 bool

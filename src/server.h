@@ -354,6 +354,9 @@ bool wm_server_start(struct wm_server *server);
 /* Run the event loop */
 void wm_server_run(struct wm_server *server);
 
+/* Reload all configuration (style, menus, rules, keys, XKB, toolbar) */
+void wm_server_reconfigure(struct wm_server *server);
+
 /* Tear down and free resources */
 void wm_server_destroy(struct wm_server *server);
 
