@@ -17,13 +17,19 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
 #include "ipc.h"
 #include "config.h"
+#include "decoration.h"
 #include "keybind.h"
+#include "keyboard.h"
+#include "menu.h"
 #include "output.h"
+#include "placement.h"
 #include "server.h"
+#include "tabgroup.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -185,6 +191,7 @@ static char *
 make_error(const char *message)
 {
 	char *escaped = json_escape(message);
+	if (!escaped) return NULL;
 	struct strbuf sb;
 	strbuf_init(&sb);
 	strbuf_appendf(&sb, "{\"success\":false,\"error\":%s}", escaped);
@@ -227,9 +234,9 @@ static const struct action_entry action_table[] = {
 	{"LowerLayer",       WM_ACTION_LOWER_LAYER},
 	{"SetLayer",         WM_ACTION_SET_LAYER},
 	{"FocusNext",        WM_ACTION_FOCUS_NEXT},
-	{"NextWindow",       WM_ACTION_FOCUS_NEXT},
 	{"FocusPrev",        WM_ACTION_FOCUS_PREV},
-	{"PrevWindow",       WM_ACTION_FOCUS_PREV},
+	{"NextWindow",       WM_ACTION_NEXT_WINDOW},
+	{"PrevWindow",       WM_ACTION_PREV_WINDOW},
 	{"Workspace",        WM_ACTION_WORKSPACE},
 	{"SendToWorkspace",  WM_ACTION_SEND_TO_WORKSPACE},
 	{"NextWorkspace",    WM_ACTION_NEXT_WORKSPACE},
@@ -253,6 +260,20 @@ static const struct action_entry action_table[] = {
 	{"RootMenu",         WM_ACTION_ROOT_MENU},
 	{"WindowMenu",       WM_ACTION_WINDOW_MENU},
 	{"HideMenus",        WM_ACTION_HIDE_MENUS},
+	{"Focus",            WM_ACTION_FOCUS},
+	{"StartMoving",      WM_ACTION_START_MOVING},
+	{"StartResizing",    WM_ACTION_START_RESIZING},
+	{"StartTabbing",     WM_ACTION_START_TABBING},
+	{"WindowList",       WM_ACTION_WINDOW_LIST},
+	{"Deiconify",        WM_ACTION_DEICONIFY},
+	{"NextLayout",       WM_ACTION_NEXT_LAYOUT},
+	{"PrevLayout",       WM_ACTION_PREV_LAYOUT},
+	{"ArrangeWindows",   WM_ACTION_ARRANGE_WINDOWS},
+	{"ArrangeWindowsVertical",  WM_ACTION_ARRANGE_VERT},
+	{"ArrangeWindowsHorizontal", WM_ACTION_ARRANGE_HORIZ},
+	{"CascadeWindows",   WM_ACTION_CASCADE_WINDOWS},
+	{"MacroCmd",         WM_ACTION_MACRO_CMD},
+	{"ToggleCmd",        WM_ACTION_TOGGLE_CMD},
 	{"Reconfigure",      WM_ACTION_RECONFIGURE},
 	{"Exit",             WM_ACTION_EXIT},
 	{NULL, WM_ACTION_NOP},
@@ -340,11 +361,33 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		wm_focus_next_view(server);
 		return true;
 
+	case WM_ACTION_NEXT_WINDOW:
+		wm_view_cycle_next(server);
+		return true;
+
+	case WM_ACTION_PREV_WINDOW:
+		wm_view_cycle_prev(server);
+		return true;
+
+	case WM_ACTION_DEICONIFY:
+		wm_view_deiconify_last(server);
+		return true;
+
 	case WM_ACTION_MAXIMIZE:
 		if (view) {
 			view->request_maximize.notify(
 				&view->request_maximize, NULL);
 		}
+		return true;
+
+	case WM_ACTION_MAXIMIZE_VERT:
+		if (view)
+			wm_view_maximize_vert(view);
+		return true;
+
+	case WM_ACTION_MAXIMIZE_HORIZ:
+		if (view)
+			wm_view_maximize_horiz(view);
 		return true;
 
 	case WM_ACTION_FULLSCREEN:
@@ -361,9 +404,55 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		}
 		return true;
 
+	case WM_ACTION_SHADE:
+		if (view && view->decoration && server->style)
+			wm_decoration_set_shaded(view->decoration,
+				!view->decoration->shaded, server->style);
+		return true;
+
+	case WM_ACTION_SHADE_ON:
+		if (view && view->decoration && server->style)
+			wm_decoration_set_shaded(view->decoration,
+				true, server->style);
+		return true;
+
+	case WM_ACTION_SHADE_OFF:
+		if (view && view->decoration && server->style)
+			wm_decoration_set_shaded(view->decoration,
+				false, server->style);
+		return true;
+
 	case WM_ACTION_RAISE:
 		if (view)
 			wm_view_raise(view);
+		return true;
+
+	case WM_ACTION_LOWER:
+		if (view)
+			wm_view_lower(view);
+		return true;
+
+	case WM_ACTION_RAISE_LAYER:
+		if (view)
+			wm_view_raise_layer(view);
+		return true;
+
+	case WM_ACTION_LOWER_LAYER:
+		if (view)
+			wm_view_lower_layer(view);
+		return true;
+
+	case WM_ACTION_SET_LAYER:
+		if (view && argument) {
+			enum wm_view_layer layer =
+				wm_view_layer_from_name(argument);
+			wm_view_set_layer(view, layer);
+		}
+		return true;
+
+	case WM_ACTION_STICK:
+		if (view)
+			wm_view_set_sticky(view, !view->sticky);
 		return true;
 
 	case WM_ACTION_WORKSPACE:
@@ -388,14 +477,26 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		wm_workspace_switch_prev(server);
 		return true;
 
-	case WM_ACTION_STICK:
-		if (view)
-			wm_view_set_sticky(view, !view->sticky);
+	case WM_ACTION_SHOW_DESKTOP: {
+		struct wm_view *v;
+		wl_list_for_each(v, &server->views, link) {
+			if (v->workspace == server->current_workspace) {
+				v->request_minimize.notify(
+					&v->request_minimize, NULL);
+			}
+		}
 		return true;
+	}
 
 	case WM_ACTION_MOVE:
 		if (view)
 			wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
+		return true;
+
+	case WM_ACTION_RESIZE:
+		if (view)
+			wm_view_begin_interactive(view, WM_CURSOR_RESIZE,
+				WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT);
 		return true;
 
 	case WM_ACTION_MOVE_LEFT:
@@ -432,6 +533,191 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 			wlr_scene_node_set_position(
 				&view->scene_tree->node, view->x, view->y);
 		}
+		return true;
+
+	case WM_ACTION_MOVE_TO:
+		if (view && argument) {
+			int x = 0, y = 0;
+			sscanf(argument, "%d %d", &x, &y);
+			view->x = x;
+			view->y = y;
+			wlr_scene_node_set_position(
+				&view->scene_tree->node, x, y);
+		}
+		return true;
+
+	case WM_ACTION_RESIZE_TO:
+		if (view && argument) {
+			int w = 0, h = 0;
+			sscanf(argument, "%d %d", &w, &h);
+			if (w > 0 && h > 0)
+				wlr_xdg_toplevel_set_size(
+					view->xdg_toplevel, w, h);
+		}
+		return true;
+
+	case WM_ACTION_TOGGLE_DECOR:
+		if (view)
+			wm_view_toggle_decoration(view);
+		return true;
+
+	case WM_ACTION_SET_DECOR:
+		if (view && view->decoration && server->style && argument) {
+			enum wm_decor_preset preset = WM_DECOR_NORMAL;
+			if (strcasecmp(argument, "NONE") == 0 ||
+			    strcmp(argument, "0") == 0)
+				preset = WM_DECOR_NONE;
+			else if (strcasecmp(argument, "BORDER") == 0)
+				preset = WM_DECOR_BORDER;
+			else if (strcasecmp(argument, "TAB") == 0)
+				preset = WM_DECOR_TAB;
+			else if (strcasecmp(argument, "TINY") == 0)
+				preset = WM_DECOR_TINY;
+			else if (strcasecmp(argument, "TOOL") == 0)
+				preset = WM_DECOR_TOOL;
+			wm_decoration_set_preset(view->decoration,
+				preset, server->style);
+		}
+		return true;
+
+	case WM_ACTION_KEY_MODE:
+		if (argument) {
+			char mode_name[256];
+			const char *sp = argument;
+			while (*sp && !isspace((unsigned char)*sp))
+				sp++;
+			size_t len = sp - argument;
+			if (len >= sizeof(mode_name))
+				len = sizeof(mode_name) - 1;
+			memcpy(mode_name, argument, len);
+			mode_name[len] = '\0';
+			free(server->current_keymode);
+			server->current_keymode = strdup(mode_name);
+			wlr_log(WLR_INFO, "IPC: keymode switched to: %s",
+				mode_name);
+		}
+		return true;
+
+	case WM_ACTION_NEXT_TAB:
+		if (view && view->tab_group)
+			wm_tab_group_next(view->tab_group);
+		return true;
+
+	case WM_ACTION_PREV_TAB:
+		if (view && view->tab_group)
+			wm_tab_group_prev(view->tab_group);
+		return true;
+
+	case WM_ACTION_DETACH_CLIENT:
+		if (view && view->tab_group)
+			wm_tab_group_remove(view);
+		return true;
+
+	case WM_ACTION_MOVE_TAB_LEFT:
+		if (view && view->tab_group)
+			wm_tab_group_move_left(view->tab_group, view);
+		return true;
+
+	case WM_ACTION_MOVE_TAB_RIGHT:
+		if (view && view->tab_group)
+			wm_tab_group_move_right(view->tab_group, view);
+		return true;
+
+	case WM_ACTION_ACTIVATE_TAB:
+		if (view && argument) {
+			int idx = atoi(argument) - 1;
+			wm_view_activate_tab(view, idx);
+		}
+		return true;
+
+	case WM_ACTION_START_TABBING:
+		/* Tabbing is initiated by mouse action, not useful via IPC */
+		return true;
+
+	case WM_ACTION_START_MOVING:
+		if (view)
+			wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
+		return true;
+
+	case WM_ACTION_START_RESIZING:
+		if (view)
+			wm_view_begin_interactive(view, WM_CURSOR_RESIZE,
+				WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT);
+		return true;
+
+	case WM_ACTION_FOCUS:
+		if (view)
+			wm_focus_view(view, NULL);
+		return true;
+
+	case WM_ACTION_ROOT_MENU:
+		wm_menu_show_root(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_WINDOW_MENU:
+		wm_menu_show_window(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_WINDOW_LIST:
+		wm_menu_show_window_list(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_HIDE_MENUS:
+		wm_menu_hide_all(server);
+		return true;
+
+	case WM_ACTION_NEXT_LAYOUT:
+		wm_keyboard_next_layout(server);
+		return true;
+
+	case WM_ACTION_PREV_LAYOUT:
+		wm_keyboard_prev_layout(server);
+		return true;
+
+	case WM_ACTION_RECONFIGURE:
+		if (server->config) {
+			config_reload(server->config);
+			server->focus_policy = server->config->focus_policy;
+		}
+		keybind_destroy_all(&server->keymodes);
+		wl_list_init(&server->keymodes);
+		if (server->config && server->config->keys_file)
+			keybind_load(&server->keymodes,
+				server->config->keys_file);
+		keybind_destroy_list(&server->keybindings);
+		wl_list_init(&server->keybindings);
+		free(server->current_keymode);
+		server->current_keymode = strdup("default");
+		wm_keyboard_apply_config(server);
+		wlr_log(WLR_INFO, "%s", "IPC: configuration reloaded");
+		return true;
+
+	case WM_ACTION_ARRANGE_WINDOWS:
+		wm_arrange_windows_grid(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_VERT:
+		wm_arrange_windows_vert(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_HORIZ:
+		wm_arrange_windows_horiz(server);
+		return true;
+
+	case WM_ACTION_CASCADE_WINDOWS:
+		wm_arrange_windows_cascade(server);
+		return true;
+
+	case WM_ACTION_MACRO_CMD:
+	case WM_ACTION_TOGGLE_CMD:
+		wlr_log(WLR_INFO,
+			"%s", "MacroCmd/ToggleCmd not supported via IPC");
+		return false;
+
+	case WM_ACTION_NOP:
 		return true;
 
 	default:
