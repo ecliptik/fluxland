@@ -5,13 +5,14 @@
  * Connects to the compositor's Unix socket and sends JSON commands.
  *
  * Usage:
- *   wm-wayland-ctl get_workspaces
+ *   wm-wayland-ctl action Close
+ *   wm-wayland-ctl action Workspace 3
  *   wm-wayland-ctl get_windows
+ *   wm-wayland-ctl get_workspaces
  *   wm-wayland-ctl get_outputs
  *   wm-wayland-ctl get_config
- *   wm-wayland-ctl command Close
- *   wm-wayland-ctl command 'Exec foot'
  *   wm-wayland-ctl subscribe window workspace
+ *   wm-wayland-ctl list-actions
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -28,24 +29,117 @@ static const char usage[] =
 	"Usage: wm-wayland-ctl [options] <command> [args...]\n"
 	"\n"
 	"Commands:\n"
-	"  get_workspaces       List all workspaces\n"
-	"  get_windows          List all windows\n"
-	"  get_outputs          List all outputs\n"
-	"  get_config           Show current configuration\n"
-	"  command <action>     Execute a window manager action\n"
-	"  subscribe <events>   Subscribe to events (window, workspace, output)\n"
-	"  ping                 Test connectivity\n"
+	"  action <name> [arg]    Execute a compositor action\n"
+	"  get_windows            List all managed windows (JSON)\n"
+	"  get_workspaces         List workspaces and current workspace (JSON)\n"
+	"  get_outputs            List outputs/monitors (JSON)\n"
+	"  get_config             Dump current configuration (JSON)\n"
+	"  subscribe <type>       Subscribe to events (window, workspace, output)\n"
+	"  list-actions           Print all available action names\n"
+	"  ping                   Test connectivity\n"
 	"\n"
 	"Options:\n"
-	"  -s <path>  Socket path (default: auto-detect)\n"
+	"  -s <path>  Socket path (default: auto-detect via $WM_WAYLAND_SOCK\n"
+	"             or $XDG_RUNTIME_DIR/wm-wayland.$WAYLAND_DISPLAY.sock)\n"
 	"  -r         Raw output (no pretty printing)\n"
 	"  -h         Show this help\n"
 	"\n"
 	"Examples:\n"
-	"  wm-wayland-ctl command Close\n"
-	"  wm-wayland-ctl command 'Exec foot'\n"
-	"  wm-wayland-ctl command 'Workspace 2'\n"
-	"  wm-wayland-ctl subscribe window workspace\n";
+	"  wm-wayland-ctl action Close\n"
+	"  wm-wayland-ctl action Workspace 3\n"
+	"  wm-wayland-ctl action Exec foot\n"
+	"  wm-wayland-ctl action ArrangeWindows\n"
+	"  wm-wayland-ctl get_windows\n"
+	"  wm-wayland-ctl subscribe window\n"
+	"  wm-wayland-ctl list-actions\n";
+
+/* Available actions table — must match ipc_commands.c action_table */
+struct action_info {
+	const char *name;
+	const char *description;
+};
+
+static const struct action_info actions[] = {
+	{"Exec <cmd>",          "Execute a shell command"},
+	{"Close",               "Close the focused window"},
+	{"Kill",                "Force-kill the focused window's process"},
+	{"Maximize",            "Toggle maximize on the focused window"},
+	{"MaximizeVertical",    "Toggle vertical maximize"},
+	{"MaximizeHorizontal",  "Toggle horizontal maximize"},
+	{"Fullscreen",          "Toggle fullscreen on the focused window"},
+	{"Minimize",            "Minimize (iconify) the focused window"},
+	{"Iconify",             "Alias for Minimize"},
+	{"Shade",               "Toggle window shading (collapse to titlebar)"},
+	{"ShadeOn",             "Shade the focused window"},
+	{"ShadeOff",            "Unshade the focused window"},
+	{"Stick",               "Toggle sticky (visible on all workspaces)"},
+	{"Move",                "Begin interactive move"},
+	{"Resize",              "Begin interactive resize"},
+	{"Raise",               "Raise the focused window"},
+	{"Lower",               "Lower the focused window"},
+	{"RaiseLayer",          "Move window up one layer"},
+	{"LowerLayer",          "Move window down one layer"},
+	{"SetLayer <n>",        "Set window layer explicitly"},
+	{"FocusNext",           "Focus the next window"},
+	{"NextWindow",          "Alias for FocusNext"},
+	{"FocusPrev",           "Focus the previous window"},
+	{"PrevWindow",          "Alias for FocusPrev"},
+	{"Workspace <n>",       "Switch to workspace N (1-based)"},
+	{"SendToWorkspace <n>", "Send focused window to workspace N"},
+	{"NextWorkspace",       "Switch to the next workspace"},
+	{"PrevWorkspace",       "Switch to the previous workspace"},
+	{"ShowDesktop",         "Toggle show desktop (minimize all)"},
+	{"MoveLeft <px>",       "Move focused window left by px pixels"},
+	{"MoveRight <px>",      "Move focused window right by px pixels"},
+	{"MoveUp <px>",         "Move focused window up by px pixels"},
+	{"MoveDown <px>",       "Move focused window down by px pixels"},
+	{"MoveTo <x> <y>",      "Move focused window to absolute position"},
+	{"ResizeTo <w> <h>",    "Resize focused window to width x height"},
+	{"ToggleDecor",         "Toggle window decorations"},
+	{"SetDecor <style>",    "Set decoration style"},
+	{"KeyMode <mode>",      "Switch to a named key binding mode"},
+	{"NextTab",             "Switch to the next tab in tab group"},
+	{"PrevTab",             "Switch to the previous tab in tab group"},
+	{"DetachClient",        "Detach window from its tab group"},
+	{"MoveTabLeft",         "Move tab position left"},
+	{"MoveTabRight",        "Move tab position right"},
+	{"ActivateTab <n>",     "Activate tab N in tab group"},
+	{"RootMenu",            "Show the root (desktop) menu"},
+	{"WindowMenu",          "Show the window menu"},
+	{"HideMenus",           "Hide all open menus"},
+	{"ArrangeWindows",      "Arrange windows in a grid layout"},
+	{"ArrangeVertical",     "Arrange windows in vertical columns"},
+	{"ArrangeHorizontal",   "Arrange windows in horizontal rows"},
+	{"CascadeWindows",      "Cascade windows diagonally"},
+	{"Reconfigure",         "Reload configuration from disk"},
+	{"Exit",                "Exit the compositor"},
+	{NULL, NULL},
+};
+
+/* List of known IPC commands for validation */
+static const char *known_commands[] = {
+	"action", "command", "get_windows", "get_workspaces", "get_outputs",
+	"get_config", "subscribe", "list-actions", "ping", NULL,
+};
+
+static int
+is_known_command(const char *cmd)
+{
+	for (const char **p = known_commands; *p; p++) {
+		if (strcmp(cmd, *p) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+static void
+print_actions(void)
+{
+	printf("Available actions:\n");
+	for (const struct action_info *a = actions; a->name; a++) {
+		printf("  %-24s %s\n", a->name, a->description);
+	}
+}
 
 /* Escape a string for JSON. Returns malloc'd string. */
 static char *
@@ -109,7 +203,8 @@ connect_socket(const char *path)
 {
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
-		fprintf(stderr, "error: socket(): %s\n", strerror(errno));
+		fprintf(stderr,
+			"Cannot connect to wm-wayland. Is the compositor running?\n");
 		return -1;
 	}
 
@@ -123,8 +218,9 @@ connect_socket(const char *path)
 	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
 
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		fprintf(stderr, "error: connect(%s): %s\n",
-			path, strerror(errno));
+		fprintf(stderr,
+			"Cannot connect to wm-wayland. Is the compositor running?\n"
+			"  (socket: %s)\n", path);
 		close(fd);
 		return -1;
 	}
@@ -182,7 +278,8 @@ read_response(int fd)
 	return buf;
 }
 
-/* Build a JSON request from command and arguments */
+/* Build a JSON request from command and arguments.
+ * The wire command for "action" is "command" (compositor expects "command"). */
 static char *
 build_request(const char *command, int argc, char **argv)
 {
@@ -190,7 +287,9 @@ build_request(const char *command, int argc, char **argv)
 	char *buf = malloc(cap);
 	if (!buf) return NULL;
 
-	if (strcmp(command, "command") == 0) {
+	/* Both "action" and "command" map to the IPC "command" verb */
+	if (strcmp(command, "command") == 0 ||
+	    strcmp(command, "action") == 0) {
 		/* Build action string from remaining args */
 		size_t action_len = 0;
 		for (int i = 0; i < argc; i++) {
@@ -313,6 +412,23 @@ main(int argc, char *argv[])
 	const char *command = argv[optind];
 	int cmd_argc = argc - optind - 1;
 	char **cmd_argv = argv + optind + 1;
+
+	/* Handle list-actions locally (no socket needed) */
+	if (strcmp(command, "list-actions") == 0) {
+		print_actions();
+		free(socket_path);
+		return 0;
+	}
+
+	/* Validate command name */
+	if (!is_known_command(command)) {
+		fprintf(stderr,
+			"Unknown command '%s'. "
+			"Run 'wm-wayland-ctl --help' for usage.\n",
+			command);
+		free(socket_path);
+		return 1;
+	}
 
 	/* Find socket path */
 	if (!socket_path) {
