@@ -60,6 +60,13 @@ struct wlr_data_control_manager_v1;
 struct wlr_presentation;
 struct wlr_virtual_keyboard_manager_v1;
 struct wlr_virtual_pointer_manager_v1;
+struct wlr_keyboard_shortcuts_inhibit_manager_v1;
+struct wlr_keyboard_shortcuts_inhibitor_v1;
+struct wlr_pointer_gestures_v1;
+struct wlr_xdg_activation_v1;
+struct wlr_tearing_control_manager_v1;
+struct wlr_output_power_manager_v1;
+struct wlr_tablet_manager_v2;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -143,6 +150,11 @@ struct wm_server {
 	struct wl_listener cursor_touch_cancel;
 	struct wl_listener cursor_touch_frame;
 
+	/* Tablet input (tablet-v2 protocol for stylus/pad devices) */
+	struct wlr_tablet_manager_v2 *tablet_manager;
+	struct wl_list tablets;     /* wm_tablet.link */
+	struct wl_list tablet_pads; /* wm_tablet_pad.link */
+
 	/* Interactive move/resize state */
 	enum wm_cursor_mode cursor_mode;
 	struct wm_view *grabbed_view;
@@ -212,6 +224,17 @@ struct wm_server {
 	/* Relative pointer (unaccelerated motion for games) */
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_mgr;
 
+	/* Pointer gestures (touchpad swipe/pinch/hold) */
+	struct wlr_pointer_gestures_v1 *pointer_gestures;
+	struct wl_listener cursor_swipe_begin;
+	struct wl_listener cursor_swipe_update;
+	struct wl_listener cursor_swipe_end;
+	struct wl_listener cursor_pinch_begin;
+	struct wl_listener cursor_pinch_update;
+	struct wl_listener cursor_pinch_end;
+	struct wl_listener cursor_hold_begin;
+	struct wl_listener cursor_hold_end;
+
 	/* Fractional scale (wp-fractional-scale-v1 for HiDPI) */
 	struct wlr_fractional_scale_manager_v1 *fractional_scale_mgr;
 
@@ -240,6 +263,24 @@ struct wm_server {
 	/* Virtual pointer (virtual-pointer-v1 for remote input/automation) */
 	struct wlr_virtual_pointer_manager_v1 *virtual_pointer_mgr;
 	struct wl_listener new_virtual_pointer;
+
+	/* Keyboard shortcuts inhibit (for games, remote desktops) */
+	struct wlr_keyboard_shortcuts_inhibit_manager_v1 *kb_shortcuts_inhibit_mgr;
+	struct wl_listener new_kb_shortcuts_inhibitor;
+	struct wlr_keyboard_shortcuts_inhibitor_v1 *active_kb_inhibitor;
+	struct wl_listener kb_inhibitor_destroy;
+
+	/* XDG activation (app launch focus tokens) */
+	struct wlr_xdg_activation_v1 *xdg_activation;
+	struct wl_listener xdg_activation_request;
+
+	/* Tearing control (variable refresh rate for games) */
+	struct wlr_tearing_control_manager_v1 *tearing_control_mgr;
+	struct wl_listener tearing_new_object;
+
+	/* Output power management (display on/off for swayidle) */
+	struct wlr_output_power_manager_v1 *output_power_mgr;
+	struct wl_listener output_power_set_mode;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;
