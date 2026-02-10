@@ -9,6 +9,7 @@
 #include <string.h>
 #include <wlr/render/allocator.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
@@ -160,6 +161,10 @@ wm_server_init(struct wm_server *server)
 
 	/* Data device manager handles clipboard */
 	wlr_data_device_manager_create(server->wl_display);
+
+	/* Data control for clipboard managers (cliphist, wl-clipboard) */
+	server->data_control_mgr = wlr_data_control_manager_v1_create(
+		server->wl_display);
 
 	/*
 	 * Create scene graph. This manages rendering, damage tracking,

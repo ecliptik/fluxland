@@ -56,6 +56,7 @@ struct wlr_cursor_shape_manager_v1;
 struct wlr_viewporter;
 struct wlr_single_pixel_buffer_manager_v1;
 struct wlr_gamma_control_manager_v1;
+struct wlr_data_control_manager_v1;
 struct wlr_presentation;
 struct wlr_virtual_keyboard_manager_v1;
 struct wlr_virtual_pointer_manager_v1;
@@ -198,6 +199,9 @@ struct wm_server {
 	/* Primary selection (middle-click paste) */
 	struct wlr_primary_selection_v1_device_manager *primary_selection_mgr;
 	struct wl_listener request_set_primary_selection;
+
+	/* Data control (clipboard managers: cliphist, wl-clipboard, etc.) */
+	struct wlr_data_control_manager_v1 *data_control_mgr;
 
 	/* Pointer constraints (lock/confine for games) */
 	struct wlr_pointer_constraints_v1 *pointer_constraints;
