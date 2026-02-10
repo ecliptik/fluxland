@@ -67,6 +67,15 @@ struct wlr_xdg_activation_v1;
 struct wlr_tearing_control_manager_v1;
 struct wlr_output_power_manager_v1;
 struct wlr_tablet_manager_v2;
+struct wlr_content_type_manager_v1;
+struct wlr_alpha_modifier_v1;
+struct wlr_security_context_manager_v1;
+struct wlr_linux_dmabuf_v1;
+struct wlr_xdg_output_manager_v1;
+struct wlr_xdg_foreign_registry;
+struct wlr_xdg_foreign_v1;
+struct wlr_xdg_foreign_v2;
+struct wlr_ext_foreign_toplevel_list_v1;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -281,6 +290,29 @@ struct wm_server {
 	/* Output power management (display on/off for swayidle) */
 	struct wlr_output_power_manager_v1 *output_power_mgr;
 	struct wl_listener output_power_set_mode;
+
+	/* Content type hints (wp-content-type-v1) */
+	struct wlr_content_type_manager_v1 *content_type_mgr;
+
+	/* Alpha modifier (wp-alpha-modifier-v1 for per-surface opacity) */
+	struct wlr_alpha_modifier_v1 *alpha_modifier;
+
+	/* Security context (wp-security-context-v1 for sandboxed clients) */
+	struct wlr_security_context_manager_v1 *security_context_mgr;
+
+	/* Linux DMA-BUF (linux-dmabuf-v1 for GPU buffer sharing) */
+	struct wlr_linux_dmabuf_v1 *linux_dmabuf;
+
+	/* XDG output (xdg-output-v1 for logical output info) */
+	struct wlr_xdg_output_manager_v1 *xdg_output_mgr;
+
+	/* XDG foreign (xdg-foreign-v1/v2 for cross-app surface sharing) */
+	struct wlr_xdg_foreign_registry *xdg_foreign_registry;
+	struct wlr_xdg_foreign_v1 *xdg_foreign_v1;
+	struct wlr_xdg_foreign_v2 *xdg_foreign_v2;
+
+	/* Ext foreign toplevel list (ext-foreign-toplevel-list-v1) */
+	struct wlr_ext_foreign_toplevel_list_v1 *ext_foreign_toplevel_list;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;

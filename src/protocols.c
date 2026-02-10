@@ -6,10 +6,14 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <wlr/types/wlr_alpha_modifier_v1.h>
+#include <wlr/types/wlr_content_type_v1.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_data_control_v1.h>
+#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_keyboard_shortcuts_inhibit_v1.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
@@ -18,12 +22,18 @@
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_security_context_v1.h>
 #include <wlr/types/wlr_tearing_control_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
+#include <wlr/types/wlr_xdg_foreign_registry.h>
+#include <wlr/types/wlr_xdg_foreign_v1.h>
+#include <wlr/types/wlr_xdg_foreign_v2.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/render/wlr_renderer.h>
 #include <wlr/util/log.h>
 
 #include "protocols.h"
@@ -504,12 +514,51 @@ wm_protocols_init(struct wm_server *server)
 
 	wl_list_init(&server->kb_inhibitor_destroy.link);
 
+	/* Content type hints (wp-content-type-v1) */
+	server->content_type_mgr =
+		wlr_content_type_manager_v1_create(server->wl_display, 1);
+
+	/* Alpha modifier (wp-alpha-modifier-v1 for per-surface opacity) */
+	server->alpha_modifier =
+		wlr_alpha_modifier_v1_create(server->wl_display);
+
+	/* Security context (wp-security-context-v1 for sandboxed clients) */
+	server->security_context_mgr =
+		wlr_security_context_manager_v1_create(server->wl_display);
+
+	/* Linux DMA-BUF (linux-dmabuf-v1 for GPU buffer sharing) */
+	server->linux_dmabuf =
+		wlr_linux_dmabuf_v1_create_with_renderer(
+			server->wl_display, 4, server->renderer);
+
+	/* XDG output (xdg-output-v1 for logical output info) */
+	server->xdg_output_mgr =
+		wlr_xdg_output_manager_v1_create(
+			server->wl_display, server->output_layout);
+
+	/* XDG foreign (xdg-foreign-v1/v2 for cross-app surface sharing) */
+	server->xdg_foreign_registry =
+		wlr_xdg_foreign_registry_create(server->wl_display);
+	server->xdg_foreign_v1 =
+		wlr_xdg_foreign_v1_create(
+			server->wl_display, server->xdg_foreign_registry);
+	server->xdg_foreign_v2 =
+		wlr_xdg_foreign_v2_create(
+			server->wl_display, server->xdg_foreign_registry);
+
+	/* Ext foreign toplevel list (ext-foreign-toplevel-list-v1) */
+	server->ext_foreign_toplevel_list =
+		wlr_ext_foreign_toplevel_list_v1_create(
+			server->wl_display, 1);
+
 	wlr_log(WLR_INFO, "%s",
 		"initialized primary selection, pointer constraints, "
 		"relative pointer, pointer gestures, cursor shape, "
 		"virtual keyboard, virtual pointer, data control, "
 		"xdg activation, tearing control, output power management, "
-		"keyboard shortcuts inhibit protocols");
+		"keyboard shortcuts inhibit, content type, alpha modifier, "
+		"security context, linux dmabuf, xdg output, "
+		"xdg foreign v1/v2, ext foreign toplevel list protocols");
 }
 
 void
