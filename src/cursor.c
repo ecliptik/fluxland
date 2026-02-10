@@ -481,6 +481,12 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		return;
 	}
 
+	/* Dispatch motion to any open menus */
+	if (wm_menu_handle_motion(server, server->cursor->x,
+		server->cursor->y)) {
+		return;
+	}
+
 	/* Check for drag (Move) mouse bindings */
 	struct wm_mouse_state *ms = &server->mouse_state;
 	if (ms->button_pressed) {
@@ -602,6 +608,15 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		return;
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+		/* Dispatch button release to any open menus */
+		if (wm_menu_handle_button(server, server->cursor->x,
+			server->cursor->y, event->button, false)) {
+			wlr_seat_pointer_notify_button(server->seat,
+				event->time_msec, event->button,
+				event->state);
+			return;
+		}
+
 		/* Check for Click binding (press+release without significant move) */
 		if (ms->button_pressed &&
 		    ms->pressed_button == event->button) {
@@ -641,6 +656,14 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	}
 
 	/* --- Button pressed --- */
+
+	/* Dispatch button press to any open menus */
+	if (wm_menu_handle_button(server, server->cursor->x,
+		server->cursor->y, event->button, true)) {
+		wlr_seat_pointer_notify_button(server->seat,
+			event->time_msec, event->button, event->state);
+		return;
+	}
 
 	/* Determine context */
 	struct wm_view *view = NULL;
@@ -697,6 +720,107 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		event->time_msec, event->button, event->state);
 }
 
+/*
+ * Touch input handlers.
+ * The cursor aggregates touch events from all touch devices and maps
+ * coordinates via the output layout. We forward them to the seat.
+ */
+static void
+handle_cursor_touch_down(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_touch_down);
+	struct wlr_touch_down_event *event = data;
+
+	wm_idle_notify_activity(server);
+
+	double lx, ly;
+	wlr_cursor_absolute_to_layout_coords(server->cursor,
+		&event->touch->base, event->x, event->y, &lx, &ly);
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wm_view *view = view_at(server, lx, ly, &surface, &sx, &sy);
+
+	if (view) {
+		wm_focus_view(view, surface);
+	}
+
+	if (surface) {
+		wlr_seat_touch_notify_down(server->seat, surface,
+			event->time_msec, event->touch_id, sx, sy);
+	}
+}
+
+static void
+handle_cursor_touch_up(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_touch_up);
+	struct wlr_touch_up_event *event = data;
+
+	wm_idle_notify_activity(server);
+	wlr_seat_touch_notify_up(server->seat, event->time_msec,
+		event->touch_id);
+}
+
+static void
+handle_cursor_touch_motion(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_touch_motion);
+	struct wlr_touch_motion_event *event = data;
+
+	wm_idle_notify_activity(server);
+
+	double lx, ly;
+	wlr_cursor_absolute_to_layout_coords(server->cursor,
+		&event->touch->base, event->x, event->y, &lx, &ly);
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	view_at(server, lx, ly, &surface, &sx, &sy);
+
+	if (surface) {
+		wlr_seat_touch_notify_motion(server->seat,
+			event->time_msec, event->touch_id, sx, sy);
+	}
+}
+
+static void
+handle_cursor_touch_cancel(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_touch_cancel);
+	(void)data;
+
+	wm_idle_notify_activity(server);
+
+	/*
+	 * Cancel all active touch points. Walk the touch point list
+	 * and cancel for each client that has active points.
+	 */
+	struct wlr_touch_point *point;
+	wl_list_for_each(point, &server->seat->touch_state.touch_points,
+			link) {
+		if (point->client) {
+			wlr_seat_touch_notify_cancel(server->seat,
+				point->client);
+			break;
+		}
+	}
+}
+
+static void
+handle_cursor_touch_frame(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_touch_frame);
+	(void)data;
+
+	wlr_seat_touch_notify_frame(server->seat);
+}
+
 static void
 handle_cursor_axis(struct wl_listener *listener, void *data)
 {
@@ -742,6 +866,27 @@ wm_cursor_init(struct wm_server *server)
 	server->cursor_frame.notify = handle_cursor_frame;
 	wl_signal_add(&server->cursor->events.frame,
 		&server->cursor_frame);
+
+	/* Touch events */
+	server->cursor_touch_down.notify = handle_cursor_touch_down;
+	wl_signal_add(&server->cursor->events.touch_down,
+		&server->cursor_touch_down);
+
+	server->cursor_touch_up.notify = handle_cursor_touch_up;
+	wl_signal_add(&server->cursor->events.touch_up,
+		&server->cursor_touch_up);
+
+	server->cursor_touch_motion.notify = handle_cursor_touch_motion;
+	wl_signal_add(&server->cursor->events.touch_motion,
+		&server->cursor_touch_motion);
+
+	server->cursor_touch_cancel.notify = handle_cursor_touch_cancel;
+	wl_signal_add(&server->cursor->events.touch_cancel,
+		&server->cursor_touch_cancel);
+
+	server->cursor_touch_frame.notify = handle_cursor_touch_frame;
+	wl_signal_add(&server->cursor->events.touch_frame,
+		&server->cursor_touch_frame);
 }
 
 void
@@ -752,4 +897,9 @@ wm_cursor_finish(struct wm_server *server)
 	wl_list_remove(&server->cursor_button.link);
 	wl_list_remove(&server->cursor_axis.link);
 	wl_list_remove(&server->cursor_frame.link);
+	wl_list_remove(&server->cursor_touch_down.link);
+	wl_list_remove(&server->cursor_touch_up.link);
+	wl_list_remove(&server->cursor_touch_motion.link);
+	wl_list_remove(&server->cursor_touch_cancel.link);
+	wl_list_remove(&server->cursor_touch_frame.link);
 }

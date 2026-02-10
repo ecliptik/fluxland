@@ -253,13 +253,14 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 	return wlr_buffer_from_cairo(surface);
 }
 
-/* --- Collect icon bar entries for the current workspace --- */
+/* --- Collect icon bar entries based on the current mode --- */
 
 static int
 collect_iconbar_entries(struct wm_toolbar *toolbar)
 {
 	struct wm_server *server = toolbar->server;
 	struct wm_workspace *current_ws = server->current_workspace;
+	enum wm_iconbar_mode mode = toolbar->iconbar_mode;
 	int count = 0;
 
 	free(toolbar->ib_entries);
@@ -276,20 +277,50 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 			break;
 		}
 
-		/* Show views on current workspace or sticky views */
-		if (view->workspace != current_ws && !view->sticky) {
-			continue;
-		}
-
 		/* Must have a valid xdg surface to be a real window */
 		if (!view->xdg_toplevel || !view->xdg_toplevel->base) {
 			continue;
 		}
 
+		bool is_iconified = !view->scene_tree->node.enabled;
+		bool on_current_ws = (view->workspace == current_ws ||
+			view->sticky);
+
+		/* Filter based on icon bar mode */
+		switch (mode) {
+		case WM_ICONBAR_MODE_WORKSPACE:
+			/* Show views on current workspace (default) */
+			if (!on_current_ws) {
+				continue;
+			}
+			break;
+		case WM_ICONBAR_MODE_ALL_WINDOWS:
+			/* Show all views from all workspaces */
+			break;
+		case WM_ICONBAR_MODE_ICONS:
+			/* Show only iconified/minimized views (any ws) */
+			if (!is_iconified) {
+				continue;
+			}
+			break;
+		case WM_ICONBAR_MODE_NO_ICONS:
+			/* Non-iconified views on current workspace */
+			if (!on_current_ws || is_iconified) {
+				continue;
+			}
+			break;
+		case WM_ICONBAR_MODE_WORKSPACE_ICONS:
+			/* Iconified views on current workspace */
+			if (!on_current_ws || !is_iconified) {
+				continue;
+			}
+			break;
+		}
+
 		struct wm_iconbar_entry *entry = &toolbar->ib_entries[count];
 		entry->view = view;
 		entry->focused = (view == server->focused_view);
-		entry->iconified = !view->scene_tree->node.enabled;
+		entry->iconified = is_iconified;
 		count++;
 	}
 

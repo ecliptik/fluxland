@@ -1089,11 +1089,12 @@ wm_menu_hide_all(struct wm_server *server)
 		return;
 	}
 
-	/* We track root_menu and window_menu on the server via the
-	 * action system. For now, iterate all known menus. The
-	 * integration module will store them on the server struct. */
-	/* This is a stub that will be wired up in the integration task. */
-	(void)server;
+	if (server->root_menu && server->root_menu->visible) {
+		wm_menu_hide(server->root_menu);
+	}
+	if (server->window_menu && server->window_menu->visible) {
+		wm_menu_hide(server->window_menu);
+	}
 }
 
 /* --- Re-render items for selection change --- */
@@ -1370,15 +1371,18 @@ wm_menu_handle_key(struct wm_server *server, uint32_t keycode,
 {
 	(void)keycode;
 
-	if (!pressed) {
+	if (!pressed || !server) {
 		return false;
 	}
 
-	/* Find the deepest visible menu (the one that has focus) */
-	/* We need a root reference - integration will set this */
-	/* For now, return false if no menus to handle */
-	(void)server;
-	(void)sym;
+	/* Dispatch to whichever menu is currently visible */
+	if (server->window_menu && server->window_menu->visible) {
+		return wm_menu_handle_key_for(server->window_menu, sym);
+	}
+
+	if (server->root_menu && server->root_menu->visible) {
+		return wm_menu_handle_key_for(server->root_menu, sym);
+	}
 
 	return false;
 }
@@ -1533,10 +1537,23 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 bool
 wm_menu_handle_motion(struct wm_server *server, double lx, double ly)
 {
-	(void)server;
-	(void)lx;
-	(void)ly;
-	/* Stub - integration layer will call wm_menu_handle_motion_for */
+	if (!server) {
+		return false;
+	}
+
+	/* Check window menu first (it's typically on top) */
+	if (server->window_menu && server->window_menu->visible) {
+		if (wm_menu_handle_motion_for(server->window_menu, lx, ly)) {
+			return true;
+		}
+	}
+
+	if (server->root_menu && server->root_menu->visible) {
+		if (wm_menu_handle_motion_for(server->root_menu, lx, ly)) {
+			return true;
+		}
+	}
+
 	return false;
 }
 
@@ -1599,12 +1616,25 @@ bool
 wm_menu_handle_button(struct wm_server *server, double lx, double ly,
 	uint32_t button, bool pressed)
 {
-	(void)server;
-	(void)lx;
-	(void)ly;
-	(void)button;
-	(void)pressed;
-	/* Stub - integration layer will call wm_menu_handle_button_for */
+	if (!server) {
+		return false;
+	}
+
+	/* Check window menu first (it's typically on top) */
+	if (server->window_menu && server->window_menu->visible) {
+		if (wm_menu_handle_button_for(server->window_menu, lx, ly,
+			button, pressed)) {
+			return true;
+		}
+	}
+
+	if (server->root_menu && server->root_menu->visible) {
+		if (wm_menu_handle_button_for(server->root_menu, lx, ly,
+			button, pressed)) {
+			return true;
+		}
+	}
+
 	return false;
 }
 
@@ -1705,8 +1735,15 @@ wm_menu_destroy(struct wm_menu *menu)
 bool
 wm_menu_is_open(struct wm_server *server)
 {
-	/* This will be wired up by integration to check root_menu/window_menu */
-	(void)server;
+	if (!server) {
+		return false;
+	}
+	if (server->root_menu && server->root_menu->visible) {
+		return true;
+	}
+	if (server->window_menu && server->window_menu->visible) {
+		return true;
+	}
 	return false;
 }
 
@@ -1715,17 +1752,25 @@ wm_menu_is_open(struct wm_server *server)
 void
 wm_menu_show_root(struct wm_server *server, int x, int y)
 {
-	/* Will be wired up by integration - needs root_menu on server */
-	(void)server;
-	(void)x;
-	(void)y;
+	if (!server || !server->root_menu) {
+		return;
+	}
+
+	/* Hide any existing menus first */
+	wm_menu_hide_all(server);
+
+	wm_menu_show(server->root_menu, x, y);
 }
 
 void
 wm_menu_show_window(struct wm_server *server, int x, int y)
 {
-	/* Will be wired up by integration - needs window_menu on server */
-	(void)server;
-	(void)x;
-	(void)y;
+	if (!server || !server->window_menu) {
+		return;
+	}
+
+	/* Hide any existing menus first */
+	wm_menu_hide_all(server);
+
+	wm_menu_show(server->window_menu, x, y);
 }

@@ -21,6 +21,15 @@
 struct wm_server;
 struct wm_view;
 
+/* Icon bar display modes (which windows to show) */
+enum wm_iconbar_mode {
+	WM_ICONBAR_MODE_WORKSPACE,       /* views on current workspace (default) */
+	WM_ICONBAR_MODE_ALL_WINDOWS,     /* views from all workspaces */
+	WM_ICONBAR_MODE_ICONS,           /* only iconified/minimized views */
+	WM_ICONBAR_MODE_NO_ICONS,        /* non-iconified views on current ws */
+	WM_ICONBAR_MODE_WORKSPACE_ICONS, /* iconified views on current ws */
+};
+
 #define WM_TOOLBAR_HEIGHT 24
 #define WM_TOOLBAR_PADDING 4
 #define WM_TOOLBAR_CLOCK_FMT "%H:%M"
@@ -35,6 +44,9 @@ struct wm_iconbar_entry {
 
 struct wm_toolbar {
 	struct wm_server *server;
+
+	/* Icon bar mode */
+	enum wm_iconbar_mode iconbar_mode;
 
 	/* Scene graph nodes */
 	struct wlr_scene_tree *scene_tree;
