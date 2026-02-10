@@ -27,6 +27,7 @@
 #include "mousebind.h"
 #include "ipc.h"
 #include "rules.h"
+#include "screencopy.h"
 #include "session_lock.h"
 #include "xwayland.h"
 

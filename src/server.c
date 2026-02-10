@@ -26,6 +26,7 @@
 #include "output.h"
 #include "input.h"
 #include "rules.h"
+#include "screencopy.h"
 #include "session_lock.h"
 #include "style.h"
 #include "toolbar.h"
@@ -189,6 +190,9 @@ wm_server_init(struct wm_server *server)
 
 	/* Session lock: ext-session-lock-v1 for screen lockers */
 	wm_session_lock_init(server);
+
+	/* Screencopy and DMA-BUF export for screenshot/recording tools */
+	wm_screencopy_init(server);
 
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");

@@ -142,6 +142,7 @@ wm_sources = files(
   'src/rules.c',
   'src/placement.c',
   'src/layer_shell.c',
+  'src/screencopy.c',
   'src/session_lock.c',
   'src/menu.c',
   'src/toolbar.c',
