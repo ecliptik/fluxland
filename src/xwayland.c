@@ -263,7 +263,7 @@ handle_xwayland_surface_map(struct wl_listener *listener, void *data)
 
 	xview->scene_tree = wlr_scene_tree_create(parent);
 	if (!xview->scene_tree) {
-		wlr_log(WLR_ERROR, "xwayland: failed to create scene tree");
+		wlr_log(WLR_ERROR, "%s", "xwayland: failed to create scene tree");
 		return;
 	}
 
@@ -680,7 +680,7 @@ handle_xwayland_new_surface(struct wl_listener *listener, void *data)
 
 	struct wm_xwayland_view *xview = calloc(1, sizeof(*xview));
 	if (!xview) {
-		wlr_log(WLR_ERROR, "xwayland: allocation failed");
+		wlr_log(WLR_ERROR, "%s", "xwayland: allocation failed");
 		return;
 	}
 
@@ -769,7 +769,7 @@ handle_xwayland_ready(struct wl_listener *listener, void *data)
 		wlr_xwayland_get_xwm_connection(server->xwayland);
 	if (conn) {
 		resolve_atoms(conn, &server->xwayland_atoms);
-		wlr_log(WLR_INFO, "xwayland: atoms resolved");
+		wlr_log(WLR_INFO, "%s", "xwayland: atoms resolved");
 	}
 
 	/* Set the XWayland cursor */
@@ -791,7 +791,7 @@ wm_xwayland_init(struct wm_server *server)
 	server->xwayland = wlr_xwayland_create(server->wl_display,
 		server->compositor, true /* lazy */);
 	if (!server->xwayland) {
-		wlr_log(WLR_ERROR, "failed to create xwayland");
+		wlr_log(WLR_ERROR, "%s", "failed to create xwayland");
 		return;
 	}
 

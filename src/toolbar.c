@@ -169,6 +169,12 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 	/* Free old hit boxes */
 	free(toolbar->ws_boxes);
 	toolbar->ws_boxes = calloc(ws_count, sizeof(struct wlr_box));
+	if (!toolbar->ws_boxes) {
+		toolbar->ws_box_count = 0;
+		cairo_destroy(cr);
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
 	toolbar->ws_box_count = ws_count;
 
 	struct wm_workspace *ws;
@@ -219,7 +225,7 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 
 		/* Draw workspace name/number */
 		const char *name = ws->name;
-		char fallback[8];
+		char fallback[16];
 		if (!name || !*name) {
 			snprintf(fallback, sizeof(fallback), "%d", i + 1);
 			name = fallback;

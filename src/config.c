@@ -42,6 +42,10 @@ set_default_workspace_names(struct wm_config *config)
 		char buf[32];
 		snprintf(buf, sizeof(buf), "Workspace %d", i + 1);
 		config->workspace_names[i] = strdup(buf);
+		if (!config->workspace_names[i]) {
+			config->workspace_name_count = i;
+			return;
+		}
 	}
 }
 
@@ -78,6 +82,11 @@ parse_workspace_names(struct wm_config *config, const char *value)
 		while (end > tok && (*end == ' ' || *end == '\t'))
 			*end-- = '\0';
 		config->workspace_names[i] = strdup(tok);
+		if (!config->workspace_names[i]) {
+			config->workspace_name_count = i;
+			free(copy);
+			return;
+		}
 		i++;
 		tok = strtok(NULL, ",");
 	}
@@ -320,28 +329,43 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	/* XKB keyboard layout */
 	val = rc_get_string(db, "session.xkb.rules");
 	if (val) {
-		free(config->xkb_rules);
-		config->xkb_rules = strdup(val);
+		char *dup = strdup(val);
+		if (dup) {
+			free(config->xkb_rules);
+			config->xkb_rules = dup;
+		}
 	}
 	val = rc_get_string(db, "session.xkb.model");
 	if (val) {
-		free(config->xkb_model);
-		config->xkb_model = strdup(val);
+		char *dup = strdup(val);
+		if (dup) {
+			free(config->xkb_model);
+			config->xkb_model = dup;
+		}
 	}
 	val = rc_get_string(db, "session.xkb.layout");
 	if (val) {
-		free(config->xkb_layout);
-		config->xkb_layout = strdup(val);
+		char *dup = strdup(val);
+		if (dup) {
+			free(config->xkb_layout);
+			config->xkb_layout = dup;
+		}
 	}
 	val = rc_get_string(db, "session.xkb.variant");
 	if (val) {
-		free(config->xkb_variant);
-		config->xkb_variant = strdup(val);
+		char *dup = strdup(val);
+		if (dup) {
+			free(config->xkb_variant);
+			config->xkb_variant = dup;
+		}
 	}
 	val = rc_get_string(db, "session.xkb.options");
 	if (val) {
-		free(config->xkb_options);
-		config->xkb_options = strdup(val);
+		char *dup = strdup(val);
+		if (dup) {
+			free(config->xkb_options);
+			config->xkb_options = dup;
+		}
 	}
 
 	/* File paths */

@@ -141,6 +141,13 @@ static int parse_patterns(const char *line, struct wm_match_pattern **out_patter
 		memset(pat, 0, sizeof(*pat));
 		pat->property = strdup(prop);
 		pat->regex_str = strdup(regex);
+		if (!pat->property || !pat->regex_str) {
+			free(pat->property);
+			free(pat->regex_str);
+			free(content);
+			p = close + 1;
+			continue;
+		}
 		pat->negate = negate;
 
 		int rc = regcomp(&pat->compiled, regex, REG_EXTENDED | REG_NOSUB);

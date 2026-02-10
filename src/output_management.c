@@ -68,7 +68,7 @@ handle_output_configuration(struct wm_server *server,
 	struct wlr_backend_output_state *states =
 		wlr_output_configuration_v1_build_state(config, &states_len);
 	if (!states) {
-		wlr_log(WLR_ERROR, "output management: failed to build state");
+		wlr_log(WLR_ERROR, "%s", "output management: failed to build state");
 		wlr_output_configuration_v1_send_failed(config);
 		wlr_output_configuration_v1_destroy(config);
 		return;
@@ -77,7 +77,7 @@ handle_output_configuration(struct wm_server *server,
 	/* Test the configuration atomically against the backend */
 	bool ok = wlr_backend_test(server->backend, states, states_len);
 	if (!ok) {
-		wlr_log(WLR_INFO, "output management: configuration test failed");
+		wlr_log(WLR_INFO, "%s", "output management: configuration test failed");
 		wlr_output_configuration_v1_send_failed(config);
 		goto cleanup;
 	}
@@ -90,7 +90,7 @@ handle_output_configuration(struct wm_server *server,
 	/* Commit the configuration atomically */
 	ok = wlr_backend_commit(server->backend, states, states_len);
 	if (!ok) {
-		wlr_log(WLR_ERROR, "output management: configuration commit failed");
+		wlr_log(WLR_ERROR, "%s", "output management: configuration commit failed");
 		wlr_output_configuration_v1_send_failed(config);
 		goto cleanup;
 	}
@@ -135,7 +135,7 @@ handle_apply(struct wl_listener *listener, void *data)
 		wl_container_of(listener, mgmt, apply);
 	struct wlr_output_configuration_v1 *config = data;
 
-	wlr_log(WLR_INFO, "output management: applying configuration");
+	wlr_log(WLR_INFO, "%s", "output management: applying configuration");
 	handle_output_configuration(mgmt->server, config, false);
 }
 
@@ -146,7 +146,7 @@ handle_test(struct wl_listener *listener, void *data)
 		wl_container_of(listener, mgmt, test);
 	struct wlr_output_configuration_v1 *config = data;
 
-	wlr_log(WLR_DEBUG, "output management: testing configuration");
+	wlr_log(WLR_DEBUG, "%s", "output management: testing configuration");
 	handle_output_configuration(mgmt->server, config, true);
 }
 
@@ -180,7 +180,7 @@ wm_output_management_init(struct wm_server *server)
 
 	mgmt->manager = wlr_output_manager_v1_create(server->wl_display);
 	if (!mgmt->manager) {
-		wlr_log(WLR_ERROR, "failed to create output manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create output manager");
 		return;
 	}
 
@@ -198,7 +198,7 @@ wm_output_management_init(struct wm_server *server)
 	wl_signal_add(&server->output_layout->events.change,
 		&mgmt->layout_change);
 
-	wlr_log(WLR_INFO, "output management protocol initialized");
+	wlr_log(WLR_INFO, "%s", "output management protocol initialized");
 }
 
 void
@@ -228,7 +228,7 @@ wm_output_management_update(struct wm_server *server)
 	struct wlr_output_configuration_v1 *config =
 		build_current_configuration(server);
 	if (!config) {
-		wlr_log(WLR_ERROR, "output management: failed to build configuration");
+		wlr_log(WLR_ERROR, "%s", "output management: failed to build configuration");
 		return;
 	}
 

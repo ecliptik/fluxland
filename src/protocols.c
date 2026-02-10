@@ -134,7 +134,7 @@ handle_new_virtual_keyboard(struct wl_listener *listener, void *data)
 
 	/* Treat the virtual keyboard like any physical keyboard */
 	wm_keyboard_setup(server, &vkbd->keyboard.base);
-	wlr_log(WLR_INFO, "new virtual keyboard");
+	wlr_log(WLR_INFO, "%s", "new virtual keyboard");
 }
 
 /* --- Virtual pointer --- */
@@ -149,7 +149,7 @@ handle_new_virtual_pointer(struct wl_listener *listener, void *data)
 	/* Attach the virtual pointer to the cursor like a physical pointer */
 	wlr_cursor_attach_input_device(server->cursor,
 		&event->new_pointer->pointer.base);
-	wlr_log(WLR_INFO, "new virtual pointer");
+	wlr_log(WLR_INFO, "%s", "new virtual pointer");
 }
 
 /* --- XDG activation --- */
@@ -168,7 +168,7 @@ handle_xdg_activation_request(struct wl_listener *listener, void *data)
 	 */
 	if (!event->token->seat) {
 		wlr_log(WLR_DEBUG,
-			"xdg-activation: denied request without seat");
+			"%s", "xdg-activation: denied request without seat");
 		return;
 	}
 
@@ -239,7 +239,7 @@ handle_tearing_new_object(struct wl_listener *listener, void *data)
 	listeners[1].notify = handle_tearing_ctrl_destroy;
 	wl_signal_add(&control->events.destroy, &listeners[1]);
 
-	wlr_log(WLR_INFO, "tearing control: new object for surface");
+	wlr_log(WLR_INFO, "%s", "tearing control: new object for surface");
 }
 
 /* --- Output power management --- */
@@ -282,7 +282,7 @@ handle_kb_inhibitor_destroy(struct wl_listener *listener, void *data)
 	server->active_kb_inhibitor = NULL;
 	wl_list_remove(&server->kb_inhibitor_destroy.link);
 	wl_list_init(&server->kb_inhibitor_destroy.link);
-	wlr_log(WLR_INFO, "keyboard shortcuts inhibitor destroyed");
+	wlr_log(WLR_INFO, "%s", "keyboard shortcuts inhibitor destroyed");
 }
 
 static void
@@ -313,7 +313,7 @@ handle_new_kb_shortcuts_inhibitor(struct wl_listener *listener, void *data)
 			&server->kb_inhibitor_destroy);
 
 		wlr_log(WLR_INFO,
-			"keyboard shortcuts inhibitor activated");
+			"%s", "keyboard shortcuts inhibitor activated");
 	}
 }
 

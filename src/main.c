@@ -58,18 +58,18 @@ main(int argc, char *argv[])
 	wlr_log_init(verbosity, NULL);
 
 	if (!getenv("XDG_RUNTIME_DIR")) {
-		wlr_log(WLR_ERROR, "XDG_RUNTIME_DIR is not set");
+		wlr_log(WLR_ERROR, "%s", "XDG_RUNTIME_DIR is not set");
 		return 1;
 	}
 
 	struct wm_server server = {0};
 	if (!wm_server_init(&server)) {
-		wlr_log(WLR_ERROR, "failed to initialize server");
+		wlr_log(WLR_ERROR, "%s", "failed to initialize server");
 		return 1;
 	}
 
 	if (!wm_server_start(&server)) {
-		wlr_log(WLR_ERROR, "failed to start server");
+		wlr_log(WLR_ERROR, "%s", "failed to start server");
 		wm_server_destroy(&server);
 		return 1;
 	}

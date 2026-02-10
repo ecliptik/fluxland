@@ -183,8 +183,11 @@ style_parse_font(const char *value)
 
 	/* Set family */
 	if (*buf != '\0') {
-		free(font.family);
-		font.family = strdup(buf);
+		char *new_family = strdup(buf);
+		if (new_family) {
+			free(font.family);
+			font.family = new_family;
+		}
 	}
 
 	/* Parse style flags from colon-separated parts */
@@ -821,9 +824,11 @@ style_load(struct wm_style *s, const char *path)
 	} else {
 		s->style_dir = resolve_style_dir(actual_path);
 	}
+	/* style_dir NULL is non-fatal; pixmaps just won't resolve */
 
 	safe_free(&s->style_path);
 	s->style_path = strdup(actual_path);
+	/* style_path NULL is non-fatal; reload won't work */
 
 	struct rc_database *db = rc_create();
 	if (!db) {

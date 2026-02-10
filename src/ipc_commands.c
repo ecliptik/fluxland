@@ -593,6 +593,8 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 			mode_name[len] = '\0';
 			free(server->current_keymode);
 			server->current_keymode = strdup(mode_name);
+			if (!server->current_keymode)
+				server->current_keymode = strdup("default");
 			wlr_log(WLR_INFO, "IPC: keymode switched to: %s",
 				mode_name);
 		}
@@ -691,6 +693,8 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		wl_list_init(&server->keybindings);
 		free(server->current_keymode);
 		server->current_keymode = strdup("default");
+		if (!server->current_keymode)
+			return false;
 		wm_keyboard_apply_config(server);
 		wlr_log(WLR_INFO, "%s", "IPC: configuration reloaded");
 		return true;

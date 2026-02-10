@@ -23,16 +23,16 @@ wm_screencopy_init(struct wm_server *server)
 	struct wlr_screencopy_manager_v1 *screencopy =
 		wlr_screencopy_manager_v1_create(server->wl_display);
 	if (!screencopy) {
-		wlr_log(WLR_ERROR, "failed to create screencopy manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create screencopy manager");
 		return;
 	}
-	wlr_log(WLR_INFO, "screencopy protocol enabled");
+	wlr_log(WLR_INFO, "%s", "screencopy protocol enabled");
 
 	struct wlr_export_dmabuf_manager_v1 *dmabuf_export =
 		wlr_export_dmabuf_manager_v1_create(server->wl_display);
 	if (!dmabuf_export) {
-		wlr_log(WLR_ERROR, "failed to create DMA-BUF export manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create DMA-BUF export manager");
 		return;
 	}
-	wlr_log(WLR_INFO, "DMA-BUF export protocol enabled");
+	wlr_log(WLR_INFO, "%s", "DMA-BUF export protocol enabled");
 }

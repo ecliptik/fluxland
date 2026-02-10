@@ -276,7 +276,7 @@ handle_im_destroy(struct wl_listener *listener, void *data)
 		}
 	}
 
-	wlr_log(WLR_INFO, "input method disconnected");
+	wlr_log(WLR_INFO, "%s", "input method disconnected");
 }
 
 /* --- Manager event handlers --- */
@@ -290,7 +290,7 @@ handle_new_text_input(struct wl_listener *listener, void *data)
 
 	struct wm_text_input_impl *ti = calloc(1, sizeof(*ti));
 	if (!ti) {
-		wlr_log(WLR_ERROR, "failed to allocate text input");
+		wlr_log(WLR_ERROR, "%s", "failed to allocate text input");
 		return;
 	}
 
@@ -329,7 +329,7 @@ handle_new_input_method(struct wl_listener *listener, void *data)
 	/* Only one input method per seat */
 	if (relay->input_method) {
 		wlr_log(WLR_INFO,
-			"rejecting second input method on seat");
+			"%s", "rejecting second input method on seat");
 		wlr_input_method_v2_send_unavailable(im);
 		return;
 	}
@@ -346,7 +346,7 @@ handle_new_input_method(struct wl_listener *listener, void *data)
 	relay->input_method_destroy.notify = handle_im_destroy;
 	wl_signal_add(&im->events.destroy, &relay->input_method_destroy);
 
-	wlr_log(WLR_INFO, "input method connected");
+	wlr_log(WLR_INFO, "%s", "input method connected");
 
 	/* If there's already a focused+enabled text input, activate */
 	struct wm_text_input_impl *ti = relay_find_focused(relay);
@@ -413,7 +413,8 @@ wm_text_input_init(struct wm_server *server)
 	wl_signal_add(&relay->input_method_mgr->events.input_method,
 		&relay->new_input_method);
 
-	wlr_log(WLR_INFO, "initialized text-input-v3 and "
+	wlr_log(WLR_INFO, "%s",
+		"initialized text-input-v3 and "
 		"input-method-v2 protocols");
 }
 

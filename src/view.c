@@ -137,7 +137,7 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 
 	/* Broadcast focus event via IPC */
 	{
-		char esc_app[256], esc_title[256], buf[512];
+		char esc_app[256], esc_title[256], buf[1024];
 		json_escape(esc_app, sizeof(esc_app),
 			view->app_id);
 		json_escape(esc_title, sizeof(esc_title),
@@ -678,7 +678,7 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 
 	/* Broadcast window open event via IPC */
 	{
-		char esc_app[256], esc_title[256], buf[512];
+		char esc_app[256], esc_title[256], buf[1024];
 		json_escape(esc_app, sizeof(esc_app),
 			view->app_id);
 		json_escape(esc_title, sizeof(esc_title),
@@ -1000,7 +1000,7 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 
 	struct wm_view *view = calloc(1, sizeof(*view));
 	if (!view) {
-		wlr_log(WLR_ERROR, "allocation failed");
+		wlr_log(WLR_ERROR, "%s", "allocation failed");
 		return;
 	}
 

@@ -92,7 +92,7 @@ handle_new_output(struct wl_listener *listener, void *data)
 	/* Allocate our output wrapper */
 	struct wm_output *output = calloc(1, sizeof(*output));
 	if (!output) {
-		wlr_log(WLR_ERROR, "failed to allocate output");
+		wlr_log(WLR_ERROR, "%s", "failed to allocate output");
 		return;
 	}
 	output->server = server;
@@ -156,14 +156,14 @@ wm_output_init(struct wm_server *server)
 	server->output_layout = wlr_output_layout_create(
 		server->wl_display);
 	if (!server->output_layout) {
-		wlr_log(WLR_ERROR, "unable to create output layout");
+		wlr_log(WLR_ERROR, "%s", "unable to create output layout");
 		exit(EXIT_FAILURE);
 	}
 
 	server->scene_layout = wlr_scene_attach_output_layout(
 		server->scene, server->output_layout);
 	if (!server->scene_layout) {
-		wlr_log(WLR_ERROR, "unable to attach scene to output layout");
+		wlr_log(WLR_ERROR, "%s", "unable to attach scene to output layout");
 		exit(EXIT_FAILURE);
 	}
 

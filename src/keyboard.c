@@ -75,7 +75,7 @@ static int
 chain_timeout_cb(void *data)
 {
 	struct wm_server *server = data;
-	wlr_log(WLR_DEBUG, "key chain timed out");
+	wlr_log(WLR_DEBUG, "%s", "key chain timed out");
 	chain_reset(server);
 	return 0;
 }
@@ -374,6 +374,8 @@ execute_action(struct wm_server *server,
 
 			free(server->current_keymode);
 			server->current_keymode = strdup(mode_name);
+			if (!server->current_keymode)
+				server->current_keymode = strdup("default");
 			chain_reset(server);
 			wlr_log(WLR_INFO, "keymode switched to: %s",
 				mode_name);
@@ -578,7 +580,7 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:
 		wlr_log(WLR_ERROR,
-			"MacroCmd/ToggleCmd cannot be nested in subcmds");
+			"%s", "MacroCmd/ToggleCmd cannot be nested in subcmds");
 		return false;
 	}
 
@@ -624,7 +626,7 @@ handle_compositor_keybinding(struct wm_server *server,
 
 	/* Escape aborts any active chain */
 	if (sym == XKB_KEY_Escape && cs->in_chain) {
-		wlr_log(WLR_DEBUG, "chain aborted by Escape");
+		wlr_log(WLR_DEBUG, "%s", "chain aborted by Escape");
 		chain_reset(server);
 		return true;
 	}
@@ -647,7 +649,7 @@ handle_compositor_keybinding(struct wm_server *server,
 	if (!bind) {
 		/* No match — if we were in a chain, abort it */
 		if (cs->in_chain) {
-			wlr_log(WLR_DEBUG, "chain broken by unmatched key");
+			wlr_log(WLR_DEBUG, "%s", "chain broken by unmatched key");
 			chain_reset(server);
 		}
 		return false;
@@ -659,7 +661,7 @@ handle_compositor_keybinding(struct wm_server *server,
 		cs->in_chain = true;
 		cs->current_level = &bind->children;
 		chain_start_timeout(server);
-		wlr_log(WLR_DEBUG, "entered key chain");
+		wlr_log(WLR_DEBUG, "%s", "entered key chain");
 		return true;
 	}
 
@@ -823,7 +825,7 @@ wm_keyboard_setup(struct wm_server *server,
 
 	struct wm_keyboard *keyboard = calloc(1, sizeof(*keyboard));
 	if (!keyboard) {
-		wlr_log(WLR_ERROR, "failed to allocate keyboard");
+		wlr_log(WLR_ERROR, "%s", "failed to allocate keyboard");
 		return;
 	}
 	keyboard->server = server;
@@ -844,7 +846,8 @@ wm_keyboard_setup(struct wm_server *server,
 		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
 	if (!keymap) {
 		/* Fallback to default layout if configured one fails */
-		wlr_log(WLR_ERROR, "failed to compile XKB keymap with "
+		wlr_log(WLR_ERROR, "%s",
+			"failed to compile XKB keymap with "
 			"configured layout, falling back to default");
 		keymap = xkb_keymap_new_from_names(
 			context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -982,7 +985,8 @@ wm_keyboard_apply_config(struct wm_server *server)
 	struct xkb_keymap *keymap = xkb_keymap_new_from_names(
 		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
 	if (!keymap) {
-		wlr_log(WLR_ERROR, "failed to compile XKB keymap on "
+		wlr_log(WLR_ERROR, "%s",
+			"failed to compile XKB keymap on "
 			"reconfigure, keeping current layout");
 		xkb_context_unref(context);
 		return;
@@ -995,5 +999,5 @@ wm_keyboard_apply_config(struct wm_server *server)
 
 	xkb_keymap_unref(keymap);
 	xkb_context_unref(context);
-	wlr_log(WLR_INFO, "XKB keymap reconfigured");
+	wlr_log(WLR_INFO, "%s", "XKB keymap reconfigured");
 }

@@ -325,8 +325,6 @@ handle_layer_surface_destroy(struct wl_listener *listener, void *data)
 	free(ls);
 }
 
-static void
-handle_layer_popup_commit(struct wl_listener *listener, void *data);
 
 /*
  * Handle a new popup created by a layer surface (e.g., a panel menu).
@@ -343,7 +341,7 @@ handle_layer_new_popup(struct wl_listener *listener, void *data)
 		wlr_scene_xdg_surface_create(ls->popup_tree,
 			popup->base);
 	if (!popup_tree) {
-		wlr_log(WLR_ERROR, "failed to create popup scene tree");
+		wlr_log(WLR_ERROR, "%s", "failed to create popup scene tree");
 		return;
 	}
 
@@ -390,7 +388,7 @@ handle_new_layer_surface(struct wl_listener *listener, void *data)
 	struct wm_layer_surface *ls = calloc(1, sizeof(*ls));
 	if (!ls) {
 		wlr_log(WLR_ERROR,
-			"failed to allocate layer surface");
+			"%s", "failed to allocate layer surface");
 		wlr_layer_surface_v1_destroy(layer_surface);
 		return;
 	}
@@ -407,7 +405,7 @@ handle_new_layer_surface(struct wl_listener *listener, void *data)
 		parent_tree, layer_surface);
 	if (!ls->scene) {
 		wlr_log(WLR_ERROR,
-			"failed to create scene layer surface");
+			"%s", "failed to create scene layer surface");
 		free(ls);
 		wlr_layer_surface_v1_destroy(layer_surface);
 		return;
@@ -453,7 +451,7 @@ wm_layer_shell_init(struct wm_server *server)
 	server->layer_shell = wlr_layer_shell_v1_create(
 		server->wl_display, 4);
 	if (!server->layer_shell) {
-		wlr_log(WLR_ERROR, "failed to create layer shell");
+		wlr_log(WLR_ERROR, "%s", "failed to create layer shell");
 		return;
 	}
 
@@ -461,7 +459,7 @@ wm_layer_shell_init(struct wm_server *server)
 	wl_signal_add(&server->layer_shell->events.new_surface,
 		&server->new_layer_surface);
 
-	wlr_log(WLR_INFO, "layer shell protocol initialized");
+	wlr_log(WLR_INFO, "%s", "layer shell protocol initialized");
 }
 
 void

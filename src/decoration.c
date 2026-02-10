@@ -1157,7 +1157,7 @@ wm_xdg_decoration_init(struct wm_server *server)
 	server->xdg_decoration_mgr =
 		wlr_xdg_decoration_manager_v1_create(server->wl_display);
 	if (!server->xdg_decoration_mgr) {
-		wlr_log(WLR_ERROR, "failed to create xdg-decoration manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create xdg-decoration manager");
 		return;
 	}
 

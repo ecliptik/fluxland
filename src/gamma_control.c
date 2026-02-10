@@ -43,7 +43,7 @@ handle_set_gamma(struct wl_listener *listener, void *data)
 					wm_output->scene_output,
 					&state, NULL)) {
 				wlr_log(WLR_ERROR,
-					"gamma: failed to build output state");
+					"%s", "gamma: failed to build output state");
 				goto finish;
 			}
 			break;
@@ -52,13 +52,13 @@ handle_set_gamma(struct wl_listener *listener, void *data)
 
 	if (event->control) {
 		if (!wlr_gamma_control_v1_apply(event->control, &state)) {
-			wlr_log(WLR_ERROR, "gamma: failed to apply gamma ramp");
+			wlr_log(WLR_ERROR, "%s", "gamma: failed to apply gamma ramp");
 			goto finish;
 		}
 	}
 
 	if (!wlr_output_commit_state(output, &state)) {
-		wlr_log(WLR_ERROR, "gamma: failed to commit output state");
+		wlr_log(WLR_ERROR, "%s", "gamma: failed to commit output state");
 		if (event->control) {
 			wlr_gamma_control_v1_send_failed_and_destroy(
 				event->control);
@@ -75,7 +75,7 @@ wm_gamma_control_init(struct wm_server *server)
 	server->gamma_control_mgr =
 		wlr_gamma_control_manager_v1_create(server->wl_display);
 	if (!server->gamma_control_mgr) {
-		wlr_log(WLR_ERROR, "failed to create gamma control manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create gamma control manager");
 		return;
 	}
 
@@ -83,5 +83,5 @@ wm_gamma_control_init(struct wm_server *server)
 	wl_signal_add(&server->gamma_control_mgr->events.set_gamma,
 		&server->gamma_set_gamma);
 
-	wlr_log(WLR_INFO, "gamma control protocol enabled");
+	wlr_log(WLR_INFO, "%s", "gamma control protocol enabled");
 }

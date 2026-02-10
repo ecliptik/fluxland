@@ -18,16 +18,16 @@ wm_viewporter_init(struct wm_server *server)
 {
 	server->viewporter = wlr_viewporter_create(server->wl_display);
 	if (!server->viewporter) {
-		wlr_log(WLR_ERROR, "failed to create viewporter");
+		wlr_log(WLR_ERROR, "%s", "failed to create viewporter");
 		return;
 	}
 
 	server->single_pixel_buffer_mgr =
 		wlr_single_pixel_buffer_manager_v1_create(server->wl_display);
 	if (!server->single_pixel_buffer_mgr) {
-		wlr_log(WLR_ERROR, "failed to create single-pixel-buffer manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create single-pixel-buffer manager");
 		return;
 	}
 
-	wlr_log(WLR_INFO, "viewporter and single-pixel-buffer protocols enabled");
+	wlr_log(WLR_INFO, "%s", "viewporter and single-pixel-buffer protocols enabled");
 }

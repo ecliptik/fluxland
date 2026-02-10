@@ -115,7 +115,7 @@ get_or_create_tool_v2(struct wm_server *server,
 	struct wlr_tablet_v2_tablet_tool *tool_v2 = wlr_tablet_tool_create(
 		server->tablet_manager, server->seat, wlr_tool);
 	if (!tool_v2) {
-		wlr_log(WLR_ERROR, "failed to create tablet_tool_v2");
+		wlr_log(WLR_ERROR, "%s", "failed to create tablet_tool_v2");
 		return NULL;
 	}
 
@@ -350,7 +350,7 @@ wm_tablet_tool_setup(struct wm_server *server,
 
 	struct wm_tablet *tablet = calloc(1, sizeof(*tablet));
 	if (!tablet) {
-		wlr_log(WLR_ERROR, "failed to allocate tablet state");
+		wlr_log(WLR_ERROR, "%s", "failed to allocate tablet state");
 		return;
 	}
 	tablet->server = server;
@@ -482,7 +482,7 @@ wm_tablet_pad_setup(struct wm_server *server,
 
 	struct wm_tablet_pad *pad = calloc(1, sizeof(*pad));
 	if (!pad) {
-		wlr_log(WLR_ERROR, "failed to allocate tablet pad state");
+		wlr_log(WLR_ERROR, "%s", "failed to allocate tablet pad state");
 		return;
 	}
 	pad->server = server;
@@ -517,7 +517,7 @@ wm_tablet_init(struct wm_server *server)
 	wl_list_init(&server->tablets);
 	wl_list_init(&server->tablet_pads);
 
-	wlr_log(WLR_INFO, "tablet-v2 protocol initialized");
+	wlr_log(WLR_INFO, "%s", "tablet-v2 protocol initialized");
 }
 
 void

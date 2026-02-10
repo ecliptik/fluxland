@@ -25,7 +25,7 @@ spawn_child(void (*exec_fn)(void *), void *data, const char *wayland_display)
 
 	pid_t pid = fork();
 	if (pid < 0) {
-		wlr_log(WLR_ERROR, "autostart: fork failed");
+		wlr_log(WLR_ERROR, "%s", "autostart: fork failed");
 		return;
 	}
 	if (pid == 0) {

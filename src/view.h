@@ -11,7 +11,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
 
-struct wm_server;
+#include "server.h"
 struct wm_workspace;
 struct wm_tab_group;
 struct wm_decoration;

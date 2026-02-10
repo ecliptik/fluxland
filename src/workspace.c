@@ -27,6 +27,10 @@ workspace_create(struct wm_server *server, const char *name, int index)
 
 	ws->server = server;
 	ws->name = strdup(name);
+	if (!ws->name) {
+		free(ws);
+		return NULL;
+	}
 	ws->index = index;
 
 	/*

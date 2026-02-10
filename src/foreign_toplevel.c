@@ -115,7 +115,7 @@ wm_foreign_toplevel_init(struct wm_server *server)
 	server->foreign_toplevel_manager =
 		wlr_foreign_toplevel_manager_v1_create(server->wl_display);
 	if (!server->foreign_toplevel_manager) {
-		wlr_log(WLR_ERROR, "failed to create foreign toplevel manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create foreign toplevel manager");
 	}
 }
 
@@ -132,7 +132,7 @@ wm_foreign_toplevel_handle_create(struct wm_view *view)
 			server->foreign_toplevel_manager);
 	if (!handle) {
 		wlr_log(WLR_ERROR,
-			"failed to create foreign toplevel handle");
+			"%s", "failed to create foreign toplevel handle");
 		return;
 	}
 

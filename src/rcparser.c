@@ -73,8 +73,11 @@ rc_set(struct rc_database *db, const char *key, const char *value)
 {
 	int idx = rc_find(db, key);
 	if (idx >= 0) {
+		char *new_val = strdup(value);
+		if (!new_val)
+			return;
 		free(db->entries[idx].value);
-		db->entries[idx].value = strdup(value);
+		db->entries[idx].value = new_val;
 		return;
 	}
 
@@ -90,6 +93,11 @@ rc_set(struct rc_database *db, const char *key, const char *value)
 
 	db->entries[db->count].key = strdup(key);
 	db->entries[db->count].value = strdup(value);
+	if (!db->entries[db->count].key || !db->entries[db->count].value) {
+		free(db->entries[db->count].key);
+		free(db->entries[db->count].value);
+		return;
+	}
 	db->count++;
 }
 

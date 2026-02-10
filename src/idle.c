@@ -30,7 +30,7 @@ handle_inhibitor_destroy(struct wl_listener *listener, void *data)
 	struct wm_idle_inhibitor *inh =
 		wl_container_of(listener, inh, destroy);
 
-	wlr_log(WLR_DEBUG, "idle inhibitor destroyed");
+	wlr_log(WLR_DEBUG, "%s", "idle inhibitor destroyed");
 
 	wl_list_remove(&inh->destroy.link);
 	wl_list_remove(&inh->link);
@@ -49,7 +49,7 @@ handle_new_inhibitor(struct wl_listener *listener, void *data)
 
 	struct wm_idle_inhibitor *inh = calloc(1, sizeof(*inh));
 	if (!inh) {
-		wlr_log(WLR_ERROR, "failed to allocate idle inhibitor");
+		wlr_log(WLR_ERROR, "%s", "failed to allocate idle inhibitor");
 		return;
 	}
 
@@ -61,7 +61,7 @@ handle_new_inhibitor(struct wl_listener *listener, void *data)
 
 	wl_list_insert(&inhibitors, &inh->link);
 
-	wlr_log(WLR_DEBUG, "new idle inhibitor created");
+	wlr_log(WLR_DEBUG, "%s", "new idle inhibitor created");
 	check_inhibit_state(idle);
 }
 
@@ -87,15 +87,15 @@ wm_idle_init(struct wm_server *server)
 	/* ext-idle-notify-v1 */
 	idle->notifier = wlr_idle_notifier_v1_create(server->wl_display);
 	if (!idle->notifier) {
-		wlr_log(WLR_ERROR, "failed to create idle notifier");
+		wlr_log(WLR_ERROR, "%s", "failed to create idle notifier");
 		return;
 	}
-	wlr_log(WLR_INFO, "idle notifier (ext-idle-notify-v1) created");
+	wlr_log(WLR_INFO, "%s", "idle notifier (ext-idle-notify-v1) created");
 
 	/* idle-inhibit-unstable-v1 */
 	idle->inhibit_mgr = wlr_idle_inhibit_v1_create(server->wl_display);
 	if (!idle->inhibit_mgr) {
-		wlr_log(WLR_ERROR, "failed to create idle inhibit manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create idle inhibit manager");
 		return;
 	}
 
@@ -107,7 +107,7 @@ wm_idle_init(struct wm_server *server)
 	wl_signal_add(&idle->inhibit_mgr->events.destroy,
 		&idle->inhibit_mgr_destroy);
 
-	wlr_log(WLR_INFO, "idle inhibit manager (idle-inhibit-v1) created");
+	wlr_log(WLR_INFO, "%s", "idle inhibit manager (idle-inhibit-v1) created");
 }
 
 void

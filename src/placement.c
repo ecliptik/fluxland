@@ -221,7 +221,7 @@ wm_placement_apply(struct wm_server *server, struct wm_view *view)
 
 	struct wlr_box area;
 	if (!get_cursor_output_area(server, &area)) {
-		wlr_log(WLR_DEBUG, "placement: no output found, using default");
+		wlr_log(WLR_DEBUG, "%s", "placement: no output found, using default");
 		return;
 	}
 
