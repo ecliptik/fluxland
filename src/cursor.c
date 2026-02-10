@@ -387,6 +387,15 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 static void
 process_cursor_motion(struct wm_server *server, uint32_t time)
 {
+	/*
+	 * When locked, don't interact with normal views.
+	 * Just clear pointer focus (lock surfaces use keyboard only).
+	 */
+	if (wm_session_is_locked(server)) {
+		wlr_seat_pointer_clear_focus(server->seat);
+		return;
+	}
+
 	if (server->cursor_mode == WM_CURSOR_MOVE) {
 		process_cursor_move(server, time);
 		return;
@@ -474,6 +483,10 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = data;
 	struct wm_mouse_state *ms = &server->mouse_state;
+
+	/* When locked, block all button interaction with normal views */
+	if (wm_session_is_locked(server))
+		return;
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		/* Check for Click binding (press+release without significant move) */

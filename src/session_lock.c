@@ -11,7 +11,6 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
-#include <assert.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
@@ -197,7 +196,7 @@ handle_lock_unlock(struct wl_listener *listener, void *data)
 	struct wm_session_lock *lock =
 		wl_container_of(listener, lock, lock_unlock);
 
-	wlr_log(WLR_INFO, "session unlocked");
+	wlr_log(WLR_INFO, "%s", "session unlocked");
 
 	lock->locked = false;
 	lock->active_lock = NULL;
@@ -245,7 +244,7 @@ handle_lock_destroy(struct wl_listener *listener, void *data)
 	 * or start a new lock client.
 	 */
 	if (lock->locked) {
-		wlr_log(WLR_ERROR,
+		wlr_log(WLR_ERROR, "%s",
 			"lock client destroyed while session is locked! "
 			"Session remains locked for security.");
 	}
@@ -271,13 +270,13 @@ handle_new_lock(struct wl_listener *listener, void *data)
 	struct wlr_session_lock_v1 *wlr_lock = data;
 
 	if (lock->active_lock) {
-		wlr_log(WLR_INFO,
+		wlr_log(WLR_INFO, "%s",
 			"rejecting new lock: session already locked");
 		wlr_session_lock_v1_destroy(wlr_lock);
 		return;
 	}
 
-	wlr_log(WLR_INFO, "new session lock requested");
+	wlr_log(WLR_INFO, "%s", "new session lock requested");
 
 	lock->active_lock = wlr_lock;
 	lock->locked = true;
@@ -334,7 +333,7 @@ wm_session_lock_init(struct wm_server *server)
 	lock->manager = wlr_session_lock_manager_v1_create(
 		server->wl_display);
 	if (!lock->manager) {
-		wlr_log(WLR_ERROR, "failed to create session lock manager");
+		wlr_log(WLR_ERROR, "%s", "failed to create session lock manager");
 		return;
 	}
 
@@ -345,7 +344,7 @@ wm_session_lock_init(struct wm_server *server)
 	wl_signal_add(&lock->manager->events.destroy,
 		&lock->manager_destroy);
 
-	wlr_log(WLR_INFO, "session lock protocol initialized");
+	wlr_log(WLR_INFO, "%s", "session lock protocol initialized");
 }
 
 void
