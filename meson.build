@@ -183,6 +183,27 @@ executable(
   install: true,
 )
 
+# --- Install data files ---
+
+install_data(
+  'data/wm-wayland.desktop',
+  install_dir: get_option('datadir') / 'wayland-sessions',
+)
+
+example_configs = [
+  'data/apps',
+  'data/init',
+  'data/keys',
+  'data/menu',
+  'data/startup',
+  'data/style',
+]
+
+install_data(
+  example_configs,
+  install_dir: get_option('datadir') / 'wm-wayland' / 'examples',
+)
+
 # --- Man pages ---
 
 install_man(

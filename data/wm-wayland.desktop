@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=wm-wayland
+Comment=A Fluxbox-inspired Wayland compositor
+Exec=wm-wayland
+Type=Application
+DesktopNames=wm-wayland
