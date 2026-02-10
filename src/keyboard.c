@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <wlr/backend/session.h>
+#include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_seat.h>
@@ -26,6 +27,7 @@
 #include "server.h"
 #include "config.h"
 #include "decoration.h"
+#include "idle.h"
 #include "keybind.h"
 #include "menu.h"
 #include "session_lock.h"
@@ -277,6 +279,8 @@ execute_action(struct wm_server *server,
 		chain_reset(server);
 		free(server->current_keymode);
 		server->current_keymode = strdup("default");
+		/* Reapply XKB keyboard layout from config */
+		wm_keyboard_apply_config(server);
 		wlr_log(WLR_INFO, "configuration reloaded");
 		return true;
 
@@ -469,6 +473,14 @@ execute_action(struct wm_server *server,
 				false, server->style);
 		return true;
 
+	case WM_ACTION_NEXT_LAYOUT:
+		wm_keyboard_next_layout(server);
+		return true;
+
+	case WM_ACTION_PREV_LAYOUT:
+		wm_keyboard_prev_layout(server);
+		return true;
+
 	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
 	case WM_ACTION_MAXIMIZE_VERT:
@@ -579,6 +591,9 @@ handle_key(struct wl_listener *listener, void *data)
 	struct wm_server *server = keyboard->server;
 	struct wlr_keyboard_key_event *event = data;
 
+	/* Notify idle system of user activity */
+	wm_idle_notify_activity(server);
+
 	/* Translate libinput keycode -> xkbcommon */
 	uint32_t keycode = event->keycode + 8;
 	const xkb_keysym_t *syms;
@@ -682,10 +697,26 @@ wm_keyboard_setup(struct wm_server *server,
 	keyboard->server = server;
 	keyboard->wlr_keyboard = wlr_keyboard;
 
-	/* Set up XKB keymap (default layout) */
+	/* Build XKB rule names from config (NULL fields use system defaults) */
+	struct xkb_rule_names rules = { 0 };
+	if (server->config) {
+		rules.rules = server->config->xkb_rules;
+		rules.model = server->config->xkb_model;
+		rules.layout = server->config->xkb_layout;
+		rules.variant = server->config->xkb_variant;
+		rules.options = server->config->xkb_options;
+	}
+
 	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	struct xkb_keymap *keymap = xkb_keymap_new_from_names(
-		context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	if (!keymap) {
+		/* Fallback to default layout if configured one fails */
+		wlr_log(WLR_ERROR, "failed to compile XKB keymap with "
+			"configured layout, falling back to default");
+		keymap = xkb_keymap_new_from_names(
+			context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	}
 
 	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
 	xkb_keymap_unref(keymap);
@@ -710,4 +741,127 @@ wm_keyboard_setup(struct wm_server *server,
 	wlr_seat_set_keyboard(server->seat, wlr_keyboard);
 
 	wlr_log(WLR_INFO, "new keyboard: %s", device->name);
+}
+
+void
+wm_keyboard_next_layout(struct wm_server *server)
+{
+	struct wm_keyboard *keyboard;
+	wl_list_for_each(keyboard, &server->keyboards, link) {
+		struct xkb_state *state = keyboard->wlr_keyboard->xkb_state;
+		if (!state)
+			continue;
+		xkb_layout_index_t num_layouts =
+			xkb_keymap_num_layouts(
+				keyboard->wlr_keyboard->keymap);
+		if (num_layouts <= 1)
+			continue;
+		xkb_layout_index_t current = 0;
+		for (xkb_layout_index_t i = 0; i < num_layouts; i++) {
+			if (xkb_state_layout_index_is_active(state, i,
+					XKB_STATE_LAYOUT_EFFECTIVE)) {
+				current = i;
+				break;
+			}
+		}
+		xkb_layout_index_t next = (current + 1) % num_layouts;
+		/* Update layout via wlr_keyboard API */
+		struct wlr_keyboard_modifiers mods =
+			keyboard->wlr_keyboard->modifiers;
+		mods.group = next;
+		wlr_keyboard_notify_modifiers(keyboard->wlr_keyboard,
+			mods.depressed, mods.latched, mods.locked,
+			mods.group);
+		wlr_log(WLR_INFO, "keyboard layout switched to index %u",
+			next);
+	}
+}
+
+void
+wm_keyboard_prev_layout(struct wm_server *server)
+{
+	struct wm_keyboard *keyboard;
+	wl_list_for_each(keyboard, &server->keyboards, link) {
+		struct xkb_state *state = keyboard->wlr_keyboard->xkb_state;
+		if (!state)
+			continue;
+		xkb_layout_index_t num_layouts =
+			xkb_keymap_num_layouts(
+				keyboard->wlr_keyboard->keymap);
+		if (num_layouts <= 1)
+			continue;
+		xkb_layout_index_t current = 0;
+		for (xkb_layout_index_t i = 0; i < num_layouts; i++) {
+			if (xkb_state_layout_index_is_active(state, i,
+					XKB_STATE_LAYOUT_EFFECTIVE)) {
+				current = i;
+				break;
+			}
+		}
+		xkb_layout_index_t prev = (current == 0)
+			? num_layouts - 1 : current - 1;
+		struct wlr_keyboard_modifiers mods =
+			keyboard->wlr_keyboard->modifiers;
+		mods.group = prev;
+		wlr_keyboard_notify_modifiers(keyboard->wlr_keyboard,
+			mods.depressed, mods.latched, mods.locked,
+			mods.group);
+		wlr_log(WLR_INFO, "keyboard layout switched to index %u",
+			prev);
+	}
+}
+
+const char *
+wm_keyboard_get_layout_name(struct wm_server *server)
+{
+	struct wm_keyboard *keyboard;
+	wl_list_for_each(keyboard, &server->keyboards, link) {
+		struct xkb_state *state = keyboard->wlr_keyboard->xkb_state;
+		if (!state)
+			continue;
+		xkb_layout_index_t num_layouts =
+			xkb_keymap_num_layouts(
+				keyboard->wlr_keyboard->keymap);
+		for (xkb_layout_index_t i = 0; i < num_layouts; i++) {
+			if (xkb_state_layout_index_is_active(state, i,
+					XKB_STATE_LAYOUT_EFFECTIVE)) {
+				return xkb_keymap_layout_get_name(
+					keyboard->wlr_keyboard->keymap, i);
+			}
+		}
+		break; /* Only check first keyboard */
+	}
+	return "default";
+}
+
+void
+wm_keyboard_apply_config(struct wm_server *server)
+{
+	struct xkb_rule_names rules = { 0 };
+	if (server->config) {
+		rules.rules = server->config->xkb_rules;
+		rules.model = server->config->xkb_model;
+		rules.layout = server->config->xkb_layout;
+		rules.variant = server->config->xkb_variant;
+		rules.options = server->config->xkb_options;
+	}
+
+	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	struct xkb_keymap *keymap = xkb_keymap_new_from_names(
+		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	if (!keymap) {
+		wlr_log(WLR_ERROR, "failed to compile XKB keymap on "
+			"reconfigure, keeping current layout");
+		xkb_context_unref(context);
+		return;
+	}
+
+	struct wm_keyboard *keyboard;
+	wl_list_for_each(keyboard, &server->keyboards, link) {
+		wlr_keyboard_set_keymap(keyboard->wlr_keyboard, keymap);
+	}
+
+	xkb_keymap_unref(keymap);
+	xkb_context_unref(context);
+	wlr_log(WLR_INFO, "XKB keymap reconfigured");
 }

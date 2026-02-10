@@ -280,6 +280,33 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	config->toolbar_visible =
 		rc_get_bool(db, "session.screen0.toolbar.visible", true);
 
+	/* XKB keyboard layout */
+	val = rc_get_string(db, "session.xkb.rules");
+	if (val) {
+		free(config->xkb_rules);
+		config->xkb_rules = strdup(val);
+	}
+	val = rc_get_string(db, "session.xkb.model");
+	if (val) {
+		free(config->xkb_model);
+		config->xkb_model = strdup(val);
+	}
+	val = rc_get_string(db, "session.xkb.layout");
+	if (val) {
+		free(config->xkb_layout);
+		config->xkb_layout = strdup(val);
+	}
+	val = rc_get_string(db, "session.xkb.variant");
+	if (val) {
+		free(config->xkb_variant);
+		config->xkb_variant = strdup(val);
+	}
+	val = rc_get_string(db, "session.xkb.options");
+	if (val) {
+		free(config->xkb_options);
+		config->xkb_options = strdup(val);
+	}
+
 	/* File paths */
 	val = rc_get_string(db, "session.keyFile");
 	if (val) {
@@ -357,6 +384,11 @@ config_destroy(struct wm_config *config)
 		return;
 
 	free_workspace_names(config);
+	free(config->xkb_rules);
+	free(config->xkb_model);
+	free(config->xkb_layout);
+	free(config->xkb_variant);
+	free(config->xkb_options);
 	free(config->config_dir);
 	free(config->keys_file);
 	free(config->apps_file);

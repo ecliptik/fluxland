@@ -27,6 +27,9 @@
 #include "mousebind.h"
 #include "ipc.h"
 #include "rules.h"
+#include "idle.h"
+#include "output_management.h"
+#include "protocols.h"
 #include "screencopy.h"
 #include "session_lock.h"
 #include "xwayland.h"
@@ -38,6 +41,11 @@ struct wm_config;
 struct wm_style;
 struct wm_menu;
 struct wm_toolbar;
+struct wlr_foreign_toplevel_manager_v1;
+struct wlr_primary_selection_v1_device_manager;
+struct wlr_pointer_constraints_v1;
+struct wlr_pointer_constraint_v1;
+struct wlr_relative_pointer_manager_v1;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -143,6 +151,28 @@ struct wm_server {
 
 	/* IPC server */
 	struct wm_ipc_server ipc;
+
+	/* Foreign toplevel management (taskbar support) */
+	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
+
+	/* Output management protocol (wlr-randr, kanshi) */
+	struct wm_output_management output_mgmt;
+
+	/* Idle notification and inhibit (ext-idle-notify-v1, idle-inhibit-v1) */
+	struct wm_idle idle;
+
+	/* Primary selection (middle-click paste) */
+	struct wlr_primary_selection_v1_device_manager *primary_selection_mgr;
+	struct wl_listener request_set_primary_selection;
+
+	/* Pointer constraints (lock/confine for games) */
+	struct wlr_pointer_constraints_v1 *pointer_constraints;
+	struct wlr_pointer_constraint_v1 *active_constraint;
+	struct wl_listener new_pointer_constraint;
+	struct wl_listener pointer_constraint_destroy;
+
+	/* Relative pointer (unaccelerated motion for games) */
+	struct wlr_relative_pointer_manager_v1 *relative_pointer_mgr;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;

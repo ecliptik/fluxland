@@ -19,6 +19,7 @@
 #include "server.h"
 #include "config.h"
 #include "decoration.h"
+#include "foreign_toplevel.h"
 #include "ipc.h"
 #include "keybind.h"
 #include "layer_shell.h"
@@ -26,6 +27,9 @@
 #include "output.h"
 #include "input.h"
 #include "rules.h"
+#include "idle.h"
+#include "output_management.h"
+#include "protocols.h"
 #include "screencopy.h"
 #include "session_lock.h"
 #include "style.h"
@@ -191,8 +195,17 @@ wm_server_init(struct wm_server *server)
 	/* Session lock: ext-session-lock-v1 for screen lockers */
 	wm_session_lock_init(server);
 
+	/* Idle notification and inhibit protocols */
+	wm_idle_init(server);
+
+	/* Output management protocol (wlr-randr, kanshi) */
+	wm_output_management_init(server);
+
 	/* Screencopy and DMA-BUF export for screenshot/recording tools */
 	wm_screencopy_init(server);
+
+	/* Foreign toplevel management for external taskbars (waybar) */
+	wm_foreign_toplevel_init(server);
 
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");
@@ -215,6 +228,9 @@ wm_server_init(struct wm_server *server)
 
 	/* Input handling (keyboard, pointer, seat requests) */
 	wm_input_init(server);
+
+	/* Primary selection, pointer constraints, relative pointer */
+	wm_protocols_init(server);
 
 	/* Load configuration */
 	server->config = config_create();
@@ -337,6 +353,9 @@ wm_server_destroy(struct wm_server *server)
 	wm_menu_destroy(server->window_menu);
 	wm_rules_finish(&server->rules);
 
+	wm_protocols_finish(server);
+	wm_output_management_finish(server);
+	wm_idle_finish(server);
 	wm_session_lock_finish(server);
 	wm_layer_shell_finish(server);
 	wm_workspaces_finish(server);

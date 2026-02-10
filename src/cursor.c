@@ -26,6 +26,7 @@
 #include "cursor.h"
 #include "server.h"
 #include "decoration.h"
+#include "idle.h"
 #include "menu.h"
 #include "placement.h"
 #include "session_lock.h"
@@ -459,6 +460,7 @@ handle_cursor_motion(struct wl_listener *listener, void *data)
 		wl_container_of(listener, server, cursor_motion);
 	struct wlr_pointer_motion_event *event = data;
 
+	wm_idle_notify_activity(server);
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 		event->delta_x, event->delta_y);
 	process_cursor_motion(server, event->time_msec);
@@ -471,6 +473,7 @@ handle_cursor_motion_absolute(struct wl_listener *listener, void *data)
 		wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = data;
 
+	wm_idle_notify_activity(server);
 	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
 		event->x, event->y);
 	process_cursor_motion(server, event->time_msec);
@@ -483,6 +486,8 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = data;
 	struct wm_mouse_state *ms = &server->mouse_state;
+
+	wm_idle_notify_activity(server);
 
 	/* When locked, block all button interaction with normal views */
 	if (wm_session_is_locked(server))

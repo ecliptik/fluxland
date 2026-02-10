@@ -54,6 +54,13 @@ struct wm_config {
 	/* Toolbar (basic for now) */
 	bool toolbar_visible;
 
+	/* XKB keyboard layout */
+	char *xkb_rules;    /* e.g., "evdev" */
+	char *xkb_model;    /* e.g., "pc105" */
+	char *xkb_layout;   /* e.g., "us,de" (comma-separated for multi) */
+	char *xkb_variant;  /* e.g., ",nodeadkeys" */
+	char *xkb_options;  /* e.g., "grp:alt_shift_toggle,caps:escape" */
+
 	/* Paths */
 	char *config_dir;
 	char *keys_file;
