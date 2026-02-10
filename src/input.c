@@ -4,8 +4,11 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <stdlib.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
+#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
@@ -84,6 +87,70 @@ handle_request_set_selection(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
 }
 
+static void
+handle_request_start_drag(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, request_start_drag);
+	struct wlr_seat_request_start_drag_event *event = data;
+
+	if (wlr_seat_validate_pointer_grab_serial(
+			server->seat, event->origin, event->serial)) {
+		wlr_seat_start_pointer_drag(server->seat, event->drag,
+			event->serial);
+		return;
+	}
+
+	wlr_log(WLR_DEBUG, "%s",
+		"ignoring request_start_drag: failed serial validation");
+}
+
+struct wm_drag_state {
+	struct wm_server *server;
+	struct wl_listener destroy;
+};
+
+static void
+handle_drag_destroy(struct wl_listener *listener, void *data)
+{
+	(void)data;
+	struct wm_drag_state *state =
+		wl_container_of(listener, state, destroy);
+	state->server->drag_icon_tree = NULL;
+	wl_list_remove(&state->destroy.link);
+	free(state);
+}
+
+static void
+handle_start_drag(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, start_drag);
+	struct wlr_drag *drag = data;
+
+	wlr_log(WLR_INFO, "drag started (icon=%s)",
+		drag->icon ? "yes" : "no");
+
+	if (drag->icon) {
+		server->drag_icon_tree = wlr_scene_drag_icon_create(
+			server->layer_overlay, drag->icon);
+		if (server->drag_icon_tree) {
+			wlr_scene_node_set_position(
+				&server->drag_icon_tree->node,
+				(int)server->cursor->x,
+				(int)server->cursor->y);
+		}
+	}
+
+	/* Listen for drag destroy to clear drag_icon_tree */
+	struct wm_drag_state *state = calloc(1, sizeof(*state));
+	if (state) {
+		state->server = server;
+		state->destroy.notify = handle_drag_destroy;
+		wl_signal_add(&drag->events.destroy, &state->destroy);
+	}
+}
+
 void
 wm_input_init(struct wm_server *server)
 {
@@ -102,6 +169,14 @@ wm_input_init(struct wm_server *server)
 	server->request_set_selection.notify = handle_request_set_selection;
 	wl_signal_add(&server->seat->events.request_set_selection,
 		&server->request_set_selection);
+
+	server->request_start_drag.notify = handle_request_start_drag;
+	wl_signal_add(&server->seat->events.request_start_drag,
+		&server->request_start_drag);
+
+	server->start_drag.notify = handle_start_drag;
+	wl_signal_add(&server->seat->events.start_drag,
+		&server->start_drag);
 }
 
 void
@@ -110,6 +185,8 @@ wm_input_finish(struct wm_server *server)
 	wl_list_remove(&server->new_input.link);
 	wl_list_remove(&server->request_cursor.link);
 	wl_list_remove(&server->request_set_selection.link);
+	wl_list_remove(&server->request_start_drag.link);
+	wl_list_remove(&server->start_drag.link);
 
 	wm_cursor_finish(server);
 }

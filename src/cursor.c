@@ -18,6 +18,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -274,7 +275,8 @@ execute_mouse_action(struct wm_server *server,
 		break;
 
 	case WM_ACTION_LOWER:
-		/* TODO: implement view lowering */
+		if (view)
+			wm_view_lower(view);
 		break;
 
 	case WM_ACTION_NEXT_WORKSPACE:
@@ -453,6 +455,14 @@ schedule_auto_raise(struct wm_server *server, struct wm_view *view)
 static void
 process_cursor_motion(struct wm_server *server, uint32_t time)
 {
+	/* Update drag icon position if a drag is active */
+	if (server->drag_icon_tree) {
+		wlr_scene_node_set_position(
+			&server->drag_icon_tree->node,
+			(int)server->cursor->x,
+			(int)server->cursor->y);
+	}
+
 	/*
 	 * When locked, don't interact with normal views.
 	 * Just clear pointer focus (lock surfaces use keyboard only).
