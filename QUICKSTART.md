@@ -1,10 +1,16 @@
 # Quick Start Guide
 
-Test-drive fluxland on **Debian Trixie** (13) or **Linux Mint** (22+).
+Test-drive fluxland on **Debian Trixie** (13) or newer.
+
+> **⚠️ Linux Mint / Ubuntu 24.04 users:** These distributions ship wlroots 0.17,
+> but fluxland requires wlroots 0.18. See the [wlroots 0.18 installation section](#installing-wlroots-018-on-ubuntu-2404linux-mint-223)
+> below for workarounds.
 
 ---
 
 ## 1. Install build dependencies
+
+### On Debian Trixie (13)
 
 ```sh
 sudo apt update
@@ -15,17 +21,72 @@ sudo apt install -y \
   libpango1.0-dev libdrm-dev
 ```
 
-Optional -- XWayland support (run X11 apps):
+### Installing wlroots 0.18 on Ubuntu 24.04/Linux Mint 22.3
+
+Ubuntu 24.04 and Linux Mint 22.3 ship wlroots 0.17, but fluxland requires 0.18.
+
+**Option A: Build wlroots 0.18 from source** (recommended)
+
+```sh
+# Install dependencies
+sudo apt update
+sudo apt install -y \
+  meson ninja-build pkg-config gcc \
+  libwayland-dev wayland-protocols \
+  libxkbcommon-dev libinput-dev libpixman-1-dev \
+  libdrm-dev libgbm-dev libseat-dev libudev-dev \
+  libvulkan-dev libvulkan-volk-dev glslang-tools \
+  libxcb1-dev libxcb-composite0-dev libxcb-render0-dev \
+  libxcb-xfixes0-dev hwdata
+
+# Clone and build wlroots 0.18
+git clone https://gitlab.freedesktop.org/wlroots/wlroots.git -b 0.18
+cd wlroots
+meson setup build --prefix=/usr/local --buildtype=release
+ninja -C build
+sudo ninja -C build install
+sudo ldconfig
+cd ..
+```
+
+**Option B: Wait for distribution upgrade**
+
+Ubuntu 24.10+ and future Linux Mint releases will include wlroots 0.18.
+
+**Option C: Use a PPA** (if available)
+
+Check [wlroots PPAs](https://launchpad.net/ubuntu/+ppas?name_filter=wlroots) for
+community-maintained packages. Use at your own risk.
+
+### XWayland support (optional - for running X11 apps)
 
 ```sh
 sudo apt install -y xwayland libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev
 ```
 
-Useful runtime companions:
+### Verify wlroots version
+
+After installation, confirm you have wlroots 0.18:
+
+```sh
+pkg-config --modversion wlroots-0.18
+```
+
+Expected output: `0.18.x`
+
+### Useful runtime tools (recommended)
 
 ```sh
 sudo apt install -y foot swaybg wofi grim slurp mako-notifier swayidle swaylock
 ```
+
+These provide:
+- `foot` - lightweight Wayland terminal
+- `swaybg` - wallpaper setter
+- `wofi` - app launcher
+- `grim`/`slurp` - screenshot tools
+- `mako-notifier` - notification daemon
+- `swayidle`/`swaylock` - idle/lock management
 
 ## 2. Build
 
@@ -63,7 +124,7 @@ sudo checkinstall --pkgname=fluxland \
   --pkgrelease=1 \
   --pkggroup=x11 \
   --maintainer="you@example.com" \
-  --requires="libwlroots-0.18-0,libwayland-server0,libxkbcommon0,libinput10,libpixman-1-0,libpango-1.0-0" \
+  --requires="libwayland-server0,libxkbcommon0,libinput10,libpixman-1-0,libpango-1.0-0" \
   --backup=no \
   --deldoc=yes \
   --default \
@@ -270,6 +331,7 @@ Use this template:
 
 **wlroots version:**
 <!-- paste output of: pkg-config --modversion wlroots-0.18 -->
+<!-- If you built from source: /usr/local/lib/pkgconfig/wlroots-0.18.pc -->
 
 **Steps to reproduce:**
 1. Start fluxland with `fluxland -d` (debug mode)
