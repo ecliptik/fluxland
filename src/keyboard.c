@@ -30,6 +30,7 @@
 #include "idle.h"
 #include "keybind.h"
 #include "menu.h"
+#include "placement.h"
 #include "protocols.h"
 #include "session_lock.h"
 #include "tabgroup.h"
@@ -202,6 +203,18 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_FOCUS_PREV:
 		/* For now, same as focus_next (cycle) */
 		wm_focus_next_view(server);
+		return true;
+
+	case WM_ACTION_NEXT_WINDOW:
+		wm_view_cycle_next(server);
+		return true;
+
+	case WM_ACTION_PREV_WINDOW:
+		wm_view_cycle_prev(server);
+		return true;
+
+	case WM_ACTION_DEICONIFY:
+		wm_view_deiconify_last(server);
 		return true;
 
 	case WM_ACTION_MAXIMIZE:
@@ -550,6 +563,22 @@ execute_action(struct wm_server *server,
 			wm_decoration_set_preset(view->decoration,
 				preset, server->style);
 		}
+		return true;
+
+	case WM_ACTION_ARRANGE_WINDOWS:
+		wm_arrange_windows_grid(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_VERT:
+		wm_arrange_windows_vert(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_HORIZ:
+		wm_arrange_windows_horiz(server);
+		return true;
+
+	case WM_ACTION_CASCADE_WINDOWS:
+		wm_arrange_windows_cascade(server);
 		return true;
 
 	case WM_ACTION_NOP:

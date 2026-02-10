@@ -385,6 +385,148 @@ wm_focus_update_for_cursor(struct wm_server *server,
 	}
 }
 
+/* --- Deiconify helper --- */
+
+static void
+deiconify_view(struct wm_view *view)
+{
+	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
+	wm_foreign_toplevel_set_minimized(view, false);
+	wm_focus_view(view, view->xdg_toplevel->base->surface);
+	wm_view_raise(view);
+	wm_toolbar_update_iconbar(view->server->toolbar);
+}
+
+/* --- Window cycling (workspace-aware, with de-iconify) --- */
+
+void
+wm_view_cycle_next(struct wm_server *server)
+{
+	struct wm_workspace *ws = server->current_workspace;
+	struct wm_view *focused = server->focused_view;
+
+	/*
+	 * Find the next view after the focused one on the current workspace.
+	 * If the focused view is NULL, pick the first view on the workspace.
+	 */
+	struct wm_view *candidate = NULL;
+	bool past_focused = (focused == NULL);
+
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->workspace != ws && !view->sticky) {
+			continue;
+		}
+		if (past_focused) {
+			candidate = view;
+			break;
+		}
+		if (view == focused) {
+			past_focused = true;
+		}
+	}
+
+	/* Wrap around: if we didn't find one after focused, pick first */
+	if (!candidate) {
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace != ws && !view->sticky) {
+				continue;
+			}
+			candidate = view;
+			break;
+		}
+	}
+
+	if (!candidate || candidate == focused) {
+		return;
+	}
+
+	/* De-iconify if minimized */
+	if (!candidate->scene_tree->node.enabled) {
+		deiconify_view(candidate);
+	} else {
+		wm_focus_view(candidate,
+			candidate->xdg_toplevel->base->surface);
+	}
+}
+
+void
+wm_view_cycle_prev(struct wm_server *server)
+{
+	struct wm_workspace *ws = server->current_workspace;
+	struct wm_view *focused = server->focused_view;
+
+	/*
+	 * Find the previous view before the focused one on the current
+	 * workspace. Walk the list and track the last eligible view seen
+	 * before the focused one.
+	 */
+	struct wm_view *candidate = NULL;
+	struct wm_view *last_on_ws = NULL;
+
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->workspace != ws && !view->sticky) {
+			continue;
+		}
+		if (view == focused) {
+			if (candidate) {
+				break; /* candidate is the view before focused */
+			}
+			/* focused is first — need to wrap to last */
+			continue;
+		}
+		candidate = view;
+		last_on_ws = view;
+	}
+
+	/* If no candidate before focused, wrap to the last view on ws */
+	if (!candidate) {
+		/* Walk to find the absolute last view on this workspace */
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace == ws || view->sticky) {
+				last_on_ws = view;
+			}
+		}
+		candidate = last_on_ws;
+	}
+
+	if (!candidate || candidate == focused) {
+		return;
+	}
+
+	/* De-iconify if minimized */
+	if (!candidate->scene_tree->node.enabled) {
+		deiconify_view(candidate);
+	} else {
+		wm_focus_view(candidate,
+			candidate->xdg_toplevel->base->surface);
+	}
+}
+
+void
+wm_view_deiconify_last(struct wm_server *server)
+{
+	struct wm_workspace *ws = server->current_workspace;
+
+	/*
+	 * Walk the view list to find the most recently minimized view on
+	 * the current workspace. Views at the front of the list were most
+	 * recently focused/created, so the first iconified one we find
+	 * is the most recently minimized.
+	 */
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->workspace != ws && !view->sticky) {
+			continue;
+		}
+		if (!view->scene_tree->node.enabled) {
+			deiconify_view(view);
+			return;
+		}
+	}
+}
+
 /* --- View lookup --- */
 
 struct wm_view *

@@ -120,6 +120,26 @@ void wm_unfocus_current(struct wm_server *server);
 void wm_focus_next_view(struct wm_server *server);
 
 /*
+ * Cycle to the next view on the current workspace.
+ * If the target view is minimized (iconified), de-iconify it.
+ * Wraps around at list boundaries.
+ */
+void wm_view_cycle_next(struct wm_server *server);
+
+/*
+ * Cycle to the previous view on the current workspace.
+ * If the target view is minimized (iconified), de-iconify it.
+ * Wraps around at list boundaries.
+ */
+void wm_view_cycle_prev(struct wm_server *server);
+
+/*
+ * Restore (de-iconify) the most recently minimized view on the
+ * current workspace. Focuses and raises the restored view.
+ */
+void wm_view_deiconify_last(struct wm_server *server);
+
+/*
  * Raise the given view to the top of the stacking order.
  */
 void wm_view_raise(struct wm_view *view);
