@@ -12,10 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
 #include "rules.h"
 #include "decoration.h"
+#include "output.h"
 #include "view.h"
 #include "server.h"
 #include "workspace.h"
@@ -494,9 +497,88 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 
 		/* Apply position */
 		if (rule->has_position) {
-			/* TODO: handle pos_anchor (Center, etc.) */
-			view->x = rule->pos_x;
-			view->y = rule->pos_y;
+			int px = rule->pos_x;
+			int py = rule->pos_y;
+
+			if (rule->pos_anchor && view->server) {
+				/* Get output area for anchor calculation */
+				struct wlr_box area = {0};
+				struct wlr_output *wlr_output =
+					wlr_output_layout_output_at(
+						view->server->output_layout,
+						view->server->cursor->x,
+						view->server->cursor->y);
+				if (wlr_output) {
+					struct wm_output *out;
+					wl_list_for_each(out,
+					    &view->server->outputs, link) {
+						if (out->wlr_output ==
+						    wlr_output) {
+							if (out->usable_area
+							    .width > 0)
+								area = out
+								    ->usable_area;
+							else
+								wlr_output_layout_get_box(
+								    view->server
+								    ->output_layout,
+								    wlr_output,
+								    &area);
+							break;
+						}
+					}
+				}
+
+				if (area.width > 0 && area.height > 0) {
+					/* Get view dimensions */
+					int vw = 0, vh = 0;
+					if (view->xdg_toplevel) {
+						struct wlr_box geo;
+						wlr_xdg_surface_get_geometry(
+							view->xdg_toplevel
+							    ->base,
+							&geo);
+						vw = geo.width;
+						vh = geo.height;
+					}
+
+					if (strcasecmp(rule->pos_anchor,
+					    "Center") == 0) {
+						px = area.x +
+						    (area.width - vw) / 2 +
+						    rule->pos_x;
+						py = area.y +
+						    (area.height - vh) / 2 +
+						    rule->pos_y;
+					} else if (strcasecmp(
+					    rule->pos_anchor,
+					    "UpperRight") == 0) {
+						px = area.x + area.width -
+						    vw + rule->pos_x;
+						py = area.y + rule->pos_y;
+					} else if (strcasecmp(
+					    rule->pos_anchor,
+					    "LowerLeft") == 0) {
+						px = area.x + rule->pos_x;
+						py = area.y + area.height -
+						    vh + rule->pos_y;
+					} else if (strcasecmp(
+					    rule->pos_anchor,
+					    "LowerRight") == 0) {
+						px = area.x + area.width -
+						    vw + rule->pos_x;
+						py = area.y + area.height -
+						    vh + rule->pos_y;
+					} else {
+						/* UpperLeft or default */
+						px = area.x + rule->pos_x;
+						py = area.y + rule->pos_y;
+					}
+				}
+			}
+
+			view->x = px;
+			view->y = py;
 			if (view->scene_tree) {
 				wlr_scene_node_set_position(
 					&view->scene_tree->node,

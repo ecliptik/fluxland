@@ -532,8 +532,25 @@ execute_action(struct wm_server *server,
 		}
 		return true;
 
-	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_SET_DECOR:
+		if (view && view->decoration && server->style && argument) {
+			enum wm_decor_preset preset = WM_DECOR_NORMAL;
+			if (strcasecmp(argument, "NONE") == 0 ||
+			    strcmp(argument, "0") == 0)
+				preset = WM_DECOR_NONE;
+			else if (strcasecmp(argument, "BORDER") == 0)
+				preset = WM_DECOR_BORDER;
+			else if (strcasecmp(argument, "TAB") == 0)
+				preset = WM_DECOR_TAB;
+			else if (strcasecmp(argument, "TINY") == 0)
+				preset = WM_DECOR_TINY;
+			else if (strcasecmp(argument, "TOOL") == 0)
+				preset = WM_DECOR_TOOL;
+			wm_decoration_set_preset(view->decoration,
+				preset, server->style);
+		}
+		return true;
+
 	case WM_ACTION_NOP:
 		return true;
 

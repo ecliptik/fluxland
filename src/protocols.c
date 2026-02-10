@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
+#include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
@@ -225,10 +226,14 @@ wm_protocols_init(struct wm_server *server)
 		&server->virtual_pointer_mgr->events.new_virtual_pointer,
 		&server->new_virtual_pointer);
 
+	/* Data control (wlr-data-control-v1 for clipboard managers) */
+	server->data_control_mgr =
+		wlr_data_control_manager_v1_create(server->wl_display);
+
 	wlr_log(WLR_INFO, "%s",
 		"initialized primary selection, pointer constraints, "
 		"relative pointer, cursor shape, virtual keyboard, "
-		"virtual pointer protocols");
+		"virtual pointer, data control protocols");
 }
 
 void
