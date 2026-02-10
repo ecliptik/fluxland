@@ -32,3 +32,16 @@ test_style = executable(
   install: false,
 )
 test('style', test_style)
+
+# --- test_integration: headless compositor startup test ---
+wayland_client = dependency('wayland-client', required: false)
+if wayland_client.found()
+  test_integration = executable(
+    'test_integration',
+    files('test_integration.c'),
+    include_directories: test_inc,
+    dependencies: [wayland_client],
+    install: false,
+  )
+  test('integration', test_integration, timeout: 30)
+endif
