@@ -1,15 +1,64 @@
 [begin] (wm-wayland)
-  [exec] (Terminal) {foot}
-  [exec] (File Manager) {thunar}
-  [exec] (Web Browser) {firefox}
+
+  [submenu] (Terminals)
+    [exec] (foot) {foot}
+    [exec] (Alacritty) {alacritty}
+    [exec] (kitty) {kitty}
+    [exec] (xterm) {xterm}
+  [end]
+
+  [submenu] (Web Browsers)
+    [exec] (Firefox) {firefox}
+    [exec] (Chromium) {chromium-browser}
+    [exec] (Google Chrome) {google-chrome-stable}
+  [end]
+
+  [submenu] (File Managers)
+    [exec] (Thunar) {thunar}
+    [exec] (Nautilus) {nautilus}
+    [exec] (PCManFM) {pcmanfm}
+  [end]
+
+  [submenu] (Text Editors)
+    [exec] (Mousepad) {mousepad}
+    [exec] (gedit) {gedit}
+    [exec] (VS Code) {code}
+    [exec] (Vim) {foot -e vim}
+  [end]
+
+  [submenu] (Multimedia)
+    [exec] (mpv) {mpv --player-operation-mode=pseudo-gui}
+    [exec] (VLC) {vlc}
+    [exec] (GIMP) {gimp}
+    [exec] (Inkscape) {inkscape}
+  [end]
+
+  [submenu] (System)
+    [exec] (File Manager) {thunar}
+    [exec] (Terminal) {foot}
+    [exec] (Task Manager) {foot -e htop}
+    [exec] (Screenshot) {grim ~/screenshot-$(date +%Y%m%d-%H%M%S).png}
+    [exec] (Area Screenshot) {slurp | grim -g - ~/screenshot-$(date +%Y%m%d-%H%M%S).png}
+    [exec] (Color Picker) {hyprpicker -a}
+  [end]
+
   [separator]
+
   [submenu] (Styles)
     [stylesdir] (~/.config/wm-wayland/styles)
   [end]
+
   [workspaces] (Workspaces)
-  [separator]
+
   [config] (Configuration)
-  [reconfig] (Reload Config)
-  [restart] (Restart)
-  [exit] (Exit)
+
+  [separator]
+
+  [submenu] (wm-wayland)
+    [reconfig] (Reload Config)
+    [restart] (Restart)
+    [separator]
+    [exit] (Exit)
+  [end]
+
 [end]

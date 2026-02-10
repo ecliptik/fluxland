@@ -14,7 +14,9 @@
 # Available settings:
 #   [Workspace]      {N}          - open on workspace N (0-based)
 #   [Dimensions]     {W H}        - initial size in pixels
-#   [Position]       (Anchor) {X Y} - initial position (Anchor: Center, etc.)
+#   [Position]       (Anchor) {X Y} - initial position
+#                     Anchors: Center, UpperLeft, UpperRight,
+#                              LowerLeft, LowerRight
 #   [Deco]           {preset}     - NORMAL, NONE, BORDER, TAB, TINY, TOOL
 #   [Sticky]         {yes|no}     - visible on all workspaces
 #   [Layer]          {N}          - stacking layer
@@ -31,21 +33,147 @@
 #     [app] (class=pattern1)
 #     [app] (class=pattern2)
 #   [end]
+#
+# Notes:
+#   - First matching rule wins (rules are evaluated top to bottom).
+#   - "class" matches the Wayland app_id (e.g. "firefox", "foot").
+#   - Workspace is 0-based in rules (workspace 0 = first workspace).
 
-# Example: open Firefox on workspace 2
-# [app] (class=firefox)
-#   [Workspace] {2}
-# [end]
+# -------------------------------------------------------------------
+# Web browsers: open on workspace 2, maximized
+# -------------------------------------------------------------------
 
-# Example: make mpv borderless and fullscreen
-# [app] (class=mpv)
-#   [Deco] {NONE}
-#   [Fullscreen] {yes}
-# [end]
+[app] (class=firefox)
+  [Workspace] {1}
+  [Maximized] {yes}
+  [FocusNewWindow] {yes}
+[end]
 
-# Example: auto-group terminal emulators
-# [group] (workspace)
-#   [app] (class=foot)
-#   [app] (class=Alacritty)
-#   [app] (class=kitty)
-# [end]
+[app] (class=chromium-browser)
+  [Workspace] {1}
+  [Maximized] {yes}
+[end]
+
+[app] (class=google-chrome)
+  [Workspace] {1}
+  [Maximized] {yes}
+[end]
+
+# -------------------------------------------------------------------
+# Terminal emulators: specific size, centered
+# -------------------------------------------------------------------
+
+[app] (class=foot)
+  [Dimensions] {800 600}
+  [Position] (Center) {0 0}
+[end]
+
+[app] (class=Alacritty)
+  [Dimensions] {800 600}
+  [Position] (Center) {0 0}
+[end]
+
+[app] (class=kitty)
+  [Dimensions] {800 600}
+  [Position] (Center) {0 0}
+[end]
+
+# -------------------------------------------------------------------
+# File managers: centered
+# -------------------------------------------------------------------
+
+[app] (class=thunar)
+  [Dimensions] {900 600}
+  [Position] (Center) {0 0}
+[end]
+
+[app] (class=org.gnome.Nautilus)
+  [Dimensions] {900 600}
+  [Position] (Center) {0 0}
+[end]
+
+# -------------------------------------------------------------------
+# Media players: above layer, specific size, borderless
+# -------------------------------------------------------------------
+
+[app] (class=mpv)
+  [Dimensions] {960 540}
+  [Position] (Center) {0 0}
+  [Deco] {NONE}
+[end]
+
+[app] (class=vlc)
+  [Dimensions] {960 540}
+  [Position] (Center) {0 0}
+[end]
+
+# -------------------------------------------------------------------
+# Image viewers
+# -------------------------------------------------------------------
+
+[app] (class=imv)
+  [Position] (Center) {0 0}
+  [Deco] {BORDER}
+[end]
+
+# -------------------------------------------------------------------
+# Text editors: workspace 3
+# -------------------------------------------------------------------
+
+[app] (class=code)
+  [Workspace] {2}
+  [Maximized] {yes}
+[end]
+
+# -------------------------------------------------------------------
+# System monitors: small, top-right, semi-transparent
+# -------------------------------------------------------------------
+
+[app] (class=htop)
+  [Dimensions] {700 500}
+  [Position] (UpperRight) {0 0}
+  [Alpha] {240 180}
+[end]
+
+# -------------------------------------------------------------------
+# Dialog windows: centered, tool decoration
+# -------------------------------------------------------------------
+
+# Zenity / yad dialogs
+[app] (class=zenity)
+  [Position] (Center) {0 0}
+  [Deco] {TOOL}
+  [FocusNewWindow] {yes}
+[end]
+
+# -------------------------------------------------------------------
+# Sticky applications (visible on all workspaces)
+# -------------------------------------------------------------------
+
+# System tray / notification area
+[app] (class=waybar)
+  [Sticky] {yes}
+  [Deco] {NONE}
+[end]
+
+# -------------------------------------------------------------------
+# Splash screens: no decoration, centered
+# -------------------------------------------------------------------
+
+[app] (title=.*[Ss]plash.*)
+  [Deco] {NONE}
+  [Position] (Center) {0 0}
+  [FocusNewWindow] {no}
+[end]
+
+# -------------------------------------------------------------------
+# Auto-grouping: tab terminal emulators together
+# -------------------------------------------------------------------
+
+# Group all terminals on the same workspace into tabs
+[group] (workspace)
+  [app] (class=foot)
+  [app] (class=Alacritty)
+  [app] (class=kitty)
+  [app] (class=xterm)
+[end]

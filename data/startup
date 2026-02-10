@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# wm-wayland startup script
+# Executed once when the compositor starts. Use this to launch
+# background services, set wallpaper, and start panels.
+#
+# Place your copy at: ~/.config/wm-wayland/startup
+# Make sure it is executable: chmod +x startup
+
+# -------------------------------------------------------------------
+# Wallpaper (swaybg)
+# Install: apt install swaybg / pacman -S swaybg
+# -------------------------------------------------------------------
+# swaybg -i ~/Pictures/wallpaper.png -m fill &
+
+# Solid color fallback if no wallpaper image
+swaybg -c '#2e3440' &
+
+# -------------------------------------------------------------------
+# Status bar (waybar)
+# Install: apt install waybar / pacman -S waybar
+# -------------------------------------------------------------------
+# waybar &
+
+# -------------------------------------------------------------------
+# Notification daemon
+# Install one of: mako, dunst, fnott, swaync
+# -------------------------------------------------------------------
+# mako &
+# dunst &
+
+# -------------------------------------------------------------------
+# Screen idle / lock
+# swayidle dims/locks the screen after inactivity.
+# swaylock provides the lock screen itself.
+# -------------------------------------------------------------------
+# swayidle -w \
+#   timeout 300 'swaylock -f' \
+#   timeout 600 'wlopm --off \*' resume 'wlopm --on \*' &
+
+# -------------------------------------------------------------------
+# Polkit agent (needed for GUI privilege escalation)
+# -------------------------------------------------------------------
+# /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &
+
+# -------------------------------------------------------------------
+# Clipboard manager (wl-clipboard + cliphist)
+# -------------------------------------------------------------------
+# wl-paste --watch cliphist store &
+
+# -------------------------------------------------------------------
+# PipeWire screen sharing (for xdg-desktop-portal)
+# Many desktops start this automatically; uncomment if needed.
+# -------------------------------------------------------------------
+# dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
+
+# -------------------------------------------------------------------
+# Network Manager applet (if using a tray)
+# -------------------------------------------------------------------
+# nm-applet --indicator &
+
+# -------------------------------------------------------------------
+# Input method (fcitx5 / ibus)
+# -------------------------------------------------------------------
+# fcitx5 &
