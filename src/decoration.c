@@ -1022,7 +1022,6 @@ wm_decoration_set_shaded(struct wm_decoration *decoration,
 
 		/*
 		 * When shaded, hide handle/grips and set content height to 0.
-		 * The view code should also hide the client surface.
 		 */
 		wlr_scene_node_set_enabled(&decoration->handle_buf->node,
 			false);
@@ -1037,6 +1036,25 @@ wm_decoration_set_shaded(struct wm_decoration *decoration,
 		decoration->content_height =
 			decoration->shaded_saved_geometry.height;
 		wm_decoration_update(decoration, style);
+	}
+
+	/*
+	 * Hide/show the client surface content. The client surface is a
+	 * child of view->scene_tree that is NOT the decoration tree.
+	 */
+	struct wm_view *view = decoration->view;
+	if (view && view->scene_tree) {
+		struct wlr_scene_node *child;
+		wl_list_for_each(child, &view->scene_tree->children, link) {
+			if (child->type == WLR_SCENE_NODE_TREE) {
+				struct wlr_scene_tree *subtree =
+					wlr_scene_tree_from_node(child);
+				if (subtree != decoration->tree) {
+					wlr_scene_node_set_enabled(child,
+						!shaded);
+				}
+			}
+		}
 	}
 }
 

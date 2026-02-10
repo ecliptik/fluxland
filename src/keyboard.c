@@ -25,6 +25,7 @@
 #include "keyboard.h"
 #include "server.h"
 #include "config.h"
+#include "decoration.h"
 #include "keybind.h"
 #include "menu.h"
 #include "tabgroup.h"
@@ -449,11 +450,26 @@ execute_action(struct wm_server *server,
 		wm_menu_hide_all(server);
 		return true;
 
+	case WM_ACTION_SHADE:
+		if (view && view->decoration && server->style)
+			wm_decoration_set_shaded(view->decoration,
+				!view->decoration->shaded, server->style);
+		return true;
+
+	case WM_ACTION_SHADE_ON:
+		if (view && view->decoration && server->style)
+			wm_decoration_set_shaded(view->decoration,
+				true, server->style);
+		return true;
+
+	case WM_ACTION_SHADE_OFF:
+		if (view && view->decoration && server->style)
+			wm_decoration_set_shaded(view->decoration,
+				false, server->style);
+		return true;
+
 	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
-	case WM_ACTION_SHADE:
-	case WM_ACTION_SHADE_ON:
-	case WM_ACTION_SHADE_OFF:
 	case WM_ACTION_MAXIMIZE_VERT:
 	case WM_ACTION_MAXIMIZE_HORIZ:
 	case WM_ACTION_RAISE_LAYER:
