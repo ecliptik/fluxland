@@ -535,9 +535,19 @@ execute_action(struct wm_server *server,
 	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_SET_DECOR:
 	case WM_ACTION_NOP:
+		return true;
+
+	/*
+	 * MacroCmd/ToggleCmd are dispatched by execute_keybind_action()
+	 * which has access to the keybind's subcmd list and toggle state.
+	 * If reached here via a direct execute_action() call (e.g. from a
+	 * subcmd), these are invalid — log and ignore.
+	 */
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:
-		return true;
+		wlr_log(WLR_ERROR,
+			"MacroCmd/ToggleCmd cannot be nested in subcmds");
+		return false;
 	}
 
 	return false;
