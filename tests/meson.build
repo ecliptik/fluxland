@@ -33,6 +33,36 @@ test_style = executable(
 )
 test('style', test_style)
 
+# --- test_rules: window rules parser tests ---
+test_rules = executable(
+  'test_rules',
+  files('test_rules.c', '../src/rules.c'),
+  include_directories: test_inc,
+  dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+  install: false,
+)
+test('rules', test_rules)
+
+# --- test_placement: placement grid math tests ---
+test_placement = executable(
+  'test_placement',
+  files('test_placement.c'),
+  include_directories: test_inc,
+  dependencies: [math],
+  install: false,
+)
+test('placement', test_placement)
+
+# --- test_menu: menu parser tests ---
+test_menu = executable(
+  'test_menu',
+  files('test_menu.c', '../src/menu.c'),
+  include_directories: test_inc,
+  dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+  install: false,
+)
+test('menu', test_menu)
+
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
 if wayland_client.found()
