@@ -4,11 +4,14 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
 #include "protocols.h"
@@ -67,6 +70,33 @@ handle_new_constraint(struct wl_listener *listener, void *data)
 		wl_signal_add(&constraint->events.destroy,
 			&server->pointer_constraint_destroy);
 	}
+}
+
+/* --- Cursor shape --- */
+
+static void
+handle_cursor_shape_request(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server = wl_container_of(listener, server,
+		cursor_shape_request);
+	struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
+
+	/* Only handle pointer devices (not tablet tools) */
+	if (event->device_type !=
+	    WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER) {
+		return;
+	}
+
+	/* Verify the requesting client currently has pointer focus */
+	struct wlr_seat_client *focused =
+		server->seat->pointer_state.focused_client;
+	if (focused != event->seat_client) {
+		return;
+	}
+
+	const char *shape_name = wlr_cursor_shape_v1_name(event->shape);
+	wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr,
+		shape_name);
 }
 
 /* --- Public API --- */
@@ -137,14 +167,23 @@ wm_protocols_init(struct wm_server *server)
 	server->relative_pointer_mgr =
 		wlr_relative_pointer_manager_v1_create(server->wl_display);
 
+	/* Cursor shape (wp-cursor-shape-v1) */
+	server->cursor_shape_mgr =
+		wlr_cursor_shape_manager_v1_create(server->wl_display, 1);
+
+	server->cursor_shape_request.notify = handle_cursor_shape_request;
+	wl_signal_add(&server->cursor_shape_mgr->events.request_set_shape,
+		&server->cursor_shape_request);
+
 	wlr_log(WLR_INFO, "%s",
-		"initialized primary selection, "
-		"pointer constraints, relative pointer protocols");
+		"initialized primary selection, pointer constraints, "
+		"relative pointer, cursor shape protocols");
 }
 
 void
 wm_protocols_finish(struct wm_server *server)
 {
+	wl_list_remove(&server->cursor_shape_request.link);
 	wl_list_remove(&server->request_set_primary_selection.link);
 	wl_list_remove(&server->new_pointer_constraint.link);
 	wl_list_remove(&server->pointer_constraint_destroy.link);

@@ -30,6 +30,7 @@
 #include "idle.h"
 #include "output_management.h"
 #include "protocols.h"
+#include "fractional_scale.h"
 #include "screencopy.h"
 #include "session_lock.h"
 #include "xwayland.h"
@@ -46,6 +47,8 @@ struct wlr_primary_selection_v1_device_manager;
 struct wlr_pointer_constraints_v1;
 struct wlr_pointer_constraint_v1;
 struct wlr_relative_pointer_manager_v1;
+struct wlr_fractional_scale_manager_v1;
+struct wlr_cursor_shape_manager_v1;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -173,6 +176,13 @@ struct wm_server {
 
 	/* Relative pointer (unaccelerated motion for games) */
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_mgr;
+
+	/* Fractional scale (wp-fractional-scale-v1 for HiDPI) */
+	struct wlr_fractional_scale_manager_v1 *fractional_scale_mgr;
+
+	/* Cursor shape (wp-cursor-shape-v1) */
+	struct wlr_cursor_shape_manager_v1 *cursor_shape_mgr;
+	struct wl_listener cursor_shape_request;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;
