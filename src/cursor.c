@@ -27,6 +27,8 @@
 #include "server.h"
 #include "decoration.h"
 #include "menu.h"
+#include "placement.h"
+#include "session_lock.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -333,8 +335,11 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 	double new_y = server->cursor->y - server->grab_y +
 		server->grab_geobox.y;
 	struct wm_view *view = server->grabbed_view;
-	view->x = (int)new_x;
-	view->y = (int)new_y;
+	int snap_x = (int)new_x;
+	int snap_y = (int)new_y;
+	wm_snap_edges(server, view, &snap_x, &snap_y);
+	view->x = snap_x;
+	view->y = snap_y;
 	wlr_scene_node_set_position(&view->scene_tree->node,
 		view->x, view->y);
 }
