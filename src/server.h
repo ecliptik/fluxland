@@ -31,8 +31,10 @@
 #include "output_management.h"
 #include "protocols.h"
 #include "fractional_scale.h"
+#include "gamma_control.h"
 #include "screencopy.h"
 #include "session_lock.h"
+#include "viewporter.h"
 #include "xwayland.h"
 
 /* Forward declarations for types defined by other modules */
@@ -49,6 +51,10 @@ struct wlr_pointer_constraint_v1;
 struct wlr_relative_pointer_manager_v1;
 struct wlr_fractional_scale_manager_v1;
 struct wlr_cursor_shape_manager_v1;
+struct wlr_viewporter;
+struct wlr_single_pixel_buffer_manager_v1;
+struct wlr_gamma_control_manager_v1;
+struct wlr_presentation;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -183,6 +189,17 @@ struct wm_server {
 	/* Cursor shape (wp-cursor-shape-v1) */
 	struct wlr_cursor_shape_manager_v1 *cursor_shape_mgr;
 	struct wl_listener cursor_shape_request;
+
+	/* Viewporter and single-pixel-buffer */
+	struct wlr_viewporter *viewporter;
+	struct wlr_single_pixel_buffer_manager_v1 *single_pixel_buffer_mgr;
+
+	/* Gamma control (wlr-gamma-control-v1 for gammastep, wlsunset) */
+	struct wlr_gamma_control_manager_v1 *gamma_control_mgr;
+	struct wl_listener gamma_set_gamma;
+
+	/* Presentation time (wp-presentation-time for frame timing) */
+	struct wlr_presentation *presentation;
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;

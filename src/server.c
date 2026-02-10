@@ -30,11 +30,14 @@
 #include "idle.h"
 #include "output_management.h"
 #include "protocols.h"
+#include "gamma_control.h"
+#include "presentation.h"
 #include "screencopy.h"
 #include "session_lock.h"
 #include "style.h"
 #include "toolbar.h"
 #include "view.h"
+#include "viewporter.h"
 #include "workspace.h"
 #include "xwayland.h"
 
@@ -204,8 +207,20 @@ wm_server_init(struct wm_server *server)
 	/* Screencopy and DMA-BUF export for screenshot/recording tools */
 	wm_screencopy_init(server);
 
+	/* Gamma control for color temperature tools (gammastep, wlsunset) */
+	wm_gamma_control_init(server);
+
+	/* Fractional scale for HiDPI displays */
+	wm_fractional_scale_init(server);
+
 	/* Foreign toplevel management for external taskbars (waybar) */
 	wm_foreign_toplevel_init(server);
+
+	/* Viewporter and single-pixel-buffer for client buffer flexibility */
+	wm_viewporter_init(server);
+
+	/* Presentation time for frame timing feedback */
+	wm_presentation_init(server);
 
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");
