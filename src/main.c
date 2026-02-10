@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <wlr/util/log.h>
 
+#include "autostart.h"
+#include "config.h"
 #include "server.h"
 
 static const char usage[] =
@@ -75,15 +77,13 @@ main(int argc, char *argv[])
 	setenv("WAYLAND_DISPLAY", server.socket, true);
 	wlr_log(WLR_INFO, "running on WAYLAND_DISPLAY=%s", server.socket);
 
+	/* Run autostart script from config directory */
+	wm_autostart_run(server.config ? server.config->config_dir : NULL,
+		server.socket);
+
+	/* Run -s/--startup command if provided */
 	if (startup_cmd) {
-		pid_t pid = fork();
-		if (pid == 0) {
-			execl("/bin/sh", "/bin/sh", "-c", startup_cmd,
-				(char *)NULL);
-			_exit(1);
-		} else if (pid < 0) {
-			wlr_log(WLR_ERROR, "fork failed");
-		}
+		wm_autostart_run_cmd(startup_cmd, server.socket);
 	}
 
 	wm_server_run(&server);

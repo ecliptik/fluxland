@@ -122,6 +122,7 @@ wm_deps = [
 
 wm_sources = files(
   'src/main.c',
+  'src/autostart.c',
   'src/server.c',
   'src/output.c',
   'src/input.c',
@@ -154,6 +155,7 @@ wm_sources = files(
   'src/text_input.c',
   'src/viewporter.c',
   'src/menu.c',
+  'src/slit.c',
   'src/toolbar.c',
   'src/xwayland.c',
 )
