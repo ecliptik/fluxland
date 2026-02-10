@@ -238,8 +238,17 @@ wm_focus_update_for_cursor(struct wm_server *server,
 			}
 		}
 
+		/* Apply unfocus opacity to previous view */
+		if (server->focused_view) {
+			wm_view_set_opacity(server->focused_view,
+				server->focused_view->unfocus_alpha);
+		}
+
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, true);
 		server->focused_view = view;
+
+		/* Apply focus opacity to newly focused view */
+		wm_view_set_opacity(view, view->focus_alpha);
 
 		struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 		if (keyboard) {
@@ -695,6 +704,10 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 
 	view->server = server;
 	view->xdg_toplevel = xdg_toplevel;
+
+	/* Default opacity: fully opaque */
+	view->focus_alpha = 255;
+	view->unfocus_alpha = 255;
 
 	/* Initialize tab group link (not in any group yet) */
 	wl_list_init(&view->tab_link);

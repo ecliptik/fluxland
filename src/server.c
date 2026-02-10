@@ -26,7 +26,9 @@
 #include "output.h"
 #include "input.h"
 #include "rules.h"
+#include "session_lock.h"
 #include "style.h"
+#include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
 #include "xwayland.h"
@@ -185,6 +187,9 @@ wm_server_init(struct wm_server *server)
 	/* Layer shell: panels, wallpapers, lock screens, notifications */
 	wm_layer_shell_init(server);
 
+	/* Session lock: ext-session-lock-v1 for screen lockers */
+	wm_session_lock_init(server);
+
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");
 	if (!server->seat) {
@@ -256,6 +261,9 @@ wm_server_init(struct wm_server *server)
 		server->config->workspace_count : WM_DEFAULT_WORKSPACE_COUNT;
 	wm_workspaces_init(server, ws_count);
 
+	/* Create toolbar (after workspaces so it can display them) */
+	server->toolbar = wm_toolbar_create(server);
+
 	/* Load per-window rules (Fluxbox apps file) */
 	wm_rules_init(&server->rules);
 	if (server->config && server->config->apps_file) {
@@ -319,11 +327,13 @@ wm_server_destroy(struct wm_server *server)
 	wm_xwayland_finish(server);
 	wl_display_destroy_clients(server->wl_display);
 
+	wm_toolbar_destroy(server->toolbar);
 	wm_ipc_destroy(&server->ipc);
 	wm_menu_destroy(server->root_menu);
 	wm_menu_destroy(server->window_menu);
 	wm_rules_finish(&server->rules);
 
+	wm_session_lock_finish(server);
 	wm_layer_shell_finish(server);
 	wm_workspaces_finish(server);
 

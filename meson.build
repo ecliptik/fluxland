@@ -140,8 +140,11 @@ wm_sources = files(
   'src/ipc.c',
   'src/ipc_commands.c',
   'src/rules.c',
+  'src/placement.c',
   'src/layer_shell.c',
+  'src/session_lock.c',
   'src/menu.c',
+  'src/toolbar.c',
   'src/xwayland.c',
 )
 

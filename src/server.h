@@ -27,6 +27,7 @@
 #include "mousebind.h"
 #include "ipc.h"
 #include "rules.h"
+#include "session_lock.h"
 #include "xwayland.h"
 
 /* Forward declarations for types defined by other modules */
@@ -35,6 +36,7 @@ struct wm_workspace;
 struct wm_config;
 struct wm_style;
 struct wm_menu;
+struct wm_toolbar;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -140,6 +142,12 @@ struct wm_server {
 
 	/* IPC server */
 	struct wm_ipc_server ipc;
+
+	/* Session lock (ext-session-lock-v1) */
+	struct wm_session_lock session_lock;
+
+	/* Toolbar */
+	struct wm_toolbar *toolbar;
 
 	/* Menus */
 	struct wm_menu *root_menu;

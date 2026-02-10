@@ -1,0 +1,74 @@
+/*
+ * wm-wayland - A Fluxbox-inspired Wayland compositor
+ *
+ * toolbar.h - Built-in toolbar with workspace switcher, window title, and clock
+ *
+ * The toolbar is a compositor-rendered panel (not a layer-shell client)
+ * that sits at the top or bottom of the primary output. It shows:
+ *   - Workspace buttons (left)
+ *   - Focused window title (center)
+ *   - Clock with configurable strftime format (right)
+ */
+
+#ifndef WM_TOOLBAR_H
+#define WM_TOOLBAR_H
+
+#include <stdbool.h>
+#include <wayland-server-core.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/util/box.h>
+
+struct wm_server;
+
+#define WM_TOOLBAR_HEIGHT 24
+#define WM_TOOLBAR_PADDING 4
+#define WM_TOOLBAR_CLOCK_FMT "%H:%M"
+
+struct wm_toolbar {
+	struct wm_server *server;
+
+	/* Scene graph nodes */
+	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_buffer *bg_buf;
+	struct wlr_scene_buffer *workspace_buf;
+	struct wlr_scene_buffer *title_buf;
+	struct wlr_scene_buffer *clock_buf;
+
+	/* Geometry */
+	int x, y;
+	int width, height;
+	bool visible;
+
+	/* Workspace button hit regions (for click handling) */
+	struct wlr_box *ws_boxes;
+	int ws_box_count;
+
+	/* Clock timer */
+	struct wl_event_source *clock_timer;
+
+	/* Cached state to avoid redundant redraws */
+	int cached_ws_index;
+	char *cached_title;
+	char cached_clock[64];
+};
+
+/* Create the toolbar and add it to the scene graph */
+struct wm_toolbar *wm_toolbar_create(struct wm_server *server);
+
+/* Destroy the toolbar and free resources */
+void wm_toolbar_destroy(struct wm_toolbar *toolbar);
+
+/* Update the workspace display (call on workspace switch) */
+void wm_toolbar_update_workspace(struct wm_toolbar *toolbar);
+
+/* Update the window title display (call on focus change or title change) */
+void wm_toolbar_update_title(struct wm_toolbar *toolbar);
+
+/* Recalculate toolbar geometry (call on output resize) */
+void wm_toolbar_relayout(struct wm_toolbar *toolbar);
+
+/* Handle pointer click at layout coordinates; returns true if consumed */
+bool wm_toolbar_handle_click(struct wm_toolbar *toolbar,
+	double lx, double ly);
+
+#endif /* WM_TOOLBAR_H */

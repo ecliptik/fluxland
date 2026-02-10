@@ -42,6 +42,10 @@ struct wm_view {
 	struct wm_tab_group *tab_group;
 	struct wl_list tab_link; /* wm_tab_group.views */
 
+	/* Window opacity (0-255, 255 = fully opaque) */
+	int focus_alpha;
+	int unfocus_alpha;
+
 	/* Server-side decorations */
 	struct wm_decoration *decoration;
 
@@ -111,5 +115,11 @@ void wm_view_get_geometry(struct wm_view *view, struct wlr_box *box);
  */
 void wm_view_begin_interactive(struct wm_view *view,
 	enum wm_cursor_mode mode, uint32_t edges);
+
+/*
+ * Set the opacity of a view's scene buffers.
+ * alpha is 0-255 (0 = transparent, 255 = fully opaque).
+ */
+void wm_view_set_opacity(struct wm_view *view, int alpha);
 
 #endif /* WM_VIEW_H */

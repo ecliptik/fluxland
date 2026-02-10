@@ -539,6 +539,12 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 				view->server->style);
 		}
 
+		/* Apply alpha/opacity */
+		if (rule->has_alpha) {
+			view->focus_alpha = rule->focus_alpha;
+			view->unfocus_alpha = rule->unfocus_alpha;
+		}
+
 		/* First match wins */
 		return;
 	}
