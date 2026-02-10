@@ -24,6 +24,7 @@
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
+#include "config.h"
 #include "cursor.h"
 #include "server.h"
 #include "decoration.h"
@@ -386,6 +387,69 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 	wlr_xdg_toplevel_set_size(view->xdg_toplevel, new_w, new_h);
 }
 
+/*
+ * Cancel any pending auto-raise timer.
+ */
+static void
+cancel_auto_raise(struct wm_server *server)
+{
+	if (server->auto_raise_timer) {
+		wl_event_source_timer_update(server->auto_raise_timer, 0);
+	}
+	server->auto_raise_view = NULL;
+}
+
+/*
+ * Timer callback: raise the view that was pending auto-raise,
+ * but only if it's still the focused view.
+ */
+static int
+auto_raise_timer_callback(void *data)
+{
+	struct wm_server *server = data;
+	struct wm_view *view = server->auto_raise_view;
+	server->auto_raise_view = NULL;
+
+	if (view && view == server->focused_view) {
+		wm_view_raise(view);
+	}
+	return 0;
+}
+
+/*
+ * Schedule or perform an auto-raise for the given view.
+ * Uses the configured delay; if 0, raises immediately.
+ */
+static void
+schedule_auto_raise(struct wm_server *server, struct wm_view *view)
+{
+	if (!server->config || !server->config->raise_on_focus) {
+		return;
+	}
+
+	int delay = server->config->auto_raise_delay_ms;
+
+	if (delay <= 0) {
+		wm_view_raise(view);
+		return;
+	}
+
+	/* Create the timer lazily on first use */
+	if (!server->auto_raise_timer) {
+		server->auto_raise_timer = wl_event_loop_add_timer(
+			server->wl_event_loop, auto_raise_timer_callback,
+			server);
+		if (!server->auto_raise_timer) {
+			/* Fallback: raise immediately */
+			wm_view_raise(view);
+			return;
+		}
+	}
+
+	server->auto_raise_view = view;
+	wl_event_source_timer_update(server->auto_raise_timer, delay);
+}
+
 static void
 process_cursor_motion(struct wm_server *server, uint32_t time)
 {
@@ -442,6 +506,29 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	if (!view) {
 		wlr_cursor_set_xcursor(server->cursor,
 			server->cursor_mgr, "default");
+		/* Pointer moved to empty space — cancel auto-raise */
+		cancel_auto_raise(server);
+	}
+
+	/* Focus-follows-mouse: focus the view under the pointer */
+	if (server->config &&
+	    server->config->focus_policy != WM_FOCUS_CLICK &&
+	    server->cursor_mode == WM_CURSOR_PASSTHROUGH) {
+		if (view && view != server->focused_view) {
+			wm_focus_update_for_cursor(server,
+				server->cursor->x, server->cursor->y);
+			schedule_auto_raise(server, view);
+		} else if (!view && server->focused_view) {
+			/*
+			 * Strict mouse focus: unfocus when pointer moves
+			 * to empty desktop area.
+			 */
+			if (server->config->focus_policy ==
+			    WM_FOCUS_STRICT_MOUSE) {
+				wm_unfocus_current(server);
+			}
+			cancel_auto_raise(server);
+		}
 	}
 
 	if (surface) {

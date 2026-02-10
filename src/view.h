@@ -23,7 +23,7 @@ enum wm_view_layer {
 	WM_LAYER_BELOW,
 	WM_LAYER_NORMAL,
 	WM_LAYER_ABOVE,
-	WM_LAYER_COUNT, /* sentinel */
+	WM_VIEW_LAYER_COUNT, /* sentinel */
 };
 
 struct wm_view {

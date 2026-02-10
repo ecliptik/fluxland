@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -217,6 +218,97 @@ wm_view_raise(struct wm_view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(&view->server->views, &view->link);
 	wlr_scene_node_raise_to_top(&view->scene_tree->node);
+}
+
+void
+wm_view_lower(struct wm_view *view)
+{
+	/* Move to bottom of the views list */
+	wl_list_remove(&view->link);
+	wl_list_insert(view->server->views.prev, &view->link);
+	wlr_scene_node_lower_to_bottom(&view->scene_tree->node);
+}
+
+static struct wlr_scene_tree *
+get_layer_tree(struct wm_server *server, enum wm_view_layer layer)
+{
+	switch (layer) {
+	case WM_LAYER_DESKTOP:
+		return server->view_layer_desktop;
+	case WM_LAYER_BELOW:
+		return server->view_layer_below;
+	case WM_LAYER_ABOVE:
+		return server->view_layer_above;
+	case WM_LAYER_NORMAL:
+	default:
+		return server->view_layer_normal;
+	}
+}
+
+void
+wm_view_set_layer(struct wm_view *view, enum wm_view_layer layer)
+{
+	if (layer < 0 || layer >= WM_VIEW_LAYER_COUNT) {
+		return;
+	}
+	if (view->layer == layer) {
+		return;
+	}
+
+	view->layer = layer;
+
+	struct wlr_scene_tree *target;
+	if (layer == WM_LAYER_NORMAL) {
+		/* Normal layer: reparent to workspace or sticky tree */
+		if (view->sticky) {
+			target = view->server->sticky_tree;
+		} else if (view->workspace) {
+			target = view->workspace->tree;
+		} else {
+			target = view->server->view_layer_normal;
+		}
+	} else {
+		target = get_layer_tree(view->server, layer);
+	}
+
+	wlr_scene_node_reparent(&view->scene_tree->node, target);
+	wlr_scene_node_raise_to_top(&view->scene_tree->node);
+}
+
+void
+wm_view_raise_layer(struct wm_view *view)
+{
+	if (view->layer < WM_LAYER_ABOVE) {
+		wm_view_set_layer(view, view->layer + 1);
+	}
+}
+
+void
+wm_view_lower_layer(struct wm_view *view)
+{
+	if (view->layer > WM_LAYER_DESKTOP) {
+		wm_view_set_layer(view, view->layer - 1);
+	}
+}
+
+enum wm_view_layer
+wm_view_layer_from_name(const char *name)
+{
+	if (!name) {
+		return WM_LAYER_NORMAL;
+	}
+	if (strcasecmp(name, "Desktop") == 0) {
+		return WM_LAYER_DESKTOP;
+	} else if (strcasecmp(name, "Bottom") == 0 ||
+		   strcasecmp(name, "Below") == 0) {
+		return WM_LAYER_BELOW;
+	} else if (strcasecmp(name, "Top") == 0 ||
+		   strcasecmp(name, "Above") == 0 ||
+		   strcasecmp(name, "AboveDock") == 0 ||
+		   strcasecmp(name, "Dock") == 0) {
+		return WM_LAYER_ABOVE;
+	}
+	return WM_LAYER_NORMAL;
 }
 
 void
@@ -760,6 +852,9 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 
 	/* Decorations shown by default */
 	view->show_decoration = true;
+
+	/* Default layer: normal */
+	view->layer = WM_LAYER_NORMAL;
 
 	/* Initialize tab group link (not in any group yet) */
 	wl_list_init(&view->tab_link);

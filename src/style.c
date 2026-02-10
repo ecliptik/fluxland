@@ -725,6 +725,30 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 	load_texture(db, "toolbar", &s->toolbar_texture, sd);
 	load_color(db, "toolbar.textColor", &s->toolbar_text_color);
 	load_font(db, "toolbar.font", &s->toolbar_font);
+
+	/* --- Toolbar icon bar --- */
+	if (style_get(db, "toolbar.iconbar.focused.color")) {
+		s->toolbar_iconbar_focused_color =
+			style_parse_color(style_get(db,
+				"toolbar.iconbar.focused.color"));
+		s->toolbar_iconbar_has_focused_color = true;
+	}
+	if (style_get(db, "toolbar.iconbar.focused.textColor")) {
+		s->toolbar_iconbar_focused_text_color =
+			style_parse_color(style_get(db,
+				"toolbar.iconbar.focused.textColor"));
+	}
+	if (style_get(db, "toolbar.iconbar.unfocused.color")) {
+		s->toolbar_iconbar_unfocused_color =
+			style_parse_color(style_get(db,
+				"toolbar.iconbar.unfocused.color"));
+		s->toolbar_iconbar_has_unfocused_color = true;
+	}
+	if (style_get(db, "toolbar.iconbar.unfocused.textColor")) {
+		s->toolbar_iconbar_unfocused_text_color =
+			style_parse_color(style_get(db,
+				"toolbar.iconbar.unfocused.textColor"));
+	}
 }
 
 /*

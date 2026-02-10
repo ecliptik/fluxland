@@ -34,6 +34,7 @@
 #include "presentation.h"
 #include "screencopy.h"
 #include "session_lock.h"
+#include "slit.h"
 #include "style.h"
 #include "text_input.h"
 #include "toolbar.h"
@@ -174,6 +175,11 @@ wm_server_init(struct wm_server *server)
 	server->layer_background = wlr_scene_tree_create(&server->scene->tree);
 	server->layer_bottom = wlr_scene_tree_create(&server->scene->tree);
 	server->view_tree = wlr_scene_tree_create(&server->scene->tree);
+	/* Layer sub-trees within view_tree (bottom to top) */
+	server->view_layer_desktop = wlr_scene_tree_create(server->view_tree);
+	server->view_layer_below = wlr_scene_tree_create(server->view_tree);
+	server->view_layer_normal = wlr_scene_tree_create(server->view_tree);
+	server->view_layer_above = wlr_scene_tree_create(server->view_tree);
 	server->xdg_popup_tree = wlr_scene_tree_create(&server->scene->tree);
 	server->layer_top = wlr_scene_tree_create(&server->scene->tree);
 	server->layer_overlay = wlr_scene_tree_create(&server->scene->tree);
@@ -303,6 +309,9 @@ wm_server_init(struct wm_server *server)
 	/* Create toolbar (after workspaces so it can display them) */
 	server->toolbar = wm_toolbar_create(server);
 
+	/* Create slit (dockapp container) */
+	server->slit = wm_slit_create(server);
+
 	/* Load per-window rules (Fluxbox apps file) */
 	wm_rules_init(&server->rules);
 	if (server->config && server->config->apps_file) {
@@ -366,6 +375,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_xwayland_finish(server);
 	wl_display_destroy_clients(server->wl_display);
 
+	wm_slit_destroy(server->slit);
 	wm_toolbar_destroy(server->toolbar);
 	wm_ipc_destroy(&server->ipc);
 	wm_menu_destroy(server->root_menu);
@@ -386,6 +396,8 @@ wm_server_destroy(struct wm_server *server)
 	free(server->current_keymode);
 	if (server->chain_state.timeout)
 		wl_event_source_remove(server->chain_state.timeout);
+	if (server->auto_raise_timer)
+		wl_event_source_remove(server->auto_raise_timer);
 	style_destroy(server->style);
 	config_destroy(server->config);
 

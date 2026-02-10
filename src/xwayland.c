@@ -27,6 +27,7 @@
 #include <wlr/util/log.h>
 
 #include "server.h"
+#include "slit.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -123,6 +124,37 @@ classify_window(struct wlr_xwayland_surface *xsurface,
 	return WM_XW_MANAGED;
 }
 
+/*
+ * Check if an X11 surface should be docked into the slit.
+ * In Fluxbox, withdrawn windows and dock-type windows go to the slit.
+ */
+static bool
+should_dock_in_slit(struct wlr_xwayland_surface *xsurface,
+	const struct wm_xwayland_atoms *atoms)
+{
+	/* Dock-type windows belong in the slit */
+	for (size_t i = 0; i < xsurface->window_type_len; i++) {
+		if (xsurface->window_type[i] ==
+		    atoms->net_wm_window_type_dock) {
+			return true;
+		}
+	}
+
+	/*
+	 * Classic dockapps use withdrawn state (initial_state == 0
+	 * in WM_HINTS).  Check the size hints: tiny windows with
+	 * no window type set are likely dockapps.
+	 */
+	if (xsurface->window_type_len == 0 &&
+	    !xsurface->override_redirect &&
+	    xsurface->hints &&
+	    xsurface->hints->initial_state == 0 /* WithdrawnState */) {
+		return true;
+	}
+
+	return false;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Focus helpers                                                      */
 /* ------------------------------------------------------------------ */
@@ -200,6 +232,20 @@ handle_xwayland_surface_map(struct wl_listener *listener, void *data)
 	free(xview->app_id);
 	xview->app_id = xview->xsurface->class ?
 		strdup(xview->xsurface->class) : NULL;
+
+	/*
+	 * Route dock/withdrawn windows to the slit instead of the
+	 * normal view tree.  The slit manages their lifecycle.
+	 */
+	if (server->slit &&
+	    should_dock_in_slit(xview->xsurface,
+		    &server->xwayland_atoms)) {
+		wlr_log(WLR_INFO, "xwayland: routing \"%s\" [%s] to slit",
+			xview->title ? xview->title : "(null)",
+			xview->app_id ? xview->app_id : "(null)");
+		wm_slit_add_client(server->slit, xview->xsurface);
+		return;
+	}
 
 	/*
 	 * Create scene tree.  We use wlr_scene_subsurface_tree_create

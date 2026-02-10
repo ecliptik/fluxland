@@ -1,12 +1,12 @@
 /*
  * wm-wayland - A Fluxbox-inspired Wayland compositor
  *
- * toolbar.h - Built-in toolbar with workspace switcher, window title, and clock
+ * toolbar.h - Built-in toolbar with workspace switcher, icon bar, and clock
  *
  * The toolbar is a compositor-rendered panel (not a layer-shell client)
  * that sits at the top or bottom of the primary output. It shows:
  *   - Workspace buttons (left)
- *   - Focused window title (center)
+ *   - Icon bar / window list for current workspace (center)
  *   - Clock with configurable strftime format (right)
  */
 
@@ -19,10 +19,19 @@
 #include <wlr/util/box.h>
 
 struct wm_server;
+struct wm_view;
 
 #define WM_TOOLBAR_HEIGHT 24
 #define WM_TOOLBAR_PADDING 4
 #define WM_TOOLBAR_CLOCK_FMT "%H:%M"
+#define WM_TOOLBAR_ICONBAR_MAX 64
+
+/* An entry in the icon bar representing one window */
+struct wm_iconbar_entry {
+	struct wm_view *view;
+	bool focused;
+	bool iconified; /* minimized / scene node disabled */
+};
 
 struct wm_toolbar {
 	struct wm_server *server;
@@ -31,7 +40,7 @@ struct wm_toolbar {
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_buffer *bg_buf;
 	struct wlr_scene_buffer *workspace_buf;
-	struct wlr_scene_buffer *title_buf;
+	struct wlr_scene_buffer *iconbar_buf;
 	struct wlr_scene_buffer *clock_buf;
 
 	/* Geometry */
@@ -42,6 +51,12 @@ struct wm_toolbar {
 	/* Workspace button hit regions (for click handling) */
 	struct wlr_box *ws_boxes;
 	int ws_box_count;
+
+	/* Icon bar hit regions and entries */
+	struct wlr_box *ib_boxes;
+	struct wm_iconbar_entry *ib_entries;
+	int ib_count;
+	int ib_x_offset; /* icon bar x offset within toolbar */
 
 	/* Clock timer */
 	struct wl_event_source *clock_timer;
@@ -63,6 +78,9 @@ void wm_toolbar_update_workspace(struct wm_toolbar *toolbar);
 
 /* Update the window title display (call on focus change or title change) */
 void wm_toolbar_update_title(struct wm_toolbar *toolbar);
+
+/* Update the icon bar window list (call on map/unmap/focus/title change) */
+void wm_toolbar_update_iconbar(struct wm_toolbar *toolbar);
 
 /* Recalculate toolbar geometry (call on output resize) */
 void wm_toolbar_relayout(struct wm_toolbar *toolbar);

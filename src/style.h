@@ -179,6 +179,14 @@ struct wm_style {
 	struct wm_color toolbar_text_color;
 	struct wm_font toolbar_font;
 
+	/* Toolbar icon bar (window list) */
+	struct wm_color toolbar_iconbar_focused_color;
+	struct wm_color toolbar_iconbar_focused_text_color;
+	struct wm_color toolbar_iconbar_unfocused_color;
+	struct wm_color toolbar_iconbar_unfocused_text_color;
+	bool toolbar_iconbar_has_focused_color;
+	bool toolbar_iconbar_has_unfocused_color;
+
 	/* Style metadata */
 	char *style_dir;	/* directory containing style file */
 	char *style_path;	/* full path to loaded style file */

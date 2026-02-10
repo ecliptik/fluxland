@@ -45,6 +45,7 @@ struct wm_config;
 struct wm_style;
 struct wm_menu;
 struct wm_toolbar;
+struct wm_slit;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_primary_selection_v1_device_manager;
 struct wlr_pointer_constraints_v1;
@@ -84,6 +85,11 @@ struct wm_server {
 	struct wlr_scene_tree *layer_background;
 	struct wlr_scene_tree *layer_bottom;
 	struct wlr_scene_tree *view_tree;
+	/* Layer sub-trees within view_tree (bottom to top) */
+	struct wlr_scene_tree *view_layer_desktop;
+	struct wlr_scene_tree *view_layer_below;
+	struct wlr_scene_tree *view_layer_normal;
+	struct wlr_scene_tree *view_layer_above;
 	struct wlr_scene_tree *xdg_popup_tree;
 	struct wlr_scene_tree *layer_top;
 	struct wlr_scene_tree *layer_overlay;
@@ -132,6 +138,10 @@ struct wm_server {
 	/* Focus policy (click-to-focus, sloppy) */
 	int focus_policy; /* enum wm_focus_policy from view.h */
 	struct wm_view *focused_view;
+
+	/* Auto-raise timer for focus-follows-mouse modes */
+	struct wl_event_source *auto_raise_timer;
+	struct wm_view *auto_raise_view;
 
 	/* Managed windows */
 	struct wl_list views; /* wm_view.link */
@@ -210,6 +220,9 @@ struct wm_server {
 
 	/* Toolbar */
 	struct wm_toolbar *toolbar;
+
+	/* Slit (dockapp container) */
+	struct wm_slit *slit;
 
 	/* Menus */
 	struct wm_menu *root_menu;

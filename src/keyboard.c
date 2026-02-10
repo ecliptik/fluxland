@@ -506,11 +506,33 @@ execute_action(struct wm_server *server,
 		}
 		return true;
 
-	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_LOWER:
+		if (view) {
+			wm_view_lower(view);
+		}
+		return true;
+
 	case WM_ACTION_RAISE_LAYER:
+		if (view) {
+			wm_view_raise_layer(view);
+		}
+		return true;
+
 	case WM_ACTION_LOWER_LAYER:
+		if (view) {
+			wm_view_lower_layer(view);
+		}
+		return true;
+
 	case WM_ACTION_SET_LAYER:
+		if (view && argument) {
+			enum wm_view_layer layer =
+				wm_view_layer_from_name(argument);
+			wm_view_set_layer(view, layer);
+		}
+		return true;
+
+	/* Stub actions — no-op until subsystems exist */
 	case WM_ACTION_SET_DECOR:
 	case WM_ACTION_NOP:
 	case WM_ACTION_MACRO_CMD:

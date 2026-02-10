@@ -30,10 +30,10 @@ workspace_create(struct wm_server *server, const char *name, int index)
 
 	/*
 	 * Each workspace gets its own scene tree as a child of the
-	 * server's view_tree. Switching workspaces means enabling/
-	 * disabling these subtrees.
+	 * server's normal layer tree. Switching workspaces means
+	 * enabling/disabling these subtrees.
 	 */
-	ws->tree = wlr_scene_tree_create(server->view_tree);
+	ws->tree = wlr_scene_tree_create(server->view_layer_normal);
 	if (!ws->tree) {
 		free(ws->name);
 		free(ws);
@@ -63,7 +63,7 @@ wm_workspaces_init(struct wm_server *server, int count)
 	server->workspace_count = count;
 
 	/* Create the sticky tree (always visible, above all workspaces) */
-	server->sticky_tree = wlr_scene_tree_create(server->view_tree);
+	server->sticky_tree = wlr_scene_tree_create(server->view_layer_normal);
 	wlr_scene_node_raise_to_top(&server->sticky_tree->node);
 
 	/* Create workspaces with default names */
