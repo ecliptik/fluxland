@@ -7,6 +7,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <wlr/types/wlr_cursor.h>
@@ -352,4 +353,154 @@ wm_snap_edges(struct wm_server *server, struct wm_view *view,
 		if (snapped_x && snapped_y)
 			break;
 	}
+}
+
+/* --- Window arrangement actions --- */
+
+/*
+ * Collect visible (non-minimized, non-fullscreen) views on the
+ * current workspace into a flat array. Returns count.
+ */
+static int
+collect_visible_views(struct wm_server *server, struct wm_view **out,
+	int max)
+{
+	int n = 0;
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (n >= max)
+			break;
+		if (v->workspace != server->current_workspace && !v->sticky)
+			continue;
+		if (v->fullscreen)
+			continue;
+		/* Check if scene node is enabled (not minimized) */
+		if (!v->scene_tree->node.enabled)
+			continue;
+		out[n++] = v;
+	}
+	return n;
+}
+
+/*
+ * Move and resize a view, updating both XDG toplevel size and
+ * scene node position.
+ */
+static void
+arrange_view(struct wm_view *view, int x, int y, int w, int h)
+{
+	view->x = x;
+	view->y = y;
+	wlr_xdg_toplevel_set_size(view->xdg_toplevel, w, h);
+	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
+}
+
+void
+wm_arrange_windows_grid(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	int cols = (int)ceil(sqrt((double)n));
+	int rows = (int)ceil((double)n / cols);
+
+	int cell_w = area.width / cols;
+	int cell_h = area.height / rows;
+
+	for (int i = 0; i < n; i++) {
+		int col = i % cols;
+		int row = i / cols;
+		int x = area.x + col * cell_w;
+		int y = area.y + row * cell_h;
+		arrange_view(views[i], x, y, cell_w, cell_h);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows in %dx%d grid",
+		n, cols, rows);
+}
+
+void
+wm_arrange_windows_vert(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	int col_w = area.width / n;
+
+	for (int i = 0; i < n; i++) {
+		int x = area.x + i * col_w;
+		arrange_view(views[i], x, area.y, col_w, area.height);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows in vertical columns", n);
+}
+
+void
+wm_arrange_windows_horiz(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	int row_h = area.height / n;
+
+	for (int i = 0; i < n; i++) {
+		int y = area.y + i * row_h;
+		arrange_view(views[i], area.x, y, area.width, row_h);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows in horizontal rows", n);
+}
+
+void
+wm_arrange_windows_cascade(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	int cx = area.x;
+	int cy = area.y;
+
+	/* Default cascade window size: 60% of usable area */
+	int win_w = area.width * 60 / 100;
+	int win_h = area.height * 60 / 100;
+
+	for (int i = 0; i < n; i++) {
+		/* Wrap when reaching screen edge */
+		if (cx + win_w > area.x + area.width ||
+		    cy + win_h > area.y + area.height) {
+			cx = area.x;
+			cy = area.y;
+		}
+
+		arrange_view(views[i], cx, cy, win_w, win_h);
+
+		cx += CASCADE_STEP_X;
+		cy += CASCADE_STEP_Y;
+	}
+
+	wlr_log(WLR_DEBUG, "cascaded %d windows", n);
 }
