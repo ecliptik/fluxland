@@ -42,6 +42,7 @@
 #include "view.h"
 #include "viewporter.h"
 #include "workspace.h"
+#include "tablet.h"
 #include "xwayland.h"
 
 #define WM_WLR_COMPOSITOR_VERSION 6
@@ -262,6 +263,9 @@ wm_server_init(struct wm_server *server)
 	/* Text input / input method relay for IME support */
 	wm_text_input_init(server);
 
+	/* Tablet input (tablet-v2 protocol for stylus/pad devices) */
+	wm_tablet_init(server);
+
 	/* Load configuration */
 	server->config = config_create();
 	if (server->config) {
@@ -387,6 +391,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_menu_destroy(server->window_menu);
 	wm_rules_finish(&server->rules);
 
+	wm_tablet_finish(server);
 	wm_text_input_finish(server);
 	wm_protocols_finish(server);
 	wm_output_management_finish(server);

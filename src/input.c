@@ -17,6 +17,7 @@
 #include "keyboard.h"
 #include "cursor.h"
 #include "server.h"
+#include "tablet.h"
 
 static void
 handle_new_pointer(struct wm_server *server,
@@ -44,6 +45,12 @@ handle_new_input(struct wl_listener *listener, void *data)
 	case WLR_INPUT_DEVICE_TOUCH:
 		wlr_cursor_attach_input_device(server->cursor, device);
 		wlr_log(WLR_INFO, "new touch device: %s", device->name);
+		break;
+	case WLR_INPUT_DEVICE_TABLET:
+		wm_tablet_tool_setup(server, device);
+		break;
+	case WLR_INPUT_DEVICE_TABLET_PAD:
+		wm_tablet_pad_setup(server, device);
 		break;
 	default:
 		break;
