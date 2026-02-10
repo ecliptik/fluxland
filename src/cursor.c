@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_touch.h>
+#include <wlr/types/wlr_pointer_gestures_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -33,6 +34,7 @@
 #include "menu.h"
 #include "placement.h"
 #include "session_lock.h"
+#include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -481,6 +483,10 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		return;
 	}
 
+	/* Notify toolbar of pointer motion for auto-hide */
+	wm_toolbar_notify_pointer_motion(server->toolbar,
+		server->cursor->x, server->cursor->y);
+
 	/* Dispatch motion to any open menus */
 	if (wm_menu_handle_motion(server, server->cursor->x,
 		server->cursor->y)) {
@@ -821,6 +827,108 @@ handle_cursor_touch_frame(struct wl_listener *listener, void *data)
 	wlr_seat_touch_notify_frame(server->seat);
 }
 
+/*
+ * Pointer gesture handlers.
+ * Forward touchpad gestures (swipe, pinch, hold) from the cursor
+ * to clients via the pointer-gestures-unstable-v1 protocol.
+ */
+static void
+handle_cursor_swipe_begin(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_swipe_begin);
+	struct wlr_pointer_swipe_begin_event *event = data;
+
+	wlr_pointer_gestures_v1_send_swipe_begin(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->fingers);
+}
+
+static void
+handle_cursor_swipe_update(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_swipe_update);
+	struct wlr_pointer_swipe_update_event *event = data;
+
+	wlr_pointer_gestures_v1_send_swipe_update(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->dx, event->dy);
+}
+
+static void
+handle_cursor_swipe_end(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_swipe_end);
+	struct wlr_pointer_swipe_end_event *event = data;
+
+	wlr_pointer_gestures_v1_send_swipe_end(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->cancelled);
+}
+
+static void
+handle_cursor_pinch_begin(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_pinch_begin);
+	struct wlr_pointer_pinch_begin_event *event = data;
+
+	wlr_pointer_gestures_v1_send_pinch_begin(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->fingers);
+}
+
+static void
+handle_cursor_pinch_update(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_pinch_update);
+	struct wlr_pointer_pinch_update_event *event = data;
+
+	wlr_pointer_gestures_v1_send_pinch_update(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->dx, event->dy,
+		event->scale, event->rotation);
+}
+
+static void
+handle_cursor_pinch_end(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_pinch_end);
+	struct wlr_pointer_pinch_end_event *event = data;
+
+	wlr_pointer_gestures_v1_send_pinch_end(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->cancelled);
+}
+
+static void
+handle_cursor_hold_begin(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_hold_begin);
+	struct wlr_pointer_hold_begin_event *event = data;
+
+	wlr_pointer_gestures_v1_send_hold_begin(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->fingers);
+}
+
+static void
+handle_cursor_hold_end(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, cursor_hold_end);
+	struct wlr_pointer_hold_end_event *event = data;
+
+	wlr_pointer_gestures_v1_send_hold_end(
+		server->pointer_gestures, server->seat,
+		event->time_msec, event->cancelled);
+}
+
 static void
 handle_cursor_axis(struct wl_listener *listener, void *data)
 {
@@ -887,6 +995,39 @@ wm_cursor_init(struct wm_server *server)
 	server->cursor_touch_frame.notify = handle_cursor_touch_frame;
 	wl_signal_add(&server->cursor->events.touch_frame,
 		&server->cursor_touch_frame);
+
+	/* Pointer gesture events (touchpad swipe/pinch/hold) */
+	server->cursor_swipe_begin.notify = handle_cursor_swipe_begin;
+	wl_signal_add(&server->cursor->events.swipe_begin,
+		&server->cursor_swipe_begin);
+
+	server->cursor_swipe_update.notify = handle_cursor_swipe_update;
+	wl_signal_add(&server->cursor->events.swipe_update,
+		&server->cursor_swipe_update);
+
+	server->cursor_swipe_end.notify = handle_cursor_swipe_end;
+	wl_signal_add(&server->cursor->events.swipe_end,
+		&server->cursor_swipe_end);
+
+	server->cursor_pinch_begin.notify = handle_cursor_pinch_begin;
+	wl_signal_add(&server->cursor->events.pinch_begin,
+		&server->cursor_pinch_begin);
+
+	server->cursor_pinch_update.notify = handle_cursor_pinch_update;
+	wl_signal_add(&server->cursor->events.pinch_update,
+		&server->cursor_pinch_update);
+
+	server->cursor_pinch_end.notify = handle_cursor_pinch_end;
+	wl_signal_add(&server->cursor->events.pinch_end,
+		&server->cursor_pinch_end);
+
+	server->cursor_hold_begin.notify = handle_cursor_hold_begin;
+	wl_signal_add(&server->cursor->events.hold_begin,
+		&server->cursor_hold_begin);
+
+	server->cursor_hold_end.notify = handle_cursor_hold_end;
+	wl_signal_add(&server->cursor->events.hold_end,
+		&server->cursor_hold_end);
 }
 
 void
@@ -902,4 +1043,12 @@ wm_cursor_finish(struct wm_server *server)
 	wl_list_remove(&server->cursor_touch_motion.link);
 	wl_list_remove(&server->cursor_touch_cancel.link);
 	wl_list_remove(&server->cursor_touch_frame.link);
+	wl_list_remove(&server->cursor_swipe_begin.link);
+	wl_list_remove(&server->cursor_swipe_update.link);
+	wl_list_remove(&server->cursor_swipe_end.link);
+	wl_list_remove(&server->cursor_pinch_begin.link);
+	wl_list_remove(&server->cursor_pinch_update.link);
+	wl_list_remove(&server->cursor_pinch_end.link);
+	wl_list_remove(&server->cursor_hold_begin.link);
+	wl_list_remove(&server->cursor_hold_end.link);
 }

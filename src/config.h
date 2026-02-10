@@ -29,6 +29,15 @@ enum wm_placement_policy {
 	WM_PLACEMENT_UNDER_MOUSE,
 };
 
+enum wm_toolbar_placement {
+	WM_TOOLBAR_TOP_LEFT,
+	WM_TOOLBAR_TOP_CENTER,
+	WM_TOOLBAR_TOP_RIGHT,
+	WM_TOOLBAR_BOTTOM_LEFT,
+	WM_TOOLBAR_BOTTOM_CENTER,
+	WM_TOOLBAR_BOTTOM_RIGHT,
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -51,8 +60,12 @@ struct wm_config {
 	/* Placement */
 	enum wm_placement_policy placement_policy;
 
-	/* Toolbar (basic for now) */
+	/* Toolbar */
 	bool toolbar_visible;
+	enum wm_toolbar_placement toolbar_placement;
+	bool toolbar_auto_hide;
+	int toolbar_auto_hide_delay_ms;
+	int toolbar_width_percent;
 
 	/* XKB keyboard layout */
 	char *xkb_rules;    /* e.g., "evdev" */

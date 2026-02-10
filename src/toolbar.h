@@ -59,6 +59,12 @@ struct wm_toolbar {
 	int x, y;
 	int width, height;
 	bool visible;
+	bool on_top; /* true if placed at top of screen */
+
+	/* Auto-hide state */
+	bool auto_hide;
+	bool shown; /* true when visible during auto-hide mode */
+	struct wl_event_source *hide_timer;
 
 	/* Workspace button hit regions (for click handling) */
 	struct wlr_box *ws_boxes;
@@ -99,6 +105,10 @@ void wm_toolbar_relayout(struct wm_toolbar *toolbar);
 
 /* Handle pointer click at layout coordinates; returns true if consumed */
 bool wm_toolbar_handle_click(struct wm_toolbar *toolbar,
+	double lx, double ly);
+
+/* Notify toolbar of pointer motion (for auto-hide trigger) */
+void wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 	double lx, double ly);
 
 #endif /* WM_TOOLBAR_H */

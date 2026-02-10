@@ -98,6 +98,24 @@ parse_focus_model(const char *value)
 	return WM_FOCUS_CLICK;
 }
 
+static enum wm_toolbar_placement
+parse_toolbar_placement(const char *value)
+{
+	if (!value)
+		return WM_TOOLBAR_BOTTOM_CENTER;
+	if (strcasecmp(value, "TopLeft") == 0)
+		return WM_TOOLBAR_TOP_LEFT;
+	if (strcasecmp(value, "TopCenter") == 0)
+		return WM_TOOLBAR_TOP_CENTER;
+	if (strcasecmp(value, "TopRight") == 0)
+		return WM_TOOLBAR_TOP_RIGHT;
+	if (strcasecmp(value, "BottomLeft") == 0)
+		return WM_TOOLBAR_BOTTOM_LEFT;
+	if (strcasecmp(value, "BottomRight") == 0)
+		return WM_TOOLBAR_BOTTOM_RIGHT;
+	return WM_TOOLBAR_BOTTOM_CENTER;
+}
+
 static enum wm_placement_policy
 parse_placement(const char *value)
 {
@@ -209,6 +227,10 @@ config_create(void)
 	config->edge_snap_threshold = 10;
 	config->placement_policy = WM_PLACEMENT_ROW_SMART;
 	config->toolbar_visible = true;
+	config->toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+	config->toolbar_auto_hide = false;
+	config->toolbar_auto_hide_delay_ms = 500;
+	config->toolbar_width_percent = 100;
 
 	config->config_dir = find_config_dir();
 
@@ -279,6 +301,21 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	/* Toolbar */
 	config->toolbar_visible =
 		rc_get_bool(db, "session.screen0.toolbar.visible", true);
+
+	val = rc_get_string(db, "session.screen0.toolbar.placement");
+	config->toolbar_placement = parse_toolbar_placement(val);
+
+	config->toolbar_auto_hide =
+		rc_get_bool(db, "session.screen0.toolbar.autoHide", false);
+	config->toolbar_auto_hide_delay_ms =
+		rc_get_int(db, "session.screen0.toolbar.autoHideDelay", 500);
+
+	config->toolbar_width_percent =
+		rc_get_int(db, "session.screen0.toolbar.widthPercent", 100);
+	if (config->toolbar_width_percent < 10)
+		config->toolbar_width_percent = 10;
+	if (config->toolbar_width_percent > 100)
+		config->toolbar_width_percent = 100;
 
 	/* XKB keyboard layout */
 	val = rc_get_string(db, "session.xkb.rules");

@@ -614,6 +614,49 @@ toolbar_render(struct wm_toolbar *toolbar)
 		w - clock_width, 0);
 }
 
+/* --- Auto-hide timer callback --- */
+
+static int
+hide_timer_cb(void *data)
+{
+	struct wm_toolbar *toolbar = data;
+
+	if (!toolbar->auto_hide || !toolbar->shown) {
+		return 0;
+	}
+
+	/* Check if pointer is still outside the toolbar area */
+	struct wm_server *server = toolbar->server;
+	double cx = server->cursor->x;
+	double cy = server->cursor->y;
+
+	double local_x = cx - toolbar->x;
+	double local_y = cy - toolbar->y;
+
+	if (local_x >= 0 && local_x < toolbar->width &&
+	    local_y >= 0 && local_y < toolbar->height) {
+		/* Pointer is still inside — don't hide, re-arm */
+		wl_event_source_timer_update(toolbar->hide_timer, 500);
+		return 0;
+	}
+
+	/* Hide toolbar */
+	toolbar->shown = false;
+	wlr_scene_node_set_enabled(&toolbar->scene_tree->node, false);
+
+	/* Remove exclusive zone */
+	struct wm_output *output = get_primary_output(server);
+	if (output) {
+		wlr_output_effective_resolution(output->wlr_output,
+			&output->usable_area.width,
+			&output->usable_area.height);
+		output->usable_area.x = 0;
+		output->usable_area.y = 0;
+	}
+
+	return 0;
+}
+
 /* --- Clock timer callback --- */
 
 static int
@@ -662,6 +705,18 @@ wm_toolbar_create(struct wm_server *server)
 	toolbar->cached_ws_index = -1;
 	toolbar->cached_clock[0] = '\0';
 
+	/* Read placement config */
+	if (server->config) {
+		enum wm_toolbar_placement p = server->config->toolbar_placement;
+		toolbar->on_top = (p == WM_TOOLBAR_TOP_LEFT ||
+			p == WM_TOOLBAR_TOP_CENTER ||
+			p == WM_TOOLBAR_TOP_RIGHT);
+		toolbar->auto_hide = server->config->toolbar_auto_hide;
+	}
+
+	/* Auto-hide: start hidden */
+	toolbar->shown = !toolbar->auto_hide;
+
 	/* Create scene tree in layer_top so it renders above windows */
 	toolbar->scene_tree = wlr_scene_tree_create(server->layer_top);
 	if (!toolbar->scene_tree) {
@@ -678,9 +733,10 @@ wm_toolbar_create(struct wm_server *server)
 	toolbar->clock_buf = wlr_scene_buffer_create(
 		toolbar->scene_tree, NULL);
 
-	/* Set visibility */
+	/* Set visibility: hide if auto-hide is enabled */
+	bool initially_visible = toolbar->visible && toolbar->shown;
 	wlr_scene_node_set_enabled(&toolbar->scene_tree->node,
-		toolbar->visible);
+		initially_visible);
 
 	/* Position and render */
 	wm_toolbar_relayout(toolbar);
@@ -692,7 +748,14 @@ wm_toolbar_create(struct wm_server *server)
 		wl_event_source_timer_update(toolbar->clock_timer, 1000);
 	}
 
-	wlr_log(WLR_INFO, "toolbar created (visible=%d)", toolbar->visible);
+	/* Create auto-hide timer */
+	if (toolbar->auto_hide) {
+		toolbar->hide_timer = wl_event_loop_add_timer(
+			server->wl_event_loop, hide_timer_cb, toolbar);
+	}
+
+	wlr_log(WLR_INFO, "toolbar created (visible=%d, auto_hide=%d, on_top=%d)",
+		toolbar->visible, toolbar->auto_hide, toolbar->on_top);
 	return toolbar;
 }
 
@@ -705,6 +768,10 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 
 	if (toolbar->clock_timer) {
 		wl_event_source_remove(toolbar->clock_timer);
+	}
+
+	if (toolbar->hide_timer) {
+		wl_event_source_remove(toolbar->hide_timer);
 	}
 
 	if (toolbar->scene_tree) {
@@ -780,19 +847,60 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 		return;
 	}
 
+	struct wm_config *config = toolbar->server->config;
 	int output_width = output->wlr_output->width;
+	int output_height = output->wlr_output->height;
 
-	toolbar->width = output_width;
-	toolbar->x = 0;
-	/* Position at bottom of output */
-	toolbar->y = output->wlr_output->height - toolbar->height;
+	/* Apply width percentage */
+	int width_pct = config ? config->toolbar_width_percent : 100;
+	toolbar->width = output_width * width_pct / 100;
+	if (toolbar->width < 1) toolbar->width = 1;
+
+	/* Determine horizontal position based on placement */
+	enum wm_toolbar_placement placement = config ?
+		config->toolbar_placement : WM_TOOLBAR_BOTTOM_CENTER;
+
+	switch (placement) {
+	case WM_TOOLBAR_TOP_LEFT:
+	case WM_TOOLBAR_BOTTOM_LEFT:
+		toolbar->x = 0;
+		break;
+	case WM_TOOLBAR_TOP_RIGHT:
+	case WM_TOOLBAR_BOTTOM_RIGHT:
+		toolbar->x = output_width - toolbar->width;
+		break;
+	case WM_TOOLBAR_TOP_CENTER:
+	case WM_TOOLBAR_BOTTOM_CENTER:
+	default:
+		toolbar->x = (output_width - toolbar->width) / 2;
+		break;
+	}
+
+	/* Determine vertical position */
+	toolbar->on_top = (placement == WM_TOOLBAR_TOP_LEFT ||
+		placement == WM_TOOLBAR_TOP_CENTER ||
+		placement == WM_TOOLBAR_TOP_RIGHT);
+
+	if (toolbar->on_top) {
+		toolbar->y = 0;
+	} else {
+		toolbar->y = output_height - toolbar->height;
+	}
 
 	wlr_scene_node_set_position(&toolbar->scene_tree->node,
 		toolbar->x, toolbar->y);
 
-	/* Adjust usable area: reduce height from bottom */
-	if (toolbar->visible) {
-		output->usable_area.height -= toolbar->height;
+	/* Adjust usable area (only when visible and not in auto-hide mode,
+	 * or when auto-hide is active and toolbar is shown) */
+	bool takes_space = toolbar->visible &&
+		(!toolbar->auto_hide || toolbar->shown);
+	if (takes_space) {
+		if (toolbar->on_top) {
+			output->usable_area.y += toolbar->height;
+			output->usable_area.height -= toolbar->height;
+		} else {
+			output->usable_area.height -= toolbar->height;
+		}
 	}
 
 	toolbar_render(toolbar);
@@ -851,4 +959,80 @@ wm_toolbar_handle_click(struct wm_toolbar *toolbar, double lx, double ly)
 	}
 
 	return false;
+}
+
+void
+wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
+	double lx, double ly)
+{
+	if (!toolbar || !toolbar->visible || !toolbar->auto_hide) {
+		return;
+	}
+
+	struct wm_output *output = get_primary_output(toolbar->server);
+	if (!output) {
+		return;
+	}
+
+	int output_height = output->wlr_output->height;
+	int output_width = output->wlr_output->width;
+
+	/* Define trigger zone: 1px strip at the edge where toolbar lives */
+	bool in_trigger_zone = false;
+	if (toolbar->on_top) {
+		in_trigger_zone = (ly <= 1 && lx >= 0 && lx < output_width);
+	} else {
+		in_trigger_zone = (ly >= output_height - 1 &&
+			lx >= 0 && lx < output_width);
+	}
+
+	/* Check if pointer is within the toolbar area (when shown) */
+	bool in_toolbar = false;
+	if (toolbar->shown) {
+		double local_x = lx - toolbar->x;
+		double local_y = ly - toolbar->y;
+		in_toolbar = (local_x >= 0 && local_x < toolbar->width &&
+			local_y >= 0 && local_y < toolbar->height);
+	}
+
+	if (!toolbar->shown && in_trigger_zone) {
+		/* Show toolbar */
+		toolbar->shown = true;
+		wlr_scene_node_set_enabled(&toolbar->scene_tree->node, true);
+
+		/* Recalculate usable area to include exclusive zone */
+		wlr_output_effective_resolution(output->wlr_output,
+			&output->usable_area.width,
+			&output->usable_area.height);
+		output->usable_area.x = 0;
+		output->usable_area.y = 0;
+		if (toolbar->on_top) {
+			output->usable_area.y += toolbar->height;
+			output->usable_area.height -= toolbar->height;
+		} else {
+			output->usable_area.height -= toolbar->height;
+		}
+
+		toolbar_render(toolbar);
+
+		/* Cancel any pending hide */
+		if (toolbar->hide_timer) {
+			wl_event_source_timer_update(toolbar->hide_timer, 0);
+		}
+	} else if (toolbar->shown && !in_toolbar && !in_trigger_zone) {
+		/* Pointer left toolbar area — start hide timer */
+		int delay = 500;
+		if (toolbar->server->config) {
+			delay = toolbar->server->config->toolbar_auto_hide_delay_ms;
+		}
+		if (toolbar->hide_timer) {
+			wl_event_source_timer_update(toolbar->hide_timer,
+				delay);
+		}
+	} else if (toolbar->shown && (in_toolbar || in_trigger_zone)) {
+		/* Pointer is inside toolbar — cancel any pending hide */
+		if (toolbar->hide_timer) {
+			wl_event_source_timer_update(toolbar->hide_timer, 0);
+		}
+	}
 }
