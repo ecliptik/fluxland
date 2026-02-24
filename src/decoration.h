@@ -75,11 +75,14 @@ struct wm_decoration {
 	struct wlr_scene_buffer *grip_left;	/* left resize grip */
 	struct wlr_scene_buffer *grip_right;	/* right resize grip */
 
-	/* Border rects */
+	/* Border rects (used when no round corners) */
 	struct wlr_scene_rect *border_top;
 	struct wlr_scene_rect *border_bottom;
 	struct wlr_scene_rect *border_left;
 	struct wlr_scene_rect *border_right;
+
+	/* Rounded border frame buffer (used when round corners active) */
+	struct wlr_scene_buffer *border_frame;
 
 	/* Titlebar buttons */
 	struct wm_decor_button *buttons_left;

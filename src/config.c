@@ -136,6 +136,10 @@ parse_placement(const char *value)
 		return WM_PLACEMENT_CASCADE;
 	if (strcasecmp(value, "UnderMousePlacement") == 0)
 		return WM_PLACEMENT_UNDER_MOUSE;
+	if (strcasecmp(value, "RowMinOverlapPlacement") == 0)
+		return WM_PLACEMENT_ROW_MIN_OVERLAP;
+	if (strcasecmp(value, "ColMinOverlapPlacement") == 0)
+		return WM_PLACEMENT_COL_MIN_OVERLAP;
 	return WM_PLACEMENT_ROW_SMART;
 }
 
@@ -306,6 +310,13 @@ config_create(void)
 	config->slit_layer = 4; /* Dock */
 	config->slit_on_head = 0;
 
+	config->double_click_interval = 300;
+	config->menu_alpha = 255;
+	config->toolbar_max_over = false;
+	config->edge_resize_snap_threshold = 0;
+	config->menu_search = WM_MENU_SEARCH_NOWHERE;
+	config->menu_delay = 200;
+
 	config->config_dir = find_config_dir();
 
 	set_default_workspace_names(config);
@@ -371,6 +382,15 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	/* Placement */
 	val = rc_get_string(db, "session.screen0.windowPlacement");
 	config->placement_policy = parse_placement(val);
+
+	/* Placement direction */
+	val = rc_get_string(db, "session.screen0.rowPlacementDirection");
+	config->row_right_to_left = (val &&
+		strcasecmp(val, "RightToLeft") == 0);
+
+	val = rc_get_string(db, "session.screen0.colPlacementDirection");
+	config->col_bottom_to_top = (val &&
+		strcasecmp(val, "BottomToTop") == 0);
 
 	/* Toolbar */
 	config->toolbar_visible =
@@ -451,6 +471,76 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	config->slit_on_head =
 		rc_get_int(db, "session.screen0.slit.onhead", 0);
 
+	/* Double-click interval */
+	config->double_click_interval =
+		rc_get_int(db, "session.doubleClickInterval", 300);
+	if (config->double_click_interval < 50)
+		config->double_click_interval = 50;
+	if (config->double_click_interval > 2000)
+		config->double_click_interval = 2000;
+
+	/* Root command */
+	val = rc_get_string(db, "session.screen0.rootCommand");
+	if (val) {
+		free(config->root_command);
+		config->root_command = strdup(val);
+	}
+
+	/* Menu alpha */
+	config->menu_alpha =
+		rc_get_int(db, "session.screen0.menu.alpha", 255);
+	if (config->menu_alpha < 0) config->menu_alpha = 0;
+	if (config->menu_alpha > 255) config->menu_alpha = 255;
+
+	/* Menu type-ahead search */
+	val = rc_get_string(db, "session.menuSearch");
+	if (val) {
+		if (strcasecmp(val, "itemstart") == 0)
+			config->menu_search = WM_MENU_SEARCH_ITEMSTART;
+		else if (strcasecmp(val, "somewhere") == 0)
+			config->menu_search = WM_MENU_SEARCH_SOMEWHERE;
+		else
+			config->menu_search = WM_MENU_SEARCH_NOWHERE;
+	}
+
+	/* Submenu hover-open delay (ms) */
+	config->menu_delay =
+		rc_get_int(db, "session.screen0.menuDelay", 200);
+	if (config->menu_delay < 0) config->menu_delay = 0;
+	if (config->menu_delay > 5000) config->menu_delay = 5000;
+
+	/* Custom window menu file */
+	val = rc_get_string(db, "session.screen0.windowMenu");
+	if (val) {
+		free(config->window_menu_file);
+		config->window_menu_file = strdup(val);
+	}
+
+	/* Toolbar maximize-over */
+	config->toolbar_max_over =
+		rc_get_bool(db, "session.screen0.toolbar.maxOver", false);
+
+	/* Edge resize snap threshold */
+	config->edge_resize_snap_threshold =
+		rc_get_int(db, "session.screen0.edgeResizeSnapThreshold", 0);
+	if (config->edge_resize_snap_threshold < 0)
+		config->edge_resize_snap_threshold = 0;
+
+	/* Default decoration preset */
+	val = rc_get_string(db, "session.screen0.defaultDeco");
+	if (val) {
+		free(config->default_deco);
+		config->default_deco = strdup(val);
+	}
+
+	/* Manual struts [left right top bottom] */
+	val = rc_get_string(db, "session.screen0.struts");
+	if (val) {
+		sscanf(val, "%d %d %d %d",
+			&config->struts[0], &config->struts[1],
+			&config->struts[2], &config->struts[3]);
+	}
+
 	/* XKB keyboard layout */
 	val = rc_get_string(db, "session.xkb.rules");
 	if (val) {
@@ -521,6 +611,13 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		config->style_file =
 			resolve_path(config->config_dir, val, "styles/default");
 	}
+
+	val = rc_get_string(db, "session.styleOverlay");
+	if (val) {
+		free(config->style_overlay);
+		config->style_overlay =
+			resolve_path(config->config_dir, val, "overlay");
+	}
 }
 
 int
@@ -578,10 +675,14 @@ config_destroy(struct wm_config *config)
 	free(config->xkb_layout);
 	free(config->xkb_variant);
 	free(config->xkb_options);
+	free(config->root_command);
+	free(config->default_deco);
+	free(config->window_menu_file);
 	free(config->config_dir);
 	free(config->keys_file);
 	free(config->apps_file);
 	free(config->menu_file);
 	free(config->style_file);
+	free(config->style_overlay);
 	free(config);
 }

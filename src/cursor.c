@@ -38,6 +38,7 @@
 #include "menu.h"
 #include "placement.h"
 #include "session_lock.h"
+#include "slit.h"
 #include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
@@ -129,8 +130,21 @@ get_cursor_context(struct wm_server *server, struct wm_view **out_view)
 	if (out_view)
 		*out_view = view;
 
-	if (!view)
+	if (!view) {
+		/* Check if cursor is over the slit */
+		if (server->slit && server->slit->visible &&
+		    !server->slit->hidden) {
+			double cx = server->cursor->x;
+			double cy = server->cursor->y;
+			if (cx >= server->slit->x &&
+			    cx < server->slit->x + server->slit->width &&
+			    cy >= server->slit->y &&
+			    cy < server->slit->y + server->slit->height) {
+				return WM_MOUSE_CTX_SLIT;
+			}
+		}
 		return WM_MOUSE_CTX_DESKTOP;
+	}
 
 	/* Check decoration hit region */
 	if (view->decoration) {
@@ -742,8 +756,11 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 
 	/* Check for double click */
 	bool is_double = false;
+	uint32_t dclick_ms = WM_DOUBLE_CLICK_MS;
+	if (server->config)
+		dclick_ms = (uint32_t)server->config->double_click_interval;
 	if (event->button == ms->last_button &&
-	    (event->time_msec - ms->last_time_msec) < WM_DOUBLE_CLICK_MS) {
+	    (event->time_msec - ms->last_time_msec) < dclick_ms) {
 		is_double = true;
 	}
 	ms->last_button = event->button;

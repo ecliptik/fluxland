@@ -1058,3 +1058,31 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 		}
 	}
 }
+
+void
+wm_toolbar_toggle_above(struct wm_toolbar *toolbar)
+{
+	if (!toolbar) {
+		return;
+	}
+
+	toolbar->on_top = !toolbar->on_top;
+	wm_toolbar_relayout(toolbar);
+
+	wlr_log(WLR_INFO, "toolbar toggled above: on_top=%d", toolbar->on_top);
+}
+
+void
+wm_toolbar_toggle_visible(struct wm_toolbar *toolbar)
+{
+	if (!toolbar) {
+		return;
+	}
+
+	toolbar->visible = !toolbar->visible;
+	wlr_scene_node_set_enabled(&toolbar->scene_tree->node,
+		toolbar->visible);
+	wm_toolbar_relayout(toolbar);
+
+	wlr_log(WLR_INFO, "toolbar toggled visible: %d", toolbar->visible);
+}

@@ -659,3 +659,52 @@ wm_render_button_glyph(enum wm_button_type type,
 	cairo_destroy(cr);
 	return surface;
 }
+
+void
+wm_render_rounded_rect_path(cairo_t *cr, double x, double y,
+	double width, double height, double radius, uint8_t corners)
+{
+	if (radius <= 0 || corners == 0) {
+		cairo_rectangle(cr, x, y, width, height);
+		return;
+	}
+
+	double r = radius;
+	if (r > width / 2.0) r = width / 2.0;
+	if (r > height / 2.0) r = height / 2.0;
+
+	cairo_new_sub_path(cr);
+
+	/* Top-left corner */
+	if (corners & WM_CORNER_TOP_LEFT) {
+		cairo_arc(cr, x + r, y + r, r, M_PI, 3.0 * M_PI / 2.0);
+	} else {
+		cairo_move_to(cr, x, y);
+	}
+
+	/* Top-right corner */
+	if (corners & WM_CORNER_TOP_RIGHT) {
+		cairo_arc(cr, x + width - r, y + r, r,
+			3.0 * M_PI / 2.0, 2.0 * M_PI);
+	} else {
+		cairo_line_to(cr, x + width, y);
+	}
+
+	/* Bottom-right corner */
+	if (corners & WM_CORNER_BOTTOM_RIGHT) {
+		cairo_arc(cr, x + width - r, y + height - r, r,
+			0, M_PI / 2.0);
+	} else {
+		cairo_line_to(cr, x + width, y + height);
+	}
+
+	/* Bottom-left corner */
+	if (corners & WM_CORNER_BOTTOM_LEFT) {
+		cairo_arc(cr, x + r, y + height - r, r,
+			M_PI / 2.0, M_PI);
+	} else {
+		cairo_line_to(cr, x, y + height);
+	}
+
+	cairo_close_path(cr);
+}

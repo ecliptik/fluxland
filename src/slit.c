@@ -557,3 +557,60 @@ wm_slit_handle_pointer_leave(struct wm_slit *slit)
 			WM_SLIT_HIDE_DELAY_MS);
 	}
 }
+
+void
+wm_slit_toggle_above(struct wm_slit *slit)
+{
+	if (!slit || !slit->scene_tree) {
+		return;
+	}
+
+	struct wm_server *server = slit->server;
+
+	/*
+	 * Toggle between layer_top (normal) and layer_overlay (above all).
+	 * Reparent the slit scene tree to the other layer.
+	 */
+	struct wlr_scene_tree *current_parent =
+		(struct wlr_scene_tree *)slit->scene_tree->node.parent;
+
+	if (current_parent == server->layer_overlay) {
+		wlr_scene_node_reparent(&slit->scene_tree->node,
+			server->layer_top);
+		wlr_log(WLR_INFO, "%s", "slit moved to normal layer");
+	} else {
+		wlr_scene_node_reparent(&slit->scene_tree->node,
+			server->layer_overlay);
+		wlr_log(WLR_INFO, "%s", "slit moved to overlay layer");
+	}
+}
+
+void
+wm_slit_toggle_hidden(struct wm_slit *slit)
+{
+	if (!slit) {
+		return;
+	}
+
+	slit->auto_hide = !slit->auto_hide;
+
+	if (slit->auto_hide) {
+		/* Start hide timer immediately */
+		if (slit->hide_timer) {
+			wl_event_source_timer_update(slit->hide_timer,
+				WM_SLIT_HIDE_DELAY_MS);
+		}
+		wlr_log(WLR_INFO, "%s", "slit auto-hide enabled");
+	} else {
+		/* Cancel hide timer and show slit */
+		if (slit->hide_timer) {
+			wl_event_source_timer_update(slit->hide_timer, 0);
+		}
+		slit->hidden = false;
+		if (slit->scene_tree) {
+			wlr_scene_node_set_enabled(
+				&slit->scene_tree->node, true);
+		}
+		wlr_log(WLR_INFO, "%s", "slit auto-hide disabled");
+	}
+}

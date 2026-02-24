@@ -30,9 +30,11 @@
 #include "output.h"
 #include "placement.h"
 #include "server.h"
+#include "slit.h"
 #include "tabgroup.h"
 #include "style.h"
 #include "toolbar.h"
+#include "rules.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -334,6 +336,14 @@ static const struct action_entry action_table[] = {
 	{"CustomMenu",       WM_ACTION_CUSTOM_MENU},
 	{"SetStyle",         WM_ACTION_SET_STYLE},
 	{"ReloadStyle",      WM_ACTION_RELOAD_STYLE},
+	{"RightWorkspace",   WM_ACTION_RIGHT_WORKSPACE},
+	{"LeftWorkspace",    WM_ACTION_LEFT_WORKSPACE},
+	{"SetWorkspaceName", WM_ACTION_SET_WORKSPACE_NAME},
+	{"Remember",         WM_ACTION_REMEMBER},
+	{"ToggleSlitAbove",  WM_ACTION_TOGGLE_SLIT_ABOVE},
+	{"ToggleSlitHidden", WM_ACTION_TOGGLE_SLIT_HIDDEN},
+	{"ToggleToolbarAbove", WM_ACTION_TOGGLE_TOOLBAR_ABOVE},
+	{"ToggleToolbarVisible", WM_ACTION_TOGGLE_TOOLBAR_VISIBLE},
 	{"MacroCmd",         WM_ACTION_MACRO_CMD},
 	{"ToggleCmd",        WM_ACTION_TOGGLE_CMD},
 	{"Reconfigure",      WM_ACTION_RECONFIGURE},
@@ -957,6 +967,45 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		wm_view_close_all(server);
 		return true;
 
+	case WM_ACTION_RIGHT_WORKSPACE:
+		wm_workspace_switch_right(server);
+		return true;
+
+	case WM_ACTION_LEFT_WORKSPACE:
+		wm_workspace_switch_left(server);
+		return true;
+
+	case WM_ACTION_SET_WORKSPACE_NAME:
+		if (argument)
+			wm_workspace_set_name(server, argument);
+		return true;
+
+	case WM_ACTION_REMEMBER:
+		if (view && server->config && server->config->apps_file)
+			wm_rules_remember_window(view,
+				server->config->apps_file);
+		return true;
+
+	case WM_ACTION_TOGGLE_SLIT_ABOVE:
+		if (server->slit)
+			wm_slit_toggle_above(server->slit);
+		return true;
+
+	case WM_ACTION_TOGGLE_SLIT_HIDDEN:
+		if (server->slit)
+			wm_slit_toggle_hidden(server->slit);
+		return true;
+
+	case WM_ACTION_TOGGLE_TOOLBAR_ABOVE:
+		if (server->toolbar)
+			wm_toolbar_toggle_above(server->toolbar);
+		return true;
+
+	case WM_ACTION_TOGGLE_TOOLBAR_VISIBLE:
+		if (server->toolbar)
+			wm_toolbar_toggle_visible(server->toolbar);
+		return true;
+
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:
 		wlr_log(WLR_INFO,
@@ -1099,6 +1148,10 @@ cmd_get_config(struct wm_server *server)
 			placement_str = "cascade";
 		else if (cfg->placement_policy == WM_PLACEMENT_UNDER_MOUSE)
 			placement_str = "under_mouse";
+		else if (cfg->placement_policy == WM_PLACEMENT_ROW_MIN_OVERLAP)
+			placement_str = "row_min_overlap";
+		else if (cfg->placement_policy == WM_PLACEMENT_COL_MIN_OVERLAP)
+			placement_str = "col_min_overlap";
 
 		strbuf_appendf(&sb,
 			"\"workspace_count\":%d,"

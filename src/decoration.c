@@ -433,6 +433,12 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 	deco->border_right = wlr_scene_rect_create(deco->tree, 1, 1,
 		border_color);
 
+	/* Rounded border frame (initially disabled) */
+	deco->border_frame = wlr_scene_buffer_create(deco->tree, NULL);
+	if (deco->border_frame) {
+		wlr_scene_node_set_enabled(&deco->border_frame->node, false);
+	}
+
 	/* Create titlebar tree */
 	deco->titlebar_tree = wlr_scene_tree_create(deco->tree);
 
@@ -477,6 +483,53 @@ wm_decoration_destroy(struct wm_decoration *decoration)
 	free(decoration->buttons_left);
 	free(decoration->buttons_right);
 	free(decoration);
+}
+
+/* --- Rounded border frame rendering --- */
+
+/*
+ * Render a border frame with rounded corners as a Cairo surface.
+ * Returns a wlr_buffer that can be used in a scene buffer node.
+ */
+static struct wlr_buffer *
+render_rounded_border_frame(int outer_w, int outer_h, int border_width,
+	double radius, uint8_t corners, const struct wm_color *color)
+{
+	if (outer_w <= 0 || outer_h <= 0 || border_width <= 0) {
+		return NULL;
+	}
+
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, outer_w, outer_h);
+	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+
+	cairo_t *cr = cairo_create(surface);
+
+	double r = color->r / 255.0;
+	double g = color->g / 255.0;
+	double b = color->b / 255.0;
+	double a = color->a / 255.0;
+	cairo_set_source_rgba(cr, r, g, b, a);
+
+	/* Outer rounded rect */
+	wm_render_rounded_rect_path(cr, 0, 0,
+		outer_w, outer_h, radius, corners);
+
+	/* Inner rect (punch out the inside) */
+	int bw = border_width;
+	cairo_new_sub_path(cr);
+	cairo_rectangle(cr, bw, bw,
+		outer_w - 2 * bw, outer_h - 2 * bw);
+
+	/* Fill using even-odd rule so the inner rect is cut out */
+	cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
+	cairo_fill(cr);
+
+	cairo_destroy(cr);
+	return wlr_buffer_from_cairo(surface);
 }
 
 /* --- Layout and render --- */
@@ -542,39 +595,92 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 	float bcol[4];
 	wm_color_to_float4(border_color, bcol);
 
+	uint8_t round_corners = style->window_round_corners;
+	double corner_radius = (round_corners != 0) ?
+		(double)style->window_bevel_width * 2.0 : 0.0;
+	if (corner_radius < 4.0 && round_corners != 0)
+		corner_radius = 4.0;
+
 	if (has_borders && bw > 0) {
 		int total_h = top_height + ch + bottom_height + 2 * bw;
 
-		/* Top border */
-		wlr_scene_rect_set_size(deco->border_top, outer_width, bw);
-		wlr_scene_rect_set_color(deco->border_top, bcol);
-		wlr_scene_node_set_position(&deco->border_top->node, 0, 0);
-		wlr_scene_node_set_enabled(&deco->border_top->node, true);
+		if (round_corners != 0 && deco->border_frame) {
+			/* Use rounded border frame buffer */
+			struct wlr_buffer *fb = render_rounded_border_frame(
+				outer_width, total_h, bw,
+				corner_radius, round_corners, border_color);
+			wlr_scene_buffer_set_buffer(deco->border_frame, fb);
+			if (fb) {
+				wlr_buffer_drop(fb);
+			}
+			wlr_scene_node_set_position(
+				&deco->border_frame->node, 0, 0);
+			wlr_scene_node_set_enabled(
+				&deco->border_frame->node, true);
 
-		/* Bottom border */
-		wlr_scene_rect_set_size(deco->border_bottom, outer_width, bw);
-		wlr_scene_rect_set_color(deco->border_bottom, bcol);
-		wlr_scene_node_set_position(&deco->border_bottom->node,
-			0, total_h - bw);
-		wlr_scene_node_set_enabled(&deco->border_bottom->node, true);
+			/* Disable individual border rects */
+			wlr_scene_node_set_enabled(
+				&deco->border_top->node, false);
+			wlr_scene_node_set_enabled(
+				&deco->border_bottom->node, false);
+			wlr_scene_node_set_enabled(
+				&deco->border_left->node, false);
+			wlr_scene_node_set_enabled(
+				&deco->border_right->node, false);
+		} else {
+			/* Standard rectangular borders */
+			if (deco->border_frame) {
+				wlr_scene_node_set_enabled(
+					&deco->border_frame->node, false);
+			}
 
-		/* Left border */
-		wlr_scene_rect_set_size(deco->border_left, bw, total_h);
-		wlr_scene_rect_set_color(deco->border_left, bcol);
-		wlr_scene_node_set_position(&deco->border_left->node, 0, 0);
-		wlr_scene_node_set_enabled(&deco->border_left->node, true);
+			/* Top border */
+			wlr_scene_rect_set_size(deco->border_top,
+				outer_width, bw);
+			wlr_scene_rect_set_color(deco->border_top, bcol);
+			wlr_scene_node_set_position(
+				&deco->border_top->node, 0, 0);
+			wlr_scene_node_set_enabled(
+				&deco->border_top->node, true);
 
-		/* Right border */
-		wlr_scene_rect_set_size(deco->border_right, bw, total_h);
-		wlr_scene_rect_set_color(deco->border_right, bcol);
-		wlr_scene_node_set_position(&deco->border_right->node,
-			outer_width - bw, 0);
-		wlr_scene_node_set_enabled(&deco->border_right->node, true);
+			/* Bottom border */
+			wlr_scene_rect_set_size(deco->border_bottom,
+				outer_width, bw);
+			wlr_scene_rect_set_color(deco->border_bottom, bcol);
+			wlr_scene_node_set_position(
+				&deco->border_bottom->node,
+				0, total_h - bw);
+			wlr_scene_node_set_enabled(
+				&deco->border_bottom->node, true);
+
+			/* Left border */
+			wlr_scene_rect_set_size(deco->border_left,
+				bw, total_h);
+			wlr_scene_rect_set_color(deco->border_left, bcol);
+			wlr_scene_node_set_position(
+				&deco->border_left->node, 0, 0);
+			wlr_scene_node_set_enabled(
+				&deco->border_left->node, true);
+
+			/* Right border */
+			wlr_scene_rect_set_size(deco->border_right,
+				bw, total_h);
+			wlr_scene_rect_set_color(deco->border_right, bcol);
+			wlr_scene_node_set_position(
+				&deco->border_right->node,
+				outer_width - bw, 0);
+			wlr_scene_node_set_enabled(
+				&deco->border_right->node, true);
+		}
 	} else {
 		wlr_scene_node_set_enabled(&deco->border_top->node, false);
 		wlr_scene_node_set_enabled(&deco->border_bottom->node, false);
 		wlr_scene_node_set_enabled(&deco->border_left->node, false);
 		wlr_scene_node_set_enabled(&deco->border_right->node, false);
+		if (deco->border_frame) {
+			wlr_scene_node_set_enabled(
+				&deco->border_frame->node, false);
+		}
 	}
 
 	/* --- Titlebar --- */

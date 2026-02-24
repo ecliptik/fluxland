@@ -400,6 +400,36 @@ wm_workspace_remove_last(struct wm_server *server)
 }
 
 void
+wm_workspace_switch_right(struct wm_server *server)
+{
+	int next = server->current_workspace->index + 1;
+	if (next >= server->workspace_count)
+		return;
+	wm_workspace_switch(server, next);
+}
+
+void
+wm_workspace_switch_left(struct wm_server *server)
+{
+	int prev = server->current_workspace->index - 1;
+	if (prev < 0)
+		return;
+	wm_workspace_switch(server, prev);
+}
+
+void
+wm_workspace_set_name(struct wm_server *server, const char *name)
+{
+	if (!server->current_workspace || !name)
+		return;
+
+	free(server->current_workspace->name);
+	server->current_workspace->name = strdup(name);
+
+	wm_toolbar_update_workspace(server->toolbar);
+}
+
+void
 wm_view_set_sticky(struct wm_view *view, bool sticky)
 {
 	if (view->sticky == sticky) {

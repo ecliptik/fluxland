@@ -113,4 +113,10 @@ bool wm_slit_handle_pointer_enter(struct wm_slit *slit,
 /* Handle pointer leaving slit area (for auto-hide) */
 void wm_slit_handle_pointer_leave(struct wm_slit *slit);
 
+/* Toggle slit between top layer and overlay layer (above windows) */
+void wm_slit_toggle_above(struct wm_slit *slit);
+
+/* Toggle slit auto-hide on/off */
+void wm_slit_toggle_hidden(struct wm_slit *slit);
+
 #endif /* WM_SLIT_H */

@@ -659,6 +659,72 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 	}
 }
 
+static const char *
+deco_preset_name(enum wm_decor_preset preset) {
+	switch (preset) {
+	case WM_DECOR_NONE:   return "NONE";
+	case WM_DECOR_BORDER: return "BORDER";
+	case WM_DECOR_TAB:    return "TAB";
+	case WM_DECOR_TINY:   return "TINY";
+	case WM_DECOR_TOOL:   return "TOOL";
+	default:              return "NORMAL";
+	}
+}
+
+static const char *
+layer_name(enum wm_view_layer layer) {
+	switch (layer) {
+	case WM_LAYER_DESKTOP: return "Desktop";
+	case WM_LAYER_BELOW:   return "Below";
+	case WM_LAYER_ABOVE:   return "Above";
+	default:               return "Normal";
+	}
+}
+
+int wm_rules_remember_window(struct wm_view *view, const char *apps_path) {
+	if (!view || !apps_path)
+		return -1;
+
+	FILE *f = fopen(apps_path, "a");
+	if (!f) {
+		wlr_log(WLR_ERROR, "rules: cannot open %s for appending",
+			apps_path);
+		return -1;
+	}
+
+	const char *app_id = view->app_id ? view->app_id : "unknown";
+
+	/* Get current geometry */
+	struct wlr_box geo;
+	wm_view_get_geometry(view, &geo);
+
+	int ws_index = view->workspace ? view->workspace->index : 0;
+
+	fprintf(f, "\n[app] (class=%s)\n", app_id);
+	fprintf(f, "  [Workspace] {%d}\n", ws_index);
+	fprintf(f, "  [Position] {%d %d}\n", geo.x, geo.y);
+	fprintf(f, "  [Dimensions] {%d %d}\n", geo.width, geo.height);
+	fprintf(f, "  [Layer] {%s}\n", layer_name(view->layer));
+	fprintf(f, "  [Alpha] {%d %d}\n",
+		view->focus_alpha, view->unfocus_alpha);
+	fprintf(f, "  [Sticky] {%s}\n", view->sticky ? "yes" : "no");
+	fprintf(f, "  [Maximized] {%s}\n", view->maximized ? "yes" : "no");
+	fprintf(f, "  [Fullscreen] {%s}\n", view->fullscreen ? "yes" : "no");
+
+	/* Decoration preset */
+	if (view->decoration) {
+		fprintf(f, "  [Deco] {%s}\n",
+			deco_preset_name(view->decoration->preset));
+	}
+
+	fprintf(f, "[end]\n");
+	fclose(f);
+
+	wlr_log(WLR_INFO, "rules: remembered window '%s' to %s",
+		app_id, apps_path);
+	return 0;
+}
+
 struct wm_view *wm_rules_find_group(struct wm_rules *rules,
 		struct wm_view *view, struct wm_server *server) {
 	struct wm_group_rule *group;

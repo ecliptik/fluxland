@@ -33,6 +33,8 @@
 #include "menu.h"
 #include "placement.h"
 #include "protocols.h"
+#include "slit.h"
+#include "rules.h"
 #include "session_lock.h"
 #include "tabgroup.h"
 #include "style.h"
@@ -299,6 +301,19 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_PREV_WORKSPACE:
 		wm_workspace_switch_prev(server);
+		return true;
+
+	case WM_ACTION_RIGHT_WORKSPACE:
+		wm_workspace_switch_right(server);
+		return true;
+
+	case WM_ACTION_LEFT_WORKSPACE:
+		wm_workspace_switch_left(server);
+		return true;
+
+	case WM_ACTION_SET_WORKSPACE_NAME:
+		if (argument)
+			wm_workspace_set_name(server, argument);
 		return true;
 
 	case WM_ACTION_STICK:
@@ -760,6 +775,32 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_CLOSE_ALL_WINDOWS:
 		wm_view_close_all(server);
+		return true;
+
+	case WM_ACTION_REMEMBER:
+		if (view && server->config && server->config->apps_file)
+			wm_rules_remember_window(view,
+				server->config->apps_file);
+		return true;
+
+	case WM_ACTION_TOGGLE_SLIT_ABOVE:
+		if (server->slit)
+			wm_slit_toggle_above(server->slit);
+		return true;
+
+	case WM_ACTION_TOGGLE_SLIT_HIDDEN:
+		if (server->slit)
+			wm_slit_toggle_hidden(server->slit);
+		return true;
+
+	case WM_ACTION_TOGGLE_TOOLBAR_ABOVE:
+		if (server->toolbar)
+			wm_toolbar_toggle_above(server->toolbar);
+		return true;
+
+	case WM_ACTION_TOGGLE_TOOLBAR_VISIBLE:
+		if (server->toolbar)
+			wm_toolbar_toggle_visible(server->toolbar);
 		return true;
 
 	case WM_ACTION_NOP:

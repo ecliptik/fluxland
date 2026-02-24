@@ -435,6 +435,61 @@ test_double_finish(void)
 	printf("  PASS: test_double_finish\n");
 }
 
+/* Test: remember window serialization */
+static void
+test_remember(void)
+{
+	/* Create a minimal fake view */
+	struct wm_view view = {0};
+	view.app_id = "test-app";
+	view.title = "Test Window";
+	view.x = 100;
+	view.y = 200;
+	view.sticky = false;
+	view.maximized = false;
+	view.fullscreen = false;
+	view.layer = WM_LAYER_NORMAL;
+	view.focus_alpha = 255;
+	view.unfocus_alpha = 200;
+
+	/* Create a fake workspace */
+	struct wm_workspace ws = {0};
+	ws.index = 2;
+	ws.name = "Workspace 3";
+	view.workspace = &ws;
+
+	/* We don't have a real XDG toplevel, so wm_view_get_geometry
+	 * will be called with our stub returning fixed values */
+
+	const char *path = TEST_DIR "/remember_apps";
+	/* Write an empty file first */
+	write_file(path, "# existing rules\n");
+
+	int ret = wm_rules_remember_window(&view, path);
+	assert(ret == 0);
+
+	/* Read back and verify the appended block */
+	FILE *f = fopen(path, "r");
+	assert(f);
+	char buf[2048] = {0};
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+
+	/* Should contain the app block */
+	assert(strstr(buf, "[app] (class=test-app)") != NULL);
+	assert(strstr(buf, "[Workspace] {2}") != NULL);
+	assert(strstr(buf, "[Sticky] {no}") != NULL);
+	assert(strstr(buf, "[Maximized] {no}") != NULL);
+	assert(strstr(buf, "[Fullscreen] {no}") != NULL);
+	assert(strstr(buf, "[Layer] {Normal}") != NULL);
+	assert(strstr(buf, "[Alpha] {255 200}") != NULL);
+	assert(strstr(buf, "[end]") != NULL);
+
+	unlink(path);
+	printf("  PASS: test_remember\n");
+}
+
 /* Test: reload (finish + init + load) */
 static void
 test_reload(void)
@@ -489,6 +544,7 @@ main(void)
 	test_group_rules();
 	test_comments_blanks();
 	test_double_finish();
+	test_remember();
 	test_reload();
 
 	cleanup();

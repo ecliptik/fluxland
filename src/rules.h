@@ -103,4 +103,13 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view);
 struct wm_view *wm_rules_find_group(struct wm_rules *rules,
 	struct wm_view *view, struct wm_server *server);
 
+/*
+ * Save the current window properties to the apps file.
+ * Appends a new [app] (class=APP_ID) block with the view's current
+ * workspace, position, dimensions, layer, alpha, sticky, maximized,
+ * fullscreen, and decoration state.
+ * Returns 0 on success, -1 on error.
+ */
+int wm_rules_remember_window(struct wm_view *view, const char *apps_path);
+
 #endif /* WM_RULES_H */

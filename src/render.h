@@ -77,4 +77,15 @@ int wm_measure_text_width(const char *text, const struct wm_font *font,
 cairo_surface_t *wm_render_button_glyph(enum wm_button_type type,
 	const struct wm_color *pic_color, int size, float scale);
 
+/* --- Rounded rectangle path --- */
+
+/*
+ * Add a rounded rectangle path to a Cairo context.
+ *
+ * The corners bitmask uses WM_CORNER_* flags from style.h to select
+ * which corners are rounded. A radius of 0 produces a normal rectangle.
+ */
+void wm_render_rounded_rect_path(cairo_t *cr, double x, double y,
+	double width, double height, double radius, uint8_t corners);
+
 #endif /* WM_RENDER_H */

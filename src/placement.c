@@ -105,8 +105,42 @@ overlaps_any(struct wm_server *server, struct wm_view *skip,
 }
 
 /*
+ * Calculate total overlap area between a candidate position and all
+ * existing visible views on the same workspace.
+ */
+static int
+overlap_area(struct wm_server *server, struct wm_view *skip,
+	int x, int y, int w, int h)
+{
+	int total = 0;
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v == skip)
+			continue;
+		if (v->workspace != skip->workspace && !v->sticky)
+			continue;
+
+		struct wlr_box vbox;
+		wm_view_get_geometry(v, &vbox);
+
+		/* Calculate overlap rectangle */
+		int ox1 = x > vbox.x ? x : vbox.x;
+		int oy1 = y > vbox.y ? y : vbox.y;
+		int ox2 = (x + w) < (vbox.x + vbox.width)
+			? (x + w) : (vbox.x + vbox.width);
+		int oy2 = (y + h) < (vbox.y + vbox.height)
+			? (y + h) : (vbox.y + vbox.height);
+
+		if (ox2 > ox1 && oy2 > oy1)
+			total += (ox2 - ox1) * (oy2 - oy1);
+	}
+	return total;
+}
+
+/*
  * ROW_SMART placement: scan left-to-right, top-to-bottom within
  * the usable area to find a gap where the window fits.
+ * Respects row_right_to_left and col_bottom_to_top direction config.
  */
 static void
 place_row_smart(struct wm_server *server, struct wm_view *view,
@@ -115,9 +149,20 @@ place_row_smart(struct wm_server *server, struct wm_view *view,
 	int w, h;
 	view_dims(view, &w, &h);
 
+	bool rtl = server->config && server->config->row_right_to_left;
+	bool btt = server->config && server->config->col_bottom_to_top;
+
 	int step = 8;
-	for (int y = area->y; y + h <= area->y + area->height; y += step) {
-		for (int x = area->x; x + w <= area->x + area->width; x += step) {
+	int y_start = btt ? area->y + area->height - h : area->y;
+	int y_end = btt ? area->y - 1 : area->y + area->height - h + 1;
+	int y_step = btt ? -step : step;
+
+	int x_start = rtl ? area->x + area->width - w : area->x;
+	int x_end = rtl ? area->x - 1 : area->x + area->width - w + 1;
+	int x_step = rtl ? -step : step;
+
+	for (int y = y_start; btt ? (y >= y_end) : (y < y_end); y += y_step) {
+		for (int x = x_start; rtl ? (x >= x_end) : (x < x_end); x += x_step) {
 			if (!overlaps_any(server, view, x, y, w, h)) {
 				view->x = x;
 				view->y = y;
@@ -134,6 +179,7 @@ place_row_smart(struct wm_server *server, struct wm_view *view,
 /*
  * COL_SMART placement: scan top-to-bottom, left-to-right within
  * the usable area to find a gap where the window fits.
+ * Respects row_right_to_left and col_bottom_to_top direction config.
  */
 static void
 place_col_smart(struct wm_server *server, struct wm_view *view,
@@ -142,9 +188,20 @@ place_col_smart(struct wm_server *server, struct wm_view *view,
 	int w, h;
 	view_dims(view, &w, &h);
 
+	bool rtl = server->config && server->config->row_right_to_left;
+	bool btt = server->config && server->config->col_bottom_to_top;
+
 	int step = 8;
-	for (int x = area->x; x + w <= area->x + area->width; x += step) {
-		for (int y = area->y; y + h <= area->y + area->height; y += step) {
+	int x_start = rtl ? area->x + area->width - w : area->x;
+	int x_end = rtl ? area->x - 1 : area->x + area->width - w + 1;
+	int x_step = rtl ? -step : step;
+
+	int y_start = btt ? area->y + area->height - h : area->y;
+	int y_end = btt ? area->y - 1 : area->y + area->height - h + 1;
+	int y_step = btt ? -step : step;
+
+	for (int x = x_start; rtl ? (x >= x_end) : (x < x_end); x += x_step) {
+		for (int y = y_start; btt ? (y >= y_end) : (y < y_end); y += y_step) {
 			if (!overlaps_any(server, view, x, y, w, h)) {
 				view->x = x;
 				view->y = y;
@@ -156,6 +213,99 @@ place_col_smart(struct wm_server *server, struct wm_view *view,
 	/* No gap found — fall back to cascade */
 	view->x = area->x + CASCADE_STEP_X;
 	view->y = area->y + CASCADE_STEP_Y;
+}
+
+/*
+ * ROW_MIN_OVERLAP placement: scan row-major and pick the position
+ * with minimum total overlap area with existing windows.
+ */
+static void
+place_row_min_overlap(struct wm_server *server, struct wm_view *view,
+	struct wlr_box *area)
+{
+	int w, h;
+	view_dims(view, &w, &h);
+
+	bool rtl = server->config && server->config->row_right_to_left;
+	bool btt = server->config && server->config->col_bottom_to_top;
+
+	int step = 16; /* coarser step for scoring (performance) */
+	int best_x = area->x, best_y = area->y;
+	int best_score = -1;
+
+	int y_start = btt ? area->y + area->height - h : area->y;
+	int y_end = btt ? area->y - 1 : area->y + area->height - h + 1;
+	int y_step = btt ? -step : step;
+
+	int x_start = rtl ? area->x + area->width - w : area->x;
+	int x_end = rtl ? area->x - 1 : area->x + area->width - w + 1;
+	int x_step = rtl ? -step : step;
+
+	for (int y = y_start; btt ? (y >= y_end) : (y < y_end); y += y_step) {
+		for (int x = x_start; rtl ? (x >= x_end) : (x < x_end); x += x_step) {
+			int score = overlap_area(server, view, x, y, w, h);
+			if (score == 0) {
+				/* Perfect — no overlap */
+				view->x = x;
+				view->y = y;
+				return;
+			}
+			if (best_score < 0 || score < best_score) {
+				best_score = score;
+				best_x = x;
+				best_y = y;
+			}
+		}
+	}
+
+	view->x = best_x;
+	view->y = best_y;
+}
+
+/*
+ * COL_MIN_OVERLAP placement: scan column-major and pick the position
+ * with minimum total overlap area with existing windows.
+ */
+static void
+place_col_min_overlap(struct wm_server *server, struct wm_view *view,
+	struct wlr_box *area)
+{
+	int w, h;
+	view_dims(view, &w, &h);
+
+	bool rtl = server->config && server->config->row_right_to_left;
+	bool btt = server->config && server->config->col_bottom_to_top;
+
+	int step = 16;
+	int best_x = area->x, best_y = area->y;
+	int best_score = -1;
+
+	int x_start = rtl ? area->x + area->width - w : area->x;
+	int x_end = rtl ? area->x - 1 : area->x + area->width - w + 1;
+	int x_step = rtl ? -step : step;
+
+	int y_start = btt ? area->y + area->height - h : area->y;
+	int y_end = btt ? area->y - 1 : area->y + area->height - h + 1;
+	int y_step = btt ? -step : step;
+
+	for (int x = x_start; rtl ? (x >= x_end) : (x < x_end); x += x_step) {
+		for (int y = y_start; btt ? (y >= y_end) : (y < y_end); y += y_step) {
+			int score = overlap_area(server, view, x, y, w, h);
+			if (score == 0) {
+				view->x = x;
+				view->y = y;
+				return;
+			}
+			if (best_score < 0 || score < best_score) {
+				best_score = score;
+				best_x = x;
+				best_y = y;
+			}
+		}
+	}
+
+	view->x = best_x;
+	view->y = best_y;
 }
 
 /*
@@ -241,6 +391,12 @@ wm_placement_apply(struct wm_server *server, struct wm_view *view)
 		break;
 	case WM_PLACEMENT_UNDER_MOUSE:
 		place_under_mouse(server, view, &area);
+		break;
+	case WM_PLACEMENT_ROW_MIN_OVERLAP:
+		place_row_min_overlap(server, view, &area);
+		break;
+	case WM_PLACEMENT_COL_MIN_OVERLAP:
+		place_col_min_overlap(server, view, &area);
 		break;
 	}
 

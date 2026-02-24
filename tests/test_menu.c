@@ -49,6 +49,8 @@ void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
 	{ (void)v; (void)m; }
 void wm_focus_view(struct wm_view *v, struct wlr_surface *s)
 	{ (void)v; (void)s; }
+int wm_rules_remember_window(struct wm_view *v, const char *p)
+	{ (void)v; (void)p; return 0; }
 
 #define TEST_DIR "/tmp/fluxland-test/wm-test-menu"
 #define TEST_MENU TEST_DIR "/menu"

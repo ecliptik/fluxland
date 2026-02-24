@@ -421,6 +421,148 @@ test_reload(void)
 	printf("  PASS: test_reload\n");
 }
 
+/* Test: Phase 5B new config options */
+static void
+test_phase5b_config_options(void)
+{
+	write_file(TEST_INIT,
+		"session.doubleClickInterval: 500\n"
+		"session.screen0.rootCommand: xsetroot -solid grey\n"
+		"session.screen0.menu.alpha: 200\n"
+		"session.screen0.toolbar.maxOver: true\n"
+		"session.screen0.edgeResizeSnapThreshold: 15\n"
+		"session.screen0.defaultDeco: BORDER\n"
+		"session.screen0.struts: 0 0 32 0\n"
+		"session.styleOverlay: /tmp/claude-test-fluxland/overlay\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->double_click_interval == 500);
+	assert(c->root_command &&
+		strcmp(c->root_command, "xsetroot -solid grey") == 0);
+	assert(c->menu_alpha == 200);
+	assert(c->toolbar_max_over == true);
+	assert(c->edge_resize_snap_threshold == 15);
+	assert(c->default_deco &&
+		strcmp(c->default_deco, "BORDER") == 0);
+	assert(c->struts[0] == 0);
+	assert(c->struts[1] == 0);
+	assert(c->struts[2] == 32);
+	assert(c->struts[3] == 0);
+	assert(c->style_overlay != NULL);
+
+	config_destroy(c);
+	printf("  PASS: test_phase5b_config_options\n");
+}
+
+/* Test: double-click interval clamping */
+static void
+test_double_click_interval_clamp(void)
+{
+	/* Too small */
+	write_file(TEST_INIT,
+		"session.doubleClickInterval: 10\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->double_click_interval == 50);
+	config_destroy(c);
+
+	/* Too large */
+	write_file(TEST_INIT,
+		"session.doubleClickInterval: 5000\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->double_click_interval == 2000);
+	config_destroy(c);
+
+	printf("  PASS: test_double_click_interval_clamp\n");
+}
+
+/* Test: menu alpha clamping */
+static void
+test_menu_alpha_clamp(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.menu.alpha: -5\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_alpha == 0);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.menu.alpha: 300\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_alpha == 255);
+	config_destroy(c);
+
+	printf("  PASS: test_menu_alpha_clamp\n");
+}
+
+/* Test: Phase 5C menu search, delay, and window menu file config */
+static void
+test_phase5c_config_options(void)
+{
+	/* Test menuSearch = itemstart */
+	write_file(TEST_INIT,
+		"session.menuSearch: itemstart\n"
+		"session.screen0.menuDelay: 300\n"
+		"session.screen0.windowMenu: /tmp/claude-test-fluxland/windowmenu\n"
+	);
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_search == WM_MENU_SEARCH_ITEMSTART);
+	assert(c->menu_delay == 300);
+	assert(c->window_menu_file &&
+		strcmp(c->window_menu_file,
+			"/tmp/claude-test-fluxland/windowmenu") == 0);
+	config_destroy(c);
+
+	/* Test menuSearch = somewhere */
+	write_file(TEST_INIT,
+		"session.menuSearch: somewhere\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_search == WM_MENU_SEARCH_SOMEWHERE);
+	config_destroy(c);
+
+	/* Test menuSearch = nowhere (default) */
+	write_file(TEST_INIT,
+		"session.menuSearch: nowhere\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_search == WM_MENU_SEARCH_NOWHERE);
+	config_destroy(c);
+
+	/* Test defaults (no config set) */
+	write_file(TEST_INIT, "\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_search == WM_MENU_SEARCH_NOWHERE);
+	assert(c->menu_delay == 200);
+	assert(c->window_menu_file == NULL);
+	config_destroy(c);
+
+	/* Test menu_delay clamping */
+	write_file(TEST_INIT,
+		"session.screen0.menuDelay: -10\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_delay == 0);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.menuDelay: 9999\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->menu_delay == 5000);
+	config_destroy(c);
+
+	printf("  PASS: test_phase5c_config_options\n");
+}
+
 int
 main(void)
 {
@@ -440,6 +582,10 @@ main(void)
 	test_alpha_clamping();
 	test_iconbar_modes();
 	test_reload();
+	test_phase5b_config_options();
+	test_double_click_interval_clamp();
+	test_menu_alpha_clamp();
+	test_phase5c_config_options();
 
 	cleanup();
 	printf("All config tests passed.\n");

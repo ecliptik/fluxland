@@ -77,4 +77,13 @@ void wm_workspace_add(struct wm_server *server);
 /* Remove the last workspace (moves views to previous) */
 void wm_workspace_remove_last(struct wm_server *server);
 
+/* Switch to the next workspace (no wrap at boundary) */
+void wm_workspace_switch_right(struct wm_server *server);
+
+/* Switch to the previous workspace (no wrap at boundary) */
+void wm_workspace_switch_left(struct wm_server *server);
+
+/* Set the name of the current workspace */
+void wm_workspace_set_name(struct wm_server *server, const char *name);
+
 #endif /* WM_WORKSPACE_H */

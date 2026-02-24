@@ -124,6 +124,10 @@ wm_server_reconfigure(struct wm_server *server)
 	/* 4. Reload style */
 	if (server->style && server->config && server->config->style_file) {
 		style_load(server->style, server->config->style_file);
+		if (server->config->style_overlay) {
+			style_load_overlay(server->style,
+				server->config->style_overlay);
+		}
 	}
 
 	/* 5. Reload menus */
@@ -360,6 +364,10 @@ wm_server_init(struct wm_server *server)
 				server->config->style_file) == 0) {
 			wlr_log(WLR_INFO, "loaded style from %s",
 				server->config->style_file);
+		}
+		if (server->config->style_overlay) {
+			style_load_overlay(server->style,
+				server->config->style_overlay);
 		}
 	}
 

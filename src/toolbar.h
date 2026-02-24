@@ -111,4 +111,10 @@ bool wm_toolbar_handle_click(struct wm_toolbar *toolbar,
 void wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 	double lx, double ly);
 
+/* Toggle toolbar layer between above-dock and normal */
+void wm_toolbar_toggle_above(struct wm_toolbar *toolbar);
+
+/* Toggle toolbar visibility on/off */
+void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
+
 #endif /* WM_TOOLBAR_H */

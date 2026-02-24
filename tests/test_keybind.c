@@ -662,6 +662,59 @@ test_window_management_actions(void)
 	printf("  PASS: test_window_management_actions\n");
 }
 
+/* Test: Phase 5A workspace and remember action names */
+static void
+test_phase5a_actions(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 bracketright :RightWorkspace\n"
+		"Mod4 bracketleft :LeftWorkspace\n"
+		"Mod4 F2 :SetWorkspaceName MyWorkspace\n"
+		"Mod4 r :Remember\n"
+	);
+
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	keybind_load(&keymodes, TEST_KEYS);
+
+	struct wm_keymode *dm = NULL;
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &keymodes, link) {
+		if (strcmp(mode->name, "default") == 0) {
+			dm = mode;
+			break;
+		}
+	}
+	assert(dm != NULL);
+
+	struct wm_keybind *bind;
+
+	/* RightWorkspace */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_bracketright);
+	assert(bind && bind->action == WM_ACTION_RIGHT_WORKSPACE);
+
+	/* LeftWorkspace */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_bracketleft);
+	assert(bind && bind->action == WM_ACTION_LEFT_WORKSPACE);
+
+	/* SetWorkspaceName */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_F2);
+	assert(bind && bind->action == WM_ACTION_SET_WORKSPACE_NAME);
+	assert(bind->argument &&
+		strcmp(bind->argument, "MyWorkspace") == 0);
+
+	/* Remember */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_r);
+	assert(bind && bind->action == WM_ACTION_REMEMBER);
+
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_phase5a_actions\n");
+}
+
 /* Test: Phase 4 menu/style action names */
 static void
 test_menu_style_actions(void)
@@ -727,6 +780,84 @@ test_menu_style_actions(void)
 	printf("  PASS: test_menu_style_actions\n");
 }
 
+/* Test: Phase 5B slit toggle action names */
+static void
+test_slit_toggle_actions(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 Shift F9 :ToggleSlitAbove\n"
+		"Mod4 Shift F10 :ToggleSlitHidden\n"
+	);
+
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	keybind_load(&keymodes, TEST_KEYS);
+
+	struct wm_keymode *dm = NULL;
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &keymodes, link) {
+		if (strcmp(mode->name, "default") == 0) {
+			dm = mode;
+			break;
+		}
+	}
+	assert(dm != NULL);
+
+	struct wm_keybind *bind;
+
+	/* ToggleSlitAbove */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_F9);
+	assert(bind && bind->action == WM_ACTION_TOGGLE_SLIT_ABOVE);
+
+	/* ToggleSlitHidden */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_F10);
+	assert(bind && bind->action == WM_ACTION_TOGGLE_SLIT_HIDDEN);
+
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_slit_toggle_actions\n");
+}
+
+/* Test: Phase 5C toolbar toggle action names */
+static void
+test_toolbar_toggle_actions(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 Shift F11 :ToggleToolbarAbove\n"
+		"Mod4 Shift F12 :ToggleToolbarVisible\n"
+	);
+
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	keybind_load(&keymodes, TEST_KEYS);
+
+	struct wm_keymode *dm = NULL;
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &keymodes, link) {
+		if (strcmp(mode->name, "default") == 0) {
+			dm = mode;
+			break;
+		}
+	}
+	assert(dm != NULL);
+
+	struct wm_keybind *bind;
+
+	/* ToggleToolbarAbove */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_F11);
+	assert(bind && bind->action == WM_ACTION_TOGGLE_TOOLBAR_ABOVE);
+
+	/* ToggleToolbarVisible */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_F12);
+	assert(bind && bind->action == WM_ACTION_TOGGLE_TOOLBAR_VISIBLE);
+
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_toolbar_toggle_actions\n");
+}
+
 int
 main(void)
 {
@@ -746,6 +877,9 @@ main(void)
 	test_workspace_actions();
 	test_window_management_actions();
 	test_menu_style_actions();
+	test_phase5a_actions();
+	test_slit_toggle_actions();
+	test_toolbar_toggle_actions();
 
 	cleanup();
 	printf("All keybind tests passed.\n");

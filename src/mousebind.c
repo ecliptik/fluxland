@@ -184,6 +184,10 @@ parse_context(const char *token, enum wm_mouse_context *ctx)
 		*ctx = WM_MOUSE_CTX_RIGHT_GRIP;
 		return true;
 	}
+	if (strcasecmp(token, "OnSlit") == 0) {
+		*ctx = WM_MOUSE_CTX_SLIT;
+		return true;
+	}
 	return false;
 }
 

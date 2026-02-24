@@ -28,6 +28,7 @@
 #include "menu.h"
 #include "output.h"
 #include "render.h"
+#include "rules.h"
 #include "server.h"
 #include "style.h"
 #include "view.h"
@@ -41,6 +42,9 @@
 #define MENU_TITLE_PADDING 6
 #define MENU_SEPARATOR_HEIGHT 7
 #define MENU_ARROW_SIZE    8
+#define MENU_SEARCH_TIMEOUT_MS 500
+
+static void cancel_pending_submenu(void);
 
 /* --- Cairo-to-wlr_buffer bridge (same as decoration.c) --- */
 
@@ -664,6 +668,8 @@ wm_menu_create_window_menu(struct wm_server *server)
 		{WM_MENU_SEPARATOR, NULL},
 		{WM_MENU_CLOSE,    "Close"},
 		{WM_MENU_KILL,     "Kill"},
+		{WM_MENU_SEPARATOR, NULL},
+		{WM_MENU_REMEMBER, "Remember"},
 	};
 
 	for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
@@ -1236,6 +1242,12 @@ wm_menu_hide(struct wm_menu *menu)
 	menu->hilite_rect = NULL;
 	menu->visible = false;
 	menu->selected_index = -1;
+
+	/* Clear search buffer */
+	menu->search_len = 0;
+	menu->search_buf[0] = '\0';
+
+	cancel_pending_submenu();
 }
 
 void
@@ -1569,6 +1581,14 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		break;
 	}
 
+	case WM_MENU_REMEMBER:
+		if (server->focused_view && server->config &&
+		    server->config->apps_file) {
+			wm_rules_remember_window(server->focused_view,
+				server->config->apps_file);
+		}
+		break;
+
 	case WM_MENU_CONFIG:
 	case WM_MENU_WORKSPACES:
 	case WM_MENU_SENDTO:
@@ -1628,6 +1648,71 @@ submenu_position(struct wm_menu *parent, int item_y_offset,
 
 	*out_x = sub_x;
 	*out_y = sub_y;
+}
+
+/* --- Type-ahead search --- */
+
+static int
+search_timer_cb(void *data)
+{
+	struct wm_menu *menu = data;
+	menu->search_len = 0;
+	menu->search_buf[0] = '\0';
+	return 0;
+}
+
+static bool
+menu_type_ahead(struct wm_menu *menu, char ch)
+{
+	if (!menu || !menu->server || !menu->server->config)
+		return false;
+
+	enum wm_menu_search mode = menu->server->config->menu_search;
+	if (mode == WM_MENU_SEARCH_NOWHERE)
+		return false;
+
+	/* Append character to search buffer */
+	if (menu->search_len >= (int)sizeof(menu->search_buf) - 1)
+		return false;
+
+	menu->search_buf[menu->search_len++] = tolower((unsigned char)ch);
+	menu->search_buf[menu->search_len] = '\0';
+
+	/* Reset search timer */
+	if (!menu->search_timer) {
+		menu->search_timer = wl_event_loop_add_timer(
+			menu->server->wl_event_loop, search_timer_cb, menu);
+	}
+	if (menu->search_timer) {
+		wl_event_source_timer_update(menu->search_timer,
+			MENU_SEARCH_TIMEOUT_MS);
+	}
+
+	/* Search for matching item */
+	int idx = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->label && item->type != WM_MENU_SEPARATOR &&
+		    item->type != WM_MENU_NOP) {
+			bool match = false;
+			if (mode == WM_MENU_SEARCH_ITEMSTART) {
+				match = (strncasecmp(item->label,
+					menu->search_buf,
+					menu->search_len) == 0);
+			} else {
+				match = (strcasestr(item->label,
+					menu->search_buf) != NULL);
+			}
+			if (match) {
+				menu->selected_index = idx;
+				menu_update_render(menu);
+				return true;
+			}
+		}
+		idx++;
+	}
+
+	return true; /* consumed even if no match */
 }
 
 /* --- Keyboard interaction --- */
@@ -1797,8 +1882,23 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 		return true;
 	}
 
-	default:
+	default: {
+		/* Type-ahead search for printable characters */
+		char ch = 0;
+		if (sym >= XKB_KEY_a && sym <= XKB_KEY_z)
+			ch = 'a' + (sym - XKB_KEY_a);
+		else if (sym >= XKB_KEY_A && sym <= XKB_KEY_Z)
+			ch = 'a' + (sym - XKB_KEY_A);
+		else if (sym >= XKB_KEY_0 && sym <= XKB_KEY_9)
+			ch = '0' + (sym - XKB_KEY_0);
+		else if (sym == XKB_KEY_space)
+			ch = ' ';
+
+		if (ch && menu_type_ahead(menu, ch))
+			return true;
+
 		return false;
+	}
 	}
 }
 
@@ -1835,6 +1935,34 @@ wm_menu_handle_motion(struct wm_server *server, double lx, double ly)
 	return false;
 }
 
+/* Pending submenu open state (for menu_delay) */
+static struct {
+	struct wm_menu_item *item;
+	int sub_x, sub_y;
+	struct wl_event_source *timer;
+} pending_submenu;
+
+static int
+submenu_delay_cb(void *data)
+{
+	(void)data;
+	if (pending_submenu.item && pending_submenu.item->submenu) {
+		wm_menu_show(pending_submenu.item->submenu,
+			pending_submenu.sub_x, pending_submenu.sub_y);
+	}
+	pending_submenu.item = NULL;
+	return 0;
+}
+
+static void
+cancel_pending_submenu(void)
+{
+	if (pending_submenu.timer) {
+		wl_event_source_timer_update(pending_submenu.timer, 0);
+	}
+	pending_submenu.item = NULL;
+}
+
 /*
  * Internal: handle motion for a specific menu tree.
  */
@@ -1860,10 +1988,12 @@ wm_menu_handle_motion_for(struct wm_menu *root_menu, double lx, double ly)
 			wm_menu_hide(old_item->submenu);
 		}
 
+		cancel_pending_submenu();
+
 		hit_menu->selected_index = idx;
 		menu_update_render(hit_menu);
 
-		/* Auto-open submenu on hover */
+		/* Auto-open submenu on hover (with optional delay) */
 		struct wm_menu_item *item = menu_get_item(hit_menu, idx);
 		if (item && item->submenu) {
 			int y_off = 0;
@@ -1883,7 +2013,30 @@ wm_menu_handle_motion_for(struct wm_menu *root_menu, double lx, double ly)
 			int sub_x, sub_y;
 			submenu_position(hit_menu, y_off,
 				&sub_x, &sub_y);
-			wm_menu_show(item->submenu, sub_x, sub_y);
+
+			int delay = 0;
+			if (hit_menu->server && hit_menu->server->config)
+				delay = hit_menu->server->config->menu_delay;
+
+			if (delay > 0) {
+				pending_submenu.item = item;
+				pending_submenu.sub_x = sub_x;
+				pending_submenu.sub_y = sub_y;
+				if (!pending_submenu.timer &&
+				    hit_menu->server) {
+					pending_submenu.timer =
+						wl_event_loop_add_timer(
+						hit_menu->server->wl_event_loop,
+						submenu_delay_cb, NULL);
+				}
+				if (pending_submenu.timer) {
+					wl_event_source_timer_update(
+						pending_submenu.timer,
+						delay);
+				}
+			} else {
+				wm_menu_show(item->submenu, sub_x, sub_y);
+			}
 		}
 	}
 
@@ -2014,6 +2167,10 @@ wm_menu_destroy(struct wm_menu *menu)
 		menu_item_destroy(item);
 	}
 
+	if (menu->search_timer) {
+		wl_event_source_remove(menu->search_timer);
+	}
+
 	free(menu->title);
 	free(menu);
 }
@@ -2069,12 +2226,25 @@ wm_menu_show_root(struct wm_server *server, int x, int y)
 void
 wm_menu_show_window(struct wm_server *server, int x, int y)
 {
-	if (!server || !server->window_menu) {
+	if (!server) {
 		return;
 	}
 
 	/* Hide any existing menus first */
 	wm_menu_hide_all(server);
+
+	/* If a custom window menu file is configured, reload from it */
+	if (server->config && server->config->window_menu_file) {
+		if (server->window_menu) {
+			wm_menu_destroy(server->window_menu);
+		}
+		server->window_menu = wm_menu_load(server,
+			server->config->window_menu_file);
+	}
+
+	if (!server->window_menu) {
+		return;
+	}
 
 	wm_menu_show(server->window_menu, x, y);
 }

@@ -27,6 +27,8 @@ enum wm_placement_policy {
 	WM_PLACEMENT_COL_SMART,
 	WM_PLACEMENT_CASCADE,
 	WM_PLACEMENT_UNDER_MOUSE,
+	WM_PLACEMENT_ROW_MIN_OVERLAP,
+	WM_PLACEMENT_COL_MIN_OVERLAP,
 };
 
 enum wm_toolbar_placement {
@@ -36,6 +38,12 @@ enum wm_toolbar_placement {
 	WM_TOOLBAR_BOTTOM_LEFT,
 	WM_TOOLBAR_BOTTOM_CENTER,
 	WM_TOOLBAR_BOTTOM_RIGHT,
+};
+
+enum wm_menu_search {
+	WM_MENU_SEARCH_NOWHERE,    /* disabled (default) */
+	WM_MENU_SEARCH_ITEMSTART,  /* match from start of item label */
+	WM_MENU_SEARCH_SOMEWHERE,  /* match anywhere in item label */
 };
 
 struct wm_config {
@@ -59,6 +67,8 @@ struct wm_config {
 
 	/* Placement */
 	enum wm_placement_policy placement_policy;
+	bool row_right_to_left;   /* false = LeftToRight (default) */
+	bool col_bottom_to_top;   /* false = TopToBottom (default) */
 
 	/* Toolbar */
 	bool toolbar_visible;
@@ -103,12 +113,43 @@ struct wm_config {
 	char *xkb_variant;  /* e.g., ",nodeadkeys" */
 	char *xkb_options;  /* e.g., "grp:alt_shift_toggle,caps:escape" */
 
+	/* Double-click interval (ms) */
+	int double_click_interval;
+
+	/* Root command (run on startup after autostart) */
+	char *root_command;
+
+	/* Menu alpha (0-255) */
+	int menu_alpha;
+
+	/* Toolbar maximize-over (allow maximize over toolbar) */
+	bool toolbar_max_over;
+
+	/* Edge resize snap threshold (pixels) */
+	int edge_resize_snap_threshold;
+
+	/* Default decoration preset name */
+	char *default_deco;
+
+	/* Manual struts [left, right, top, bottom] in pixels */
+	int struts[4];
+
+	/* Menu type-ahead search */
+	enum wm_menu_search menu_search;
+
+	/* Submenu hover-open delay (ms) */
+	int menu_delay;
+
+	/* Custom window menu file (NULL = use default) */
+	char *window_menu_file;
+
 	/* Paths */
 	char *config_dir;
 	char *keys_file;
 	char *apps_file;
 	char *menu_file;
 	char *style_file;
+	char *style_overlay;
 };
 
 /* Create a config struct with sensible defaults */

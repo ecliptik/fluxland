@@ -81,6 +81,12 @@ main(int argc, char *argv[])
 	wm_autostart_run(server.config ? server.config->config_dir : NULL,
 		server.socket);
 
+	/* Run root command from config if set */
+	if (server.config && server.config->root_command) {
+		wm_autostart_run_cmd(server.config->root_command,
+			server.socket);
+	}
+
 	/* Run -s/--startup command if provided */
 	if (startup_cmd) {
 		wm_autostart_run_cmd(startup_cmd, server.socket);

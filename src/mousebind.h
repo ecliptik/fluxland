@@ -29,6 +29,7 @@ enum wm_mouse_context {
 	WM_MOUSE_CTX_WINDOW_BORDER, /* OnWindowBorder */
 	WM_MOUSE_CTX_LEFT_GRIP,     /* OnLeftGrip */
 	WM_MOUSE_CTX_RIGHT_GRIP,    /* OnRightGrip */
+	WM_MOUSE_CTX_SLIT,          /* OnSlit */
 };
 
 /* Mouse event type */

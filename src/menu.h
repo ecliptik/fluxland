@@ -54,6 +54,7 @@ enum wm_menu_item_type {
 	WM_MENU_SENDTO,	/* workspace list submenu */
 	WM_MENU_LAYER,		/* layer selection submenu */
 	WM_MENU_WINDOW_ENTRY,	/* window list entry (focus/deiconify) */
+	WM_MENU_REMEMBER,	/* remember window properties to apps file */
 };
 
 /* --- Menu item --- */
@@ -94,6 +95,11 @@ struct wm_menu {
 	int item_height;
 	int item_count;
 	int border_width;
+
+	/* Type-ahead search buffer */
+	char search_buf[64];
+	int search_len;
+	struct wl_event_source *search_timer;
 };
 
 /* --- Menu loading --- */
