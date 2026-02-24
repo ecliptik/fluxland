@@ -53,6 +53,17 @@ cairo_surface_t *wm_render_text(const char *text, const struct wm_font *font,
 	const struct wm_color *color, int max_width, int *out_width,
 	int *out_height, enum wm_justify justify, float scale);
 
+/* --- Text measurement --- */
+
+/*
+ * Measure the pixel width of text using Pango without rendering.
+ *
+ * Returns the natural (unconstrained) width in pixels that the given
+ * text would occupy when rendered with the specified font.
+ */
+int wm_measure_text_width(const char *text, const struct wm_font *font,
+	float scale);
+
 /* --- Button glyph rendering --- */
 
 /*

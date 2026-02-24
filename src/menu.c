@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <drm_fourcc.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -818,33 +819,42 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 	menu->border_width = style->menu_border_width > 0 ?
 		style->menu_border_width : 1;
 
-	/* Compute width based on widest label */
-	int max_label_width = MENU_MIN_WIDTH;
+	/* Compute width using Pango text measurements */
+	int min_inner_w = MENU_MIN_WIDTH + 2 * MENU_ITEM_PADDING;
 	int count = 0;
+
+	/* Account for the title text width */
+	if (menu->title) {
+		int title_w = wm_measure_text_width(menu->title,
+			title_font, 1.0f);
+		int needed = title_w + 2 * MENU_TITLE_PADDING;
+		if (needed > min_inner_w) {
+			min_inner_w = needed;
+		}
+	}
 
 	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
 		count++;
 		if (item->label) {
-			/* Approximate text width: chars * (font_size * 0.6) */
-			int approx = (int)(strlen(item->label) *
-				(frame_font->size > 0 ? frame_font->size :
-				 12) * 0.6);
+			int text_w = wm_measure_text_width(item->label,
+				frame_font, 1.0f);
 			/* Add space for submenu arrow */
 			if (item->type == WM_MENU_SUBMENU ||
 			    item->type == WM_MENU_SENDTO ||
 			    item->type == WM_MENU_LAYER) {
-				approx += MENU_ARROW_SIZE + 4;
+				text_w += MENU_ARROW_SIZE + 4;
 			}
-			if (approx > max_label_width) {
-				max_label_width = approx;
+			int needed = text_w + 2 * MENU_ITEM_PADDING;
+			if (needed > min_inner_w) {
+				min_inner_w = needed;
 			}
 		}
 	}
 	menu->item_count = count;
 
 	int bw = menu->border_width;
-	menu->width = max_label_width + 2 * MENU_ITEM_PADDING + 2 * bw;
+	menu->width = min_inner_w + 2 * bw;
 	if (menu->width > MENU_MAX_WIDTH) {
 		menu->width = MENU_MAX_WIDTH;
 	}
@@ -1380,6 +1390,9 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 			wlr_log(WLR_INFO, "menu exec: %s", item->command);
 			if (fork() == 0) {
 				setsid();
+				sigset_t set;
+				sigemptyset(&set);
+				sigprocmask(SIG_SETMASK, &set, NULL);
 				execl("/bin/sh", "/bin/sh", "-c",
 					item->command, (char *)NULL);
 				_exit(1);

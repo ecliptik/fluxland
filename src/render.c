@@ -512,6 +512,44 @@ wm_render_text(const char *text, const struct wm_font *font,
 	return surface;
 }
 
+/* --- Public API: text measurement --- */
+
+int
+wm_measure_text_width(const char *text, const struct wm_font *font,
+	float scale)
+{
+	if (!text || !font)
+		return 0;
+
+	cairo_surface_t *tmp =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+	cairo_t *cr = cairo_create(tmp);
+	PangoLayout *layout = pango_cairo_create_layout(cr);
+
+	PangoFontDescription *desc = pango_font_description_new();
+	pango_font_description_set_family(desc,
+		font->family ? font->family : "sans");
+	pango_font_description_set_size(desc,
+		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	if (font->bold)
+		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
+	if (font->italic)
+		pango_font_description_set_style(desc, PANGO_STYLE_ITALIC);
+	pango_layout_set_font_description(layout, desc);
+	pango_font_description_free(desc);
+
+	pango_layout_set_text(layout, text, -1);
+
+	int text_w, text_h;
+	pango_layout_get_pixel_size(layout, &text_w, &text_h);
+
+	g_object_unref(layout);
+	cairo_destroy(cr);
+	cairo_surface_destroy(tmp);
+
+	return text_w;
+}
+
 /* --- Public API: button glyph rendering --- */
 
 cairo_surface_t *
