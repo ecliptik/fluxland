@@ -905,10 +905,11 @@ render_menu_title(struct wm_menu *menu, struct wm_style *style)
 	/* Render title text */
 	if (menu->title && *menu->title) {
 		int tw, tth;
+		int max_text_w = inner_w - 2 * MENU_TITLE_PADDING;
 		cairo_surface_t *text = wm_render_text(menu->title,
 			&style->menu_title_font,
 			&style->menu_title_text_color,
-			inner_w - 2 * MENU_TITLE_PADDING,
+			max_text_w,
 			&tw, &tth, style->menu_title_justify, 1.0f);
 		if (text) {
 			cairo_t *cr = cairo_create(bg);

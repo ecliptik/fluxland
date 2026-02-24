@@ -422,11 +422,25 @@ wm_render_text(const char *text, const struct wm_font *font,
 	if (scaled_max_width <= 0)
 		scaled_max_width = 1;
 
-	/* Create a temporary surface just to get a PangoLayout */
-	cairo_surface_t *tmp =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
-	cairo_t *tmp_cr = cairo_create(tmp);
-	PangoLayout *layout = pango_cairo_create_layout(tmp_cr);
+	int shadow_offset_x = abs(font->shadow_x);
+	int shadow_offset_y = abs(font->shadow_y);
+
+	/*
+	 * Allocate the surface at max_width and render the text directly.
+	 * pango_layout_get_pixel_size() can underestimate the actual
+	 * rendered width, so we size the surface to the layout constraint
+	 * (max_width) to avoid clipping.
+	 */
+	int surf_w = scaled_max_width + shadow_offset_x;
+	int est_h = (int)(font->size * scale * 3 + 0.5f) +
+		shadow_offset_y;
+	if (est_h < 32) est_h = 32;
+
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, surf_w, est_h);
+	cairo_t *cr = cairo_create(surface);
+
+	PangoLayout *layout = pango_cairo_create_layout(cr);
 
 	/* Build font description */
 	PangoFontDescription *desc = pango_font_description_new();
@@ -460,22 +474,22 @@ wm_render_text(const char *text, const struct wm_font *font,
 		break;
 	}
 
-	/* Get actual text extent */
-	int text_w, text_h;
-	pango_layout_get_pixel_size(layout, &text_w, &text_h);
+	/*
+	 * Use ink extents for accurate rendered bounds.  The ink rectangle
+	 * reflects the actual pixels drawn, which can exceed the logical
+	 * size returned by pango_layout_get_pixel_size().
+	 */
+	PangoRectangle ink_rect, logical_rect;
+	pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
+
+	int text_w = ink_rect.x + ink_rect.width;
+	int text_h = logical_rect.height;
 	if (text_w <= 0) text_w = 1;
 	if (text_h <= 0) text_h = 1;
 
-	/* Account for shadow in surface size */
-	int shadow_offset_x = abs(font->shadow_x);
-	int shadow_offset_y = abs(font->shadow_y);
-	int surf_w = text_w + shadow_offset_x;
-	int surf_h = text_h + shadow_offset_y;
-
-	/* Create the actual surface */
-	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, surf_w, surf_h);
-	cairo_t *cr = cairo_create(surface);
+	/* Final surface: ink width + shadow, logical height + shadow */
+	int final_w = text_w + shadow_offset_x;
+	int final_h = text_h + shadow_offset_y;
 
 	/* Draw shadow if enabled */
 	if (font->shadow_x != 0 || font->shadow_y != 0) {
@@ -498,18 +512,29 @@ wm_render_text(const char *text, const struct wm_font *font,
 		color->b / 255.0, color->a / 255.0);
 	pango_cairo_show_layout(cr, layout);
 
-	/* Report sizes */
-	if (out_width)
-		*out_width = surf_w;
-	if (out_height)
-		*out_height = surf_h;
-
 	g_object_unref(layout);
 	cairo_destroy(cr);
-	cairo_destroy(tmp_cr);
-	cairo_surface_destroy(tmp);
 
-	return surface;
+	/*
+	 * Crop to the actual rendered extent so the caller gets a
+	 * tightly-fitting surface for compositing.
+	 */
+	if (final_w > surf_w) final_w = surf_w;
+	if (final_h > est_h) final_h = est_h;
+	cairo_surface_t *cropped = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, final_w, final_h);
+	cairo_t *crop_cr = cairo_create(cropped);
+	cairo_set_source_surface(crop_cr, surface, 0, 0);
+	cairo_paint(crop_cr);
+	cairo_destroy(crop_cr);
+	cairo_surface_destroy(surface);
+
+	if (out_width)
+		*out_width = final_w;
+	if (out_height)
+		*out_height = final_h;
+
+	return cropped;
 }
 
 /* --- Public API: text measurement --- */
@@ -521,8 +546,14 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 	if (!text || !font)
 		return 0;
 
+	/*
+	 * Use a reasonably sized surface for consistent font metrics
+	 * and ink extents for accurate width measurement.
+	 */
+	int est_h = (int)(font->size * scale * 3 + 0.5f);
+	if (est_h < 32) est_h = 32;
 	cairo_surface_t *tmp =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 512, est_h);
 	cairo_t *cr = cairo_create(tmp);
 	PangoLayout *layout = pango_cairo_create_layout(cr);
 
@@ -540,8 +571,9 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 
 	pango_layout_set_text(layout, text, -1);
 
-	int text_w, text_h;
-	pango_layout_get_pixel_size(layout, &text_w, &text_h);
+	PangoRectangle ink_rect;
+	pango_layout_get_pixel_extents(layout, &ink_rect, NULL);
+	int text_w = ink_rect.x + ink_rect.width;
 
 	g_object_unref(layout);
 	cairo_destroy(cr);
