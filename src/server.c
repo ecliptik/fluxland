@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <wlr/render/allocator.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_control_v1.h>
@@ -62,6 +63,17 @@ handle_sighup(int signal_number, void *data)
 	struct wm_server *server = data;
 	wlr_log(WLR_INFO, "%s", "SIGHUP received, reloading configuration");
 	wm_server_reconfigure(server);
+	return 0;
+}
+
+static int
+handle_sigchld(int signal_number, void *data)
+{
+	(void)data;
+	/* Reap all zombie child processes (launched apps, XWayland, etc.) */
+	while (waitpid(-1, NULL, WNOHANG) > 0) {
+		/* reaped */
+	}
 	return 0;
 }
 
@@ -175,6 +187,8 @@ wm_server_init(struct wm_server *server)
 		server->wl_display);
 	server->sighup_source = wl_event_loop_add_signal(
 		server->wl_event_loop, SIGHUP, handle_sighup, server);
+	server->sigchld_source = wl_event_loop_add_signal(
+		server->wl_event_loop, SIGCHLD, handle_sigchld, server);
 	signal(SIGPIPE, SIG_IGN);
 
 	/*
@@ -481,6 +495,7 @@ wm_server_destroy(struct wm_server *server)
 	wl_event_source_remove(server->sigint_source);
 	wl_event_source_remove(server->sigterm_source);
 	wl_event_source_remove(server->sighup_source);
+	wl_event_source_remove(server->sigchld_source);
 
 	wlr_scene_node_destroy(&server->scene->tree.node);
 	wlr_backend_destroy(server->backend);

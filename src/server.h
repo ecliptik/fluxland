@@ -341,6 +341,7 @@ struct wm_server {
 	struct wl_event_source *sigint_source;
 	struct wl_event_source *sigterm_source;
 	struct wl_event_source *sighup_source;
+	struct wl_event_source *sigchld_source;
 
 	const char *socket;
 };

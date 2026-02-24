@@ -46,6 +46,10 @@ exec_command(const char *cmd)
 	pid_t pid = fork();
 	if (pid == 0) {
 		setsid();
+		/* Unblock signals blocked by compositor's event loop */
+		sigset_t set;
+		sigemptyset(&set);
+		sigprocmask(SIG_SETMASK, &set, NULL);
 		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
 		_exit(1);
 	} else if (pid < 0) {

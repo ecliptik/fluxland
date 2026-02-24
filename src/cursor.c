@@ -9,6 +9,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -301,6 +302,9 @@ execute_mouse_action(struct wm_server *server,
 			pid_t pid = fork();
 			if (pid == 0) {
 				setsid();
+				sigset_t set;
+				sigemptyset(&set);
+				sigprocmask(SIG_SETMASK, &set, NULL);
 				execl("/bin/sh", "/bin/sh", "-c",
 					argument, (char *)NULL);
 				_exit(1);
