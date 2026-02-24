@@ -70,10 +70,15 @@ static int
 handle_sigchld(int signal_number, void *data)
 {
 	(void)data;
-	/* Reap all zombie child processes (launched apps, XWayland, etc.) */
-	while (waitpid(-1, NULL, WNOHANG) > 0) {
-		/* reaped */
-	}
+	/*
+	 * Do NOT reap children with waitpid(-1) here. wlroots manages
+	 * its own children (Xwayland) and needs to waitpid() them.
+	 * A blanket waitpid(-1) races with wlroots, causing ECHILD.
+	 *
+	 * Launched apps use double-fork so their immediate children
+	 * exit instantly and are reaped inline. The actual processes
+	 * run as grandchildren adopted by init.
+	 */
 	return 0;
 }
 

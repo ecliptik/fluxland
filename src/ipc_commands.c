@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
@@ -315,11 +316,19 @@ exec_command(const char *cmd)
 {
 	if (!cmd || !*cmd) return;
 	pid_t pid = fork();
+	if (pid < 0) return;
 	if (pid == 0) {
+		sigset_t set;
+		sigemptyset(&set);
+		sigprocmask(SIG_SETMASK, &set, NULL);
+		pid_t g = fork();
+		if (g < 0) _exit(1);
+		if (g > 0) _exit(0);
 		setsid();
 		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
 		_exit(1);
 	}
+	waitpid(pid, NULL, 0);
 }
 
 static bool

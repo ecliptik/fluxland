@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/types/wlr_buffer.h>
@@ -1389,14 +1390,20 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 	case WM_MENU_EXEC:
 		if (item->command) {
 			wlr_log(WLR_INFO, "menu exec: %s", item->command);
-			if (fork() == 0) {
-				setsid();
+			pid_t pid = fork();
+			if (pid == 0) {
 				sigset_t set;
 				sigemptyset(&set);
 				sigprocmask(SIG_SETMASK, &set, NULL);
+				pid_t g = fork();
+				if (g < 0) _exit(1);
+				if (g > 0) _exit(0);
+				setsid();
 				execl("/bin/sh", "/bin/sh", "-c",
 					item->command, (char *)NULL);
 				_exit(1);
+			} else if (pid > 0) {
+				waitpid(pid, NULL, 0);
 			}
 		}
 		break;

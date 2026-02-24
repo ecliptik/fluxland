@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
 
@@ -18,31 +19,43 @@ static void
 spawn_child(void (*exec_fn)(void *), void *data, const char *wayland_display)
 {
 	/*
-	 * Do NOT set SIGCHLD to SIG_IGN here. The server's event loop
-	 * already handles SIGCHLD via signalfd to reap zombies. Setting
-	 * SIG_IGN with SA_NOCLDWAIT causes the kernel to auto-reap ALL
-	 * child processes, which breaks wlroots' Xwayland management
-	 * (waitpid returns ECHILD because the child was already reaped).
+	 * Double-fork: the first child exits immediately and is reaped
+	 * inline. The grandchild is orphaned and adopted by init, which
+	 * auto-reaps it on exit. This avoids needing a blanket
+	 * waitpid(-1) SIGCHLD handler that would race with wlroots'
+	 * Xwayland child management.
 	 */
-
 	pid_t pid = fork();
 	if (pid < 0) {
 		wlr_log(WLR_ERROR, "%s", "autostart: fork failed");
 		return;
 	}
 	if (pid == 0) {
-		/* Child: unblock signals inherited from compositor's signalfd */
+		/* First child: unblock signals, fork again, and exit */
 		sigset_t set;
 		sigemptyset(&set);
 		sigprocmask(SIG_SETMASK, &set, NULL);
 
+		pid_t grandchild = fork();
+		if (grandchild < 0) {
+			_exit(1);
+		}
+		if (grandchild > 0) {
+			/* First child exits; grandchild is adopted by init */
+			_exit(0);
+		}
+
+		/* Grandchild: start a new session and exec */
+		setsid();
 		if (wayland_display) {
 			setenv("WAYLAND_DISPLAY", wayland_display, 1);
 		}
 		exec_fn(data);
 		_exit(1);
 	}
-	wlr_log(WLR_INFO, "autostart: launched child pid %d", pid);
+	/* Parent: reap the first child immediately (it exits right away) */
+	waitpid(pid, NULL, 0);
+	wlr_log(WLR_INFO, "%s", "autostart: launched child");
 }
 
 struct script_data {
