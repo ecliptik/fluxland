@@ -1,0 +1,35 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.so.*
+
+# Packaging
+debian/
+*.deb
+*.dsc
+*.tar.xz
+*.tar.bz2
+*.tar.gz
+*.changes
+*.buildinfo
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cache/
+
+# Claude Code
+.claude/settings.local.json
+
+# MCP
+.mcp.json
+
+# Core dumps
+core
+core.*
+vgcore.*
