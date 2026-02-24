@@ -311,10 +311,13 @@ handle_new_text_input(struct wl_listener *listener, void *data)
 
 	wl_list_insert(&relay->text_inputs, &ti->link);
 
-	/* If the seat already has a focused surface, send enter */
+	/* If the seat already has a focused surface, send enter
+	 * (only if the text input client owns that surface) */
 	struct wlr_surface *focused =
 		relay->server->seat->keyboard_state.focused_surface;
-	if (focused) {
+	if (focused &&
+	    wl_resource_get_client(text_input->resource) ==
+	    wl_resource_get_client(focused->resource)) {
 		wlr_text_input_v3_send_enter(text_input, focused);
 	}
 }
@@ -382,8 +385,11 @@ wm_text_input_focus_change(struct wm_server *server,
 			wlr_text_input_v3_send_leave(ti->input);
 		}
 
-		/* Enter new surface */
-		if (new_focus) {
+		/* Enter new surface (only if the text input's client
+		 * owns the surface — wlr asserts this match) */
+		if (new_focus &&
+		    wl_resource_get_client(ti->input->resource) ==
+		    wl_resource_get_client(new_focus->resource)) {
 			wlr_text_input_v3_send_enter(ti->input, new_focus);
 		}
 	}
