@@ -174,7 +174,7 @@ Mod4 Tab :NextTab
 Mod4 Shift Tab :PrevTab
 
 # Detach current client from tab group
-Mod4 Shift d :DetachClient
+Mod4 Control d :DetachClient
 
 # Reorder tabs
 Mod4 Control Left :MoveTabLeft
@@ -259,25 +259,25 @@ Mod4 x Mod4 f :Exec firefox
 Mod4 x Mod4 e :Exec thunar
 
 # -------------------------------------------------------------------
-# Keymode example: resize mode
+# Keymode example: move mode
 # -------------------------------------------------------------------
-# Enter resize mode with Mod4+v. In resize mode, use h/j/k/l or
+# Enter move mode with Mod4+v. In move mode, use h/j/k/l or
 # arrow keys to move the window. Press Escape to return to normal.
 
-resize: h :MoveLeft 10
-resize: l :MoveRight 10
-resize: j :MoveDown 10
-resize: k :MoveUp 10
-resize: Left :MoveLeft 10
-resize: Right :MoveRight 10
-resize: Down :MoveDown 10
-resize: Up :MoveUp 10
-resize: Shift h :MoveLeft 1
-resize: Shift l :MoveRight 1
-resize: Shift j :MoveDown 1
-resize: Shift k :MoveUp 1
-resize: Escape :KeyMode default
-Mod4 v :KeyMode resize Escape
+move: h :MoveLeft 10
+move: l :MoveRight 10
+move: j :MoveDown 10
+move: k :MoveUp 10
+move: Left :MoveLeft 10
+move: Right :MoveRight 10
+move: Down :MoveDown 10
+move: Up :MoveUp 10
+move: Shift h :MoveLeft 1
+move: Shift l :MoveRight 1
+move: Shift j :MoveDown 1
+move: Shift k :MoveUp 1
+move: Escape :KeyMode default
+Mod4 v :KeyMode move Escape
 
 # -------------------------------------------------------------------
 # Mouse bindings: Titlebar
