@@ -808,6 +808,9 @@ handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 
 	wl_list_remove(&view->link);
 
+	/* Update toolbar icon bar (view removed from list) */
+	wm_toolbar_update_iconbar(view->server->toolbar);
+
 	free(view->title);
 	free(view->app_id);
 	free(view);
@@ -884,7 +887,7 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 		request_fullscreen);
 
 	if (view->fullscreen) {
-		/* Restore */
+		/* Restore from fullscreen */
 		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
 			view->saved_geometry.width,
 			view->saved_geometry.height);
@@ -893,7 +896,38 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 		view->x = view->saved_geometry.x;
 		view->y = view->saved_geometry.y;
 		view->fullscreen = false;
+
+		/* Reparent back from overlay to workspace/sticky tree */
+		struct wlr_scene_tree *parent;
+		if (view->sticky) {
+			parent = view->server->sticky_tree;
+		} else if (view->workspace) {
+			parent = view->workspace->tree;
+		} else {
+			parent = view->server->view_tree;
+		}
+		wlr_scene_node_reparent(&view->scene_tree->node, parent);
+
+		/* Show decorations and reposition XDG surface */
+		if (view->decoration) {
+			wlr_scene_node_set_enabled(
+				&view->decoration->tree->node, true);
+			int top, bottom, left, right;
+			wm_decoration_get_extents(view->decoration,
+				&top, &bottom, &left, &right);
+			struct wlr_scene_node *child;
+			wl_list_for_each(child,
+				&view->scene_tree->children, link) {
+				if (child !=
+					&view->decoration->tree->node) {
+					wlr_scene_node_set_position(
+						child, left, top);
+					break;
+				}
+			}
+		}
 	} else {
+		/* Enter fullscreen */
 		if (!view->maximized) {
 			wm_view_get_geometry(view, &view->saved_geometry);
 		}
@@ -917,6 +951,26 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 			view->y = output_box.y;
 		}
 		view->fullscreen = true;
+
+		/* Hide decorations and move XDG surface to (0,0) */
+		if (view->decoration) {
+			wlr_scene_node_set_enabled(
+				&view->decoration->tree->node, false);
+			struct wlr_scene_node *child;
+			wl_list_for_each(child,
+				&view->scene_tree->children, link) {
+				if (child !=
+					&view->decoration->tree->node) {
+					wlr_scene_node_set_position(
+						child, 0, 0);
+					break;
+				}
+			}
+		}
+
+		/* Reparent to overlay layer (above toolbar) */
+		wlr_scene_node_reparent(&view->scene_tree->node,
+			view->server->layer_overlay);
 	}
 
 	wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel,
