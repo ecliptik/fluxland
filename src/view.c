@@ -587,8 +587,13 @@ wm_view_begin_interactive(struct wm_view *view,
 	struct wlr_surface *focused =
 		server->seat->pointer_state.focused_surface;
 
-	/* Only the focused view may be interactively moved/resized */
-	if (view->xdg_toplevel->base->surface !=
+	/*
+	 * Only the focused view may be interactively moved/resized.
+	 * When the pointer is on a decoration (titlebar, handle, grip),
+	 * pointer focus is NULL because decorations are scene buffers,
+	 * not wl_surfaces. Allow interactive mode in that case.
+	 */
+	if (focused && view->xdg_toplevel->base->surface !=
 			wlr_surface_get_root_surface(focused)) {
 		return;
 	}
@@ -599,6 +604,8 @@ wm_view_begin_interactive(struct wm_view *view,
 	if (mode == WM_CURSOR_MOVE) {
 		server->grab_x = server->cursor->x - view->x;
 		server->grab_y = server->cursor->y - view->y;
+		/* Reset grab_geobox so stale resize values don't affect move */
+		memset(&server->grab_geobox, 0, sizeof(server->grab_geobox));
 	} else {
 		struct wlr_box geo;
 		wlr_xdg_surface_get_geometry(view->xdg_toplevel->base,
