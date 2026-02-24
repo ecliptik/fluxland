@@ -91,7 +91,7 @@ These provide:
 ## 2. Build
 
 ```sh
-git clone https://github.com/user/fluxland.git   # adjust to your repo URL
+git clone https://github.com/ecliptik/fluxland.git
 cd fluxland
 
 meson setup build --buildtype=release
