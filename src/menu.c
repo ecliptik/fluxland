@@ -1987,7 +1987,13 @@ wm_menu_show_root(struct wm_server *server, int x, int y)
 		return;
 	}
 
-	/* Hide any existing menus first */
+	/* Toggle: if root menu is already visible, hide it */
+	if (server->root_menu->visible) {
+		wm_menu_hide_all(server);
+		return;
+	}
+
+	/* Hide any other menus first, then show root */
 	wm_menu_hide_all(server);
 
 	wm_menu_show(server->root_menu, x, y);
