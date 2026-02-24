@@ -128,10 +128,10 @@ compute_layout(int total_width, int *ws_width, int *iconbar_width,
 	int *clock_width)
 {
 	*ws_width = total_width / 4;
-	*clock_width = total_width / 6;
+	*clock_width = total_width / 5;
 
 	if (*ws_width < 60) *ws_width = 60;
-	if (*clock_width < 50) *clock_width = 50;
+	if (*clock_width < 80) *clock_width = 80;
 	*iconbar_width = total_width - *ws_width - *clock_width;
 	if (*iconbar_width < 0) *iconbar_width = 0;
 }
@@ -677,8 +677,8 @@ clock_timer_cb(void *data)
 	}
 
 	int w = toolbar->width;
-	int clock_width = w / 6;
-	if (clock_width < 50) clock_width = 50;
+	int ws_width, iconbar_width, clock_width;
+	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
 
 	struct wlr_buffer *clock = render_clock(toolbar, clock_width,
 		toolbar->height);
@@ -854,8 +854,9 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	}
 
 	struct wm_config *config = toolbar->server->config;
-	int output_width = output->wlr_output->width;
-	int output_height = output->wlr_output->height;
+	int output_width, output_height;
+	wlr_output_effective_resolution(output->wlr_output,
+		&output_width, &output_height);
 
 	/* Apply width percentage */
 	int width_pct = config ? config->toolbar_width_percent : 100;
@@ -980,8 +981,9 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 		return;
 	}
 
-	int output_height = output->wlr_output->height;
-	int output_width = output->wlr_output->width;
+	int output_width, output_height;
+	wlr_output_effective_resolution(output->wlr_output,
+		&output_width, &output_height);
 
 	/* Define trigger zone: 1px strip at the edge where toolbar lives */
 	bool in_trigger_zone = false;

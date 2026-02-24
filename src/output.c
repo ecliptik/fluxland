@@ -17,6 +17,7 @@
 #include "layer_shell.h"
 #include "output.h"
 #include "server.h"
+#include "toolbar.h"
 
 static void
 handle_output_frame(struct wl_listener *listener, void *data)
@@ -146,6 +147,11 @@ handle_new_output(struct wl_listener *listener, void *data)
 
 	/* Arrange any existing layer surfaces on this output */
 	wm_layer_shell_arrange(output);
+
+	/* Re-layout toolbar now that an output is available */
+	if (server->toolbar) {
+		wm_toolbar_relayout(server->toolbar);
+	}
 }
 
 void
