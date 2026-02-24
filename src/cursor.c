@@ -7,7 +7,7 @@
  * mouse bindings, and dispatches actions.
  */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include <math.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -25,6 +25,8 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
@@ -353,6 +355,51 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 	double new_y = server->cursor->y - server->grab_y +
 		server->grab_geobox.y;
 	struct wm_view *view = server->grabbed_view;
+
+	/*
+	 * Workspace edge warping: when dragging a window and the
+	 * cursor hits the left or right edge of the output, switch
+	 * to the prev/next workspace and teleport the cursor to
+	 * the opposite edge.
+	 */
+	if (server->config && server->config->workspace_warping) {
+		struct wlr_output *output =
+			wlr_output_layout_output_at(server->output_layout,
+				server->cursor->x, server->cursor->y);
+		if (output) {
+			struct wlr_box obox;
+			wlr_output_layout_get_box(server->output_layout,
+				output, &obox);
+			int cx = (int)server->cursor->x;
+			int edge_margin = 1;
+
+			if (cx <= obox.x + edge_margin) {
+				/* Left edge: switch to previous workspace */
+				wm_workspace_switch_prev(server);
+				/* Warp cursor to right side */
+				double warp_x = obox.x + obox.width - 2;
+				wlr_cursor_warp(server->cursor, NULL,
+					warp_x, server->cursor->y);
+				/* Adjust grab so the view position stays
+				 * relative to the cursor */
+				server->grab_x = server->cursor->x -
+					new_x + server->grab_geobox.x;
+				return;
+			}
+			if (cx >= obox.x + obox.width - edge_margin - 1) {
+				/* Right edge: switch to next workspace */
+				wm_workspace_switch_next(server);
+				/* Warp cursor to left side */
+				double warp_x = obox.x + 2;
+				wlr_cursor_warp(server->cursor, NULL,
+					warp_x, server->cursor->y);
+				server->grab_x = server->cursor->x -
+					new_x + server->grab_geobox.x;
+				return;
+			}
+		}
+	}
+
 	int snap_x = (int)new_x;
 	int snap_y = (int)new_y;
 	wm_snap_edges(server, view, &snap_x, &snap_y);

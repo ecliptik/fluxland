@@ -209,4 +209,23 @@ void wm_menu_show_window(struct wm_server *server, int x, int y);
  */
 void wm_menu_show_window_list(struct wm_server *server, int x, int y);
 
+/*
+ * Show a workspace switching menu at the given position.
+ * Creates a dynamic menu listing all workspaces for switching.
+ */
+void wm_menu_show_workspace_menu(struct wm_server *server, int x, int y);
+
+/*
+ * Show a client menu listing all windows, optionally filtered by pattern.
+ * pattern may be NULL for no filter.
+ */
+void wm_menu_show_client_menu(struct wm_server *server, const char *pattern,
+	int x, int y);
+
+/*
+ * Show a menu loaded from the given file path.
+ */
+void wm_menu_show_custom(struct wm_server *server, const char *path,
+	int x, int y);
+
 #endif /* WM_MENU_H */

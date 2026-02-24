@@ -60,4 +60,21 @@ void wm_view_send_to_workspace(struct wm_server *server, int index);
 /* Toggle sticky (visible on all workspaces) */
 void wm_view_set_sticky(struct wm_view *view, bool sticky);
 
+/* Send focused view to workspace, then switch to it */
+void wm_view_take_to_workspace(struct wm_server *server, int index);
+
+/* Send focused view to next/prev workspace (wrapping) */
+void wm_view_send_to_next_workspace(struct wm_server *server);
+void wm_view_send_to_prev_workspace(struct wm_server *server);
+
+/* Send focused view to next/prev workspace and follow */
+void wm_view_take_to_next_workspace(struct wm_server *server);
+void wm_view_take_to_prev_workspace(struct wm_server *server);
+
+/* Add a new workspace */
+void wm_workspace_add(struct wm_server *server);
+
+/* Remove the last workspace (moves views to previous) */
+void wm_workspace_remove_last(struct wm_server *server);
+
 #endif /* WM_WORKSPACE_H */

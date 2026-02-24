@@ -1255,6 +1255,18 @@ wm_menu_hide_all(struct wm_server *server)
 		wm_menu_destroy(server->window_list_menu);
 		server->window_list_menu = NULL;
 	}
+	if (server->workspace_menu) {
+		wm_menu_destroy(server->workspace_menu);
+		server->workspace_menu = NULL;
+	}
+	if (server->client_menu) {
+		wm_menu_destroy(server->client_menu);
+		server->client_menu = NULL;
+	}
+	if (server->custom_menu) {
+		wm_menu_destroy(server->custom_menu);
+		server->custom_menu = NULL;
+	}
 }
 
 /* --- Re-render items for selection change --- */
@@ -2021,6 +2033,15 @@ wm_menu_is_open(struct wm_server *server)
 	if (server->window_list_menu && server->window_list_menu->visible) {
 		return true;
 	}
+	if (server->workspace_menu && server->workspace_menu->visible) {
+		return true;
+	}
+	if (server->client_menu && server->client_menu->visible) {
+		return true;
+	}
+	if (server->custom_menu && server->custom_menu->visible) {
+		return true;
+	}
 	return false;
 }
 
@@ -2075,4 +2096,122 @@ wm_menu_show_window_list(struct wm_server *server, int x, int y)
 	}
 
 	wm_menu_show(server->window_list_menu, x, y);
+}
+
+void
+wm_menu_show_workspace_menu(struct wm_server *server, int x, int y)
+{
+	if (!server) {
+		return;
+	}
+
+	wm_menu_hide_all(server);
+
+	/* Build a dynamic workspace menu for switching (not "Send To") */
+	struct wm_menu *menu = menu_create(server, "Workspaces");
+	if (!menu) {
+		return;
+	}
+
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &server->workspaces, link) {
+		char label[128];
+		bool is_current = (ws == server->current_workspace);
+		snprintf(label, sizeof(label), "%s%d: %s",
+			is_current ? "* " : "  ",
+			ws->index + 1,
+			ws->name ? ws->name : "Workspace");
+		struct wm_menu_item *item = menu_item_create(
+			WM_MENU_COMMAND, label);
+		if (item) {
+			char cmd[64];
+			snprintf(cmd, sizeof(cmd), "Workspace %d",
+				ws->index + 1);
+			item->command = strdup(cmd);
+			wl_list_insert(menu->items.prev, &item->link);
+		}
+	}
+
+	server->workspace_menu = menu;
+	wm_menu_show(server->workspace_menu, x, y);
+}
+
+void
+wm_menu_show_client_menu(struct wm_server *server, const char *pattern,
+	int x, int y)
+{
+	if (!server) {
+		return;
+	}
+
+	wm_menu_hide_all(server);
+
+	struct wm_menu *menu = menu_create(server, "Clients");
+	if (!menu) {
+		return;
+	}
+
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		/* Apply optional pattern filter on app_id */
+		if (pattern && *pattern) {
+			const char *app_id = view->app_id ? view->app_id : "";
+			if (strcasestr(app_id, pattern) == NULL) {
+				continue;
+			}
+		}
+
+		const char *title = view->title;
+		if (!title || !*title) {
+			title = view->app_id ? view->app_id : "(untitled)";
+		}
+
+		bool is_iconified = !view->scene_tree->node.enabled;
+		bool is_focused = (view == server->focused_view);
+
+		char entry_label[256];
+		if (is_iconified) {
+			snprintf(entry_label, sizeof(entry_label),
+				"[%s]", title);
+		} else if (is_focused) {
+			snprintf(entry_label, sizeof(entry_label),
+				"* %s", title);
+		} else {
+			snprintf(entry_label, sizeof(entry_label),
+				"  %s", title);
+		}
+
+		struct wm_menu_item *item = menu_item_create(
+			WM_MENU_WINDOW_ENTRY, entry_label);
+		if (item) {
+			item->data = view;
+			int ws_idx = view->workspace ?
+				view->workspace->index : 0;
+			char cmd[32];
+			snprintf(cmd, sizeof(cmd), "%d", ws_idx);
+			item->command = strdup(cmd);
+			wl_list_insert(menu->items.prev, &item->link);
+		}
+	}
+
+	server->client_menu = menu;
+	wm_menu_show(server->client_menu, x, y);
+}
+
+void
+wm_menu_show_custom(struct wm_server *server, const char *path,
+	int x, int y)
+{
+	if (!server || !path || !*path) {
+		return;
+	}
+
+	wm_menu_hide_all(server);
+
+	server->custom_menu = wm_menu_load(server, path);
+	if (!server->custom_menu) {
+		return;
+	}
+
+	wm_menu_show(server->custom_menu, x, y);
 }

@@ -4,7 +4,7 @@
  * autostart.c - Startup script execution
  */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 
 #include "autostart.h"
 #include <signal.h>

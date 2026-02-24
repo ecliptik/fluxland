@@ -139,6 +139,52 @@ parse_placement(const char *value)
 	return WM_PLACEMENT_ROW_SMART;
 }
 
+static int
+parse_iconbar_mode(const char *value)
+{
+	if (!value)
+		return 0;
+	if (strcasecmp(value, "AllWindows") == 0)
+		return 1;
+	if (strcasecmp(value, "Icons") == 0)
+		return 2;
+	if (strcasecmp(value, "NoIcons") == 0)
+		return 3;
+	if (strcasecmp(value, "WorkspaceIcons") == 0)
+		return 4;
+	return 0; /* Workspace (default) */
+}
+
+static int
+parse_slit_placement(const char *value)
+{
+	if (!value)
+		return 4; /* RightCenter */
+	if (strcasecmp(value, "TopLeft") == 0) return 0;
+	if (strcasecmp(value, "TopCenter") == 0) return 1;
+	if (strcasecmp(value, "TopRight") == 0) return 2;
+	if (strcasecmp(value, "RightTop") == 0) return 3;
+	if (strcasecmp(value, "RightCenter") == 0) return 4;
+	if (strcasecmp(value, "RightBottom") == 0) return 5;
+	if (strcasecmp(value, "BottomLeft") == 0) return 6;
+	if (strcasecmp(value, "BottomCenter") == 0) return 7;
+	if (strcasecmp(value, "BottomRight") == 0) return 8;
+	if (strcasecmp(value, "LeftTop") == 0) return 9;
+	if (strcasecmp(value, "LeftCenter") == 0) return 10;
+	if (strcasecmp(value, "LeftBottom") == 0) return 11;
+	return 4;
+}
+
+static int
+parse_slit_direction(const char *value)
+{
+	if (!value)
+		return 0; /* Vertical */
+	if (strcasecmp(value, "Horizontal") == 0)
+		return 1;
+	return 0; /* Vertical */
+}
+
 static bool
 path_exists(const char *path)
 {
@@ -240,6 +286,25 @@ config_create(void)
 	config->toolbar_auto_hide = false;
 	config->toolbar_auto_hide_delay_ms = 500;
 	config->toolbar_width_percent = 100;
+	config->toolbar_height = 0;
+	config->toolbar_layer = 4; /* Dock */
+	config->toolbar_alpha = 255;
+	config->toolbar_on_head = 0;
+
+	config->titlebar_left = strdup("Stick");
+	config->titlebar_right = strdup("Shade Minimize Maximize Close");
+	config->clock_format = strdup("%H:%M");
+	config->iconbar_mode = 0;
+
+	config->full_maximization = false;
+	config->window_focus_alpha = 255;
+	config->window_unfocus_alpha = 255;
+
+	config->slit_auto_hide = false;
+	config->slit_placement = 4; /* RightCenter */
+	config->slit_direction = 0; /* Vertical */
+	config->slit_layer = 4; /* Dock */
+	config->slit_on_head = 0;
 
 	config->config_dir = find_config_dir();
 
@@ -325,6 +390,66 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		config->toolbar_width_percent = 10;
 	if (config->toolbar_width_percent > 100)
 		config->toolbar_width_percent = 100;
+
+	config->toolbar_height =
+		rc_get_int(db, "session.screen0.toolbar.height", 0);
+	config->toolbar_layer =
+		rc_get_int(db, "session.screen0.toolbar.layer", 4);
+	config->toolbar_alpha =
+		rc_get_int(db, "session.screen0.toolbar.alpha", 255);
+	if (config->toolbar_alpha < 0) config->toolbar_alpha = 0;
+	if (config->toolbar_alpha > 255) config->toolbar_alpha = 255;
+	config->toolbar_on_head =
+		rc_get_int(db, "session.screen0.toolbar.onhead", 0);
+
+	/* Titlebar button layout */
+	val = rc_get_string(db, "session.titlebar.left");
+	if (val) {
+		free(config->titlebar_left);
+		config->titlebar_left = strdup(val);
+	}
+	val = rc_get_string(db, "session.titlebar.right");
+	if (val) {
+		free(config->titlebar_right);
+		config->titlebar_right = strdup(val);
+	}
+
+	/* Clock format */
+	val = rc_get_string(db, "session.screen0.strftimeFormat");
+	if (val) {
+		free(config->clock_format);
+		config->clock_format = strdup(val);
+	}
+
+	/* Iconbar mode */
+	val = rc_get_string(db, "session.screen0.iconbar.mode");
+	config->iconbar_mode = parse_iconbar_mode(val);
+
+	/* Full maximization */
+	config->full_maximization =
+		rc_get_bool(db, "session.screen0.fullMaximization", false);
+
+	/* Window opacity */
+	config->window_focus_alpha =
+		rc_get_int(db, "session.screen0.window.focus.alpha", 255);
+	if (config->window_focus_alpha < 0) config->window_focus_alpha = 0;
+	if (config->window_focus_alpha > 255) config->window_focus_alpha = 255;
+	config->window_unfocus_alpha =
+		rc_get_int(db, "session.screen0.window.unfocus.alpha", 255);
+	if (config->window_unfocus_alpha < 0) config->window_unfocus_alpha = 0;
+	if (config->window_unfocus_alpha > 255) config->window_unfocus_alpha = 255;
+
+	/* Slit configuration */
+	config->slit_auto_hide =
+		rc_get_bool(db, "session.screen0.slit.autoHide", false);
+	val = rc_get_string(db, "session.screen0.slit.placement");
+	config->slit_placement = parse_slit_placement(val);
+	val = rc_get_string(db, "session.screen0.slit.direction");
+	config->slit_direction = parse_slit_direction(val);
+	config->slit_layer =
+		rc_get_int(db, "session.screen0.slit.layer", 4);
+	config->slit_on_head =
+		rc_get_int(db, "session.screen0.slit.onhead", 0);
 
 	/* XKB keyboard layout */
 	val = rc_get_string(db, "session.xkb.rules");
@@ -445,6 +570,9 @@ config_destroy(struct wm_config *config)
 		return;
 
 	free_workspace_names(config);
+	free(config->titlebar_left);
+	free(config->titlebar_right);
+	free(config->clock_format);
 	free(config->xkb_rules);
 	free(config->xkb_model);
 	free(config->xkb_layout);

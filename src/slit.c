@@ -279,6 +279,14 @@ wm_slit_create(struct wm_server *server)
 	slit->direction = WM_SLIT_VERTICAL;
 	slit->auto_hide = false;
 	slit->on_head = 0;
+
+	/* Apply slit config options */
+	if (server->config) {
+		slit->auto_hide = server->config->slit_auto_hide;
+		slit->placement = server->config->slit_placement;
+		slit->direction = server->config->slit_direction;
+		slit->on_head = server->config->slit_on_head;
+	}
 	slit->width = WM_SLIT_MIN_SIZE;
 	slit->height = WM_SLIT_MIN_SIZE;
 	wl_list_init(&slit->clients);

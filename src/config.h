@@ -66,6 +66,35 @@ struct wm_config {
 	bool toolbar_auto_hide;
 	int toolbar_auto_hide_delay_ms;
 	int toolbar_width_percent;
+	int toolbar_height;
+	int toolbar_layer;
+	int toolbar_alpha;
+	int toolbar_on_head;
+
+	/* Titlebar button layout */
+	char *titlebar_left;
+	char *titlebar_right;
+
+	/* Clock format */
+	char *clock_format;
+
+	/* Iconbar mode: 0=Workspace, 1=AllWindows, 2=Icons,
+	 * 3=NoIcons, 4=WorkspaceIcons */
+	int iconbar_mode;
+
+	/* Full maximization (maximize over toolbar/slit) */
+	bool full_maximization;
+
+	/* Window opacity (0-255) */
+	int window_focus_alpha;
+	int window_unfocus_alpha;
+
+	/* Slit configuration */
+	bool slit_auto_hide;
+	int slit_placement;
+	int slit_direction;
+	int slit_layer;
+	int slit_on_head;
 
 	/* XKB keyboard layout */
 	char *xkb_rules;    /* e.g., "evdev" */

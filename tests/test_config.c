@@ -69,6 +69,27 @@ test_create_destroy(void)
 	assert(strcmp(c->workspace_names[0], "Workspace 1") == 0);
 	assert(strcmp(c->workspace_names[3], "Workspace 4") == 0);
 
+	/* New config defaults */
+	assert(c->toolbar_height == 0);
+	assert(c->toolbar_layer == 4);
+	assert(c->toolbar_alpha == 255);
+	assert(c->toolbar_on_head == 0);
+	assert(c->titlebar_left != NULL);
+	assert(strcmp(c->titlebar_left, "Stick") == 0);
+	assert(c->titlebar_right != NULL);
+	assert(strcmp(c->titlebar_right, "Shade Minimize Maximize Close") == 0);
+	assert(c->clock_format != NULL);
+	assert(strcmp(c->clock_format, "%H:%M") == 0);
+	assert(c->iconbar_mode == 0);
+	assert(c->full_maximization == false);
+	assert(c->window_focus_alpha == 255);
+	assert(c->window_unfocus_alpha == 255);
+	assert(c->slit_auto_hide == false);
+	assert(c->slit_placement == 4);
+	assert(c->slit_direction == 0);
+	assert(c->slit_layer == 4);
+	assert(c->slit_on_head == 0);
+
 	config_destroy(c);
 	printf("  PASS: test_create_destroy\n");
 }
@@ -266,6 +287,115 @@ test_xkb_settings(void)
 	printf("  PASS: test_xkb_settings\n");
 }
 
+/* Test: new config options (Phase 1) */
+static void
+test_new_config_options(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.height: 30\n"
+		"session.screen0.toolbar.layer: 2\n"
+		"session.screen0.toolbar.alpha: 200\n"
+		"session.screen0.toolbar.onhead: 1\n"
+		"session.titlebar.left: Close\n"
+		"session.titlebar.right: Minimize Maximize\n"
+		"session.screen0.strftimeFormat: %Y-%m-%d %H:%M:%S\n"
+		"session.screen0.iconbar.mode: AllWindows\n"
+		"session.screen0.fullMaximization: true\n"
+		"session.screen0.window.focus.alpha: 240\n"
+		"session.screen0.window.unfocus.alpha: 180\n"
+		"session.screen0.slit.autoHide: true\n"
+		"session.screen0.slit.placement: BottomRight\n"
+		"session.screen0.slit.direction: Horizontal\n"
+		"session.screen0.slit.layer: 6\n"
+		"session.screen0.slit.onhead: 2\n"
+	);
+
+	struct wm_config *c = config_create();
+	assert(c != NULL);
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+
+	assert(c->toolbar_height == 30);
+	assert(c->toolbar_layer == 2);
+	assert(c->toolbar_alpha == 200);
+	assert(c->toolbar_on_head == 1);
+	assert(strcmp(c->titlebar_left, "Close") == 0);
+	assert(strcmp(c->titlebar_right, "Minimize Maximize") == 0);
+	assert(strcmp(c->clock_format, "%Y-%m-%d %H:%M:%S") == 0);
+	assert(c->iconbar_mode == 1); /* AllWindows */
+	assert(c->full_maximization == true);
+	assert(c->window_focus_alpha == 240);
+	assert(c->window_unfocus_alpha == 180);
+	assert(c->slit_auto_hide == true);
+	assert(c->slit_placement == 8); /* BottomRight */
+	assert(c->slit_direction == 1); /* Horizontal */
+	assert(c->slit_layer == 6);
+	assert(c->slit_on_head == 2);
+
+	config_destroy(c);
+	printf("  PASS: test_new_config_options\n");
+}
+
+/* Test: alpha clamping */
+static void
+test_alpha_clamping(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.alpha: 300\n"
+		"session.screen0.window.focus.alpha: -10\n"
+		"session.screen0.window.unfocus.alpha: 999\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->toolbar_alpha == 255);
+	assert(c->window_focus_alpha == 0);
+	assert(c->window_unfocus_alpha == 255);
+
+	config_destroy(c);
+	printf("  PASS: test_alpha_clamping\n");
+}
+
+/* Test: iconbar mode parsing - all variants */
+static void
+test_iconbar_modes(void)
+{
+	/* Workspace (default) */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.mode: Workspace\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_mode == 0);
+	config_destroy(c);
+
+	/* Icons */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.mode: Icons\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_mode == 2);
+	config_destroy(c);
+
+	/* NoIcons */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.mode: NoIcons\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_mode == 3);
+	config_destroy(c);
+
+	/* WorkspaceIcons */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.mode: WorkspaceIcons\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_mode == 4);
+	config_destroy(c);
+
+	printf("  PASS: test_iconbar_modes\n");
+}
+
 /* Test: config_reload re-reads file */
 static void
 test_reload(void)
@@ -306,6 +436,9 @@ main(void)
 	test_workspace_names();
 	test_workspace_count_clamp();
 	test_xkb_settings();
+	test_new_config_options();
+	test_alpha_clamping();
+	test_iconbar_modes();
 	test_reload();
 
 	cleanup();

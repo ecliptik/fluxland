@@ -6,7 +6,7 @@
  * simple string formatting (no json-c dependency).
  */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
@@ -31,6 +31,8 @@
 #include "placement.h"
 #include "server.h"
 #include "tabgroup.h"
+#include "style.h"
+#include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -304,6 +306,34 @@ static const struct action_entry action_table[] = {
 	{"ArrangeWindowsVertical",  WM_ACTION_ARRANGE_VERT},
 	{"ArrangeWindowsHorizontal", WM_ACTION_ARRANGE_HORIZ},
 	{"CascadeWindows",   WM_ACTION_CASCADE_WINDOWS},
+	{"TakeToWorkspace",  WM_ACTION_TAKE_TO_WORKSPACE},
+	{"SendToNextWorkspace", WM_ACTION_SEND_TO_NEXT_WORKSPACE},
+	{"SendToPrevWorkspace", WM_ACTION_SEND_TO_PREV_WORKSPACE},
+	{"TakeToNextWorkspace", WM_ACTION_TAKE_TO_NEXT_WORKSPACE},
+	{"TakeToPrevWorkspace", WM_ACTION_TAKE_TO_PREV_WORKSPACE},
+	{"AddWorkspace",     WM_ACTION_ADD_WORKSPACE},
+	{"RemoveLastWorkspace", WM_ACTION_REMOVE_LAST_WORKSPACE},
+	{"LHalf",            WM_ACTION_LHALF},
+	{"RHalf",            WM_ACTION_RHALF},
+	{"ResizeHorizontal", WM_ACTION_RESIZE_HORIZ},
+	{"ResizeVertical",   WM_ACTION_RESIZE_VERT},
+	{"FocusLeft",        WM_ACTION_FOCUS_LEFT},
+	{"FocusRight",       WM_ACTION_FOCUS_RIGHT},
+	{"FocusUp",          WM_ACTION_FOCUS_UP},
+	{"FocusDown",        WM_ACTION_FOCUS_DOWN},
+	{"SetHead",          WM_ACTION_SET_HEAD},
+	{"SendToNextHead",   WM_ACTION_SEND_TO_NEXT_HEAD},
+	{"SendToPrevHead",   WM_ACTION_SEND_TO_PREV_HEAD},
+	{"ArrangeWindowsStackLeft",   WM_ACTION_ARRANGE_STACK_LEFT},
+	{"ArrangeWindowsStackRight",  WM_ACTION_ARRANGE_STACK_RIGHT},
+	{"ArrangeWindowsStackTop",    WM_ACTION_ARRANGE_STACK_TOP},
+	{"ArrangeWindowsStackBottom", WM_ACTION_ARRANGE_STACK_BOTTOM},
+	{"CloseAllWindows",  WM_ACTION_CLOSE_ALL_WINDOWS},
+	{"WorkspaceMenu",    WM_ACTION_WORKSPACE_MENU},
+	{"ClientMenu",       WM_ACTION_CLIENT_MENU},
+	{"CustomMenu",       WM_ACTION_CUSTOM_MENU},
+	{"SetStyle",         WM_ACTION_SET_STYLE},
+	{"ReloadStyle",      WM_ACTION_RELOAD_STYLE},
 	{"MacroCmd",         WM_ACTION_MACRO_CMD},
 	{"ToggleCmd",        WM_ACTION_TOGGLE_CMD},
 	{"Reconfigure",      WM_ACTION_RECONFIGURE},
@@ -394,8 +424,11 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		return true;
 
 	case WM_ACTION_FOCUS_NEXT:
-	case WM_ACTION_FOCUS_PREV:
 		wm_focus_next_view(server);
+		return true;
+
+	case WM_ACTION_FOCUS_PREV:
+		wm_focus_prev_view(server);
 		return true;
 
 	case WM_ACTION_NEXT_WINDOW:
@@ -407,7 +440,18 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		return true;
 
 	case WM_ACTION_DEICONIFY:
-		wm_view_deiconify_last(server);
+		if (argument) {
+			if (strcasecmp(argument, "All") == 0)
+				wm_view_deiconify_all(server);
+			else if (strcasecmp(argument, "AllWorkspace") == 0)
+				wm_view_deiconify_all_workspace(server);
+			else if (strcasecmp(argument, "LastWorkspace") == 0)
+				wm_view_deiconify_last(server);
+			else
+				wm_view_deiconify_last(server);
+		} else {
+			wm_view_deiconify_last(server);
+		}
 		return true;
 
 	case WM_ACTION_MAXIMIZE:
@@ -708,6 +752,59 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		wm_menu_hide_all(server);
 		return true;
 
+	case WM_ACTION_WORKSPACE_MENU:
+		wm_menu_show_workspace_menu(server,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_CLIENT_MENU:
+		wm_menu_show_client_menu(server, argument,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_CUSTOM_MENU:
+		wm_menu_show_custom(server, argument,
+			(int)server->cursor->x, (int)server->cursor->y);
+		return true;
+
+	case WM_ACTION_SET_STYLE:
+		if (argument && server->config) {
+			free(server->config->style_file);
+			server->config->style_file = strdup(argument);
+			if (server->style && server->config->style_file)
+				style_load(server->style,
+					server->config->style_file);
+			if (server->toolbar)
+				wm_toolbar_relayout(server->toolbar);
+			if (server->style) {
+				struct wm_view *v;
+				wl_list_for_each(v, &server->views, link) {
+					if (v->decoration)
+						wm_decoration_update(
+							v->decoration,
+							server->style);
+				}
+			}
+		}
+		return true;
+
+	case WM_ACTION_RELOAD_STYLE:
+		if (server->style && server->config &&
+		    server->config->style_file)
+			style_load(server->style,
+				server->config->style_file);
+		if (server->toolbar)
+			wm_toolbar_relayout(server->toolbar);
+		if (server->style) {
+			struct wm_view *v;
+			wl_list_for_each(v, &server->views, link) {
+				if (v->decoration)
+					wm_decoration_update(v->decoration,
+						server->style);
+			}
+		}
+		return true;
+
 	case WM_ACTION_NEXT_LAYOUT:
 		wm_keyboard_next_layout(server);
 		return true;
@@ -750,6 +847,114 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_CASCADE_WINDOWS:
 		wm_arrange_windows_cascade(server);
+		return true;
+
+	case WM_ACTION_TAKE_TO_WORKSPACE:
+		if (argument) {
+			int ws = atoi(argument) - 1;
+			wm_view_take_to_workspace(server, ws);
+		}
+		return true;
+
+	case WM_ACTION_SEND_TO_NEXT_WORKSPACE:
+		wm_view_send_to_next_workspace(server);
+		return true;
+
+	case WM_ACTION_SEND_TO_PREV_WORKSPACE:
+		wm_view_send_to_prev_workspace(server);
+		return true;
+
+	case WM_ACTION_TAKE_TO_NEXT_WORKSPACE:
+		wm_view_take_to_next_workspace(server);
+		return true;
+
+	case WM_ACTION_TAKE_TO_PREV_WORKSPACE:
+		wm_view_take_to_prev_workspace(server);
+		return true;
+
+	case WM_ACTION_ADD_WORKSPACE:
+		wm_workspace_add(server);
+		return true;
+
+	case WM_ACTION_REMOVE_LAST_WORKSPACE:
+		wm_workspace_remove_last(server);
+		return true;
+
+	case WM_ACTION_LHALF:
+		if (view)
+			wm_view_lhalf(view);
+		return true;
+
+	case WM_ACTION_RHALF:
+		if (view)
+			wm_view_rhalf(view);
+		return true;
+
+	case WM_ACTION_RESIZE_HORIZ:
+		if (view && argument) {
+			int dw = atoi(argument);
+			wm_view_resize_by(view, dw, 0);
+		}
+		return true;
+
+	case WM_ACTION_RESIZE_VERT:
+		if (view && argument) {
+			int dh = atoi(argument);
+			wm_view_resize_by(view, 0, dh);
+		}
+		return true;
+
+	case WM_ACTION_FOCUS_LEFT:
+		wm_view_focus_direction(server, -1, 0);
+		return true;
+
+	case WM_ACTION_FOCUS_RIGHT:
+		wm_view_focus_direction(server, 1, 0);
+		return true;
+
+	case WM_ACTION_FOCUS_UP:
+		wm_view_focus_direction(server, 0, -1);
+		return true;
+
+	case WM_ACTION_FOCUS_DOWN:
+		wm_view_focus_direction(server, 0, 1);
+		return true;
+
+	case WM_ACTION_SET_HEAD:
+		if (view && argument) {
+			int head = atoi(argument);
+			wm_view_set_head(view, head);
+		}
+		return true;
+
+	case WM_ACTION_SEND_TO_NEXT_HEAD:
+		if (view)
+			wm_view_send_to_next_head(view);
+		return true;
+
+	case WM_ACTION_SEND_TO_PREV_HEAD:
+		if (view)
+			wm_view_send_to_prev_head(view);
+		return true;
+
+	case WM_ACTION_ARRANGE_STACK_LEFT:
+		wm_arrange_windows_stack_left(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_STACK_RIGHT:
+		wm_arrange_windows_stack_right(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_STACK_TOP:
+		wm_arrange_windows_stack_top(server);
+		return true;
+
+	case WM_ACTION_ARRANGE_STACK_BOTTOM:
+		wm_arrange_windows_stack_bottom(server);
+		return true;
+
+	case WM_ACTION_CLOSE_ALL_WINDOWS:
+		wm_view_close_all(server);
 		return true;
 
 	case WM_ACTION_MACRO_CMD:

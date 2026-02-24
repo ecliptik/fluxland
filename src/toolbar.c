@@ -524,8 +524,13 @@ render_clock(struct wm_toolbar *toolbar, int width, int height)
 	struct tm tm;
 	localtime_r(&now, &tm);
 
+	const char *fmt = WM_TOOLBAR_CLOCK_FMT;
+	if (toolbar->server->config && toolbar->server->config->clock_format) {
+		fmt = toolbar->server->config->clock_format;
+	}
+
 	char timebuf[64];
-	strftime(timebuf, sizeof(timebuf), WM_TOOLBAR_CLOCK_FMT, &tm);
+	strftime(timebuf, sizeof(timebuf), fmt, &tm);
 
 	/* Cache to avoid redraw if time string unchanged */
 	if (strcmp(timebuf, toolbar->cached_clock) == 0) {
@@ -723,6 +728,10 @@ wm_toolbar_create(struct wm_server *server)
 			p == WM_TOOLBAR_TOP_CENTER ||
 			p == WM_TOOLBAR_TOP_RIGHT);
 		toolbar->auto_hide = server->config->toolbar_auto_hide;
+		toolbar->iconbar_mode = server->config->iconbar_mode;
+		if (server->config->toolbar_height > 0) {
+			toolbar->height = server->config->toolbar_height;
+		}
 	}
 
 	/* Auto-hide: start hidden */

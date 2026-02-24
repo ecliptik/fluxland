@@ -327,6 +327,9 @@ struct wm_server {
 	struct wm_menu *root_menu;
 	struct wm_menu *window_menu;
 	struct wm_menu *window_list_menu;
+	struct wm_menu *workspace_menu;
+	struct wm_menu *client_menu;
+	struct wm_menu *custom_menu;
 
 #ifdef WM_HAS_XWAYLAND
 	/* XWayland bridge */

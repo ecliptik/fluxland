@@ -289,6 +289,117 @@ wm_view_send_to_workspace(struct wm_server *server, int index)
 }
 
 void
+wm_view_take_to_workspace(struct wm_server *server, int index)
+{
+	struct wm_view *view = server->focused_view;
+	if (!view) {
+		return;
+	}
+
+	struct wm_workspace *target = wm_workspace_get(server, index);
+	if (!target) {
+		return;
+	}
+
+	if (view->sticky) {
+		wm_view_set_sticky(view, false);
+	}
+
+	if (view->workspace != target) {
+		wm_view_move_to_workspace(view, target);
+	}
+
+	wm_workspace_switch(server, index);
+	wm_focus_view(view, view->xdg_toplevel->base->surface);
+}
+
+void
+wm_view_send_to_next_workspace(struct wm_server *server)
+{
+	int next = (server->current_workspace->index + 1) %
+		server->workspace_count;
+	wm_view_send_to_workspace(server, next);
+}
+
+void
+wm_view_send_to_prev_workspace(struct wm_server *server)
+{
+	int prev = (server->current_workspace->index - 1 +
+		server->workspace_count) % server->workspace_count;
+	wm_view_send_to_workspace(server, prev);
+}
+
+void
+wm_view_take_to_next_workspace(struct wm_server *server)
+{
+	int next = (server->current_workspace->index + 1) %
+		server->workspace_count;
+	wm_view_take_to_workspace(server, next);
+}
+
+void
+wm_view_take_to_prev_workspace(struct wm_server *server)
+{
+	int prev = (server->current_workspace->index - 1 +
+		server->workspace_count) % server->workspace_count;
+	wm_view_take_to_workspace(server, prev);
+}
+
+void
+wm_workspace_add(struct wm_server *server)
+{
+	int new_index = server->workspace_count;
+	char name[32];
+	snprintf(name, sizeof(name), "Workspace %d", new_index + 1);
+
+	struct wm_workspace *ws = workspace_create(server, name, new_index);
+	if (!ws) {
+		wlr_log(WLR_ERROR, "failed to add workspace");
+		return;
+	}
+
+	server->workspace_count++;
+	wm_toolbar_update_workspace(server->toolbar);
+}
+
+void
+wm_workspace_remove_last(struct wm_server *server)
+{
+	if (server->workspace_count <= 1) {
+		return;
+	}
+
+	int last_index = server->workspace_count - 1;
+	struct wm_workspace *last = wm_workspace_get(server, last_index);
+	if (!last) {
+		return;
+	}
+
+	/* Move all views from the last workspace to the previous one */
+	struct wm_workspace *prev_ws = wm_workspace_get(server,
+		last_index - 1);
+	if (!prev_ws) {
+		return;
+	}
+
+	struct wm_view *view, *tmp;
+	wl_list_for_each_safe(view, tmp, &server->views, link) {
+		if (view->workspace == last) {
+			wm_view_move_to_workspace(view, prev_ws);
+		}
+	}
+
+	/* If current workspace is the last one, switch to previous */
+	if (server->current_workspace == last) {
+		wm_workspace_switch(server, last_index - 1);
+	}
+
+	workspace_destroy(last);
+	server->workspace_count--;
+	wm_toolbar_update_workspace(server->toolbar);
+}
+
+void
 wm_view_set_sticky(struct wm_view *view, bool sticky)
 {
 	if (view->sticky == sticky) {

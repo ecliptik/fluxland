@@ -17,6 +17,7 @@
 #include "decoration.h"
 #include "foreign_toplevel.h"
 #include "ipc.h"
+#include "output.h"
 #include "placement.h"
 #include "rules.h"
 #include "server.h"
@@ -220,6 +221,25 @@ wm_focus_next_view(struct wm_server *server)
 	struct wm_view *next = wl_container_of(
 		server->views.prev, next, link);
 	wm_focus_view(next, next->xdg_toplevel->base->surface);
+}
+
+void
+wm_focus_prev_view(struct wm_server *server)
+{
+	if (wl_list_length(&server->views) < 2) {
+		return;
+	}
+
+	/* The current top view is at the front. Focus the second view
+	 * (one position down) by moving the bottom view to the top. */
+	struct wm_view *current = wl_container_of(
+		server->views.next, current, link);
+	struct wm_view *second = wl_container_of(
+		current->link.next, second, link);
+	if (&second->link == &server->views) {
+		return; /* only one view */
+	}
+	wm_focus_view(second, second->xdg_toplevel->base->surface);
 }
 
 void
@@ -525,6 +545,38 @@ wm_view_deiconify_last(struct wm_server *server)
 			return;
 		}
 	}
+}
+
+void
+wm_view_deiconify_all(struct wm_server *server)
+{
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (!view->scene_tree->node.enabled) {
+			wlr_scene_node_set_enabled(
+				&view->scene_tree->node, true);
+			wm_foreign_toplevel_set_minimized(view, false);
+		}
+	}
+	wm_toolbar_update_iconbar(server->toolbar);
+}
+
+void
+wm_view_deiconify_all_workspace(struct wm_server *server)
+{
+	struct wm_workspace *ws = server->current_workspace;
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->workspace != ws && !view->sticky) {
+			continue;
+		}
+		if (!view->scene_tree->node.enabled) {
+			wlr_scene_node_set_enabled(
+				&view->scene_tree->node, true);
+			wm_foreign_toplevel_set_minimized(view, false);
+		}
+	}
+	wm_toolbar_update_iconbar(server->toolbar);
 }
 
 /* --- View lookup --- */
@@ -853,23 +905,48 @@ handle_xdg_toplevel_request_maximize(struct wl_listener *listener,
 		/* Save current geometry and maximize */
 		wm_view_get_geometry(view, &view->saved_geometry);
 
-		struct wlr_output *output =
+		struct wlr_output *wlr_output =
 			wlr_output_layout_output_at(
 				view->server->output_layout,
 				view->server->cursor->x,
 				view->server->cursor->y);
-		if (output) {
-			struct wlr_box output_box;
-			wlr_output_layout_get_box(
-				view->server->output_layout,
-				output, &output_box);
+		if (wlr_output) {
+			struct wlr_box max_box;
+			bool use_full = view->server->config &&
+				view->server->config->full_maximization;
+
+			if (use_full) {
+				wlr_output_layout_get_box(
+					view->server->output_layout,
+					wlr_output, &max_box);
+			} else {
+				/* Use usable area (respects toolbar/slit) */
+				bool found = false;
+				struct wm_output *wm_out;
+				wl_list_for_each(wm_out,
+					&view->server->outputs, link) {
+					if (wm_out->wlr_output == wlr_output &&
+					    wm_out->usable_area.width > 0 &&
+					    wm_out->usable_area.height > 0) {
+						max_box = wm_out->usable_area;
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					wlr_output_layout_get_box(
+						view->server->output_layout,
+						wlr_output, &max_box);
+				}
+			}
+
 			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-				output_box.width, output_box.height);
+				max_box.width, max_box.height);
 			wlr_scene_node_set_position(
 				&view->scene_tree->node,
-				output_box.x, output_box.y);
-			view->x = output_box.x;
-			view->y = output_box.y;
+				max_box.x, max_box.y);
+			view->x = max_box.x;
+			view->y = max_box.y;
 		}
 		view->maximized = true;
 	}
@@ -1072,9 +1149,13 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 	static uint32_t next_view_id = 1;
 	view->id = next_view_id++;
 
-	/* Default opacity: fully opaque */
+	/* Default opacity from config or fully opaque */
 	view->focus_alpha = 255;
 	view->unfocus_alpha = 255;
+	if (server->config) {
+		view->focus_alpha = server->config->window_focus_alpha;
+		view->unfocus_alpha = server->config->window_unfocus_alpha;
+	}
 
 	/* Decorations shown by default */
 	view->show_decoration = true;
@@ -1359,6 +1440,327 @@ wm_view_activate_tab(struct wm_view *view, int index)
 			return;
 		}
 		i++;
+	}
+}
+
+/* --- Helper: get usable area for a view's output --- */
+
+static bool
+get_view_output_area(struct wm_view *view, struct wlr_box *area)
+{
+	struct wlr_output *output = wlr_output_layout_output_at(
+		view->server->output_layout,
+		view->x + 1, view->y + 1);
+	if (!output) {
+		output = wlr_output_layout_output_at(
+			view->server->output_layout,
+			view->server->cursor->x,
+			view->server->cursor->y);
+	}
+	if (!output)
+		return false;
+
+	struct wm_output *wm_out;
+	wl_list_for_each(wm_out, &view->server->outputs, link) {
+		if (wm_out->wlr_output == output) {
+			if (wm_out->usable_area.width > 0 &&
+			    wm_out->usable_area.height > 0) {
+				*area = wm_out->usable_area;
+			} else {
+				wlr_output_layout_get_box(
+					view->server->output_layout,
+					output, area);
+			}
+			return true;
+		}
+	}
+
+	wlr_output_layout_get_box(view->server->output_layout,
+		output, area);
+	return true;
+}
+
+/* --- LHalf / RHalf (half-screen tiling) --- */
+
+void
+wm_view_lhalf(struct wm_view *view)
+{
+	if (!view)
+		return;
+
+	if (view->lhalf) {
+		/* Toggle off — restore saved geometry */
+		view->x = view->saved_geometry.x;
+		view->y = view->saved_geometry.y;
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+			view->saved_geometry.width,
+			view->saved_geometry.height);
+		wlr_scene_node_set_position(&view->scene_tree->node,
+			view->x, view->y);
+		view->lhalf = false;
+		return;
+	}
+
+	/* Save geometry if not already in a tiled/maximized state */
+	if (!view->maximized && !view->rhalf)
+		wm_view_get_geometry(view, &view->saved_geometry);
+
+	struct wlr_box area;
+	if (!get_view_output_area(view, &area))
+		return;
+
+	int half_w = area.width / 2;
+	view->x = area.x;
+	view->y = area.y;
+	wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+		half_w, area.height);
+	wlr_scene_node_set_position(&view->scene_tree->node,
+		view->x, view->y);
+
+	view->lhalf = true;
+	view->rhalf = false;
+	view->maximized = false;
+}
+
+void
+wm_view_rhalf(struct wm_view *view)
+{
+	if (!view)
+		return;
+
+	if (view->rhalf) {
+		/* Toggle off — restore saved geometry */
+		view->x = view->saved_geometry.x;
+		view->y = view->saved_geometry.y;
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+			view->saved_geometry.width,
+			view->saved_geometry.height);
+		wlr_scene_node_set_position(&view->scene_tree->node,
+			view->x, view->y);
+		view->rhalf = false;
+		return;
+	}
+
+	/* Save geometry if not already in a tiled/maximized state */
+	if (!view->maximized && !view->lhalf)
+		wm_view_get_geometry(view, &view->saved_geometry);
+
+	struct wlr_box area;
+	if (!get_view_output_area(view, &area))
+		return;
+
+	int half_w = area.width / 2;
+	view->x = area.x + half_w;
+	view->y = area.y;
+	wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+		half_w, area.height);
+	wlr_scene_node_set_position(&view->scene_tree->node,
+		view->x, view->y);
+
+	view->rhalf = true;
+	view->lhalf = false;
+	view->maximized = false;
+}
+
+/* --- Relative resize --- */
+
+void
+wm_view_resize_by(struct wm_view *view, int dw, int dh)
+{
+	if (!view)
+		return;
+
+	struct wlr_box geo;
+	wm_view_get_geometry(view, &geo);
+	int new_w = geo.width + dw;
+	int new_h = geo.height + dh;
+	if (new_w > 10 && new_h > 10)
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+			new_w, new_h);
+}
+
+/* --- Directional focus --- */
+
+void
+wm_view_focus_direction(struct wm_server *server, int dx, int dy)
+{
+	struct wm_view *focused = server->focused_view;
+	if (!focused)
+		return;
+
+	struct wlr_box fgeo;
+	wm_view_get_geometry(focused, &fgeo);
+	int fx = fgeo.x + fgeo.width / 2;
+	int fy = fgeo.y + fgeo.height / 2;
+
+	struct wm_view *best = NULL;
+	double best_score = 1e18;
+
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v == focused)
+			continue;
+		if (v->workspace != server->current_workspace && !v->sticky)
+			continue;
+		if (!v->scene_tree->node.enabled)
+			continue;
+
+		struct wlr_box vgeo;
+		wm_view_get_geometry(v, &vgeo);
+		int vx = vgeo.x + vgeo.width / 2;
+		int vy = vgeo.y + vgeo.height / 2;
+
+		int ddx = vx - fx;
+		int ddy = vy - fy;
+
+		/* Filter: view must be in the requested direction */
+		if (dx > 0 && ddx <= 0)
+			continue;
+		if (dx < 0 && ddx >= 0)
+			continue;
+		if (dy > 0 && ddy <= 0)
+			continue;
+		if (dy < 0 && ddy >= 0)
+			continue;
+
+		/* Weighted distance: penalize off-axis deviation */
+		double primary = (dx != 0) ? abs(ddx) : abs(ddy);
+		double secondary = (dx != 0) ? abs(ddy) : abs(ddx);
+		double score = primary + secondary * 2.0;
+
+		if (score < best_score) {
+			best_score = score;
+			best = v;
+		}
+	}
+
+	if (best)
+		wm_focus_view(best, best->xdg_toplevel->base->surface);
+}
+
+/* --- Multi-monitor helpers --- */
+
+static void
+move_view_to_output(struct wm_view *view, struct wm_output *out)
+{
+	struct wlr_box area;
+	if (out->usable_area.width > 0 &&
+	    out->usable_area.height > 0) {
+		area = out->usable_area;
+	} else {
+		wlr_output_layout_get_box(
+			view->server->output_layout,
+			out->wlr_output, &area);
+	}
+
+	struct wlr_box vgeo;
+	wm_view_get_geometry(view, &vgeo);
+	view->x = area.x + (area.width - vgeo.width) / 2;
+	view->y = area.y + (area.height - vgeo.height) / 2;
+	wlr_scene_node_set_position(&view->scene_tree->node,
+		view->x, view->y);
+}
+
+void
+wm_view_set_head(struct wm_view *view, int head_index)
+{
+	if (!view)
+		return;
+
+	int idx = 0;
+	struct wm_output *out;
+	wl_list_for_each(out, &view->server->outputs, link) {
+		if (idx == head_index) {
+			move_view_to_output(view, out);
+			return;
+		}
+		idx++;
+	}
+}
+
+void
+wm_view_send_to_next_head(struct wm_view *view)
+{
+	if (!view)
+		return;
+
+	struct wlr_output *current = wlr_output_layout_output_at(
+		view->server->output_layout,
+		view->x + 1, view->y + 1);
+	if (!current)
+		current = wlr_output_layout_output_at(
+			view->server->output_layout,
+			view->server->cursor->x,
+			view->server->cursor->y);
+
+	struct wm_output *out;
+	struct wm_output *first_out = NULL;
+	bool found_current = false;
+
+	wl_list_for_each(out, &view->server->outputs, link) {
+		if (!first_out)
+			first_out = out;
+		if (out->wlr_output == current) {
+			found_current = true;
+			continue;
+		}
+		if (found_current) {
+			move_view_to_output(view, out);
+			return;
+		}
+	}
+
+	/* Wrap around to first output */
+	if (first_out)
+		move_view_to_output(view, first_out);
+}
+
+void
+wm_view_send_to_prev_head(struct wm_view *view)
+{
+	if (!view)
+		return;
+
+	struct wlr_output *current = wlr_output_layout_output_at(
+		view->server->output_layout,
+		view->x + 1, view->y + 1);
+	if (!current)
+		current = wlr_output_layout_output_at(
+			view->server->output_layout,
+			view->server->cursor->x,
+			view->server->cursor->y);
+
+	struct wm_output *out;
+	struct wm_output *prev_out = NULL;
+	struct wm_output *last_out = NULL;
+
+	wl_list_for_each(out, &view->server->outputs, link) {
+		last_out = out;
+		if (out->wlr_output == current) {
+			if (prev_out) {
+				move_view_to_output(view, prev_out);
+				return;
+			}
+			/* Current is first output, wrap to last */
+			break;
+		}
+		prev_out = out;
+	}
+
+	/* Wrap to last output */
+	if (last_out)
+		move_view_to_output(view, last_out);
+}
+
+/* --- Close all windows on current workspace --- */
+
+void
+wm_view_close_all(struct wm_server *server)
+{
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->workspace == server->current_workspace)
+			wlr_xdg_toplevel_send_close(v->xdg_toplevel);
 	}
 }
 

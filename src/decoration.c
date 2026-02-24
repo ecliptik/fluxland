@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "config.h"
 #include "decoration.h"
 #include "render.h"
 #include "server.h"
@@ -442,9 +443,16 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 	deco->grip_left = wlr_scene_buffer_create(deco->tree, NULL);
 	deco->grip_right = wlr_scene_buffer_create(deco->tree, NULL);
 
-	/* Default button layout */
-	wm_decoration_configure_buttons(deco, "Stick",
-		"Shade Minimize Maximize Close");
+	/* Button layout from config or defaults */
+	const char *left_str = "Stick";
+	const char *right_str = "Shade Minimize Maximize Close";
+	if (view->server->config) {
+		if (view->server->config->titlebar_left)
+			left_str = view->server->config->titlebar_left;
+		if (view->server->config->titlebar_right)
+			right_str = view->server->config->titlebar_right;
+	}
+	wm_decoration_configure_buttons(deco, left_str, right_str);
 
 	/* Render initial state */
 	wm_decoration_update(deco, style);

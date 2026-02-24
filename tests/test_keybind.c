@@ -476,6 +476,257 @@ test_action_aliases(void)
 	printf("  PASS: test_action_aliases\n");
 }
 
+/* Test: workspace management action names */
+static void
+test_workspace_actions(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 Shift 2 :TakeToWorkspace 2\n"
+		"Mod4 Control Right :SendToNextWorkspace\n"
+		"Mod4 Control Left :SendToPrevWorkspace\n"
+		"Mod4 Shift Right :TakeToNextWorkspace\n"
+		"Mod4 Shift Left :TakeToPrevWorkspace\n"
+		"Mod4 plus :AddWorkspace\n"
+		"Mod4 minus :RemoveLastWorkspace\n"
+	);
+
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	keybind_load(&keymodes, TEST_KEYS);
+
+	struct wm_keymode *dm = NULL;
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &keymodes, link) {
+		if (strcmp(mode->name, "default") == 0) {
+			dm = mode;
+			break;
+		}
+	}
+	assert(dm != NULL);
+
+	struct wm_keybind *bind;
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_2);
+	assert(bind && bind->action == WM_ACTION_TAKE_TO_WORKSPACE);
+	assert(bind->argument && strcmp(bind->argument, "2") == 0);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL, XKB_KEY_Right);
+	assert(bind && bind->action == WM_ACTION_SEND_TO_NEXT_WORKSPACE);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL, XKB_KEY_Left);
+	assert(bind && bind->action == WM_ACTION_SEND_TO_PREV_WORKSPACE);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_Right);
+	assert(bind && bind->action == WM_ACTION_TAKE_TO_NEXT_WORKSPACE);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_Left);
+	assert(bind && bind->action == WM_ACTION_TAKE_TO_PREV_WORKSPACE);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_plus);
+	assert(bind && bind->action == WM_ACTION_ADD_WORKSPACE);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_minus);
+	assert(bind && bind->action == WM_ACTION_REMOVE_LAST_WORKSPACE);
+
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_workspace_actions\n");
+}
+
+/* Test: Phase 2 window management action names */
+static void
+test_window_management_actions(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 h :LHalf\n"
+		"Mod4 l :RHalf\n"
+		"Mod4 Control h :ResizeHorizontal -10\n"
+		"Mod4 Control l :ResizeHorizontal 10\n"
+		"Mod4 Control j :ResizeVertical 10\n"
+		"Mod4 Control k :ResizeVertical -10\n"
+		"Mod4 Shift h :FocusLeft\n"
+		"Mod4 Shift l :FocusRight\n"
+		"Mod4 Shift k :FocusUp\n"
+		"Mod4 Shift j :FocusDown\n"
+		"Mod4 o :SetHead 0\n"
+		"Mod4 period :SendToNextHead\n"
+		"Mod4 comma :SendToPrevHead\n"
+		"Mod4 Shift s :ArrangeWindowsStackRight\n"
+		"Mod4 Shift a :ArrangeWindowsStackLeft\n"
+		"Mod4 Shift t :ArrangeWindowsStackTop\n"
+		"Mod4 Shift b :ArrangeWindowsStackBottom\n"
+		"Mod4 Shift c :CloseAllWindows\n"
+	);
+
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	keybind_load(&keymodes, TEST_KEYS);
+
+	struct wm_keymode *dm = NULL;
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &keymodes, link) {
+		if (strcmp(mode->name, "default") == 0) {
+			dm = mode;
+			break;
+		}
+	}
+	assert(dm != NULL);
+
+	struct wm_keybind *bind;
+
+	/* LHalf / RHalf */
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_h);
+	assert(bind && bind->action == WM_ACTION_LHALF);
+
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_l);
+	assert(bind && bind->action == WM_ACTION_RHALF);
+
+	/* ResizeHorizontal / ResizeVertical */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL, XKB_KEY_h);
+	assert(bind && bind->action == WM_ACTION_RESIZE_HORIZ);
+	assert(bind->argument && strcmp(bind->argument, "-10") == 0);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL, XKB_KEY_l);
+	assert(bind && bind->action == WM_ACTION_RESIZE_HORIZ);
+	assert(bind->argument && strcmp(bind->argument, "10") == 0);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL, XKB_KEY_j);
+	assert(bind && bind->action == WM_ACTION_RESIZE_VERT);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL, XKB_KEY_k);
+	assert(bind && bind->action == WM_ACTION_RESIZE_VERT);
+
+	/* Directional focus */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_h);
+	assert(bind && bind->action == WM_ACTION_FOCUS_LEFT);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_l);
+	assert(bind && bind->action == WM_ACTION_FOCUS_RIGHT);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_k);
+	assert(bind && bind->action == WM_ACTION_FOCUS_UP);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_j);
+	assert(bind && bind->action == WM_ACTION_FOCUS_DOWN);
+
+	/* Multi-monitor */
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_o);
+	assert(bind && bind->action == WM_ACTION_SET_HEAD);
+	assert(bind->argument && strcmp(bind->argument, "0") == 0);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_period);
+	assert(bind && bind->action == WM_ACTION_SEND_TO_NEXT_HEAD);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO, XKB_KEY_comma);
+	assert(bind && bind->action == WM_ACTION_SEND_TO_PREV_HEAD);
+
+	/* Stack layouts */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_s);
+	assert(bind && bind->action == WM_ACTION_ARRANGE_STACK_RIGHT);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_a);
+	assert(bind && bind->action == WM_ACTION_ARRANGE_STACK_LEFT);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_t);
+	assert(bind && bind->action == WM_ACTION_ARRANGE_STACK_TOP);
+
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_b);
+	assert(bind && bind->action == WM_ACTION_ARRANGE_STACK_BOTTOM);
+
+	/* CloseAllWindows */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_c);
+	assert(bind && bind->action == WM_ACTION_CLOSE_ALL_WINDOWS);
+
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_window_management_actions\n");
+}
+
+/* Test: Phase 4 menu/style action names */
+static void
+test_menu_style_actions(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 w :WorkspaceMenu\n"
+		"Mod4 c :ClientMenu\n"
+		"Mod4 Shift m :CustomMenu /tmp/mymenu\n"
+		"Mod4 Shift s :SetStyle /tmp/style\n"
+		"Mod4 Shift r :ReloadStyle\n"
+		"Mod4 i :Deiconify All\n"
+	);
+
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	keybind_load(&keymodes, TEST_KEYS);
+
+	struct wm_keymode *dm = NULL;
+	struct wm_keymode *mode;
+	wl_list_for_each(mode, &keymodes, link) {
+		if (strcmp(mode->name, "default") == 0) {
+			dm = mode;
+			break;
+		}
+	}
+	assert(dm != NULL);
+
+	struct wm_keybind *bind;
+
+	/* WorkspaceMenu */
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_w);
+	assert(bind && bind->action == WM_ACTION_WORKSPACE_MENU);
+
+	/* ClientMenu */
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_c);
+	assert(bind && bind->action == WM_ACTION_CLIENT_MENU);
+
+	/* CustomMenu */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_m);
+	assert(bind && bind->action == WM_ACTION_CUSTOM_MENU);
+	assert(bind->argument &&
+		strcmp(bind->argument, "/tmp/mymenu") == 0);
+
+	/* SetStyle */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_s);
+	assert(bind && bind->action == WM_ACTION_SET_STYLE);
+	assert(bind->argument &&
+		strcmp(bind->argument, "/tmp/style") == 0);
+
+	/* ReloadStyle */
+	bind = keybind_find(&dm->bindings,
+		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT, XKB_KEY_r);
+	assert(bind && bind->action == WM_ACTION_RELOAD_STYLE);
+
+	/* Deiconify with argument */
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_i);
+	assert(bind && bind->action == WM_ACTION_DEICONIFY);
+	assert(bind->argument && strcmp(bind->argument, "All") == 0);
+
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_menu_style_actions\n");
+}
+
 int
 main(void)
 {
@@ -492,6 +743,9 @@ main(void)
 	test_macrocmd();
 	test_load_nonexistent();
 	test_action_aliases();
+	test_workspace_actions();
+	test_window_management_actions();
+	test_menu_style_actions();
 
 	cleanup();
 	printf("All keybind tests passed.\n");

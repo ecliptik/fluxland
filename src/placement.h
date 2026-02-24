@@ -50,4 +50,13 @@ void wm_arrange_windows_horiz(struct wm_server *server);
  */
 void wm_arrange_windows_cascade(struct wm_server *server);
 
+/*
+ * Master-stack layouts: first visible view gets 50% of screen (master),
+ * remaining views stack equally in the other 50%.
+ */
+void wm_arrange_windows_stack_left(struct wm_server *server);
+void wm_arrange_windows_stack_right(struct wm_server *server);
+void wm_arrange_windows_stack_top(struct wm_server *server);
+void wm_arrange_windows_stack_bottom(struct wm_server *server);
+
 #endif /* WM_PLACEMENT_H */

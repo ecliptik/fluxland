@@ -504,3 +504,147 @@ wm_arrange_windows_cascade(struct wm_server *server)
 
 	wlr_log(WLR_DEBUG, "cascaded %d windows", n);
 }
+
+/* --- Master-stack layouts --- */
+
+void
+wm_arrange_windows_stack_right(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	if (n == 1) {
+		arrange_view(views[0], area.x, area.y,
+			area.width, area.height);
+		return;
+	}
+
+	/* Master on left (50%), stack on right */
+	int master_w = area.width / 2;
+	arrange_view(views[0], area.x, area.y,
+		master_w, area.height);
+
+	int stack_x = area.x + master_w;
+	int stack_w = area.width - master_w;
+	int stack_count = n - 1;
+	int cell_h = area.height / stack_count;
+
+	for (int i = 1; i < n; i++) {
+		int y = area.y + (i - 1) * cell_h;
+		arrange_view(views[i], stack_x, y, stack_w, cell_h);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows stack-right", n);
+}
+
+void
+wm_arrange_windows_stack_left(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	if (n == 1) {
+		arrange_view(views[0], area.x, area.y,
+			area.width, area.height);
+		return;
+	}
+
+	/* Master on right (50%), stack on left */
+	int stack_w = area.width / 2;
+	int master_w = area.width - stack_w;
+	arrange_view(views[0], area.x + stack_w, area.y,
+		master_w, area.height);
+
+	int stack_count = n - 1;
+	int cell_h = area.height / stack_count;
+
+	for (int i = 1; i < n; i++) {
+		int y = area.y + (i - 1) * cell_h;
+		arrange_view(views[i], area.x, y, stack_w, cell_h);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows stack-left", n);
+}
+
+void
+wm_arrange_windows_stack_bottom(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	if (n == 1) {
+		arrange_view(views[0], area.x, area.y,
+			area.width, area.height);
+		return;
+	}
+
+	/* Master on top (50%), stack on bottom */
+	int master_h = area.height / 2;
+	arrange_view(views[0], area.x, area.y,
+		area.width, master_h);
+
+	int stack_y = area.y + master_h;
+	int stack_h = area.height - master_h;
+	int stack_count = n - 1;
+	int cell_w = area.width / stack_count;
+
+	for (int i = 1; i < n; i++) {
+		int x = area.x + (i - 1) * cell_w;
+		arrange_view(views[i], x, stack_y, cell_w, stack_h);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows stack-bottom", n);
+}
+
+void
+wm_arrange_windows_stack_top(struct wm_server *server)
+{
+	struct wlr_box area;
+	if (!get_cursor_output_area(server, &area))
+		return;
+
+	struct wm_view *views[256];
+	int n = collect_visible_views(server, views, 256);
+	if (n == 0)
+		return;
+
+	if (n == 1) {
+		arrange_view(views[0], area.x, area.y,
+			area.width, area.height);
+		return;
+	}
+
+	/* Master on bottom (50%), stack on top */
+	int stack_h = area.height / 2;
+	int master_h = area.height - stack_h;
+	arrange_view(views[0], area.x, area.y + stack_h,
+		area.width, master_h);
+
+	int stack_count = n - 1;
+	int cell_w = area.width / stack_count;
+
+	for (int i = 1; i < n; i++) {
+		int x = area.x + (i - 1) * cell_w;
+		arrange_view(views[i], x, area.y, cell_w, stack_h);
+	}
+
+	wlr_log(WLR_DEBUG, "arranged %d windows stack-top", n);
+}

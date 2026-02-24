@@ -45,6 +45,8 @@ struct wm_view {
 	bool fullscreen;
 	bool maximized_vert;
 	bool maximized_horiz;
+	bool lhalf;
+	bool rhalf;
 
 	/* Decoration visibility toggle */
 	bool show_decoration; /* default true */
@@ -122,6 +124,7 @@ void wm_unfocus_current(struct wm_server *server);
  * Used for Alt-Tab / window cycling.
  */
 void wm_focus_next_view(struct wm_server *server);
+void wm_focus_prev_view(struct wm_server *server);
 
 /*
  * Cycle to the next view on the current workspace.
@@ -142,6 +145,16 @@ void wm_view_cycle_prev(struct wm_server *server);
  * current workspace. Focuses and raises the restored view.
  */
 void wm_view_deiconify_last(struct wm_server *server);
+
+/*
+ * Restore all minimized views across all workspaces.
+ */
+void wm_view_deiconify_all(struct wm_server *server);
+
+/*
+ * Restore all minimized views on the current workspace.
+ */
+void wm_view_deiconify_all_workspace(struct wm_server *server);
 
 /*
  * Raise the given view to the top of the stacking order.
@@ -217,5 +230,46 @@ void wm_view_toggle_decoration(struct wm_view *view);
  * Activate the nth tab (0-based index) in the view's tab group.
  */
 void wm_view_activate_tab(struct wm_view *view, int index);
+
+/*
+ * Tile the view to the left half of the output (toggle).
+ */
+void wm_view_lhalf(struct wm_view *view);
+
+/*
+ * Tile the view to the right half of the output (toggle).
+ */
+void wm_view_rhalf(struct wm_view *view);
+
+/*
+ * Resize the view by a relative delta (in pixels).
+ */
+void wm_view_resize_by(struct wm_view *view, int dw, int dh);
+
+/*
+ * Focus the nearest view in the given direction.
+ * dx/dy: (-1,0)=left, (1,0)=right, (0,-1)=up, (0,1)=down
+ */
+void wm_view_focus_direction(struct wm_server *server, int dx, int dy);
+
+/*
+ * Move the view to the output at the given head index (0-based).
+ */
+void wm_view_set_head(struct wm_view *view, int head_index);
+
+/*
+ * Move the view to the next output.
+ */
+void wm_view_send_to_next_head(struct wm_view *view);
+
+/*
+ * Move the view to the previous output.
+ */
+void wm_view_send_to_prev_head(struct wm_view *view);
+
+/*
+ * Close all windows on the current workspace.
+ */
+void wm_view_close_all(struct wm_server *server);
 
 #endif /* WM_VIEW_H */
