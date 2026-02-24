@@ -605,12 +605,32 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 		}
 
 		/* Apply maximized */
-		if (rule->has_maximized && rule->maximized) {
-			view->maximized = true;
-			if (view->xdg_toplevel) {
-				wlr_xdg_toplevel_set_maximized(
-					view->xdg_toplevel, true);
+		if (rule->has_maximized && rule->maximized &&
+		    view->xdg_toplevel && view->server) {
+			/* Save current geometry for later restore */
+			wm_view_get_geometry(view, &view->saved_geometry);
+
+			/* Find output to maximize onto */
+			struct wlr_output *max_output =
+				wlr_output_layout_output_at(
+					view->server->output_layout,
+					view->server->cursor->x,
+					view->server->cursor->y);
+			if (max_output) {
+				struct wlr_box max_box;
+				wlr_output_layout_get_box(
+					view->server->output_layout,
+					max_output, &max_box);
+				wlr_xdg_toplevel_set_size(
+					view->xdg_toplevel,
+					max_box.width, max_box.height);
+				view->x = max_box.x;
+				view->y = max_box.y;
 			}
+
+			view->maximized = true;
+			wlr_xdg_toplevel_set_maximized(
+				view->xdg_toplevel, true);
 		}
 
 		/* Apply fullscreen */
