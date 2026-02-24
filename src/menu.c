@@ -376,6 +376,15 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 	char line[1024];
 
 	while (fgets(line, sizeof(line), fp)) {
+		/* Skip remainder of lines longer than buffer */
+		size_t len = strlen(line);
+		if (len > 0 && line[len - 1] != '\n' && !feof(fp)) {
+			int ch;
+			while ((ch = fgetc(fp)) != EOF && ch != '\n')
+				;
+			continue;
+		}
+
 		char *trimmed = strip_whitespace(line);
 		if (*trimmed == '\0' || *trimmed == '#') {
 			continue;
@@ -1414,6 +1423,7 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 				if (g < 0) _exit(1);
 				if (g > 0) _exit(0);
 				setsid();
+				closefrom(STDERR_FILENO + 1);
 				execl("/bin/sh", "/bin/sh", "-c",
 					item->command, (char *)NULL);
 				_exit(1);

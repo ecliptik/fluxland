@@ -67,6 +67,7 @@ exec_command(const char *cmd)
 		}
 		/* Grandchild */
 		setsid();
+		closefrom(STDERR_FILENO + 1);
 		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
 		_exit(1);
 	}

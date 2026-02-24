@@ -108,8 +108,11 @@ darken(uint32_t argb, double factor)
 
 /* Set a pixel in premultiplied ARGB32 surface data */
 static inline void
-set_pixel(uint32_t *data, int stride, int x, int y, uint32_t argb)
+set_pixel(uint32_t *data, int stride, int x, int y,
+	int w, int h, uint32_t argb)
 {
+	if (x < 0 || x >= w || y < 0 || y >= h)
+		return;
 	/* Cairo ARGB32 is premultiplied and in native byte order */
 	uint8_t a = (argb >> 24) & 0xFF;
 	uint8_t r = (argb >> 16) & 0xFF;
@@ -214,7 +217,7 @@ render_gradient(cairo_surface_t *surface, int w, int h,
 			}
 			}
 
-			set_pixel(data, stride, x, y,
+			set_pixel(data, stride, x, y, w, h,
 				lerp_argb(color, color_to, t));
 		}
 	}

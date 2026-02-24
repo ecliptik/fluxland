@@ -310,6 +310,7 @@ execute_mouse_action(struct wm_server *server,
 				if (g < 0) _exit(1);
 				if (g > 0) _exit(0);
 				setsid();
+				closefrom(STDERR_FILENO + 1);
 				execl("/bin/sh", "/bin/sh", "-c",
 					argument, (char *)NULL);
 				_exit(1);

@@ -47,6 +47,7 @@ spawn_child(void (*exec_fn)(void *), void *data, const char *wayland_display)
 
 		/* Grandchild: start a new session and exec */
 		setsid();
+		closefrom(STDERR_FILENO + 1);
 		if (wayland_display) {
 			setenv("WAYLAND_DISPLAY", wayland_display, 1);
 		}
@@ -96,7 +97,7 @@ wm_autostart_run(const char *config_dir, const char *wayland_display)
 	snprintf(sd.path, sizeof(sd.path), "%s/startup", config_dir);
 
 	struct stat st;
-	if (stat(sd.path, &st) != 0) {
+	if (lstat(sd.path, &st) != 0) {
 		wlr_log(WLR_DEBUG, "autostart: no startup file at %s", sd.path);
 		return -1;
 	}

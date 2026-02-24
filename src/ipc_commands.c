@@ -96,7 +96,7 @@ json_get_string(const char *json, const char *key)
 					while (*after && (*after == ' ' || *after == '\t'))
 						after++;
 					if (*after == '"') {
-						/* Quoted string value */
+						/* Quoted string value — unescape */
 						after++;
 						const char *end = after;
 						while (*end && *end != '"') {
@@ -106,10 +106,25 @@ json_get_string(const char *json, const char *key)
 						}
 						size_t vlen = (size_t)(end - after);
 						char *val = malloc(vlen + 1);
-						if (val) {
-							memcpy(val, after, vlen);
-							val[vlen] = '\0';
+						if (!val) return NULL;
+						size_t j = 0;
+						for (const char *s = after; s < end; s++) {
+							if (*s == '\\' && s + 1 < end) {
+								s++;
+								switch (*s) {
+								case '"':  val[j++] = '"';  break;
+								case '\\': val[j++] = '\\'; break;
+								case '/':  val[j++] = '/';  break;
+								case 'n':  val[j++] = '\n'; break;
+								case 't':  val[j++] = '\t'; break;
+								case 'r':  val[j++] = '\r'; break;
+								default:   val[j++] = *s;   break;
+								}
+							} else {
+								val[j++] = *s;
+							}
 						}
+						val[j] = '\0';
 						return val;
 					}
 					/* Unquoted value (number, bool, null) */
@@ -341,6 +356,7 @@ exec_command(const char *cmd)
 		if (g < 0) _exit(1);
 		if (g > 0) _exit(0);
 		setsid();
+		closefrom(STDERR_FILENO + 1);
 		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
 		_exit(1);
 	}

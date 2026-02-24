@@ -569,6 +569,15 @@ keybind_load(struct wl_list *keymodes, const char *path)
 
 	char line[KEYS_LINE_MAX];
 	while (fgets(line, sizeof(line), f)) {
+		/* Skip remainder of lines longer than buffer */
+		size_t len = strlen(line);
+		if (len > 0 && line[len - 1] != '\n' && !feof(f)) {
+			int ch;
+			while ((ch = fgetc(f)) != EOF && ch != '\n')
+				;
+			continue;
+		}
+
 		char *p = strip(line);
 
 		/* Skip empty lines and comments */
