@@ -11,6 +11,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
+#include "config.h"
 #include "ipc.h"
 #include "server.h"
 #include "toolbar.h"
@@ -71,10 +72,19 @@ wm_workspaces_init(struct wm_server *server, int count)
 	server->sticky_tree = wlr_scene_tree_create(server->view_layer_normal);
 	wlr_scene_node_raise_to_top(&server->sticky_tree->node);
 
-	/* Create workspaces with default names */
+	/* Create workspaces, using config names when available */
+	struct wm_config *config = server->config;
 	for (int i = 0; i < count; i++) {
-		char name[32];
-		snprintf(name, sizeof(name), "Workspace %d", i + 1);
+		const char *name;
+		char default_name[32];
+		if (config && i < config->workspace_name_count &&
+		    config->workspace_names[i]) {
+			name = config->workspace_names[i];
+		} else {
+			snprintf(default_name, sizeof(default_name),
+				"Workspace %d", i + 1);
+			name = default_name;
+		}
 		struct wm_workspace *ws = workspace_create(server, name, i);
 		if (!ws) {
 			wlr_log(WLR_ERROR, "failed to create workspace %d", i);
