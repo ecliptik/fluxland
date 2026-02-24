@@ -147,7 +147,7 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 			"\"id\":%u,"
 			"\"app_id\":\"%s\","
 			"\"title\":\"%s\"}",
-			(unsigned)(uintptr_t)view,
+			view->id,
 			esc_app, esc_title);
 		wm_ipc_broadcast_event(&server->ipc,
 			WM_IPC_EVENT_WINDOW_FOCUS, buf);
@@ -695,7 +695,7 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 			"\"id\":%u,"
 			"\"app_id\":\"%s\","
 			"\"title\":\"%s\"}",
-			(unsigned)(uintptr_t)view,
+			view->id,
 			esc_app, esc_title);
 		wm_ipc_broadcast_event(&view->server->ipc,
 			WM_IPC_EVENT_WINDOW_OPEN, buf);
@@ -721,7 +721,7 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"window_close\","
 			"\"id\":%u}",
-			(unsigned)(uintptr_t)view);
+			view->id);
 		wm_ipc_broadcast_event(&view->server->ipc,
 			WM_IPC_EVENT_WINDOW_CLOSE, buf);
 	}
@@ -1028,7 +1028,7 @@ handle_xdg_toplevel_set_title(struct wl_listener *listener, void *data)
 			"{\"event\":\"window_title\","
 			"\"id\":%u,"
 			"\"title\":\"%s\"}",
-			(unsigned)(uintptr_t)view,
+			view->id,
 			esc_title);
 		wm_ipc_broadcast_event(&view->server->ipc,
 			WM_IPC_EVENT_WINDOW_TITLE, buf);
@@ -1067,6 +1067,10 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 
 	view->server = server;
 	view->xdg_toplevel = xdg_toplevel;
+
+	/* Assign unique view ID for IPC */
+	static uint32_t next_view_id = 1;
+	view->id = next_view_id++;
 
 	/* Default opacity: fully opaque */
 	view->focus_alpha = 255;

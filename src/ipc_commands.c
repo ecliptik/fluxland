@@ -173,11 +173,27 @@ static void
 strbuf_appendf(struct strbuf *sb, const char *fmt, ...)
 {
 	char buf[1024];
-	va_list ap;
+	va_list ap, ap2;
 	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_copy(ap2, ap);
+	int needed = vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
-	strbuf_append(sb, buf);
+	if (needed < 0) {
+		va_end(ap2);
+		return;
+	}
+	if ((size_t)needed < sizeof(buf)) {
+		strbuf_append(sb, buf);
+	} else {
+		/* Retry with heap allocation for large strings */
+		char *heap = malloc((size_t)needed + 1);
+		if (heap) {
+			vsnprintf(heap, (size_t)needed + 1, fmt, ap2);
+			strbuf_append(sb, heap);
+			free(heap);
+		}
+	}
+	va_end(ap2);
 }
 
 static char *
@@ -356,11 +372,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 			struct wl_client *client = wl_resource_get_client(
 				view->xdg_toplevel->base->resource);
 			if (client) {
-				pid_t pid;
-				wl_client_get_credentials(client, &pid,
-					NULL, NULL);
-				if (pid > 0)
-					kill(pid, SIGKILL);
+				wl_client_destroy(client);
 			}
 		}
 		return true;

@@ -407,6 +407,26 @@ handle_xwayland_dissociate(struct wl_listener *listener, void *data)
 /*  Request handlers                                                   */
 /* ------------------------------------------------------------------ */
 
+/* Clamp XWayland geometry to reasonable bounds */
+#define XWAYLAND_COORD_MAX 32767
+#define XWAYLAND_SIZE_MAX  16384
+
+static int16_t
+clamp_coord(int16_t v)
+{
+	if (v < -XWAYLAND_COORD_MAX) return -XWAYLAND_COORD_MAX;
+	if (v > XWAYLAND_COORD_MAX) return XWAYLAND_COORD_MAX;
+	return v;
+}
+
+static uint16_t
+clamp_size(uint16_t v)
+{
+	if (v == 0) return 1;
+	if (v > XWAYLAND_SIZE_MAX) return XWAYLAND_SIZE_MAX;
+	return v;
+}
+
 static void
 handle_xwayland_request_configure(struct wl_listener *listener, void *data)
 {
@@ -414,13 +434,16 @@ handle_xwayland_request_configure(struct wl_listener *listener, void *data)
 		wl_container_of(listener, xview, request_configure);
 	struct wlr_xwayland_surface_configure_event *event = data;
 
-	/* Accept the requested geometry */
-	wlr_xwayland_surface_configure(xview->xsurface,
-		event->x, event->y, event->width, event->height);
+	int16_t x = clamp_coord(event->x);
+	int16_t y = clamp_coord(event->y);
+	uint16_t w = clamp_size(event->width);
+	uint16_t h = clamp_size(event->height);
+
+	wlr_xwayland_surface_configure(xview->xsurface, x, y, w, h);
 
 	if (xview->scene_tree) {
-		xview->x = event->x;
-		xview->y = event->y;
+		xview->x = x;
+		xview->y = y;
 		wlr_scene_node_set_position(&xview->scene_tree->node,
 			xview->x, xview->y);
 	}
@@ -613,7 +636,16 @@ handle_xwayland_request_activate(struct wl_listener *listener, void *data)
 	struct wm_xwayland_view *xview =
 		wl_container_of(listener, xview, request_activate);
 
-	if (xview->mapped) {
+	if (!xview->mapped) {
+		return;
+	}
+
+	/*
+	 * Only grant focus if no view is currently focused (e.g. after
+	 * the last window was closed) to prevent X11 clients from
+	 * stealing focus, which Wayland is designed to prevent.
+	 */
+	if (!xview->server->focused_view) {
 		xwayland_focus_view(xview);
 	}
 }

@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <cairo.h>
 #include <drm_fourcc.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -80,12 +81,16 @@ wlr_buffer_from_cairo(cairo_surface_t *surface)
 	int stride = cairo_image_surface_get_stride(surface);
 	unsigned char *src = cairo_image_surface_get_data(surface);
 
-	if (width <= 0 || height <= 0 || !src) {
+	if (width <= 0 || height <= 0 || stride <= 0 || !src) {
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
 
-	size_t size = (size_t)stride * height;
+	if ((size_t)stride > SIZE_MAX / (size_t)height) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+	size_t size = (size_t)stride * (size_t)height;
 	void *data = malloc(size);
 	if (!data) {
 		cairo_surface_destroy(surface);

@@ -6,6 +6,7 @@
 #ifndef WM_VIEW_H
 #define WM_VIEW_H
 
+#include <stdint.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -31,6 +32,9 @@ struct wm_view {
 	struct wm_server *server;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	struct wlr_scene_tree *scene_tree;
+
+	/* Unique view identifier for IPC (monotonically increasing) */
+	uint32_t id;
 
 	/* Geometry (layout coordinates) */
 	int x, y;

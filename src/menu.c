@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <drm_fourcc.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -97,12 +98,16 @@ wlr_buffer_from_cairo(cairo_surface_t *surface)
 	int stride = cairo_image_surface_get_stride(surface);
 	unsigned char *src = cairo_image_surface_get_data(surface);
 
-	if (width <= 0 || height <= 0 || !src) {
+	if (width <= 0 || height <= 0 || stride <= 0 || !src) {
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
 
-	size_t size = (size_t)stride * height;
+	if ((size_t)stride > SIZE_MAX / (size_t)height) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+	size_t size = (size_t)stride * (size_t)height;
 	void *data = malloc(size);
 	if (!data) {
 		cairo_surface_destroy(surface);
@@ -1508,6 +1513,20 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		/* Switch to workspace and focus the target view */
 		struct wm_view *target = item->data;
 		if (!target) {
+			break;
+		}
+		/* Validate the view still exists (may have been destroyed
+		 * while the menu was open) */
+		bool found = false;
+		struct wm_view *v;
+		wl_list_for_each(v, &server->views, link) {
+			if (v == target) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			wlr_log(WLR_DEBUG, "%s", "menu: target view no longer exists");
 			break;
 		}
 		/* Switch to the view's workspace */

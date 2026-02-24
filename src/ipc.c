@@ -6,9 +6,10 @@
  * to query compositor state and execute commands.
  */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,15 +39,24 @@ static bool
 ipc_send(int fd, const char *data, size_t len)
 {
 	size_t sent = 0;
+	int eagain_retries = 0;
 	while (sent < len) {
 		ssize_t n = write(fd, data + sent, len - sent);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				if (++eagain_retries > 100)
+					return false; /* client not draining */
+				struct pollfd pfd = {
+					.fd = fd, .events = POLLOUT
+				};
+				poll(&pfd, 1, 50); /* wait up to 50ms */
 				continue;
+			}
 			return false;
 		}
+		eagain_retries = 0;
 		sent += (size_t)n;
 	}
 	return true;

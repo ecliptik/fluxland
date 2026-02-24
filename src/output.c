@@ -5,6 +5,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/types/wlr_output.h>
@@ -18,6 +19,30 @@
 #include "output.h"
 #include "server.h"
 #include "toolbar.h"
+
+/* Escape a string for safe inclusion in JSON (writes into dst). */
+static void
+json_escape_buf(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) {
+		if (dst_size > 0) dst[0] = '\0';
+		return;
+	}
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 1 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') {
+			if (j + 2 >= dst_size) break;
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c < 0x20) {
+			continue;
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
 
 static void
 handle_output_frame(struct wl_listener *listener, void *data)
@@ -49,12 +74,13 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 
 	/* Broadcast output remove event via IPC */
 	{
-		char buf[256];
+		char esc_name[128], buf[256];
+		json_escape_buf(esc_name, sizeof(esc_name),
+			output->wlr_output->name);
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"output_remove\","
 			"\"name\":\"%s\"}",
-			output->wlr_output->name ?
-				output->wlr_output->name : "");
+			esc_name);
 		wm_ipc_broadcast_event(&output->server->ipc,
 			WM_IPC_EVENT_OUTPUT_REMOVE, buf);
 	}
@@ -133,13 +159,15 @@ handle_new_output(struct wl_listener *listener, void *data)
 
 	/* Broadcast output add event via IPC */
 	{
-		char buf[256];
+		char esc_name[128], buf[256];
+		json_escape_buf(esc_name, sizeof(esc_name),
+			wlr_output->name);
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"output_add\","
 			"\"name\":\"%s\","
 			"\"width\":%d,"
 			"\"height\":%d}",
-			wlr_output->name ? wlr_output->name : "",
+			esc_name,
 			wlr_output->width, wlr_output->height);
 		wm_ipc_broadcast_event(&server->ipc,
 			WM_IPC_EVENT_OUTPUT_ADD, buf);
