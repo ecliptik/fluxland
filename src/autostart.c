@@ -17,11 +17,13 @@
 static void
 spawn_child(void (*exec_fn)(void *), void *data, const char *wayland_display)
 {
-	/* Prevent zombie processes */
-	struct sigaction sa = { .sa_handler = SIG_IGN };
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_NOCLDWAIT;
-	sigaction(SIGCHLD, &sa, NULL);
+	/*
+	 * Do NOT set SIGCHLD to SIG_IGN here. The server's event loop
+	 * already handles SIGCHLD via signalfd to reap zombies. Setting
+	 * SIG_IGN with SA_NOCLDWAIT causes the kernel to auto-reap ALL
+	 * child processes, which breaks wlroots' Xwayland management
+	 * (waitpid returns ECHILD because the child was already reaped).
+	 */
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -29,7 +31,11 @@ spawn_child(void (*exec_fn)(void *), void *data, const char *wayland_display)
 		return;
 	}
 	if (pid == 0) {
-		/* Child process */
+		/* Child: unblock signals inherited from compositor's signalfd */
+		sigset_t set;
+		sigemptyset(&set);
+		sigprocmask(SIG_SETMASK, &set, NULL);
+
 		if (wayland_display) {
 			setenv("WAYLAND_DISPLAY", wayland_display, 1);
 		}
