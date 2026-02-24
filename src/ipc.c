@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
@@ -140,16 +141,11 @@ handle_new_connection(int fd, uint32_t mask, void *data)
 	(void)fd;
 	(void)mask;
 
-	int client_fd = accept(ipc->socket_fd, NULL, NULL);
+	int client_fd = accept4(ipc->socket_fd, NULL, NULL,
+		SOCK_CLOEXEC | SOCK_NONBLOCK);
 	if (client_fd < 0) {
 		wlr_log(WLR_ERROR, "IPC accept failed: %s", strerror(errno));
 		return 0;
-	}
-
-	/* Set non-blocking */
-	int flags = fcntl(client_fd, F_GETFL);
-	if (flags >= 0) {
-		fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
 	}
 
 	struct wm_ipc_client *client = calloc(1, sizeof(*client));
@@ -218,7 +214,7 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 	unlink(ipc->socket_path);
 
 	/* Create Unix domain socket */
-	ipc->socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	ipc->socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (ipc->socket_fd < 0) {
 		wlr_log(WLR_ERROR, "IPC: socket() failed: %s",
 			strerror(errno));
@@ -243,6 +239,13 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 	if (bind(ipc->socket_fd, (struct sockaddr *)&addr,
 			sizeof(addr)) < 0) {
 		wlr_log(WLR_ERROR, "IPC: bind() failed: %s",
+			strerror(errno));
+		goto err;
+	}
+
+	/* Restrict socket to owner only */
+	if (fchmod(ipc->socket_fd, 0600) < 0) {
+		wlr_log(WLR_ERROR, "IPC: fchmod() failed: %s",
 			strerror(errno));
 		goto err;
 	}

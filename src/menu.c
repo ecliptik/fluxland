@@ -354,11 +354,20 @@ add_stylesdir_entries(struct wm_menu *submenu, const char *raw_path)
 
 /*
  * Recursively parse menu items from a file stream.
- * Stops at [end] or EOF.
+ * Stops at [end] or EOF.  Depth is limited to prevent stack overflow
+ * from circular [include] or deeply nested submenus.
  */
+#define MENU_MAX_DEPTH 16
+
 static void
-parse_menu_items(struct wm_menu *menu, FILE *fp, struct wm_server *server)
+parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
+	struct wm_server *server, int depth)
 {
+	if (depth > MENU_MAX_DEPTH) {
+		wlr_log(WLR_ERROR, "%s", "menu: max include/submenu depth exceeded");
+		return;
+	}
+
 	char line[1024];
 
 	while (fgets(line, sizeof(line), fp)) {
@@ -424,8 +433,8 @@ parse_menu_items(struct wm_menu *menu, FILE *fp, struct wm_server *server)
 					sub_title ? sub_title : label);
 				if (item->submenu) {
 					item->submenu->parent = menu;
-					parse_menu_items(item->submenu, fp,
-						server);
+					parse_menu_items_depth(item->submenu,
+						fp, server, depth + 1);
 				}
 				wl_list_insert(menu->items.prev, &item->link);
 			} else {
@@ -463,8 +472,9 @@ parse_menu_items(struct wm_menu *menu, FILE *fp, struct wm_server *server)
 				if (path) {
 					FILE *inc_fp = fopen(path, "r");
 					if (inc_fp) {
-						parse_menu_items(menu, inc_fp,
-							server);
+						parse_menu_items_depth(menu,
+							inc_fp, server,
+							depth + 1);
 						fclose(inc_fp);
 					}
 					free(path);
@@ -607,7 +617,7 @@ wm_menu_load(struct wm_server *server, const char *path)
 		return NULL;
 	}
 
-	parse_menu_items(menu, fp, server);
+	parse_menu_items_depth(menu, fp, server, 0);
 
 	fclose(fp);
 	free(expanded);

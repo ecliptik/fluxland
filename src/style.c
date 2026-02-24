@@ -18,6 +18,9 @@
 #include <string.h>
 #include <strings.h>
 
+/* Forward declaration */
+static void style_clear(struct wm_style *s);
+
 /* --- Default values --- */
 
 #define DEFAULT_BORDER_WIDTH   1
@@ -894,8 +897,8 @@ style_reload(struct wm_style *s)
 	s->style_dir = NULL;
 	s->style_path = NULL;
 
-	/* Destroy the old style contents */
-	style_destroy(s);
+	/* Destroy the old style contents (but not the struct itself) */
+	style_clear(s);
 
 	/* Copy fresh defaults into s (caller still owns the pointer) */
 	/* Actually we need to load into fresh and copy back */
@@ -915,8 +918,12 @@ style_reload(struct wm_style *s)
 	return 0;
 }
 
-void
-style_destroy(struct wm_style *s)
+/*
+ * Free all internal resources of a style without freeing the struct itself.
+ * Used by style_reload() to reinitialize an existing style in-place.
+ */
+static void
+style_clear(struct wm_style *s)
 {
 	if (!s)
 		return;
@@ -966,6 +973,13 @@ style_destroy(struct wm_style *s)
 	/* Metadata */
 	free(s->style_dir);
 	free(s->style_path);
+}
 
+void
+style_destroy(struct wm_style *s)
+{
+	if (!s)
+		return;
+	style_clear(s);
 	free(s);
 }

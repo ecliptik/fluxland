@@ -8,6 +8,7 @@
 
 #include "rcparser.h"
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,9 +83,13 @@ rc_set(struct rc_database *db, const char *key, const char *value)
 	}
 
 	if (db->count >= db->capacity) {
-		int new_cap = db->capacity * 2;
+		int new_cap = db->capacity < 1 ? RC_INITIAL_CAPACITY
+			: db->capacity <= INT_MAX / 2 ? db->capacity * 2
+			: INT_MAX;
+		if (new_cap <= db->capacity)
+			return; /* overflow or at max */
 		struct rc_entry *new_entries =
-			realloc(db->entries, new_cap * sizeof(struct rc_entry));
+			realloc(db->entries, (size_t)new_cap * sizeof(struct rc_entry));
 		if (!new_entries)
 			return;
 		db->entries = new_entries;
