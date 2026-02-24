@@ -33,6 +33,10 @@ cairo_surface_t *wm_render_text(const char *text, const struct wm_font *f,
 	enum wm_justify j, float s)
 	{ (void)text; (void)f; (void)c; (void)max_w; (void)tw; (void)th;
 	  (void)j; (void)s; return NULL; }
+int wm_measure_text_width(const char *text, const struct wm_font *f,
+	float s)
+	{ (void)f; (void)s;
+	  return text ? (int)(strlen(text) * 7) : 0; }
 int style_load(struct wm_style *s, const char *p)
 	{ (void)s; (void)p; return 0; }
 void wm_view_set_sticky(struct wm_view *v, bool s)
