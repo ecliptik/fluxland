@@ -50,13 +50,14 @@ void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
 void wm_focus_view(struct wm_view *v, struct wlr_surface *s)
 	{ (void)v; (void)s; }
 
-#define TEST_DIR "/tmp/claude-1001/wm-test-menu"
+#define TEST_DIR "/tmp/fluxland-test/wm-test-menu"
 #define TEST_MENU TEST_DIR "/menu"
 #define TEST_INCLUDE TEST_DIR "/include_menu"
 
 static void
 setup(void)
 {
+	mkdir("/tmp/fluxland-test", 0755);
 	mkdir(TEST_DIR, 0755);
 }
 
@@ -116,7 +117,7 @@ static void
 test_load_nonexistent(void)
 {
 	struct wm_menu *menu = wm_menu_load(NULL,
-		"/tmp/claude-1001/nonexistent_menu_file");
+		"/tmp/fluxland-test/nonexistent_menu_file");
 	assert(menu == NULL);
 	printf("  PASS: test_load_nonexistent\n");
 }

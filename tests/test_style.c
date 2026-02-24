@@ -12,12 +12,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define TEST_DIR "/tmp/claude-1001/wm-test-style"
+#define TEST_DIR "/tmp/fluxland-test/wm-test-style"
 #define TEST_STYLE TEST_DIR "/theme"
 
 static void
 setup(void)
 {
+	mkdir("/tmp/fluxland-test", 0755);
 	mkdir(TEST_DIR, 0755);
 }
 
@@ -408,7 +409,7 @@ static void
 test_load_nonexistent(void)
 {
 	struct wm_style *s = style_create();
-	int ret = style_load(s, "/tmp/claude-1001/nonexistent_style_file");
+	int ret = style_load(s, "/tmp/fluxland-test/nonexistent_style_file");
 	assert(ret == -1);
 	style_destroy(s);
 	printf("  PASS: test_load_nonexistent\n");

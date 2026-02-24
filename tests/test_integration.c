@@ -71,7 +71,7 @@ setup_paths(void)
 {
 	/* Use a unique directory under /tmp owned by our uid */
 	snprintf(test_base, sizeof(test_base),
-		 "/tmp/claude-1001/wm-integration-test-%d", getpid());
+		 "/tmp/fluxland-test/wm-integration-test-%d", getpid());
 	snprintf(test_runtime, sizeof(test_runtime),
 		 "%s/runtime", test_base);
 	snprintf(test_config_home, sizeof(test_config_home),
@@ -85,6 +85,7 @@ setup_paths(void)
 static void
 write_minimal_config(void)
 {
+	mkdir("/tmp/fluxland-test", 0755);
 	mkdir(test_base, 0755);
 	mkdir(test_runtime, 0700);
 	mkdir(test_config_home, 0755);
@@ -165,8 +166,8 @@ main(void)
 	 * (for meson test), then fall back to PATH.
 	 */
 	const char *compositor_bin = NULL;
-	if (access("/tmp/claude-1001/wm-build/fluxland", X_OK) == 0)
-		compositor_bin = "/tmp/claude-1001/wm-build/fluxland";
+	if (access("/tmp/fluxland-test/wm-build/fluxland", X_OK) == 0)
+		compositor_bin = "/tmp/fluxland-test/wm-build/fluxland";
 	else if (access("../fluxland", X_OK) == 0)
 		compositor_bin = "../fluxland";
 	else

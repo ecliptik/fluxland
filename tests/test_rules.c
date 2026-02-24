@@ -34,12 +34,13 @@ void wm_decoration_set_shaded(struct wm_decoration *d, bool s,
 void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
 	{ (void)v; if (b) { b->x = 0; b->y = 0; b->width = 100; b->height = 100; } }
 
-#define TEST_DIR "/tmp/claude-1001/wm-test-rules"
+#define TEST_DIR "/tmp/fluxland-test/wm-test-rules"
 #define TEST_APPS TEST_DIR "/apps"
 
 static void
 setup(void)
 {
+	mkdir("/tmp/fluxland-test", 0755);
 	mkdir(TEST_DIR, 0755);
 }
 
@@ -112,7 +113,7 @@ test_load_nonexistent(void)
 	struct wm_rules rules;
 	wm_rules_init(&rules);
 
-	bool ret = wm_rules_load(&rules, "/tmp/claude-1001/nonexistent_apps_file");
+	bool ret = wm_rules_load(&rules, "/tmp/fluxland-test/nonexistent_apps_file");
 	assert(ret == false);
 
 	wm_rules_finish(&rules);

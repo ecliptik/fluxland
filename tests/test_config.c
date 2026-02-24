@@ -12,12 +12,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define TEST_DIR "/tmp/claude-1001/wm-test-config"
+#define TEST_DIR "/tmp/fluxland-test/wm-test-config"
 #define TEST_INIT TEST_DIR "/init"
 
 static void
 setup(void)
 {
+	mkdir("/tmp/fluxland-test", 0755);
 	mkdir(TEST_DIR, 0755);
 }
 
