@@ -12,6 +12,7 @@
 #include <string.h>
 #include <strings.h>
 #include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/backend/session.h>
 #include <wlr/interfaces/wlr_keyboard.h>
@@ -43,18 +44,33 @@ exec_command(const char *cmd)
 	if (!cmd || !*cmd) {
 		return;
 	}
+	/*
+	 * Double-fork so the compositor doesn't need to reap the child.
+	 * The grandchild is adopted by init.
+	 */
 	pid_t pid = fork();
+	if (pid < 0) {
+		wlr_log(WLR_ERROR, "fork failed for: %s", cmd);
+		return;
+	}
 	if (pid == 0) {
-		setsid();
-		/* Unblock signals blocked by compositor's event loop */
 		sigset_t set;
 		sigemptyset(&set);
 		sigprocmask(SIG_SETMASK, &set, NULL);
+
+		pid_t grandchild = fork();
+		if (grandchild < 0) {
+			_exit(1);
+		}
+		if (grandchild > 0) {
+			_exit(0);
+		}
+		/* Grandchild */
+		setsid();
 		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
 		_exit(1);
-	} else if (pid < 0) {
-		wlr_log(WLR_ERROR, "fork failed for: %s", cmd);
 	}
+	waitpid(pid, NULL, 0);
 }
 
 /*
@@ -777,11 +793,27 @@ handle_key(struct wl_listener *listener, void *data)
 	}
 
 	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		/*
+		 * When a menu is visible, try menu key navigation first.
+		 * Navigation keys (Up/Down/Enter/Escape/h/j/k/l) are
+		 * consumed; unrecognized keys return false and fall
+		 * through to the compositor keybinding check.
+		 */
 		for (int i = 0; i < nsyms; i++) {
-			handled = handle_compositor_keybinding(
-				server, modifiers, syms[i]);
-			if (handled) {
+			if (wm_menu_handle_key(server, keycode,
+				syms[i], true)) {
+				handled = true;
 				break;
+			}
+		}
+
+		if (!handled) {
+			for (int i = 0; i < nsyms; i++) {
+				handled = handle_compositor_keybinding(
+					server, modifiers, syms[i]);
+				if (handled) {
+					break;
+				}
 			}
 		}
 	}
