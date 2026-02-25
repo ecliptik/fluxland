@@ -618,6 +618,10 @@ style_create(void)
 	s->window_title_height = DEFAULT_TITLE_HEIGHT;
 	s->menu_border_width = DEFAULT_BORDER_WIDTH;
 
+	/* Focus border defaults (disabled by default, enabled in HC themes) */
+	s->window_focus_border_width = 0;
+	s->window_focus_border_color = make_color(0x88, 0xC0, 0xD0);
+
 	/* Menu bullet defaults */
 	s->menu_bullet = strdup("triangle");
 	s->menu_bullet_position = WM_JUSTIFY_RIGHT;
@@ -755,6 +759,12 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 	const char *rc = style_get(db, "window.roundCorners");
 	if (rc)
 		s->window_round_corners = parse_round_corners(rc);
+
+	/* --- Focus border (accessibility) --- */
+	s->window_focus_border_width = style_get_int(db,
+		"window.focus.border.width", s->window_focus_border_width);
+	load_color(db, "window.focus.border.color",
+		&s->window_focus_border_color);
 
 	/* --- Menu --- */
 	load_texture(db, "menu.title", &s->menu_title, sd);

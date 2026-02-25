@@ -93,6 +93,9 @@ struct wm_decoration {
 	/* Rounded border frame buffer (used when round corners active) */
 	struct wlr_scene_buffer *border_frame;
 
+	/* Focus border overlay (accessibility highlight for focused windows) */
+	struct wlr_scene_buffer *focus_border_buf;
+
 	/* Titlebar buttons */
 	struct wm_decor_button *buttons_left;
 	int buttons_left_count;

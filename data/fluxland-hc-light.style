@@ -1,0 +1,117 @@
+# fluxland high-contrast light style (WCAG AAA)
+# White background, black text (21:1), black focus highlights.
+# All text contrasts >= 7:1 for AAA compliance.
+
+# -------------------------------------------------------------------
+# Window titlebar
+# -------------------------------------------------------------------
+
+window.title.focus:                 Flat Solid
+window.title.focus.color:           #0000CC
+window.title.focus.colorTo:         #0000CC
+window.title.unfocus:               Flat Solid
+window.title.unfocus.color:         #FFFFFF
+window.title.unfocus.colorTo:       #FFFFFF
+window.title.height:                24
+
+# -------------------------------------------------------------------
+# Window label (title text area within titlebar)
+# -------------------------------------------------------------------
+
+window.label.focus:                 Flat Solid
+window.label.focus.color:           #0000CC
+window.label.focus.textColor:       #FFFFFF
+window.label.unfocus:               Flat Solid
+window.label.unfocus.color:         #FFFFFF
+window.label.unfocus.textColor:     #000000
+window.label.active:                Flat Solid
+window.label.active.color:          #0000CC
+window.label.active.textColor:      #FFFFFF
+
+window.label.focus.font:            sans-12:bold
+window.label.unfocus.font:          sans-12:bold
+
+window.justify:                     Center
+
+# -------------------------------------------------------------------
+# Window buttons (close, maximize, minimize, shade, stick)
+# -------------------------------------------------------------------
+
+window.button.focus:                Flat Solid
+window.button.focus.color:          #0000CC
+window.button.focus.colorTo:        #0000CC
+window.button.unfocus:              Flat Solid
+window.button.unfocus.color:        #FFFFFF
+window.button.unfocus.colorTo:      #FFFFFF
+window.button.pressed:              Flat Solid
+window.button.pressed.color:        #000000
+
+window.button.focus.picColor:       #FFFFFF
+window.button.unfocus.picColor:     #000000
+window.button.pressed.picColor:     #FFFFFF
+
+# -------------------------------------------------------------------
+# Window handle (bottom resize bar) and grips (corner resize)
+# -------------------------------------------------------------------
+
+window.handle.focus:                Flat Solid
+window.handle.focus.color:          #0000CC
+window.handle.unfocus:              Flat Solid
+window.handle.unfocus.color:        #FFFFFF
+window.handleWidth:                 6
+
+window.grip.focus:                  Flat Solid
+window.grip.focus.color:            #000000
+window.grip.unfocus:                Flat Solid
+window.grip.unfocus.color:          #CCCCCC
+
+# -------------------------------------------------------------------
+# Window frame and border
+# -------------------------------------------------------------------
+
+window.frame.focusColor:            #0000CC
+window.frame.unfocusColor:          #FFFFFF
+window.borderColor:                 #000000
+window.borderWidth:                 3
+window.bevelWidth:                  1
+
+# Focus border (accessibility highlight around focused windows)
+window.focus.border.width:          3
+window.focus.border.color:          #000000
+
+# -------------------------------------------------------------------
+# Menu
+# -------------------------------------------------------------------
+
+menu.title:                         Flat Solid
+menu.title.color:                   #0000CC
+menu.title.colorTo:                 #0000CC
+menu.title.textColor:               #FFFFFF
+menu.title.font:                    sans-12:bold
+menu.title.justify:                 Center
+
+menu.frame:                         Flat Solid
+menu.frame.color:                   #FFFFFF
+menu.frame.textColor:               #000000
+menu.frame.font:                    sans-11:bold
+
+menu.hilite:                        Flat Solid
+menu.hilite.color:                  #0000FF
+menu.hilite.textColor:              #FFFFFF
+
+menu.borderColor:                   #000000
+menu.borderWidth:                   3
+
+# -------------------------------------------------------------------
+# Toolbar
+# -------------------------------------------------------------------
+
+toolbar:                            Flat Solid
+toolbar.color:                      #FFFFFF
+toolbar.textColor:                  #000000
+toolbar.font:                       sans-11:bold
+
+toolbar.iconbar.focused.color:      #0000CC
+toolbar.iconbar.focused.textColor:  #FFFFFF
+toolbar.iconbar.unfocused.color:    #FFFFFF
+toolbar.iconbar.unfocused.textColor:#000000

@@ -283,6 +283,8 @@ example_configs = [
   'data/menu',
   'data/startup',
   'data/style',
+  'data/fluxland-hc-dark.style',
+  'data/fluxland-hc-light.style',
 ]
 
 install_data(

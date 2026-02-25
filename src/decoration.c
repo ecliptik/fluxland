@@ -444,6 +444,13 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 		wlr_scene_node_set_enabled(&deco->border_frame->node, false);
 	}
 
+	/* Focus border overlay (initially disabled) */
+	deco->focus_border_buf = wlr_scene_buffer_create(deco->tree, NULL);
+	if (deco->focus_border_buf) {
+		wlr_scene_node_set_enabled(
+			&deco->focus_border_buf->node, false);
+	}
+
 	/* Create titlebar tree */
 	deco->titlebar_tree = wlr_scene_tree_create(deco->tree);
 
@@ -1262,6 +1269,57 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		wlr_scene_node_set_enabled(
 			&deco->tab_bar_buf->node, false);
 		deco->tab_bar_box = (struct wlr_box){0};
+	}
+
+	/* --- Focus border (accessibility highlight) --- */
+	if (deco->focus_border_buf && deco->focused &&
+	    style->window_focus_border_width > 0 && has_titlebar) {
+		int fbw = style->window_focus_border_width;
+		int total_h = top_height + ext_top + ch + ext_bottom +
+			bottom_height + 2 * bw;
+		int fb_w = outer_width + 2 * fbw;
+		int fb_h = total_h + 2 * fbw;
+
+		cairo_surface_t *fb_surface = cairo_image_surface_create(
+			CAIRO_FORMAT_ARGB32, fb_w, fb_h);
+		if (cairo_surface_status(fb_surface) == CAIRO_STATUS_SUCCESS) {
+			cairo_t *fb_cr = cairo_create(fb_surface);
+			const struct wm_color *fbc =
+				&style->window_focus_border_color;
+			cairo_set_source_rgba(fb_cr,
+				fbc->r / 255.0, fbc->g / 255.0,
+				fbc->b / 255.0, fbc->a / 255.0);
+
+			/* Outer rectangle (full size) */
+			cairo_rectangle(fb_cr, 0, 0, fb_w, fb_h);
+			/* Inner cutout */
+			cairo_rectangle(fb_cr, fbw, fbw,
+				outer_width, total_h);
+			cairo_set_fill_rule(fb_cr,
+				CAIRO_FILL_RULE_EVEN_ODD);
+			cairo_fill(fb_cr);
+
+			cairo_destroy(fb_cr);
+			struct wlr_buffer *fb_buf =
+				wlr_buffer_from_cairo(fb_surface);
+			wlr_scene_buffer_set_buffer(
+				deco->focus_border_buf, fb_buf);
+			if (fb_buf)
+				wlr_buffer_drop(fb_buf);
+		} else {
+			cairo_surface_destroy(fb_surface);
+		}
+
+		wlr_scene_node_set_position(
+			&deco->focus_border_buf->node, -fbw, -fbw);
+		wlr_scene_node_set_enabled(
+			&deco->focus_border_buf->node, true);
+		/* Raise focus border above other decoration elements */
+		wlr_scene_node_raise_to_top(
+			&deco->focus_border_buf->node);
+	} else if (deco->focus_border_buf) {
+		wlr_scene_node_set_enabled(
+			&deco->focus_border_buf->node, false);
 	}
 }
 

@@ -157,6 +157,10 @@ struct wm_style {
 	int window_bevel_width;
 	uint8_t window_round_corners;	/* bitmask of WM_CORNER_* */
 
+	/* Focus border (accessibility highlight around focused windows) */
+	int window_focus_border_width;
+	struct wm_color window_focus_border_color;
+
 	/* Menu title */
 	struct wm_texture menu_title;
 	struct wm_color menu_title_text_color;

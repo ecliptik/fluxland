@@ -86,6 +86,10 @@ window.borderColor:                 #1a1d23
 window.borderWidth:                 1
 window.bevelWidth:                  1
 
+# Focus border (accessibility: highlighted border around focused windows)
+window.focus.border.width:          0
+window.focus.border.color:          #88c0d0
+
 # Rounded corners: TopLeft TopRight BottomLeft BottomRight
 # window.roundCorners:              TopLeft TopRight
 
