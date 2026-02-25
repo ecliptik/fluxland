@@ -4,6 +4,76 @@ This is the backlog of planned features, improvements, and infrastructure
 work for fluxland. Items are grouped by category and roughly ordered
 by priority within each section.
 
+See `FEATURE_GAP_ANALYSIS.md` for the full Fluxbox feature parity audit.
+
+---
+
+## Fluxbox Feature Parity — Remaining Items
+
+These were identified in the Fluxbox feature audit but not yet implemented.
+Phases 1-5 are complete; these are the remaining gaps.
+
+### High Complexity (XL) — Need Dedicated Sessions
+
+- [ ] **External Tabs** — Tab positioning outside the window (Top/Bottom/Left/Right)
+  - Config: `session.screen0.tabs.intitlebar`, `tab.placement`, `tab.width`,
+    `tabPadding`, `tabsAttachArea`
+  - Files: `decoration.c/h`, `tabgroup.c/h`, `config.c/h`
+- [ ] **System Tray** — StatusNotifierWatcher/StatusNotifierItem D-Bus protocol
+  - Alternative to X11 system tray for Wayland
+  - Files: new `systray.c/h`, `toolbar.c`, D-Bus dependency
+- [ ] **Conditional Commands** — `If {condition} {then} {else}`, `ForEach/Map`,
+  `Delay {cmd} [us]`
+  - Conditions: Matches, Some, Every, Not, And, Or, Xor
+  - Files: `keybind.c/h`, `keyboard.c`
+- [ ] **Toolbar Tools Configuration** — `session.screen0.toolbar.tools` for
+  configurable component order (clock, workspacename, iconbar, buttons, etc.)
+  - Files: `toolbar.c/h`, `config.c/h`
+
+### Medium Complexity (M)
+
+- [ ] **Menu Icons** — `<icon_path>` support on menu items
+  - Files: `menu.c/h`, `render.c`
+- [ ] **FocusProtection** — Per-window `[FocusProtection] {Gain,Refuse,Deny,Lock}`
+  in apps file
+  - Files: `rules.c/h`, `view.c`
+- [ ] **IgnoreSizeHints** — Per-window `[IgnoreSizeHints] {yes}` in apps file
+  - Files: `rules.c/h`, `view.c`
+- [ ] **Slitlist File** — `session.slitlistFile` to persist dockapp ordering
+  - Files: `slit.c/h`, `config.c`
+- [ ] **Slit Alpha/Layer/MaxOver** — `slit.alpha`, `slit.layer`, `slit.maxOver`
+  config options
+  - Files: `slit.c`, `config.c/h`
+- [ ] **Halo Text Effect** — `effect: halo` with `halo.color` in style files
+  - Files: `render.c`
+- [ ] **Wireframe Move/Resize** — Honor `opaqueMove: false` / `opaqueResize: false`
+  with outline rendering instead of opaque
+  - Files: `cursor.c`, `render.c`
+
+### Low Complexity (S)
+
+- [ ] **BindKey** — Add keybindings at runtime via `BindKey` command
+- [ ] **SetEnv/Export** — Set environment variables from keys file
+- [ ] **ShowWindowPosition** — Coordinate overlay during move/resize
+- [ ] **Slit Styling** — `slit.*` style properties (borderWidth, color, etc.)
+- [ ] **Menu Bullet Style** — `menu.bullet`, `menu.bullet.position` style props
+- [ ] **Menu Item/Title Height** — `menu.itemHeight`, `menu.titleHeight` style props
+- [ ] **SetAlpha Relative** — `SetAlpha +10` / `SetAlpha -10` relative adjustment
+- [ ] **NextWindow/PrevWindow Pattern** — Filter cycling by pattern argument
+- [ ] **NextGroup/PrevGroup** — Cycle between tab groups
+- [ ] **GotoWindow N** — Focus window at stack position N
+- [ ] **Unclutter** — Reduce window overlap without resizing
+- [ ] **AutotabPlacement** — Auto-tab new windows into existing groups
+- [ ] **--list-commands CLI** — Print all available commands and exit
+- [ ] **[encoding]/[endencoding]** — Menu character encoding tags
+- [ ] **[wallpapers] Menu Tag** — Browse wallpaper directory
+- [ ] **[stylesmenu] Menu Tag** — Auto-generated style list
+- [ ] **Iconbar Enhancements** — alignment, iconWidth, usePixmap, wheelMode,
+  iconifiedPattern config options
+- [ ] **Tab-Specific Focus Models** — ClickTabFocus / MouseTabFocus
+
+---
+
 ## CI/CD
 
 - [ ] GitHub Actions workflow for build + test on push and PR
