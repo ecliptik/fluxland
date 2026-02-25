@@ -32,21 +32,21 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ### Medium Complexity (M)
 
-- [ ] **Menu Icons** — `<icon_path>` support on menu items
+- [x] **Menu Icons** — `<icon_path>` support on menu items
   - Files: `menu.c/h`, `render.c`
-- [ ] **FocusProtection** — Per-window `[FocusProtection] {Gain,Refuse,Deny,Lock}`
+- [x] **FocusProtection** — Per-window `[FocusProtection] {Gain,Refuse,Deny,Lock}`
   in apps file
   - Files: `rules.c/h`, `view.c`
-- [ ] **IgnoreSizeHints** — Per-window `[IgnoreSizeHints] {yes}` in apps file
+- [x] **IgnoreSizeHints** — Per-window `[IgnoreSizeHints] {yes}` in apps file
   - Files: `rules.c/h`, `view.c`
-- [ ] **Slitlist File** — `session.slitlistFile` to persist dockapp ordering
+- [x] **Slitlist File** — `session.slitlistFile` to persist dockapp ordering
   - Files: `slit.c/h`, `config.c`
-- [ ] **Slit Alpha/Layer/MaxOver** — `slit.alpha`, `slit.layer`, `slit.maxOver`
+- [x] **Slit Alpha/Layer/MaxOver** — `slit.alpha`, `slit.layer`, `slit.maxOver`
   config options
   - Files: `slit.c`, `config.c/h`
-- [ ] **Halo Text Effect** — `effect: halo` with `halo.color` in style files
+- [x] **Halo Text Effect** — `effect: halo` with `halo.color` in style files
   - Files: `render.c`
-- [ ] **Wireframe Move/Resize** — Honor `opaqueMove: false` / `opaqueResize: false`
+- [x] **Wireframe Move/Resize** — Honor `opaqueMove: false` / `opaqueResize: false`
   with outline rendering instead of opaque
   - Files: `cursor.c`, `render.c`
 
