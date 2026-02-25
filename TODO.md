@@ -15,18 +15,18 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ### High Complexity (XL) — Need Dedicated Sessions
 
-- [ ] **External Tabs** — Tab positioning outside the window (Top/Bottom/Left/Right)
+- [x] **External Tabs** — Tab positioning outside the window (Top/Bottom/Left/Right)
   - Config: `session.screen0.tabs.intitlebar`, `tab.placement`, `tab.width`,
     `tabPadding`, `tabsAttachArea`
   - Files: `decoration.c/h`, `tabgroup.c/h`, `config.c/h`
-- [ ] **System Tray** — StatusNotifierWatcher/StatusNotifierItem D-Bus protocol
+- [x] **System Tray** — StatusNotifierWatcher/StatusNotifierItem D-Bus protocol
   - Alternative to X11 system tray for Wayland
   - Files: new `systray.c/h`, `toolbar.c`, D-Bus dependency
-- [ ] **Conditional Commands** — `If {condition} {then} {else}`, `ForEach/Map`,
+- [x] **Conditional Commands** — `If {condition} {then} {else}`, `ForEach/Map`,
   `Delay {cmd} [us]`
   - Conditions: Matches, Some, Every, Not, And, Or, Xor
   - Files: `keybind.c/h`, `keyboard.c`
-- [ ] **Toolbar Tools Configuration** — `session.screen0.toolbar.tools` for
+- [x] **Toolbar Tools Configuration** — `session.screen0.toolbar.tools` for
   configurable component order (clock, workspacename, iconbar, buttons, etc.)
   - Files: `toolbar.c/h`, `config.c/h`
 
