@@ -457,7 +457,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_NEXT_WINDOW:
 		if (argument) {
-			struct wm_workspace *ws = server->current_workspace;
+			struct wm_workspace *ws = wm_workspace_get_active(server);
 			struct wm_view *focused = server->focused_view;
 			struct wm_view *candidate = NULL;
 			bool past_focused = (focused == NULL);
@@ -495,7 +495,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_PREV_WINDOW:
 		if (argument) {
-			struct wm_workspace *ws = server->current_workspace;
+			struct wm_workspace *ws = wm_workspace_get_active(server);
 			struct wm_view *focused = server->focused_view;
 			struct wm_view *candidate = NULL;
 			struct wm_view *last_match = NULL;
@@ -667,7 +667,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_SHOW_DESKTOP: {
 		struct wm_view *v;
 		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace == server->current_workspace) {
+			if (v->workspace == wm_workspace_get_active(server)) {
 				v->request_minimize.notify(
 					&v->request_minimize, NULL);
 			}
@@ -1163,7 +1163,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 			int n = atoi(argument);
 			if (n >= 1) {
 				struct wm_workspace *ws =
-					server->current_workspace;
+					wm_workspace_get_active(server);
 				int count = 0;
 				struct wm_view *gv;
 				wl_list_for_each(gv, &server->views, link) {
@@ -1183,7 +1183,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_NEXT_GROUP:
 	case WM_ACTION_PREV_GROUP: {
-		struct wm_workspace *ws = server->current_workspace;
+		struct wm_workspace *ws = wm_workspace_get_active(server);
 		struct wm_tab_group *groups[256];
 		int ngroups = 0;
 		struct wm_view *gv;
@@ -1229,7 +1229,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 	}
 
 	case WM_ACTION_UNCLUTTER: {
-		struct wm_workspace *ws = server->current_workspace;
+		struct wm_workspace *ws = wm_workspace_get_active(server);
 		struct wlr_box area = {0, 0, 800, 600};
 		struct wm_output *output;
 		wl_list_for_each(output, &server->outputs, link) {
@@ -1290,7 +1290,7 @@ cmd_get_workspaces(struct wm_server *server)
 		first = false;
 
 		char *name_esc = json_escape(ws->name);
-		bool focused = (ws == server->current_workspace);
+		bool focused = (ws == wm_workspace_get_active(server));
 
 		strbuf_appendf(&sb,
 			"{\"index\":%d,\"name\":%s,\"focused\":%s,"

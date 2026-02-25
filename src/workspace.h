@@ -11,6 +11,7 @@
 
 struct wm_server;
 struct wm_view;
+struct wm_output;
 
 #define WM_DEFAULT_WORKSPACE_COUNT 4
 
@@ -85,5 +86,20 @@ void wm_workspace_switch_left(struct wm_server *server);
 
 /* Set the name of the current workspace */
 void wm_workspace_set_name(struct wm_server *server, const char *name);
+
+/*
+ * Get the effective active workspace, accounting for per-output mode.
+ * In per-output mode, returns the active workspace of the focused output.
+ * In global mode, returns server->current_workspace.
+ */
+struct wm_workspace *wm_workspace_get_active(struct wm_server *server);
+
+/*
+ * Check if a view should be visible on a given output in per-output mode.
+ * Returns true if the view's workspace matches the output's active workspace,
+ * or if the view is sticky.
+ */
+bool wm_view_visible_on_output(struct wm_view *view,
+	struct wm_output *output);
 
 #endif /* WM_WORKSPACE_H */

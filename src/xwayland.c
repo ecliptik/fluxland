@@ -255,8 +255,8 @@ handle_xwayland_surface_map(struct wl_listener *listener, void *data)
 	if (xview->window_class == WM_XW_UNMANAGED) {
 		/* Unmanaged overlays sit above normal views */
 		parent = server->xdg_popup_tree;
-	} else if (server->current_workspace) {
-		parent = server->current_workspace->tree;
+	} else if (wm_workspace_get_active(server)) {
+		parent = wm_workspace_get_active(server)->tree;
 	} else {
 		parent = server->view_tree;
 	}

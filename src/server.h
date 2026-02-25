@@ -176,6 +176,11 @@ struct wm_server {
 	bool show_position;
 	struct wlr_scene_buffer *position_overlay;
 
+	/* Window snap zones (edge/corner snapping preview) */
+	int snap_zone; /* enum wm_snap_zone from config.h */
+	struct wlr_box snap_preview_box;
+	struct wlr_scene_buffer *snap_preview;
+
 	/* Wireframe move/resize (opaqueMove: false / opaqueResize: false) */
 	struct wlr_scene_rect *wireframe_rects[4]; /* top, right, bottom, left */
 	bool wireframe_active;

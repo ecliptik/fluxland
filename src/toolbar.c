@@ -267,7 +267,7 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 		} else if (tool->type == WM_TOOL_WORKSPACE_NAME) {
 			/* Measure current workspace name */
 			struct wm_workspace *ws =
-				toolbar->server->current_workspace;
+				wm_workspace_get_active(toolbar->server);
 			const char *name = ws ? ws->name : "1";
 			if (!name || !*name) name = "1";
 			int tw = wm_measure_text_width(name,
@@ -405,8 +405,8 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 	struct wm_server *server = toolbar->server;
 	struct wm_style *style = server->style;
 	int ws_count = server->workspace_count;
-	int current = server->current_workspace ?
-		server->current_workspace->index : 0;
+	struct wm_workspace *active_ws = wm_workspace_get_active(server);
+	int current = active_ws ? active_ws->index : 0;
 
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
@@ -522,7 +522,7 @@ static int
 collect_iconbar_entries(struct wm_toolbar *toolbar)
 {
 	struct wm_server *server = toolbar->server;
-	struct wm_workspace *current_ws = server->current_workspace;
+	struct wm_workspace *current_ws = wm_workspace_get_active(server);
 	enum wm_iconbar_mode mode = toolbar->iconbar_mode;
 	int count = 0;
 

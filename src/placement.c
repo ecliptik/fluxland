@@ -526,7 +526,7 @@ collect_visible_views(struct wm_server *server, struct wm_view **out,
 	wl_list_for_each(v, &server->views, link) {
 		if (n >= max)
 			break;
-		if (v->workspace != server->current_workspace && !v->sticky)
+		if (v->workspace != wm_workspace_get_active(server) && !v->sticky)
 			continue;
 		if (v->fullscreen)
 			continue;

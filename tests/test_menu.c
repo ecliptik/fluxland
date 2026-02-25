@@ -45,6 +45,8 @@ void wm_view_raise(struct wm_view *v)
 	{ (void)v; }
 void wm_workspace_switch(struct wm_server *s, int i)
 	{ (void)s; (void)i; }
+struct wm_workspace *wm_workspace_get_active(struct wm_server *s)
+	{ (void)s; return NULL; }
 void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
 	{ (void)v; (void)m; }
 void wm_focus_view(struct wm_view *v, struct wlr_surface *s)

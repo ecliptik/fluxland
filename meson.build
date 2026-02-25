@@ -133,6 +133,7 @@ wm_deps = [
 
 wm_sources = files(
   'src/main.c',
+  'src/animation.c',
   'src/autostart.c',
   'src/server.c',
   'src/output.c',

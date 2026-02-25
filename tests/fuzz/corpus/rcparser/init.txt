@@ -1,0 +1,118 @@
+# fluxland init file
+# Format: resource.key: value
+# Place your copy at: ~/.config/fluxland/init
+#
+# This file controls compositor-wide settings. After editing,
+# press Mod4+r (Reconfigure) or restart the compositor to apply.
+
+# -------------------------------------------------------------------
+# Workspaces
+# -------------------------------------------------------------------
+
+# Number of workspaces (1-32)
+session.screen0.workspaces: 4
+
+# Workspace names (comma-separated)
+session.screen0.workspaceNames: Main, Web, Code, Media
+
+# Allow mouse to warp between workspaces at screen edges
+session.screen0.workspacewarping: true
+
+# -------------------------------------------------------------------
+# Focus model
+# -------------------------------------------------------------------
+
+# Focus policy: ClickToFocus, MouseFocus, or StrictMouseFocus
+#   ClickToFocus     - click a window to focus it (default)
+#   MouseFocus       - focus follows mouse, click to raise
+#   StrictMouseFocus - focus follows mouse, unfocuses when leaving
+session.screen0.focusModel: ClickToFocus
+
+# Auto-raise focused windows (useful with MouseFocus)
+session.screen0.autoRaise: false
+
+# Delay before auto-raising (milliseconds)
+session.autoRaiseDelay: 250
+
+# Clicking on a window raises it to the top
+session.screen0.clickRaises: true
+
+# Automatically focus newly-opened windows
+session.screen0.focusNewWindows: true
+
+# -------------------------------------------------------------------
+# Window behavior
+# -------------------------------------------------------------------
+
+# Show window contents while moving (vs wireframe outline)
+session.screen0.opaqueMove: true
+
+# Show window contents while resizing
+session.screen0.opaqueResize: false
+
+# Snap distance to screen edges and other windows (pixels)
+session.screen0.edgeSnapThreshold: 10
+
+# Window placement policy for new windows:
+#   RowSmartPlacement    - fill rows left-to-right (default)
+#   ColSmartPlacement    - fill columns top-to-bottom
+#   CascadePlacement     - cascade from top-left corner
+#   UnderMousePlacement  - center new windows under the cursor
+session.screen0.windowPlacement: RowSmartPlacement
+
+# -------------------------------------------------------------------
+# Toolbar
+# -------------------------------------------------------------------
+
+# Show the toolbar
+session.screen0.toolbar.visible: true
+
+# Toolbar position:
+#   TopLeft, TopCenter, TopRight,
+#   BottomLeft, BottomCenter, BottomRight
+session.screen0.toolbar.placement: BottomCenter
+
+# Auto-hide the toolbar (slide off-screen when not hovered)
+session.screen0.toolbar.autoHide: false
+
+# Delay before auto-hiding (milliseconds)
+session.screen0.toolbar.autoHideDelay: 500
+
+# Toolbar width as percentage of screen width (10-100)
+session.screen0.toolbar.widthPercent: 100
+
+# -------------------------------------------------------------------
+# Keyboard layout (XKB)
+# -------------------------------------------------------------------
+
+# Uncomment and set to configure a non-default keyboard layout.
+# See xkeyboard-config(7) or `localectl list-x11-keymap-*` for options.
+
+# session.xkb.rules: evdev
+# session.xkb.model: pc105
+# session.xkb.layout: us
+# session.xkb.variant:
+# session.xkb.options: ctrl:nocaps
+
+# Multiple layouts (switch with Mod4+Space / NextLayout):
+# session.xkb.layout: us,de
+# session.xkb.options: grp:win_space_toggle
+
+# -------------------------------------------------------------------
+# Mouse button remapping
+# -------------------------------------------------------------------
+
+# Remap logical mouse buttons to different event codes.
+# Values: BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA
+# Example: swap left and right buttons for left-handed use:
+# session.mouse.button1.map: BTN_RIGHT
+# session.mouse.button3.map: BTN_LEFT
+
+# -------------------------------------------------------------------
+# File paths (usually auto-detected; override if needed)
+# -------------------------------------------------------------------
+
+# session.keyFile: ~/.config/fluxland/keys
+# session.appsFile: ~/.config/fluxland/apps
+# session.menuFile: ~/.config/fluxland/menu
+# session.styleFile: ~/.config/fluxland/styles/default

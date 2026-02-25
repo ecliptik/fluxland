@@ -47,12 +47,31 @@ enum wm_menu_search {
 	WM_MENU_SEARCH_SOMEWHERE,  /* match anywhere in item label */
 };
 
+/* Window snap zones for edge/corner snapping */
+enum wm_workspace_mode {
+	WM_WORKSPACE_GLOBAL,       /* all outputs share one active workspace (default) */
+	WM_WORKSPACE_PER_OUTPUT,   /* each output independently selects its workspace */
+};
+
+enum wm_snap_zone {
+	WM_SNAP_ZONE_NONE = 0,
+	WM_SNAP_ZONE_LEFT_HALF,
+	WM_SNAP_ZONE_RIGHT_HALF,
+	WM_SNAP_ZONE_TOP_HALF,
+	WM_SNAP_ZONE_BOTTOM_HALF,
+	WM_SNAP_ZONE_TOPLEFT,
+	WM_SNAP_ZONE_TOPRIGHT,
+	WM_SNAP_ZONE_BOTTOMLEFT,
+	WM_SNAP_ZONE_BOTTOMRIGHT,
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
 	char **workspace_names;
 	int workspace_name_count;
 	bool workspace_warping;
+	enum wm_workspace_mode workspace_mode;
 
 	/* Focus */
 	enum wm_focus_policy focus_policy;
@@ -119,6 +138,16 @@ struct wm_config {
 	/* Window opacity (0-255) */
 	int window_focus_alpha;
 	int window_unfocus_alpha;
+
+	/* Window snap zones (edge/corner snapping during move) */
+	bool enable_window_snapping;
+	int snap_zone_threshold;  /* pixels from edge to trigger snap */
+
+	/* Window animations */
+	bool animate_window_map;
+	bool animate_window_unmap;
+	bool animate_minimize;
+	int animation_duration_ms;
 
 	/* Slit configuration */
 	bool slit_auto_hide;

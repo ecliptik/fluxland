@@ -1,0 +1,16 @@
+# comment line
+! another comment style
+
+key.with.no.value:
+:value.with.no.key
+: :
+colon:in:value: still works
+empty.value:
+  whitespace.key  :  whitespace value
+key: true
+key2: false
+key3: 0
+key4: 1
+key5: -999999999999
+key6: yes
+key7: no

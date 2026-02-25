@@ -16,6 +16,7 @@
 struct wm_workspace;
 struct wm_tab_group;
 struct wm_decoration;
+struct wm_animation;
 struct wlr_foreign_toplevel_handle_v1;
 
 /* Fluxbox-inspired window layers (bottom to top) */
@@ -69,6 +70,9 @@ struct wm_view {
 	/* Window opacity (0-255, 255 = fully opaque) */
 	int focus_alpha;
 	int unfocus_alpha;
+
+	/* Active animation (NULL if none) */
+	struct wm_animation *animation;
 
 	/* Focus protection (bitmask of WM_FOCUS_PROT_* flags, 0 = none) */
 	int focus_protection;

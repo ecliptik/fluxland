@@ -456,7 +456,7 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_NEXT_WINDOW:
 		if (argument) {
 			/* Filtered cycling: only windows matching pattern */
-			struct wm_workspace *ws = server->current_workspace;
+			struct wm_workspace *ws = wm_workspace_get_active(server);
 			struct wm_view *focused = server->focused_view;
 			struct wm_view *candidate = NULL;
 			bool past_focused = (focused == NULL);
@@ -493,7 +493,7 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_PREV_WINDOW:
 		if (argument) {
 			/* Filtered cycling: only windows matching pattern */
-			struct wm_workspace *ws = server->current_workspace;
+			struct wm_workspace *ws = wm_workspace_get_active(server);
 			struct wm_view *focused = server->focused_view;
 			struct wm_view *candidate = NULL;
 			struct wm_view *last_match = NULL;
@@ -701,7 +701,7 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_SHOW_DESKTOP: {
 		struct wm_view *v;
 		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace == server->current_workspace) {
+			if (v->workspace == wm_workspace_get_active(server)) {
 				struct wl_listener *listener =
 					&v->request_minimize;
 				listener->notify(listener, NULL);
@@ -1167,7 +1167,7 @@ execute_action(struct wm_server *server,
 			int n = atoi(argument);
 			if (n < 1)
 				return true;
-			struct wm_workspace *ws = server->current_workspace;
+			struct wm_workspace *ws = wm_workspace_get_active(server);
 			int count = 0;
 			struct wm_view *v;
 			wl_list_for_each(v, &server->views, link) {
@@ -1185,7 +1185,7 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_NEXT_GROUP:
 	case WM_ACTION_PREV_GROUP: {
-		struct wm_workspace *ws = server->current_workspace;
+		struct wm_workspace *ws = wm_workspace_get_active(server);
 		/* Build array of unique tab groups on current workspace */
 		struct wm_tab_group *groups[256];
 		int ngroups = 0;
@@ -1234,7 +1234,7 @@ execute_action(struct wm_server *server,
 	}
 
 	case WM_ACTION_UNCLUTTER: {
-		struct wm_workspace *ws = server->current_workspace;
+		struct wm_workspace *ws = wm_workspace_get_active(server);
 		/* Get usable area from first output */
 		struct wlr_box area = {0, 0, 800, 600};
 		struct wm_output *output;

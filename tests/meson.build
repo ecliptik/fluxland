@@ -84,4 +84,54 @@ if wayland_client.found()
     install: false,
   )
   test('integration', test_integration, timeout: 30)
+
+  # --- XDG shell client protocol (client-side header for tests) ---
+  wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
+  wayland_scanner = find_program('wayland-scanner')
+
+  xdg_shell_xml = wl_protocol_dir / 'stable/xdg-shell/xdg-shell.xml'
+  xdg_shell_client_h = custom_target(
+    'xdg-shell-client-protocol.h',
+    input: xdg_shell_xml,
+    output: 'xdg-shell-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  xdg_shell_code = custom_target(
+    'xdg-shell-protocol.c',
+    input: xdg_shell_xml,
+    output: 'xdg-shell-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- Integration test harness library ---
+  integration_inc = include_directories('integration')
+  harness_lib = static_library(
+    'test_harness',
+    files('integration/harness.c'),
+    xdg_shell_client_h,
+    xdg_shell_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client],
+    install: false,
+  )
+
+  harness_dep = declare_dependency(
+    link_with: harness_lib,
+    sources: [xdg_shell_client_h],
+    include_directories: [integration_inc],
+  )
+
+  # --- test_xdg_shell: XDG shell protocol tests ---
+  test_xdg_shell = executable(
+    'test_xdg_shell',
+    files('test_xdg_shell.c'),
+    xdg_shell_client_h,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('xdg_shell', test_xdg_shell, timeout: 30)
 endif
+
+# --- Fuzz targets (requires -fsanitize=fuzzer support) ---
+subdir('fuzz')

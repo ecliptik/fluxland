@@ -8,11 +8,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
 #include "config.h"
 #include "ipc.h"
+#include "output.h"
 #include "server.h"
 #include "toolbar.h"
 #include "view.h"
@@ -40,6 +42,54 @@ json_escape_buf(char *dst, size_t dst_size, const char *src)
 		}
 	}
 	dst[j] = '\0';
+}
+
+/* Check if per-output workspace mode is active */
+static bool
+is_per_output_mode(struct wm_server *server)
+{
+	return server->config &&
+		server->config->workspace_mode == WM_WORKSPACE_PER_OUTPUT;
+}
+
+/* Find which output a view is positioned on */
+static struct wm_output *
+get_view_output(struct wm_view *view)
+{
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(
+		view->server->output_layout,
+		view->x + 1, view->y + 1);
+	if (!wlr_output)
+		return NULL;
+	return wm_output_from_wlr(view->server, wlr_output);
+}
+
+/*
+ * Update visibility of all views based on per-output workspace state.
+ * In per-output mode, a view is visible if its workspace matches the
+ * active workspace of the output it's positioned on.
+ */
+static void
+update_views_per_output(struct wm_server *server)
+{
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->sticky) {
+			wlr_scene_node_set_enabled(
+				&view->scene_tree->node, true);
+			continue;
+		}
+		struct wm_output *output = get_view_output(view);
+		if (!output) {
+			/* View not on any output, keep visible */
+			wlr_scene_node_set_enabled(
+				&view->scene_tree->node, true);
+			continue;
+		}
+		bool visible = (view->workspace == output->active_workspace);
+		wlr_scene_node_set_enabled(
+			&view->scene_tree->node, visible);
+	}
 }
 
 static struct wm_workspace *
@@ -118,6 +168,17 @@ wm_workspaces_init(struct wm_server *server, int count)
 
 	/* Set the first workspace as current */
 	server->current_workspace = wm_workspace_get(server, 0);
+
+	/*
+	 * In per-output mode, all workspace trees must be enabled because
+	 * visibility is controlled per-view, not per-tree.
+	 */
+	if (is_per_output_mode(server)) {
+		struct wm_workspace *ws;
+		wl_list_for_each(ws, &server->workspaces, link) {
+			wlr_scene_node_set_enabled(&ws->tree->node, true);
+		}
+	}
 }
 
 void
@@ -152,22 +213,52 @@ void
 wm_workspace_switch(struct wm_server *server, int index)
 {
 	struct wm_workspace *target = wm_workspace_get(server, index);
-	if (!target || target == server->current_workspace) {
+	if (!target) {
 		return;
 	}
 
-	struct wm_workspace *old = server->current_workspace;
+	if (is_per_output_mode(server)) {
+		/*
+		 * Per-output mode: switch only the focused output's
+		 * active workspace. All workspace trees stay enabled;
+		 * individual view visibility is managed per-view.
+		 */
+		struct wm_output *focused = wm_server_get_focused_output(
+			server);
+		if (!focused || target == focused->active_workspace)
+			return;
 
-	/* Disable old workspace scene tree */
-	wlr_scene_node_set_enabled(&old->tree->node, false);
+		struct wm_workspace *old = focused->active_workspace;
+		focused->active_workspace = target;
 
-	/* Enable new workspace scene tree */
-	wlr_scene_node_set_enabled(&target->tree->node, true);
+		/* Track as the server-wide current workspace too */
+		server->current_workspace = target;
 
-	server->current_workspace = target;
+		/* Update per-view visibility */
+		update_views_per_output(server);
 
-	wlr_log(WLR_DEBUG, "workspace switch: %s -> %s",
-		old->name, target->name);
+		wlr_log(WLR_DEBUG,
+			"workspace switch (output %s): %s -> %s",
+			focused->wlr_output->name,
+			old->name, target->name);
+	} else {
+		/* Global mode: original behavior */
+		if (target == server->current_workspace)
+			return;
+
+		struct wm_workspace *old = server->current_workspace;
+
+		/* Disable old workspace scene tree */
+		wlr_scene_node_set_enabled(&old->tree->node, false);
+
+		/* Enable new workspace scene tree */
+		wlr_scene_node_set_enabled(&target->tree->node, true);
+
+		server->current_workspace = target;
+
+		wlr_log(WLR_DEBUG, "workspace switch: %s -> %s",
+			old->name, target->name);
+	}
 
 	/* Update toolbar workspace buttons and icon bar */
 	wm_toolbar_update_workspace(server->toolbar);
@@ -192,13 +283,14 @@ wm_workspace_switch(struct wm_server *server, int index)
 	 */
 	struct wm_view *view;
 	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace == target) {
+		if (view->workspace == target &&
+		    view->scene_tree->node.enabled) {
 			wm_focus_view(view,
 				view->xdg_toplevel->base->surface);
 			return;
 		}
 		/* Also consider sticky views */
-		if (view->sticky) {
+		if (view->sticky && view->scene_tree->node.enabled) {
 			wm_focus_view(view,
 				view->xdg_toplevel->base->surface);
 			return;
@@ -212,16 +304,17 @@ wm_workspace_switch(struct wm_server *server, int index)
 void
 wm_workspace_switch_next(struct wm_server *server)
 {
-	int next = (server->current_workspace->index + 1) %
-		server->workspace_count;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int next = (current->index + 1) % server->workspace_count;
 	wm_workspace_switch(server, next);
 }
 
 void
 wm_workspace_switch_prev(struct wm_server *server)
 {
-	int prev = (server->current_workspace->index - 1 +
-		server->workspace_count) % server->workspace_count;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int prev = (current->index - 1 + server->workspace_count) %
+		server->workspace_count;
 	wm_workspace_switch(server, prev);
 }
 
@@ -272,13 +365,22 @@ wm_view_send_to_workspace(struct wm_server *server, int index)
 	 * visible. If the target workspace is not the current one,
 	 * hide the view and focus the next view on the current workspace.
 	 */
-	if (target != server->current_workspace) {
-		/* View will be hidden because its workspace tree is disabled */
+	struct wm_workspace *active = wm_workspace_get_active(server);
+
+	if (is_per_output_mode(server)) {
+		/* Update per-view visibility */
+		update_views_per_output(server);
+	}
+
+	if (target != active) {
+		/* View will be hidden because its workspace tree is disabled
+		 * (global mode) or per-view visibility toggled it off
+		 * (per-output mode) */
 		struct wm_view *next;
 		wl_list_for_each(next, &server->views, link) {
 			if (next != view &&
-					(next->workspace == server->current_workspace ||
-					 next->sticky)) {
+			    next->scene_tree->node.enabled &&
+			    (next->workspace == active || next->sticky)) {
 				wm_focus_view(next,
 					next->xdg_toplevel->base->surface);
 				return;
@@ -316,32 +418,34 @@ wm_view_take_to_workspace(struct wm_server *server, int index)
 void
 wm_view_send_to_next_workspace(struct wm_server *server)
 {
-	int next = (server->current_workspace->index + 1) %
-		server->workspace_count;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int next = (current->index + 1) % server->workspace_count;
 	wm_view_send_to_workspace(server, next);
 }
 
 void
 wm_view_send_to_prev_workspace(struct wm_server *server)
 {
-	int prev = (server->current_workspace->index - 1 +
-		server->workspace_count) % server->workspace_count;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int prev = (current->index - 1 + server->workspace_count) %
+		server->workspace_count;
 	wm_view_send_to_workspace(server, prev);
 }
 
 void
 wm_view_take_to_next_workspace(struct wm_server *server)
 {
-	int next = (server->current_workspace->index + 1) %
-		server->workspace_count;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int next = (current->index + 1) % server->workspace_count;
 	wm_view_take_to_workspace(server, next);
 }
 
 void
 wm_view_take_to_prev_workspace(struct wm_server *server)
 {
-	int prev = (server->current_workspace->index - 1 +
-		server->workspace_count) % server->workspace_count;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int prev = (current->index - 1 + server->workspace_count) %
+		server->workspace_count;
 	wm_view_take_to_workspace(server, prev);
 }
 
@@ -394,6 +498,19 @@ wm_workspace_remove_last(struct wm_server *server)
 		wm_workspace_switch(server, last_index - 1);
 	}
 
+	/*
+	 * In per-output mode, reset any output whose active workspace
+	 * points to the removed workspace.
+	 */
+	if (is_per_output_mode(server)) {
+		struct wm_output *output;
+		wl_list_for_each(output, &server->outputs, link) {
+			if (output->active_workspace == last)
+				output->active_workspace = prev_ws;
+		}
+		update_views_per_output(server);
+	}
+
 	workspace_destroy(last);
 	server->workspace_count--;
 	wm_toolbar_update_workspace(server->toolbar);
@@ -402,7 +519,8 @@ wm_workspace_remove_last(struct wm_server *server)
 void
 wm_workspace_switch_right(struct wm_server *server)
 {
-	int next = server->current_workspace->index + 1;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int next = current->index + 1;
 	if (next >= server->workspace_count)
 		return;
 	wm_workspace_switch(server, next);
@@ -411,7 +529,8 @@ wm_workspace_switch_right(struct wm_server *server)
 void
 wm_workspace_switch_left(struct wm_server *server)
 {
-	int prev = server->current_workspace->index - 1;
+	struct wm_workspace *current = wm_workspace_get_active(server);
+	int prev = current->index - 1;
 	if (prev < 0)
 		return;
 	wm_workspace_switch(server, prev);
@@ -420,11 +539,12 @@ wm_workspace_switch_left(struct wm_server *server)
 void
 wm_workspace_set_name(struct wm_server *server, const char *name)
 {
-	if (!server->current_workspace || !name)
+	struct wm_workspace *ws = wm_workspace_get_active(server);
+	if (!ws || !name)
 		return;
 
-	free(server->current_workspace->name);
-	server->current_workspace->name = strdup(name);
+	free(ws->name);
+	ws->name = strdup(name);
 
 	wm_toolbar_update_workspace(server->toolbar);
 }
@@ -449,4 +569,30 @@ wm_view_set_sticky(struct wm_view *view, bool sticky)
 				view->workspace->tree);
 		}
 	}
+
+	/* In per-output mode, refresh visibility */
+	if (is_per_output_mode(view->server))
+		update_views_per_output(view->server);
+}
+
+struct wm_workspace *
+wm_workspace_get_active(struct wm_server *server)
+{
+	if (is_per_output_mode(server)) {
+		struct wm_output *output =
+			wm_server_get_focused_output(server);
+		if (output && output->active_workspace)
+			return output->active_workspace;
+	}
+	return server->current_workspace;
+}
+
+bool
+wm_view_visible_on_output(struct wm_view *view, struct wm_output *output)
+{
+	if (view->sticky)
+		return true;
+	if (!output || !output->active_workspace)
+		return true;
+	return view->workspace == output->active_workspace;
 }

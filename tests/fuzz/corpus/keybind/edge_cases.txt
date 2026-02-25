@@ -1,0 +1,14 @@
+# Comment
+None a :Nop
+Mod4 Shift q :Close
+Mod1 Tab :NextWindow
+Mod4 x Mod4 t :Exec foot
+move: h :MoveLeft 10
+move: Escape :KeyMode default
+Mod4 v :KeyMode move Escape
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnDesktop Mouse3 :RootMenu
+Mod4 l a :SetLayer Above
+:
+:Exec
+Mod4 :

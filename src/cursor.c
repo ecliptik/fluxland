@@ -31,6 +31,7 @@
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
+#include <cairo.h>
 #include <drm_fourcc.h>
 
 #include "config.h"
@@ -40,6 +41,7 @@
 #include "render.h"
 #include "idle.h"
 #include "menu.h"
+#include "output.h"
 #include "placement.h"
 #include "session_lock.h"
 #include "slit.h"
@@ -597,6 +599,236 @@ wireframe_hide(struct wm_server *server)
 	server->wireframe_active = false;
 }
 
+/* --- Window snap zone helpers --- */
+
+/*
+ * Detect which snap zone the cursor is in based on its position
+ * relative to the output's usable area edges.
+ */
+static enum wm_snap_zone
+snap_zone_detect(struct wm_server *server, struct wlr_box *usable)
+{
+	int threshold = 10;
+	if (server->config)
+		threshold = server->config->snap_zone_threshold;
+
+	int cx = (int)server->cursor->x;
+	int cy = (int)server->cursor->y;
+
+	bool at_left = (cx - usable->x) < threshold;
+	bool at_right = (usable->x + usable->width - cx) < threshold;
+	bool at_top = (cy - usable->y) < threshold;
+	bool at_bottom = (usable->y + usable->height - cy) < threshold;
+
+	/* Corners take priority over edges */
+	if (at_left && at_top)
+		return WM_SNAP_ZONE_TOPLEFT;
+	if (at_right && at_top)
+		return WM_SNAP_ZONE_TOPRIGHT;
+	if (at_left && at_bottom)
+		return WM_SNAP_ZONE_BOTTOMLEFT;
+	if (at_right && at_bottom)
+		return WM_SNAP_ZONE_BOTTOMRIGHT;
+
+	/* Edges */
+	if (at_left)
+		return WM_SNAP_ZONE_LEFT_HALF;
+	if (at_right)
+		return WM_SNAP_ZONE_RIGHT_HALF;
+	if (at_top)
+		return WM_SNAP_ZONE_TOP_HALF;
+	if (at_bottom)
+		return WM_SNAP_ZONE_BOTTOM_HALF;
+
+	return WM_SNAP_ZONE_NONE;
+}
+
+/*
+ * Calculate the target geometry for a given snap zone
+ * within the output's usable area.
+ */
+static struct wlr_box
+snap_zone_geometry(enum wm_snap_zone zone, struct wlr_box *usable)
+{
+	struct wlr_box box = {0};
+	int half_w = usable->width / 2;
+	int half_h = usable->height / 2;
+
+	switch (zone) {
+	case WM_SNAP_ZONE_LEFT_HALF:
+		box.x = usable->x;
+		box.y = usable->y;
+		box.width = half_w;
+		box.height = usable->height;
+		break;
+	case WM_SNAP_ZONE_RIGHT_HALF:
+		box.x = usable->x + half_w;
+		box.y = usable->y;
+		box.width = usable->width - half_w;
+		box.height = usable->height;
+		break;
+	case WM_SNAP_ZONE_TOP_HALF:
+		box.x = usable->x;
+		box.y = usable->y;
+		box.width = usable->width;
+		box.height = half_h;
+		break;
+	case WM_SNAP_ZONE_BOTTOM_HALF:
+		box.x = usable->x;
+		box.y = usable->y + half_h;
+		box.width = usable->width;
+		box.height = usable->height - half_h;
+		break;
+	case WM_SNAP_ZONE_TOPLEFT:
+		box.x = usable->x;
+		box.y = usable->y;
+		box.width = half_w;
+		box.height = half_h;
+		break;
+	case WM_SNAP_ZONE_TOPRIGHT:
+		box.x = usable->x + half_w;
+		box.y = usable->y;
+		box.width = usable->width - half_w;
+		box.height = half_h;
+		break;
+	case WM_SNAP_ZONE_BOTTOMLEFT:
+		box.x = usable->x;
+		box.y = usable->y + half_h;
+		box.width = half_w;
+		box.height = usable->height - half_h;
+		break;
+	case WM_SNAP_ZONE_BOTTOMRIGHT:
+		box.x = usable->x + half_w;
+		box.y = usable->y + half_h;
+		box.width = usable->width - half_w;
+		box.height = usable->height - half_h;
+		break;
+	default:
+		break;
+	}
+	return box;
+}
+
+/*
+ * Destroy the snap preview overlay.
+ */
+static void
+snap_preview_destroy(struct wm_server *server)
+{
+	if (server->snap_preview) {
+		wlr_scene_node_destroy(&server->snap_preview->node);
+		server->snap_preview = NULL;
+	}
+	server->snap_zone = WM_SNAP_ZONE_NONE;
+}
+
+/*
+ * Create or update the snap preview overlay showing the target zone.
+ * Renders a semi-transparent rectangle with a border outline.
+ */
+static void
+snap_preview_update(struct wm_server *server, struct wlr_box *box)
+{
+	if (box->width < 1 || box->height < 1)
+		return;
+
+	/* Create a Cairo surface for the preview */
+	cairo_surface_t *surf = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, box->width, box->height);
+	if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surf);
+		return;
+	}
+
+	cairo_t *cr = cairo_create(surf);
+
+	/* Fill with semi-transparent highlight (30% opacity blue) */
+	cairo_set_source_rgba(cr, 0.3, 0.5, 0.8, 0.3);
+	cairo_paint(cr);
+
+	/* Draw a 3px border outline */
+	double border = 3.0;
+	cairo_set_source_rgba(cr, 0.3, 0.5, 0.8, 0.7);
+	cairo_set_line_width(cr, border);
+	cairo_rectangle(cr, border / 2.0, border / 2.0,
+		box->width - border, box->height - border);
+	cairo_stroke(cr);
+
+	cairo_destroy(cr);
+
+	struct wlr_buffer *buf = cursor_wlr_buffer_from_cairo(surf);
+	if (!buf)
+		return;
+
+	if (server->snap_preview) {
+		wlr_scene_buffer_set_buffer(server->snap_preview, buf);
+	} else {
+		server->snap_preview = wlr_scene_buffer_create(
+			server->layer_overlay, buf);
+	}
+	wlr_buffer_drop(buf);
+
+	if (server->snap_preview) {
+		wlr_scene_node_set_position(
+			&server->snap_preview->node, box->x, box->y);
+	}
+}
+
+/*
+ * Check cursor position against output edges during a window move
+ * and show/update/hide the snap preview as appropriate.
+ */
+static void
+snap_zone_check(struct wm_server *server)
+{
+	if (!server->config || !server->config->enable_window_snapping) {
+		if (server->snap_zone != WM_SNAP_ZONE_NONE)
+			snap_preview_destroy(server);
+		return;
+	}
+
+	/* Find the output the cursor is on */
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(
+		server->output_layout, server->cursor->x, server->cursor->y);
+	if (!wlr_output) {
+		if (server->snap_zone != WM_SNAP_ZONE_NONE)
+			snap_preview_destroy(server);
+		return;
+	}
+
+	/* Find our wm_output wrapper to get usable_area */
+	struct wm_output *output;
+	struct wlr_box usable = {0};
+	bool found = false;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (output->wlr_output == wlr_output) {
+			usable = output->usable_area;
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		if (server->snap_zone != WM_SNAP_ZONE_NONE)
+			snap_preview_destroy(server);
+		return;
+	}
+
+	enum wm_snap_zone zone = snap_zone_detect(server, &usable);
+
+	if (zone == WM_SNAP_ZONE_NONE) {
+		if (server->snap_zone != WM_SNAP_ZONE_NONE)
+			snap_preview_destroy(server);
+		return;
+	}
+
+	/* Zone changed — update the preview */
+	if ((int)zone != server->snap_zone) {
+		server->snap_zone = zone;
+		server->snap_preview_box = snap_zone_geometry(zone, &usable);
+		snap_preview_update(server, &server->snap_preview_box);
+	}
+}
+
 static void
 process_cursor_move(struct wm_server *server, uint32_t time)
 {
@@ -683,6 +915,9 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 		snprintf(buf, sizeof(buf), "%d, %d", pos_x, pos_y);
 		position_overlay_update(server, buf);
 	}
+
+	/* Check for window snap zones */
+	snap_zone_check(server);
 }
 
 static void
@@ -1029,6 +1264,56 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 
 		/* End any interactive mode on button release */
 		if (server->cursor_mode != WM_CURSOR_PASSTHROUGH) {
+			/* Apply snap zone geometry if snapping is active */
+			if (server->cursor_mode == WM_CURSOR_MOVE &&
+			    server->snap_zone != WM_SNAP_ZONE_NONE &&
+			    server->grabbed_view) {
+				struct wm_view *sv =
+					server->grabbed_view;
+				struct wlr_box sb =
+					server->snap_preview_box;
+
+				/* Save original geometry for restore */
+				if (!sv->maximized && !sv->fullscreen &&
+				    !sv->lhalf && !sv->rhalf) {
+					struct wlr_box geo;
+					wm_view_get_geometry(sv, &geo);
+					sv->saved_geometry.x = sv->x;
+					sv->saved_geometry.y = sv->y;
+					sv->saved_geometry.width =
+						geo.width;
+					sv->saved_geometry.height =
+						geo.height;
+				}
+
+				sv->x = sb.x;
+				sv->y = sb.y;
+				wlr_scene_node_set_position(
+					&sv->scene_tree->node,
+					sv->x, sv->y);
+				wlr_xdg_toplevel_set_size(
+					sv->xdg_toplevel,
+					sb.width, sb.height);
+
+				snap_preview_destroy(server);
+				if (server->wireframe_active)
+					wireframe_hide(server);
+				server->cursor_mode =
+					WM_CURSOR_PASSTHROUGH;
+				server->grabbed_view = NULL;
+				position_overlay_destroy(server);
+
+				wlr_seat_pointer_notify_button(
+					server->seat,
+					event->time_msec,
+					event->button,
+					event->state);
+				return;
+			}
+
+			/* Clean up snap preview if no zone matched */
+			snap_preview_destroy(server);
+
 			/* Apply wireframe geometry if active */
 			if (server->wireframe_active &&
 			    server->grabbed_view) {

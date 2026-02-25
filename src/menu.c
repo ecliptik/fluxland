@@ -2678,7 +2678,7 @@ wm_menu_show_workspace_menu(struct wm_server *server, int x, int y)
 	struct wm_workspace *ws;
 	wl_list_for_each(ws, &server->workspaces, link) {
 		char label[128];
-		bool is_current = (ws == server->current_workspace);
+		bool is_current = (ws == wm_workspace_get_active(server));
 		snprintf(label, sizeof(label), "%s%d: %s",
 			is_current ? "* " : "  ",
 			ws->index + 1,

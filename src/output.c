@@ -14,11 +14,14 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
+#include "config.h"
 #include "ipc.h"
 #include "layer_shell.h"
 #include "output.h"
 #include "server.h"
 #include "toolbar.h"
+#include "view.h"
+#include "workspace.h"
 
 /* Escape a string for safe inclusion in JSON (writes into dst). */
 static void
@@ -124,6 +127,7 @@ handle_new_output(struct wl_listener *listener, void *data)
 	}
 	output->server = server;
 	output->wlr_output = wlr_output;
+	output->active_workspace = server->current_workspace;
 
 	/* Connect listeners */
 	output->frame.notify = handle_output_frame;
@@ -210,4 +214,52 @@ void
 wm_output_finish(struct wm_server *server)
 {
 	wl_list_remove(&server->new_output.link);
+}
+
+struct wm_output *
+wm_output_from_wlr(struct wm_server *server, struct wlr_output *wlr_output)
+{
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (output->wlr_output == wlr_output)
+			return output;
+	}
+	return NULL;
+}
+
+struct wm_output *
+wm_server_get_focused_output(struct wm_server *server)
+{
+	/* Try output of focused view first */
+	if (server->focused_view) {
+		struct wlr_output *wlr_output = wlr_output_layout_output_at(
+			server->output_layout,
+			server->focused_view->x + 1,
+			server->focused_view->y + 1);
+		if (wlr_output) {
+			struct wm_output *output =
+				wm_output_from_wlr(server, wlr_output);
+			if (output)
+				return output;
+		}
+	}
+
+	/* Fallback: output under cursor */
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(
+		server->output_layout,
+		server->cursor->x, server->cursor->y);
+	if (wlr_output) {
+		struct wm_output *output =
+			wm_output_from_wlr(server, wlr_output);
+		if (output)
+			return output;
+	}
+
+	/* Last resort: first output */
+	if (!wl_list_empty(&server->outputs)) {
+		return wl_container_of(server->outputs.next,
+			(struct wm_output *)NULL, link);
+	}
+
+	return NULL;
 }

@@ -161,6 +161,27 @@ wm_server_reconfigure(struct wm_server *server)
 		}
 	}
 
+	/* 5b. Handle workspace mode change */
+	if (server->config) {
+		bool per_output =
+			server->config->workspace_mode == WM_WORKSPACE_PER_OUTPUT;
+		struct wm_workspace *ws;
+		if (per_output) {
+			/* Enable all workspace trees */
+			wl_list_for_each(ws, &server->workspaces, link) {
+				wlr_scene_node_set_enabled(
+					&ws->tree->node, true);
+			}
+		} else {
+			/* Disable all except current */
+			wl_list_for_each(ws, &server->workspaces, link) {
+				wlr_scene_node_set_enabled(
+					&ws->tree->node,
+					ws == server->current_workspace);
+			}
+		}
+	}
+
 	/* 6. Reload menus (after workspace names so submenus reflect changes) */
 	wm_menu_hide_all(server);
 	if (server->root_menu) {

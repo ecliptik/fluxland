@@ -13,6 +13,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "animation.h"
 #include "config.h"
 #include "decoration.h"
 #include "foreign_toplevel.h"
@@ -436,6 +437,15 @@ deiconify_view(struct wm_view *view)
 	wm_focus_view(view, view->xdg_toplevel->base->surface);
 	wm_view_raise(view);
 	wm_toolbar_update_iconbar(view->server->toolbar);
+
+	/* Animate fade-in on restore if configured */
+	if (view->server->config &&
+	    view->server->config->animate_minimize) {
+		wm_animation_start(view, WM_ANIM_FADE_IN,
+			0, view->focus_alpha,
+			view->server->config->animation_duration_ms,
+			NULL, NULL);
+	}
 }
 
 /* --- Window cycling (workspace-aware, with de-iconify) --- */
@@ -443,7 +453,7 @@ deiconify_view(struct wm_view *view)
 void
 wm_view_cycle_next(struct wm_server *server)
 {
-	struct wm_workspace *ws = server->current_workspace;
+	struct wm_workspace *ws = wm_workspace_get_active(server);
 	struct wm_view *focused = server->focused_view;
 
 	/*
@@ -494,7 +504,7 @@ wm_view_cycle_next(struct wm_server *server)
 void
 wm_view_cycle_prev(struct wm_server *server)
 {
-	struct wm_workspace *ws = server->current_workspace;
+	struct wm_workspace *ws = wm_workspace_get_active(server);
 	struct wm_view *focused = server->focused_view;
 
 	/*
@@ -548,7 +558,7 @@ wm_view_cycle_prev(struct wm_server *server)
 void
 wm_view_deiconify_last(struct wm_server *server)
 {
-	struct wm_workspace *ws = server->current_workspace;
+	struct wm_workspace *ws = wm_workspace_get_active(server);
 
 	/*
 	 * Walk the view list to find the most recently minimized view on
@@ -585,7 +595,7 @@ wm_view_deiconify_all(struct wm_server *server)
 void
 wm_view_deiconify_all_workspace(struct wm_server *server)
 {
-	struct wm_workspace *ws = server->current_workspace;
+	struct wm_workspace *ws = wm_workspace_get_active(server);
 	struct wm_view *view;
 	wl_list_for_each(view, &server->views, link) {
 		if (view->workspace != ws && !view->sticky) {
@@ -802,6 +812,26 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 
 	/* Create foreign toplevel handle for taskbar clients */
 	wm_foreign_toplevel_handle_create(view);
+
+	/* Animate fade-in if configured */
+	if (view->server->config &&
+	    view->server->config->animate_window_map) {
+		wm_animation_start(view, WM_ANIM_FADE_IN,
+			0, view->focus_alpha,
+			view->server->config->animation_duration_ms,
+			NULL, NULL);
+	}
+}
+
+static void
+unmap_fade_done(struct wm_view *view, bool completed, void *data)
+{
+	(void)completed;
+	(void)data;
+	if (!view)
+		return;
+	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+	wm_toolbar_update_iconbar(view->server->toolbar);
 }
 
 static void
@@ -809,10 +839,12 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, unmap);
 
+	/* Cancel any running fade-in animation */
+	if (view->animation)
+		wm_animation_cancel(view->animation);
+
 	/* Destroy foreign toplevel handle (sends closed to taskbars) */
 	wm_foreign_toplevel_handle_destroy(view);
-
-	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
 
 	/* Broadcast window close event via IPC */
 	{
@@ -847,15 +879,26 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 			if (next != view && next->xdg_toplevel->base->surface) {
 				wm_focus_view(next,
 					next->xdg_toplevel->base->surface);
-				return;
+				goto after_focus;
 			}
 		}
 		/* No other views, clear focus */
 		wlr_seat_keyboard_notify_clear_focus(view->server->seat);
 	}
 
-	/* Update toolbar icon bar (window removed from list) */
-	wm_toolbar_update_iconbar(view->server->toolbar);
+after_focus:
+	/* Animate fade-out if configured, otherwise hide immediately */
+	if (view->server->config &&
+	    view->server->config->animate_window_unmap) {
+		int current_alpha = view->focus_alpha;
+		wm_animation_start(view, WM_ANIM_FADE_OUT,
+			current_alpha, 0,
+			view->server->config->animation_duration_ms,
+			unmap_fade_done, NULL);
+	} else {
+		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+		wm_toolbar_update_iconbar(view->server->toolbar);
+	}
 }
 
 static void
@@ -878,6 +921,14 @@ static void
 handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, destroy);
+
+	/* Cancel any running animation before destroying */
+	if (view->animation) {
+		/* Prevent done callback from using the view after free */
+		struct wm_animation *anim = view->animation;
+		anim->done_fn = NULL;
+		wm_animation_cancel(anim);
+	}
 
 	/* Destroy foreign toplevel handle if still alive */
 	wm_foreign_toplevel_handle_destroy(view);
@@ -1103,14 +1154,27 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 }
 
 static void
+minimize_fade_done(struct wm_view *view, bool completed, void *data)
+{
+	(void)completed;
+	(void)data;
+	if (!view)
+		return;
+	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+	wm_toolbar_update_iconbar(view->server->toolbar);
+}
+
+static void
 handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
 	void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view,
 		request_minimize);
 
-	/* Basic minimize: just hide the view */
-	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+	/* Cancel any running animation */
+	if (view->animation)
+		wm_animation_cancel(view->animation);
+
 	wm_foreign_toplevel_set_minimized(view, true);
 
 	/* Focus next view */
@@ -1119,13 +1183,24 @@ handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
 		if (next != view && next->xdg_toplevel->base->surface) {
 			wm_focus_view(next,
 				next->xdg_toplevel->base->surface);
-			return;
+			goto after_focus;
 		}
 	}
 	wlr_seat_keyboard_notify_clear_focus(view->server->seat);
 
-	/* Update toolbar icon bar (window iconified) */
-	wm_toolbar_update_iconbar(view->server->toolbar);
+after_focus:
+	/* Animate fade-out on minimize if configured */
+	if (view->server->config &&
+	    view->server->config->animate_minimize) {
+		int current_alpha = view->unfocus_alpha;
+		wm_animation_start(view, WM_ANIM_FADE_OUT,
+			current_alpha, 0,
+			view->server->config->animation_duration_ms,
+			minimize_fade_done, NULL);
+	} else {
+		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+		wm_toolbar_update_iconbar(view->server->toolbar);
+	}
 }
 
 static void
@@ -1213,15 +1288,15 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 	/* Initialize tab group link (not in any group yet) */
 	wl_list_init(&view->tab_link);
 
-	/* Assign to current workspace */
-	view->workspace = server->current_workspace;
+	/* Assign to active workspace (per-output aware) */
+	view->workspace = wm_workspace_get_active(server);
 
 	/*
 	 * Create scene tree for this view under its workspace's tree.
 	 * If workspaces aren't initialized yet, fall back to view_tree.
 	 */
-	struct wlr_scene_tree *parent = server->current_workspace ?
-		server->current_workspace->tree : server->view_tree;
+	struct wlr_scene_tree *parent = view->workspace ?
+		view->workspace->tree : server->view_tree;
 	view->scene_tree = wlr_scene_tree_create(parent);
 	if (!view->scene_tree) {
 		free(view);
@@ -1647,7 +1722,8 @@ wm_view_focus_direction(struct wm_server *server, int dx, int dy)
 	wl_list_for_each(v, &server->views, link) {
 		if (v == focused)
 			continue;
-		if (v->workspace != server->current_workspace && !v->sticky)
+		if (v->workspace != wm_workspace_get_active(server) &&
+		    !v->sticky)
 			continue;
 		if (!v->scene_tree->node.enabled)
 			continue;
@@ -1805,8 +1881,9 @@ void
 wm_view_close_all(struct wm_server *server)
 {
 	struct wm_view *v;
+	struct wm_workspace *active = wm_workspace_get_active(server);
 	wl_list_for_each(v, &server->views, link) {
-		if (v->workspace == server->current_workspace)
+		if (v->workspace == active)
 			wlr_xdg_toplevel_send_close(v->xdg_toplevel);
 	}
 }

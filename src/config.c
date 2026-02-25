@@ -299,6 +299,7 @@ config_create(void)
 	/* Set defaults */
 	config->workspace_count = 4;
 	config->workspace_warping = true;
+	config->workspace_mode = WM_WORKSPACE_GLOBAL;
 	config->focus_policy = WM_FOCUS_CLICK;
 	config->raise_on_focus = false;
 	config->auto_raise_delay_ms = 250;
@@ -338,6 +339,12 @@ config_create(void)
 	config->full_maximization = false;
 	config->window_focus_alpha = 255;
 	config->window_unfocus_alpha = 255;
+	config->enable_window_snapping = false;
+	config->snap_zone_threshold = 10;
+	config->animate_window_map = false;
+	config->animate_window_unmap = false;
+	config->animate_minimize = false;
+	config->animation_duration_ms = 300;
 
 	config->slit_auto_hide = false;
 	config->slit_placement = 4; /* RightCenter */
@@ -404,6 +411,12 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 
 	config->workspace_warping =
 		rc_get_bool(db, "session.screen0.workspacewarping", true);
+
+	val = rc_get_string(db, "session.screen0.workspaceMode");
+	if (val && strcasecmp(val, "per-output") == 0)
+		config->workspace_mode = WM_WORKSPACE_PER_OUTPUT;
+	else
+		config->workspace_mode = WM_WORKSPACE_GLOBAL;
 
 	/* Focus */
 	val = rc_get_string(db, "session.screen0.focusModel");
@@ -581,6 +594,30 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		rc_get_int(db, "session.screen0.window.unfocus.alpha", 255);
 	if (config->window_unfocus_alpha < 0) config->window_unfocus_alpha = 0;
 	if (config->window_unfocus_alpha > 255) config->window_unfocus_alpha = 255;
+
+	/* Window animations */
+	config->animate_window_map =
+		rc_get_bool(db, "session.screen0.animateWindowMap", false);
+	config->animate_window_unmap =
+		rc_get_bool(db, "session.screen0.animateWindowUnmap", false);
+	config->animate_minimize =
+		rc_get_bool(db, "session.screen0.animateMinimize", false);
+	config->animation_duration_ms =
+		rc_get_int(db, "session.screen0.animationDuration", 300);
+	if (config->animation_duration_ms < 0)
+		config->animation_duration_ms = 0;
+	if (config->animation_duration_ms > 5000)
+		config->animation_duration_ms = 5000;
+
+	/* Window snap zones */
+	config->enable_window_snapping =
+		rc_get_bool(db, "session.screen0.enableWindowSnapping", false);
+	config->snap_zone_threshold =
+		rc_get_int(db, "session.screen0.snapZoneThreshold", 10);
+	if (config->snap_zone_threshold < 1)
+		config->snap_zone_threshold = 1;
+	if (config->snap_zone_threshold > 100)
+		config->snap_zone_threshold = 100;
 
 	/* Slit configuration */
 	config->slit_auto_hide =
