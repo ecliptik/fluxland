@@ -76,6 +76,7 @@ struct wm_slit {
 	enum wm_slit_direction direction;
 	bool auto_hide;
 	int on_head; /* output index, 0 = primary */
+	int alpha;   /* 0-255, default 255 */
 
 	/* Geometry */
 	int x, y;
@@ -89,6 +90,15 @@ struct wm_slit {
 
 	/* Auto-hide timer */
 	struct wl_event_source *hide_timer;
+
+	/* MaxOver usable_area tracking */
+	int reserved_space; /* pixels subtracted from usable_area */
+
+#ifdef WM_HAS_XWAYLAND
+	/* Slitlist: ordered WM_CLASS names for persistent dockapp ordering */
+	char **slitlist;
+	int slitlist_count;
+#endif
 };
 
 /* Create the slit and add it to the scene graph */

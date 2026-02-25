@@ -293,6 +293,33 @@ static void parse_rule_setting(const char *line, struct wm_window_rule *rule) {
 	} else if (streqi(name, "Head")) {
 		rule->has_head = true;
 		rule->head = atoi(val);
+	} else if (streqi(name, "FocusProtection")) {
+		rule->has_focus_protection = true;
+		rule->focus_protection = 0;
+		/* Parse comma-separated flags */
+		char buf[256];
+		strncpy(buf, val, sizeof(buf) - 1);
+		buf[sizeof(buf) - 1] = '\0';
+		char *saveptr = NULL;
+		char *tok = strtok_r(buf, ",", &saveptr);
+		while (tok) {
+			char *t = strip(tok);
+			if (streqi(t, "Gain"))
+				rule->focus_protection |= WM_FOCUS_PROT_GAIN;
+			else if (streqi(t, "Refuse"))
+				rule->focus_protection |= WM_FOCUS_PROT_REFUSE;
+			else if (streqi(t, "Deny"))
+				rule->focus_protection |= WM_FOCUS_PROT_DENY;
+			else if (streqi(t, "Lock"))
+				rule->focus_protection |= WM_FOCUS_PROT_LOCK;
+			else
+				wlr_log(WLR_ERROR,
+					"rules: unknown FocusProtection value '%s'", t);
+			tok = strtok_r(NULL, ",", &saveptr);
+		}
+	} else if (streqi(name, "IgnoreSizeHints")) {
+		rule->has_ignore_size_hints = true;
+		rule->ignore_size_hints = parse_bool(val);
 	}
 }
 
@@ -652,6 +679,16 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 		if (rule->has_alpha) {
 			view->focus_alpha = rule->focus_alpha;
 			view->unfocus_alpha = rule->unfocus_alpha;
+		}
+
+		/* Apply focus protection */
+		if (rule->has_focus_protection) {
+			view->focus_protection = rule->focus_protection;
+		}
+
+		/* Apply ignore size hints */
+		if (rule->has_ignore_size_hints) {
+			view->ignore_size_hints = rule->ignore_size_hints;
 		}
 
 		/* First match wins */

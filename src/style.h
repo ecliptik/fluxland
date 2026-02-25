@@ -73,6 +73,8 @@ struct wm_font {
 	int shadow_x;
 	int shadow_y;
 	struct wm_color shadow_color;
+	bool halo;
+	struct wm_color halo_color;
 };
 
 /* --- Text justification --- */

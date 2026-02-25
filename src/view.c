@@ -95,7 +95,25 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 		seat->keyboard_state.focused_surface;
 
 	if (prev_surface == surface) {
+		server->focus_user_initiated = false;
 		return;
+	}
+
+	/* Focus protection: block non-user-initiated focus changes */
+	if (!server->focus_user_initiated) {
+		/* Current view has REFUSE: block unless target has GAIN */
+		if (server->focused_view &&
+		    (server->focused_view->focus_protection &
+		     WM_FOCUS_PROT_REFUSE) &&
+		    !(view->focus_protection & WM_FOCUS_PROT_GAIN)) {
+			server->focus_user_initiated = false;
+			return;
+		}
+		/* Target view has DENY: block programmatic focus */
+		if (view->focus_protection & WM_FOCUS_PROT_DENY) {
+			server->focus_user_initiated = false;
+			return;
+		}
 	}
 
 	/* Deactivate the previously focused toplevel */
@@ -186,6 +204,9 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 
 	/* Update toolbar icon bar to reflect focus change */
 	wm_toolbar_update_iconbar(server->toolbar);
+
+	/* Clear the user-initiated flag after focus change completes */
+	server->focus_user_initiated = false;
 }
 
 void

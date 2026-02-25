@@ -9,6 +9,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/types/wlr_scene.h>
@@ -188,6 +189,192 @@ slit_hide_timer_cb(void *data)
 	return 0;
 }
 
+/* --- Alpha helpers --- */
+
+static void
+slit_set_buffer_opacity(struct wlr_scene_buffer *buffer, int sx, int sy,
+	void *user_data)
+{
+	float *opacity = user_data;
+	wlr_scene_buffer_set_opacity(buffer, *opacity);
+}
+
+static void
+slit_apply_alpha(struct wm_slit *slit)
+{
+	float alpha = slit->alpha / 255.0f;
+
+	/* Apply alpha to bg_rect color */
+	if (slit->bg_rect) {
+		float color[4];
+		memcpy(color, slit->bg_rect->color, sizeof(color));
+		color[3] *= alpha;
+		wlr_scene_rect_set_color(slit->bg_rect, color);
+	}
+
+	/* Apply alpha to border_rect color */
+	if (slit->border_rect) {
+		float color[4];
+		memcpy(color, slit->border_rect->color, sizeof(color));
+		color[3] *= alpha;
+		wlr_scene_rect_set_color(slit->border_rect, color);
+	}
+
+	/* Apply alpha to all client surface buffers */
+	struct wm_slit_client *client;
+	wl_list_for_each(client, &slit->clients, link) {
+		if (client->scene_tree && client->mapped) {
+			wlr_scene_node_for_each_buffer(
+				&client->scene_tree->node,
+				slit_set_buffer_opacity, &alpha);
+		}
+	}
+}
+
+/* --- Slitlist functions (persistent dockapp ordering) --- */
+
+#ifdef WM_HAS_XWAYLAND
+
+static void
+slit_load_slitlist(struct wm_slit *slit, const char *path)
+{
+	if (!path)
+		return;
+
+	FILE *fp = fopen(path, "r");
+	if (!fp)
+		return;
+
+	/* Count lines first */
+	int count = 0;
+	char line[256];
+	while (fgets(line, sizeof(line), fp)) {
+		/* Strip trailing newline */
+		size_t len = strlen(line);
+		if (len > 0 && line[len - 1] == '\n')
+			line[len - 1] = '\0';
+		if (line[0] != '\0')
+			count++;
+	}
+
+	if (count == 0) {
+		fclose(fp);
+		return;
+	}
+
+	slit->slitlist = calloc(count, sizeof(char *));
+	if (!slit->slitlist) {
+		fclose(fp);
+		return;
+	}
+
+	rewind(fp);
+	int i = 0;
+	while (fgets(line, sizeof(line), fp) && i < count) {
+		size_t len = strlen(line);
+		if (len > 0 && line[len - 1] == '\n')
+			line[len - 1] = '\0';
+		if (line[0] == '\0')
+			continue;
+		slit->slitlist[i] = strdup(line);
+		if (!slit->slitlist[i])
+			break;
+		i++;
+	}
+	slit->slitlist_count = i;
+
+	fclose(fp);
+	wlr_log(WLR_INFO, "slit: loaded slitlist with %d entries", i);
+}
+
+static void
+slit_save_slitlist(struct wm_slit *slit, const char *path)
+{
+	if (!path)
+		return;
+
+	FILE *fp = fopen(path, "w");
+	if (!fp) {
+		wlr_log(WLR_ERROR, "slit: failed to save slitlist to %s",
+			path);
+		return;
+	}
+
+	struct wm_slit_client *client;
+	wl_list_for_each(client, &slit->clients, link) {
+		if (client->xsurface && client->xsurface->class) {
+			fprintf(fp, "%s\n", client->xsurface->class);
+		}
+	}
+
+	fclose(fp);
+}
+
+static void
+slit_free_slitlist(struct wm_slit *slit)
+{
+	if (slit->slitlist) {
+		for (int i = 0; i < slit->slitlist_count; i++)
+			free(slit->slitlist[i]);
+		free(slit->slitlist);
+		slit->slitlist = NULL;
+		slit->slitlist_count = 0;
+	}
+}
+
+/*
+ * Find the correct insertion point for a client based on slitlist order.
+ * Returns the wl_list link to insert BEFORE, or &slit->clients (append).
+ */
+static struct wl_list *
+slit_find_insert_position(struct wm_slit *slit, const char *class_name)
+{
+	if (!class_name || slit->slitlist_count == 0)
+		return slit->clients.prev; /* append */
+
+	/* Find this class's position in the slitlist */
+	int target_idx = -1;
+	for (int i = 0; i < slit->slitlist_count; i++) {
+		if (slit->slitlist[i] &&
+		    strcmp(slit->slitlist[i], class_name) == 0) {
+			target_idx = i;
+			break;
+		}
+	}
+
+	if (target_idx < 0)
+		return slit->clients.prev; /* not in list, append */
+
+	/* Walk existing clients: find the first client whose slitlist
+	 * index is greater than target_idx; insert before it */
+	struct wm_slit_client *client;
+	wl_list_for_each(client, &slit->clients, link) {
+		const char *cclass = NULL;
+		if (client->xsurface)
+			cclass = client->xsurface->class;
+		if (!cclass)
+			continue;
+
+		int cidx = -1;
+		for (int i = 0; i < slit->slitlist_count; i++) {
+			if (slit->slitlist[i] &&
+			    strcmp(slit->slitlist[i], cclass) == 0) {
+				cidx = i;
+				break;
+			}
+		}
+
+		if (cidx > target_idx) {
+			/* Insert before this client */
+			return client->link.prev;
+		}
+	}
+
+	return slit->clients.prev; /* append */
+}
+
+#endif /* WM_HAS_XWAYLAND (slitlist) */
+
 /* --- XWayland slit client handlers --- */
 
 #ifdef WM_HAS_XWAYLAND
@@ -207,6 +394,14 @@ handle_slit_client_map(struct wl_listener *listener, void *data)
 		client->scene_tree = wlr_scene_subsurface_tree_create(
 			client->slit->scene_tree,
 			client->xsurface->surface);
+	}
+
+	/* Apply slit alpha to this client's surface */
+	if (client->slit->alpha < 255 && client->scene_tree) {
+		float opacity = client->slit->alpha / 255.0f;
+		wlr_scene_node_for_each_buffer(
+			&client->scene_tree->node,
+			slit_set_buffer_opacity, &opacity);
 	}
 
 	wlr_log(WLR_INFO, "slit client mapped: %s (%dx%d)",
@@ -279,6 +474,7 @@ wm_slit_create(struct wm_server *server)
 	slit->direction = WM_SLIT_VERTICAL;
 	slit->auto_hide = false;
 	slit->on_head = 0;
+	slit->alpha = 255;
 
 	/* Apply slit config options */
 	if (server->config) {
@@ -286,13 +482,25 @@ wm_slit_create(struct wm_server *server)
 		slit->placement = server->config->slit_placement;
 		slit->direction = server->config->slit_direction;
 		slit->on_head = server->config->slit_on_head;
+		slit->alpha = server->config->slit_alpha;
 	}
 	slit->width = WM_SLIT_MIN_SIZE;
 	slit->height = WM_SLIT_MIN_SIZE;
 	wl_list_init(&slit->clients);
 
-	/* Create scene tree in layer_top */
-	slit->scene_tree = wlr_scene_tree_create(server->layer_top);
+	/* Choose parent scene tree based on configured layer */
+	struct wlr_scene_tree *parent_layer = server->layer_top;
+	if (server->config) {
+		int layer = server->config->slit_layer;
+		if (layer == 6) /* AboveDock/Overlay */
+			parent_layer = server->layer_overlay;
+		else if (layer == 2) /* Bottom */
+			parent_layer = server->layer_bottom;
+		/* else Normal/Dock -> layer_top (default) */
+	}
+
+	/* Create scene tree in selected layer */
+	slit->scene_tree = wlr_scene_tree_create(parent_layer);
 	if (!slit->scene_tree) {
 		free(slit);
 		return NULL;
@@ -326,9 +534,21 @@ wm_slit_create(struct wm_server *server)
 			&slit->border_rect->node);
 	}
 
+	/* Apply alpha to rect colors */
+	if (slit->alpha < 255) {
+		slit_apply_alpha(slit);
+	}
+
 	/* Auto-hide timer */
 	slit->hide_timer = wl_event_loop_add_timer(
 		server->wl_event_loop, slit_hide_timer_cb, slit);
+
+#ifdef WM_HAS_XWAYLAND
+	/* Load slitlist for persistent dockapp ordering */
+	if (server->config && server->config->slitlist_file) {
+		slit_load_slitlist(slit, server->config->slitlist_file);
+	}
+#endif
 
 	/* Position the slit */
 	wm_slit_reconfigure(slit);
@@ -337,8 +557,8 @@ wm_slit_create(struct wm_server *server)
 	wlr_scene_node_set_enabled(&slit->scene_tree->node, false);
 
 	wlr_log(WLR_INFO, "slit created (placement=%d, direction=%d, "
-		"auto_hide=%d)", slit->placement, slit->direction,
-		slit->auto_hide);
+		"auto_hide=%d, alpha=%d)", slit->placement, slit->direction,
+		slit->auto_hide, slit->alpha);
 
 	return slit;
 }
@@ -349,6 +569,16 @@ wm_slit_destroy(struct wm_slit *slit)
 	if (!slit) {
 		return;
 	}
+
+#ifdef WM_HAS_XWAYLAND
+	/* Save slitlist before destroying */
+	if (slit->server->config && slit->server->config->slitlist_file &&
+	    slit->client_count > 0) {
+		slit_save_slitlist(slit,
+			slit->server->config->slitlist_file);
+	}
+	slit_free_slitlist(slit);
+#endif
 
 	/* Remove all clients */
 	struct wm_slit_client *client, *tmp;
@@ -401,10 +631,27 @@ wm_slit_add_client(struct wm_slit *slit, void *surface)
 	client->configure.notify = handle_slit_client_configure;
 	wl_signal_add(&xsurface->events.request_configure,
 		&client->configure);
+
+	/* Use slitlist ordering if available */
+	{
+		const char *class_name = xsurface->class;
+		struct wl_list *insert_after =
+			slit_find_insert_position(slit, class_name);
+		wl_list_insert(insert_after, &client->link);
+	}
+#else
+	wl_list_insert(slit->clients.prev, &client->link);
 #endif
 
-	wl_list_insert(slit->clients.prev, &client->link);
 	slit->client_count++;
+
+#ifdef WM_HAS_XWAYLAND
+	/* Save updated slitlist */
+	if (slit->server->config && slit->server->config->slitlist_file) {
+		slit_save_slitlist(slit,
+			slit->server->config->slitlist_file);
+	}
+#endif
 
 	wlr_log(WLR_INFO, "slit: added client (total %d)",
 		slit->client_count);
@@ -435,6 +682,14 @@ wm_slit_remove_client(struct wm_slit_client *client)
 	wl_list_remove(&client->link);
 	slit->client_count--;
 	free(client);
+
+#ifdef WM_HAS_XWAYLAND
+	/* Save updated slitlist */
+	if (slit->server->config && slit->server->config->slitlist_file) {
+		slit_save_slitlist(slit,
+			slit->server->config->slitlist_file);
+	}
+#endif
 
 	wm_slit_reconfigure(slit);
 }
@@ -497,6 +752,81 @@ wm_slit_reconfigure(struct wm_slit *slit)
 	} else if (!has_clients) {
 		wlr_scene_node_set_enabled(
 			&slit->scene_tree->node, false);
+	}
+
+	/* MaxOver: adjust output usable_area to reserve space for slit */
+	if (output && slit->server->config &&
+	    !slit->server->config->slit_max_over) {
+		/* Undo previous reservation */
+		int old_reserved = slit->reserved_space;
+		int new_reserved = 0;
+
+		if (has_clients && !slit->hidden) {
+			int total_w = slit->width + 2 * bw;
+			int total_h = slit->height + 2 * bw;
+
+			switch (slit->placement) {
+			case WM_SLIT_RIGHT_TOP:
+			case WM_SLIT_RIGHT_CENTER:
+			case WM_SLIT_RIGHT_BOTTOM:
+				new_reserved = total_w;
+				output->usable_area.width += old_reserved;
+				output->usable_area.width -= new_reserved;
+				break;
+			case WM_SLIT_LEFT_TOP:
+			case WM_SLIT_LEFT_CENTER:
+			case WM_SLIT_LEFT_BOTTOM:
+				new_reserved = total_w;
+				output->usable_area.x -= old_reserved;
+				output->usable_area.width += old_reserved;
+				output->usable_area.x += new_reserved;
+				output->usable_area.width -= new_reserved;
+				break;
+			case WM_SLIT_TOP_LEFT:
+			case WM_SLIT_TOP_CENTER:
+			case WM_SLIT_TOP_RIGHT:
+				new_reserved = total_h;
+				output->usable_area.y -= old_reserved;
+				output->usable_area.height += old_reserved;
+				output->usable_area.y += new_reserved;
+				output->usable_area.height -= new_reserved;
+				break;
+			case WM_SLIT_BOTTOM_LEFT:
+			case WM_SLIT_BOTTOM_CENTER:
+			case WM_SLIT_BOTTOM_RIGHT:
+				new_reserved = total_h;
+				output->usable_area.height += old_reserved;
+				output->usable_area.height -= new_reserved;
+				break;
+			}
+		} else {
+			/* Slit hidden/no clients: undo reservation */
+			switch (slit->placement) {
+			case WM_SLIT_RIGHT_TOP:
+			case WM_SLIT_RIGHT_CENTER:
+			case WM_SLIT_RIGHT_BOTTOM:
+				output->usable_area.width += old_reserved;
+				break;
+			case WM_SLIT_LEFT_TOP:
+			case WM_SLIT_LEFT_CENTER:
+			case WM_SLIT_LEFT_BOTTOM:
+				output->usable_area.x -= old_reserved;
+				output->usable_area.width += old_reserved;
+				break;
+			case WM_SLIT_TOP_LEFT:
+			case WM_SLIT_TOP_CENTER:
+			case WM_SLIT_TOP_RIGHT:
+				output->usable_area.y -= old_reserved;
+				output->usable_area.height += old_reserved;
+				break;
+			case WM_SLIT_BOTTOM_LEFT:
+			case WM_SLIT_BOTTOM_CENTER:
+			case WM_SLIT_BOTTOM_RIGHT:
+				output->usable_area.height += old_reserved;
+				break;
+			}
+		}
+		slit->reserved_space = new_reserved;
 	}
 }
 
@@ -597,16 +927,26 @@ wm_slit_toggle_above(struct wm_slit *slit)
 	struct wm_server *server = slit->server;
 
 	/*
-	 * Toggle between layer_top (normal) and layer_overlay (above all).
+	 * Toggle between configured base layer and layer_overlay.
 	 * Reparent the slit scene tree to the other layer.
 	 */
 	struct wlr_scene_tree *current_parent =
 		(struct wlr_scene_tree *)slit->scene_tree->node.parent;
 
+	/* Determine the configured base layer */
+	struct wlr_scene_tree *base_layer = server->layer_top;
+	if (server->config) {
+		int layer = server->config->slit_layer;
+		if (layer == 6)
+			base_layer = server->layer_overlay;
+		else if (layer == 2)
+			base_layer = server->layer_bottom;
+	}
+
 	if (current_parent == server->layer_overlay) {
 		wlr_scene_node_reparent(&slit->scene_tree->node,
-			server->layer_top);
-		wlr_log(WLR_INFO, "%s", "slit moved to normal layer");
+			base_layer);
+		wlr_log(WLR_INFO, "%s", "slit moved to configured layer");
 	} else {
 		wlr_scene_node_reparent(&slit->scene_tree->node,
 			server->layer_overlay);

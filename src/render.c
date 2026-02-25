@@ -507,9 +507,25 @@ wm_render_text(const char *text, const struct wm_font *font,
 		pango_cairo_show_layout(cr, layout);
 	}
 
-	/* Draw text */
+	/* Draw halo outline (between shadow and main text) */
 	double tx = (font->shadow_x < 0) ? -font->shadow_x : 0;
 	double ty = (font->shadow_y < 0) ? -font->shadow_y : 0;
+
+	if (font->halo) {
+		cairo_save(cr);
+		cairo_move_to(cr, tx, ty);
+		cairo_set_source_rgba(cr,
+			font->halo_color.r / 255.0,
+			font->halo_color.g / 255.0,
+			font->halo_color.b / 255.0,
+			font->halo_color.a / 255.0);
+		cairo_set_line_width(cr, 2.0 * scale);
+		pango_cairo_layout_path(cr, layout);
+		cairo_stroke(cr);
+		cairo_restore(cr);
+	}
+
+	/* Draw text */
 	cairo_move_to(cr, tx, ty);
 	cairo_set_source_rgba(cr, color->r / 255.0, color->g / 255.0,
 		color->b / 255.0, color->a / 255.0);

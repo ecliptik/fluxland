@@ -175,9 +175,15 @@ struct wm_server {
 	bool show_position;
 	struct wlr_scene_buffer *position_overlay;
 
+	/* Wireframe move/resize (opaqueMove: false / opaqueResize: false) */
+	struct wlr_scene_rect *wireframe_rects[4]; /* top, right, bottom, left */
+	bool wireframe_active;
+	int wireframe_x, wireframe_y, wireframe_w, wireframe_h;
+
 	/* Focus policy (click-to-focus, sloppy) */
 	int focus_policy; /* enum wm_focus_policy from view.h */
 	struct wm_view *focused_view;
+	bool focus_user_initiated; /* true for click/keybind focus changes */
 
 	/* Auto-raise timer for focus-follows-mouse modes */
 	struct wl_event_source *auto_raise_timer;

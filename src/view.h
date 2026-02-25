@@ -70,6 +70,12 @@ struct wm_view {
 	int focus_alpha;
 	int unfocus_alpha;
 
+	/* Focus protection (bitmask of WM_FOCUS_PROT_* flags, 0 = none) */
+	int focus_protection;
+
+	/* Ignore size hints from xdg_toplevel min/max constraints */
+	bool ignore_size_hints;
+
 	/* Foreign toplevel handle (for external taskbars) */
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener foreign_toplevel_request_activate;

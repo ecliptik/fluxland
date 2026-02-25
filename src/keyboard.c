@@ -1141,6 +1141,7 @@ handle_compositor_keybinding(struct wm_server *server,
 
 	/* Leaf node — execute the action and reset chain */
 	chain_reset(server);
+	server->focus_user_initiated = true;
 	return execute_keybind_action(server, bind);
 }
 

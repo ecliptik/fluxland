@@ -232,8 +232,10 @@ execute_mouse_action(struct wm_server *server,
 		break;
 
 	case WM_ACTION_FOCUS:
-		if (view)
+		if (view) {
+			server->focus_user_initiated = true;
 			wm_focus_view(view, NULL);
+		}
 		break;
 
 	case WM_ACTION_START_MOVING:
@@ -532,6 +534,66 @@ position_overlay_update(struct wm_server *server, const char *text)
 	}
 }
 
+/* --- Wireframe helpers --- */
+
+#define WIREFRAME_BORDER 2
+
+static void
+wireframe_show(struct wm_server *server, int x, int y, int w, int h)
+{
+	if (w < 1) w = 1;
+	if (h < 1) h = 1;
+	float color[4] = {1.0f, 1.0f, 1.0f, 0.8f};
+	int b = WIREFRAME_BORDER;
+
+	if (!server->wireframe_rects[0]) {
+		/* Create 4 rect nodes: top, right, bottom, left */
+		server->wireframe_rects[0] = wlr_scene_rect_create(
+			server->layer_overlay, w, b, color);
+		server->wireframe_rects[1] = wlr_scene_rect_create(
+			server->layer_overlay, b, h, color);
+		server->wireframe_rects[2] = wlr_scene_rect_create(
+			server->layer_overlay, w, b, color);
+		server->wireframe_rects[3] = wlr_scene_rect_create(
+			server->layer_overlay, b, h, color);
+	} else {
+		/* Resize existing rects */
+		wlr_scene_rect_set_size(server->wireframe_rects[0], w, b);
+		wlr_scene_rect_set_size(server->wireframe_rects[1], b, h);
+		wlr_scene_rect_set_size(server->wireframe_rects[2], w, b);
+		wlr_scene_rect_set_size(server->wireframe_rects[3], b, h);
+	}
+
+	/* Position: top, right, bottom, left */
+	wlr_scene_node_set_position(
+		&server->wireframe_rects[0]->node, x, y);
+	wlr_scene_node_set_position(
+		&server->wireframe_rects[1]->node, x + w - b, y);
+	wlr_scene_node_set_position(
+		&server->wireframe_rects[2]->node, x, y + h - b);
+	wlr_scene_node_set_position(
+		&server->wireframe_rects[3]->node, x, y);
+
+	server->wireframe_active = true;
+	server->wireframe_x = x;
+	server->wireframe_y = y;
+	server->wireframe_w = w;
+	server->wireframe_h = h;
+}
+
+static void
+wireframe_hide(struct wm_server *server)
+{
+	for (int i = 0; i < 4; i++) {
+		if (server->wireframe_rects[i]) {
+			wlr_scene_node_destroy(
+				&server->wireframe_rects[i]->node);
+			server->wireframe_rects[i] = NULL;
+		}
+	}
+	server->wireframe_active = false;
+}
+
 static void
 process_cursor_move(struct wm_server *server, uint32_t time)
 {
@@ -593,15 +655,29 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 	int snap_x = (int)new_x;
 	int snap_y = (int)new_y;
 	wm_snap_edges(server, view, &snap_x, &snap_y);
-	view->x = snap_x;
-	view->y = snap_y;
-	wlr_scene_node_set_position(&view->scene_tree->node,
-		view->x, view->y);
+
+	if (server->config && !server->config->opaque_move) {
+		/* Wireframe mode: show outline instead of moving view */
+		struct wlr_box geo;
+		wm_view_get_geometry(view, &geo);
+		wireframe_show(server, snap_x, snap_y,
+			geo.width, geo.height);
+	} else {
+		/* Opaque mode: move the actual view */
+		view->x = snap_x;
+		view->y = snap_y;
+		wlr_scene_node_set_position(&view->scene_tree->node,
+			view->x, view->y);
+	}
 
 	/* Update position overlay */
 	if (server->show_position) {
 		char buf[64];
-		snprintf(buf, sizeof(buf), "%d, %d", view->x, view->y);
+		int pos_x = server->wireframe_active ?
+			server->wireframe_x : view->x;
+		int pos_y = server->wireframe_active ?
+			server->wireframe_y : view->y;
+		snprintf(buf, sizeof(buf), "%d, %d", pos_x, pos_y);
 		position_overlay_update(server, buf);
 	}
 }
@@ -640,14 +716,26 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 	if (new_w < 1) new_w = 1;
 	if (new_h < 1) new_h = 1;
 
-	view->x = new_x;
-	view->y = new_y;
-	wlr_scene_node_set_position(&view->scene_tree->node, new_x, new_y);
-	wlr_xdg_toplevel_set_size(view->xdg_toplevel, new_w, new_h);
+	if (server->config && !server->config->opaque_resize) {
+		/* Wireframe mode: show outline instead of resizing view */
+		wireframe_show(server, new_x, new_y, new_w, new_h);
+	} else {
+		/* Opaque mode: resize the actual view */
+		view->x = new_x;
+		view->y = new_y;
+		wlr_scene_node_set_position(&view->scene_tree->node,
+			new_x, new_y);
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+			new_w, new_h);
+	}
 
 	if (server->show_position) {
 		char buf[64];
-		snprintf(buf, sizeof(buf), "%d x %d", new_w, new_h);
+		int disp_w = server->wireframe_active ?
+			server->wireframe_w : new_w;
+		int disp_h = server->wireframe_active ?
+			server->wireframe_h : new_h;
+		snprintf(buf, sizeof(buf), "%d x %d", disp_w, disp_h);
 		position_overlay_update(server, buf);
 	}
 }
@@ -938,6 +1026,31 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 
 		/* End any interactive mode on button release */
 		if (server->cursor_mode != WM_CURSOR_PASSTHROUGH) {
+			/* Apply wireframe geometry if active */
+			if (server->wireframe_active &&
+			    server->grabbed_view) {
+				struct wm_view *wf_view =
+					server->grabbed_view;
+				if (server->cursor_mode == WM_CURSOR_MOVE) {
+					wf_view->x = server->wireframe_x;
+					wf_view->y = server->wireframe_y;
+					wlr_scene_node_set_position(
+						&wf_view->scene_tree->node,
+						wf_view->x, wf_view->y);
+				} else if (server->cursor_mode ==
+					   WM_CURSOR_RESIZE) {
+					wf_view->x = server->wireframe_x;
+					wf_view->y = server->wireframe_y;
+					wlr_scene_node_set_position(
+						&wf_view->scene_tree->node,
+						wf_view->x, wf_view->y);
+					wlr_xdg_toplevel_set_size(
+						wf_view->xdg_toplevel,
+						server->wireframe_w,
+						server->wireframe_h);
+				}
+				wireframe_hide(server);
+			}
 			server->cursor_mode = WM_CURSOR_PASSTHROUGH;
 			server->grabbed_view = NULL;
 			position_overlay_destroy(server);
@@ -1009,6 +1122,7 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 
 	/* No binding matched — default behavior: focus + raise on click */
 	if (view) {
+		server->focus_user_initiated = true;
 		wm_focus_view(view, NULL);
 		wm_view_raise(view);
 	}
@@ -1040,6 +1154,7 @@ handle_cursor_touch_down(struct wl_listener *listener, void *data)
 	struct wm_view *view = view_at(server, lx, ly, &surface, &sx, &sy);
 
 	if (view) {
+		server->focus_user_initiated = true;
 		wm_focus_view(view, surface);
 	}
 

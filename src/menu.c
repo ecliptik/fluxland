@@ -1136,6 +1136,18 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 	int min_inner_w = MENU_MIN_WIDTH + 2 * MENU_ITEM_PADDING;
 	int count = 0;
 
+	/* Pre-scan: determine icon column width if any item has an icon */
+	int icon_col_w = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->icon_path) {
+			int icon_size = item_h - 2 * MENU_ITEM_PADDING;
+			if (icon_size < 1) icon_size = 1;
+			icon_col_w = icon_size + MENU_ITEM_PADDING;
+			break;
+		}
+	}
+
 	/* Account for the title text width */
 	if (menu->title) {
 		int title_w = wm_measure_text_width(menu->title,
@@ -1146,7 +1158,6 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 		}
 	}
 
-	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
 		count++;
 		if (item->label) {
@@ -1158,7 +1169,8 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 			    item->type == WM_MENU_LAYER) {
 				text_w += MENU_ARROW_SIZE + 4;
 			}
-			int needed = text_w + 2 * MENU_ITEM_PADDING;
+			int needed = text_w + 2 * MENU_ITEM_PADDING +
+				icon_col_w;
 			if (needed > min_inner_w) {
 				min_inner_w = needed;
 			}
@@ -1292,6 +1304,17 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 	int y = 0;
 	int index = 0;
 
+	/* Pre-scan: determine icon column width if any item has an icon */
+	int icon_col_w = 0;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->icon_path) {
+			int icon_size = item_h - 2 * MENU_ITEM_PADDING;
+			if (icon_size < 1) icon_size = 1;
+			icon_col_w = icon_size + MENU_ITEM_PADDING;
+			break;
+		}
+	}
+
 	wl_list_for_each(item, &menu->items, link) {
 		if (item->type == WM_MENU_SEPARATOR) {
 			/* Draw separator line */
@@ -1343,9 +1366,40 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 			text_color = &disabled_color;
 		}
 
+		/* Draw icon if present and icon column is active */
+		if (icon_col_w > 0 && item->icon_path) {
+			int icon_size = item_h - 2 * MENU_ITEM_PADDING;
+			if (icon_size > 0) {
+				cairo_surface_t *icon =
+					cairo_image_surface_create_from_png(
+						item->icon_path);
+				if (icon && cairo_surface_status(icon) ==
+				    CAIRO_STATUS_SUCCESS) {
+					int iw = cairo_image_surface_get_width(
+						icon);
+					int ih = cairo_image_surface_get_height(
+						icon);
+					double ix = MENU_ITEM_PADDING;
+					double iy = y + MENU_ITEM_PADDING;
+					cairo_save(cr);
+					cairo_translate(cr, ix, iy);
+					cairo_scale(cr,
+						(double)icon_size / iw,
+						(double)icon_size / ih);
+					cairo_set_source_surface(cr, icon,
+						0, 0);
+					cairo_paint(cr);
+					cairo_restore(cr);
+				}
+				if (icon)
+					cairo_surface_destroy(icon);
+			}
+		}
+
 		if (item->label) {
 			int tw, th;
-			int max_w = inner_w - 2 * MENU_ITEM_PADDING;
+			int max_w = inner_w - 2 * MENU_ITEM_PADDING -
+				icon_col_w;
 			bool has_arrow = (item->type == WM_MENU_SUBMENU ||
 				item->type == WM_MENU_SENDTO ||
 				item->type == WM_MENU_LAYER);
@@ -1356,7 +1410,7 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 				&style->menu_frame_font, text_color,
 				max_w, &tw, &th, WM_JUSTIFY_LEFT, 1.0f);
 			if (text) {
-				int tx = MENU_ITEM_PADDING;
+				int tx = MENU_ITEM_PADDING + icon_col_w;
 				int ty = y + (item_h - th) / 2;
 				if (ty < y) {
 					ty = y;

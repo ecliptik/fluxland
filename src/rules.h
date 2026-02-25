@@ -19,6 +19,12 @@
 struct wm_view;
 struct wm_server;
 
+/* Focus protection flags (bitmask) */
+#define WM_FOCUS_PROT_GAIN   0x01
+#define WM_FOCUS_PROT_REFUSE 0x02
+#define WM_FOCUS_PROT_DENY   0x04
+#define WM_FOCUS_PROT_LOCK   (WM_FOCUS_PROT_REFUSE | WM_FOCUS_PROT_DENY)
+
 /* --- Match pattern (single property=regex clause) --- */
 
 struct wm_match_pattern {
@@ -50,6 +56,8 @@ struct wm_window_rule {
 	bool has_shaded;        bool shaded;
 	bool has_focus_new;     bool focus_new;
 	bool has_head;          int head;
+	bool has_focus_protection; int focus_protection;
+	bool has_ignore_size_hints; bool ignore_size_hints;
 
 	struct wl_list link;    /* wm_rules.window_rules */
 };

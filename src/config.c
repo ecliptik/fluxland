@@ -189,6 +189,28 @@ parse_slit_direction(const char *value)
 	return 0; /* Vertical */
 }
 
+static int
+parse_slit_layer(const char *value)
+{
+	if (!value)
+		return 4; /* Dock (Normal/Top) */
+	if (strcasecmp(value, "AboveDock") == 0 ||
+	    strcasecmp(value, "Above") == 0)
+		return 6; /* Overlay */
+	if (strcasecmp(value, "Bottom") == 0)
+		return 2; /* Bottom */
+	/* "Normal" or "Dock" */
+	if (strcasecmp(value, "Normal") == 0 ||
+	    strcasecmp(value, "Dock") == 0)
+		return 4;
+	/* Try numeric */
+	char *end;
+	long n = strtol(value, &end, 10);
+	if (end != value && *end == '\0')
+		return (int)n;
+	return 4; /* Dock (Top layer) */
+}
+
 static bool
 path_exists(const char *path)
 {
@@ -315,6 +337,8 @@ config_create(void)
 	config->slit_direction = 0; /* Vertical */
 	config->slit_layer = 4; /* Dock */
 	config->slit_on_head = 0;
+	config->slit_alpha = 255;
+	config->slit_max_over = false;
 
 	config->double_click_interval = 300;
 	config->menu_alpha = 255;
@@ -337,6 +361,8 @@ config_create(void)
 			resolve_path(config->config_dir, NULL, "menu");
 		config->style_file =
 			resolve_path(config->config_dir, NULL, "styles/default");
+		config->slitlist_file =
+			resolve_path(config->config_dir, NULL, "slitlist");
 	}
 
 	return config;
@@ -518,10 +544,28 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	config->slit_placement = parse_slit_placement(val);
 	val = rc_get_string(db, "session.screen0.slit.direction");
 	config->slit_direction = parse_slit_direction(val);
-	config->slit_layer =
-		rc_get_int(db, "session.screen0.slit.layer", 4);
+	val = rc_get_string(db, "session.screen0.slit.layer");
+	if (val)
+		config->slit_layer = parse_slit_layer(val);
+	else
+		config->slit_layer =
+			rc_get_int(db, "session.screen0.slit.layer", 4);
 	config->slit_on_head =
 		rc_get_int(db, "session.screen0.slit.onhead", 0);
+	config->slit_alpha =
+		rc_get_int(db, "session.screen0.slit.alpha", 255);
+	if (config->slit_alpha < 0) config->slit_alpha = 0;
+	if (config->slit_alpha > 255) config->slit_alpha = 255;
+	config->slit_max_over =
+		rc_get_bool(db, "session.screen0.slit.maxOver", false);
+
+	/* Slitlist file path */
+	val = rc_get_string(db, "session.slitlistFile");
+	if (val) {
+		free(config->slitlist_file);
+		config->slitlist_file =
+			resolve_path(config->config_dir, val, "slitlist");
+	}
 
 	/* Double-click interval */
 	config->double_click_interval =
@@ -731,6 +775,7 @@ config_destroy(struct wm_config *config)
 	free(config->default_deco);
 	free(config->window_menu_file);
 	free(config->iconbar_iconified_pattern);
+	free(config->slitlist_file);
 	free(config->config_dir);
 	free(config->keys_file);
 	free(config->apps_file);

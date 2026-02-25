@@ -143,6 +143,8 @@ style_parse_font(const char *value)
 		.shadow_x = 0,
 		.shadow_y = 0,
 		.shadow_color = make_color(0, 0, 0),
+		.halo = false,
+		.halo_color = make_color(0, 0, 0),
 	};
 
 	if (!value || *value == '\0')
@@ -204,6 +206,8 @@ style_parse_font(const char *value)
 				font.bold = true;
 			else if (strcasecmp(token, "italic") == 0)
 				font.italic = true;
+			else if (strcasecmp(token, "halo") == 0)
+				font.halo = true;
 			token = strtok_r(NULL, ":", &saveptr);
 		}
 	}
@@ -427,6 +431,31 @@ load_font(struct rc_database *db, const char *key, struct wm_font *font)
 	const char *sc = style_get(db, shadow_key);
 	if (sc)
 		font->shadow_color = style_parse_color(sc);
+
+	/* Load halo color (derived from font key's parent resource) */
+	if (font->halo) {
+		/*
+		 * Derive halo.color key from font key:
+		 * e.g. "window.label.focus.font" -> "window.label.focus.halo.color"
+		 * Strip ".font" suffix and append ".halo.color"
+		 */
+		char halo_key[256];
+		size_t klen = strlen(key);
+		const char *suffix = ".font";
+		size_t slen = strlen(suffix);
+		if (klen > slen &&
+		    strcmp(key + klen - slen, suffix) == 0) {
+			snprintf(halo_key, sizeof(halo_key),
+				"%.*s.halo.color",
+				(int)(klen - slen), key);
+		} else {
+			snprintf(halo_key, sizeof(halo_key),
+				"%s.halo.color", key);
+		}
+		const char *hc = style_get(db, halo_key);
+		if (hc)
+			font->halo_color = style_parse_color(hc);
+	}
 }
 
 static char *
@@ -485,6 +514,8 @@ default_font(void)
 		.shadow_x = 0,
 		.shadow_y = 0,
 		.shadow_color = make_color(0, 0, 0),
+		.halo = false,
+		.halo_color = make_color(0, 0, 0),
 	};
 }
 

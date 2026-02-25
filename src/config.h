@@ -118,6 +118,9 @@ struct wm_config {
 	int slit_direction;
 	int slit_layer;
 	int slit_on_head;
+	int slit_alpha;       /* 0-255, default 255 */
+	bool slit_max_over;   /* default false */
+	char *slitlist_file;  /* path to slitlist file */
 
 	/* XKB keyboard layout */
 	char *xkb_rules;    /* e.g., "evdev" */
