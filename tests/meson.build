@@ -76,6 +76,17 @@ test_animation = executable(
 )
 test('animation', test_animation)
 
+# --- test_tabgroup: tab group state machine tests ---
+# tabgroup.c is #included directly in the test to allow stubbing wlroots deps.
+test_tabgroup = executable(
+  'test_tabgroup',
+  files('test_tabgroup.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('tabgroup', test_tabgroup)
+
 # --- test_ipc: IPC command dispatch and subscription tests ---
 test_ipc = executable(
   'test_ipc',
@@ -85,6 +96,16 @@ test_ipc = executable(
   install: false,
 )
 test('ipc', test_ipc)
+
+# --- test_focus_nav: focus navigation state machine tests ---
+test_focus_nav = executable(
+  'test_focus_nav',
+  files('test_focus_nav.c', '../src/focus_nav.c'),
+  include_directories: test_inc,
+  dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+  install: false,
+)
+test('focus_nav', test_focus_nav)
 
 # --- test_validate: config validation tests ---
 test_validate = executable(

@@ -563,6 +563,478 @@ test_phase5c_config_options(void)
 	printf("  PASS: test_phase5c_config_options\n");
 }
 
+/* Test: malformed lines (missing colon) are silently skipped */
+static void
+test_malformed_lines(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.workspaces: 6\n"
+		"this line has no colon\n"
+		"also no separator here\n"
+		"session.screen0.toolbar.visible: false\n"
+	);
+
+	struct wm_config *c = config_create();
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+
+	/* Valid lines should still be parsed */
+	assert(c->workspace_count == 6);
+	assert(c->toolbar_visible == false);
+
+	config_destroy(c);
+	printf("  PASS: test_malformed_lines\n");
+}
+
+/* Test: empty values use defaults */
+static void
+test_empty_values(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.workspaces:\n"
+		"session.screen0.focusModel:\n"
+	);
+
+	struct wm_config *c = config_create();
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+
+	/* rcparser stores empty string; rc_get_int returns default for "" */
+	assert(c->workspace_count == 4);
+	/* parse_focus_model returns default for unknown string */
+	assert(c->focus_policy == WM_FOCUS_CLICK);
+
+	config_destroy(c);
+	printf("  PASS: test_empty_values\n");
+}
+
+/* Test: duplicate keys - last value wins */
+static void
+test_duplicate_keys(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.workspaces: 2\n"
+		"session.screen0.workspaces: 8\n"
+	);
+
+	struct wm_config *c = config_create();
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+
+	/* rc_set overwrites existing key, so last value wins */
+	assert(c->workspace_count == 8);
+
+	config_destroy(c);
+	printf("  PASS: test_duplicate_keys\n");
+}
+
+/* Test: very long lines are skipped by rcparser */
+static void
+test_very_long_lines(void)
+{
+	/* Build a file with a line > 1024 chars, then a normal line */
+	FILE *f = fopen(TEST_INIT, "w");
+	assert(f);
+	fprintf(f, "session.screen0.workspaces: ");
+	for (int i = 0; i < 1100; i++)
+		fputc('1', f);
+	fprintf(f, "\n");
+	fprintf(f, "session.screen0.toolbar.visible: false\n");
+	fclose(f);
+
+	struct wm_config *c = config_create();
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+
+	/* The long line should have been skipped */
+	assert(c->workspace_count == 4); /* default */
+	/* The short line after should have been parsed */
+	assert(c->toolbar_visible == false);
+
+	config_destroy(c);
+	printf("  PASS: test_very_long_lines\n");
+}
+
+/* Test: workspace names with empty middle entry */
+static void
+test_empty_workspace_names(void)
+{
+	/* strtok coalesces consecutive delimiters, so ",, " yields only
+	 * one token. Use "A, , C" to get a trimmed-empty middle name. */
+	write_file(TEST_INIT,
+		"session.screen0.workspaces: 3\n"
+		"session.screen0.workspaceNames: A, , C\n"
+	);
+
+	struct wm_config *c = config_create();
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+
+	assert(c->workspace_name_count == 3);
+	assert(strcmp(c->workspace_names[0], "A") == 0);
+	/* Middle name is space-only, trims to empty string */
+	assert(strcmp(c->workspace_names[1], "") == 0);
+	assert(strcmp(c->workspace_names[2], "C") == 0);
+
+	config_destroy(c);
+	printf("  PASS: test_empty_workspace_names\n");
+}
+
+/* Test: all toolbar placement variants */
+static void
+test_all_toolbar_placements(void)
+{
+	const struct {
+		const char *value;
+		enum wm_toolbar_placement expected;
+	} cases[] = {
+		{"TopLeft", WM_TOOLBAR_TOP_LEFT},
+		{"TopCenter", WM_TOOLBAR_TOP_CENTER},
+		{"TopRight", WM_TOOLBAR_TOP_RIGHT},
+		{"BottomLeft", WM_TOOLBAR_BOTTOM_LEFT},
+		{"BottomCenter", WM_TOOLBAR_BOTTOM_CENTER},
+		{"BottomRight", WM_TOOLBAR_BOTTOM_RIGHT},
+	};
+
+	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"session.screen0.toolbar.placement: %s\n",
+			cases[i].value);
+		write_file(TEST_INIT, buf);
+
+		struct wm_config *c = config_create();
+		config_load(c, TEST_INIT);
+		assert(c->toolbar_placement == cases[i].expected);
+		config_destroy(c);
+	}
+
+	/* Unknown value should default to BottomCenter */
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.placement: InvalidPlace\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->toolbar_placement == WM_TOOLBAR_BOTTOM_CENTER);
+	config_destroy(c);
+
+	printf("  PASS: test_all_toolbar_placements\n");
+}
+
+/* Test: all slit placement variants */
+static void
+test_all_slit_placements(void)
+{
+	const struct {
+		const char *value;
+		int expected;
+	} cases[] = {
+		{"TopLeft", 0},
+		{"TopCenter", 1},
+		{"TopRight", 2},
+		{"RightTop", 3},
+		{"RightCenter", 4},
+		{"RightBottom", 5},
+		{"BottomLeft", 6},
+		{"BottomCenter", 7},
+		{"BottomRight", 8},
+		{"LeftTop", 9},
+		{"LeftCenter", 10},
+		{"LeftBottom", 11},
+	};
+
+	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"session.screen0.slit.placement: %s\n",
+			cases[i].value);
+		write_file(TEST_INIT, buf);
+
+		struct wm_config *c = config_create();
+		config_load(c, TEST_INIT);
+		assert(c->slit_placement == cases[i].expected);
+		config_destroy(c);
+	}
+
+	/* Unknown value defaults to 4 (RightCenter) */
+	write_file(TEST_INIT,
+		"session.screen0.slit.placement: Nonsense\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_placement == 4);
+	config_destroy(c);
+
+	printf("  PASS: test_all_slit_placements\n");
+}
+
+/* Test: incomplete struts (fewer than 4 values) */
+static void
+test_incomplete_struts(void)
+{
+	/* Only 2 values provided */
+	write_file(TEST_INIT,
+		"session.screen0.struts: 10 20\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->struts[0] == 10);
+	assert(c->struts[1] == 20);
+	/* sscanf only reads what it can; remaining should be 0 (calloc) */
+	assert(c->struts[2] == 0);
+	assert(c->struts[3] == 0);
+
+	config_destroy(c);
+	printf("  PASS: test_incomplete_struts\n");
+}
+
+/* Test: slit layer parsing (named and numeric) */
+static void
+test_slit_layer_parsing(void)
+{
+	/* AboveDock / Above = 6 */
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: AboveDock\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 6);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: Above\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 6);
+	config_destroy(c);
+
+	/* Bottom = 2 */
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: Bottom\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 2);
+	config_destroy(c);
+
+	/* Normal = 4, Dock = 4 */
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: Normal\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 4);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: Dock\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 4);
+	config_destroy(c);
+
+	printf("  PASS: test_slit_layer_parsing\n");
+}
+
+/* Test: slit direction parsing */
+static void
+test_slit_direction_parsing(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.slit.direction: Horizontal\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_direction == 1);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.slit.direction: Vertical\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_direction == 0);
+	config_destroy(c);
+
+	/* Unknown defaults to Vertical (0) */
+	write_file(TEST_INIT,
+		"session.screen0.slit.direction: Sideways\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_direction == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_slit_direction_parsing\n");
+}
+
+/* Test: slit alpha clamping */
+static void
+test_slit_alpha_clamp(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.slit.alpha: -10\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_alpha == 0);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.slit.alpha: 999\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_alpha == 255);
+	config_destroy(c);
+
+	printf("  PASS: test_slit_alpha_clamp\n");
+}
+
+/* Test: toolbar width percent clamping */
+static void
+test_toolbar_width_percent_clamp(void)
+{
+	/* Below minimum (10) */
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.widthPercent: 1\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->toolbar_width_percent == 10);
+	config_destroy(c);
+
+	/* Above maximum (100) */
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.widthPercent: 200\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->toolbar_width_percent == 100);
+	config_destroy(c);
+
+	printf("  PASS: test_toolbar_width_percent_clamp\n");
+}
+
+/* Test: animation duration clamping */
+static void
+test_animation_duration_clamp(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.animationDuration: -100\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->animation_duration_ms == 0);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.animationDuration: 99999\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->animation_duration_ms == 5000);
+	config_destroy(c);
+
+	printf("  PASS: test_animation_duration_clamp\n");
+}
+
+/* Test: all remaining placement policies */
+static void
+test_remaining_placement_policies(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.windowPlacement: RowMinOverlapPlacement\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->placement_policy == WM_PLACEMENT_ROW_MIN_OVERLAP);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.windowPlacement: ColMinOverlapPlacement\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->placement_policy == WM_PLACEMENT_COL_MIN_OVERLAP);
+	config_destroy(c);
+
+	/* Unknown placement defaults to RowSmart */
+	write_file(TEST_INIT,
+		"session.screen0.windowPlacement: UnknownPlacement\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->placement_policy == WM_PLACEMENT_ROW_SMART);
+	config_destroy(c);
+
+	printf("  PASS: test_remaining_placement_policies\n");
+}
+
+/* Test: workspace mode (per-output vs global) */
+static void
+test_workspace_mode(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.workspaceMode: per-output\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->workspace_mode == WM_WORKSPACE_PER_OUTPUT);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.workspaceMode: global\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->workspace_mode == WM_WORKSPACE_GLOBAL);
+	config_destroy(c);
+
+	printf("  PASS: test_workspace_mode\n");
+}
+
+/* Test: snap zone threshold clamping */
+static void
+test_snap_zone_threshold_clamp(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.enableWindowSnapping: true\n"
+		"session.screen0.snapZoneThreshold: 0\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_zone_threshold == 1);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.snapZoneThreshold: 999\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_zone_threshold == 100);
+	config_destroy(c);
+
+	printf("  PASS: test_snap_zone_threshold_clamp\n");
+}
+
+/* Test: config_load with NULL config_dir returns error */
+static void
+test_load_null_config_dir(void)
+{
+	struct wm_config *c = config_create();
+	free(c->config_dir);
+	c->config_dir = NULL;
+
+	int ret = config_load(c, NULL);
+	assert(ret == -1);
+
+	config_destroy(c);
+	printf("  PASS: test_load_null_config_dir\n");
+}
+
+/* Test: comments and blank lines are skipped */
+static void
+test_comments_and_blank_lines(void)
+{
+	write_file(TEST_INIT,
+		"# This is a comment\n"
+		"! This is also a comment\n"
+		"\n"
+		"   \n"
+		"session.screen0.workspaces: 7\n"
+	);
+
+	struct wm_config *c = config_create();
+	int ret = config_load(c, TEST_INIT);
+	assert(ret == 0);
+	assert(c->workspace_count == 7);
+
+	config_destroy(c);
+	printf("  PASS: test_comments_and_blank_lines\n");
+}
+
 int
 main(void)
 {
@@ -586,6 +1058,26 @@ main(void)
 	test_double_click_interval_clamp();
 	test_menu_alpha_clamp();
 	test_phase5c_config_options();
+
+	/* New coverage tests */
+	test_malformed_lines();
+	test_empty_values();
+	test_duplicate_keys();
+	test_very_long_lines();
+	test_empty_workspace_names();
+	test_all_toolbar_placements();
+	test_all_slit_placements();
+	test_incomplete_struts();
+	test_slit_layer_parsing();
+	test_slit_direction_parsing();
+	test_slit_alpha_clamp();
+	test_toolbar_width_percent_clamp();
+	test_animation_duration_clamp();
+	test_remaining_placement_policies();
+	test_workspace_mode();
+	test_snap_zone_threshold_clamp();
+	test_load_null_config_dir();
+	test_comments_and_blank_lines();
 
 	cleanup();
 	printf("All config tests passed.\n");

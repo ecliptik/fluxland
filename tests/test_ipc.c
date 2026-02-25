@@ -202,6 +202,45 @@ setup(void)
 	test_client.fd = -1;
 }
 
+/* --- Mock objects for Group B tests --- */
+
+static struct wm_view mock_view;
+static struct wm_tab_group mock_tab_group;
+static struct wm_toolbar mock_toolbar;
+static struct wm_slit mock_slit;
+
+static void
+setup_with_view(void)
+{
+	setup();
+	memset(&mock_view, 0, sizeof(mock_view));
+	mock_view.server = &test_server;
+	mock_view.focus_alpha = 255;
+	mock_view.unfocus_alpha = 200;
+	test_server.focused_view = &mock_view;
+}
+
+static void
+setup_with_tabbed_view(void)
+{
+	setup_with_view();
+	memset(&mock_tab_group, 0, sizeof(mock_tab_group));
+	wl_list_init(&mock_tab_group.views);
+	mock_tab_group.active_view = &mock_view;
+	mock_tab_group.count = 1;
+	mock_view.tab_group = &mock_tab_group;
+}
+
+static void
+setup_with_toolbar_slit(void)
+{
+	setup();
+	memset(&mock_toolbar, 0, sizeof(mock_toolbar));
+	memset(&mock_slit, 0, sizeof(mock_slit));
+	test_server.toolbar = &mock_toolbar;
+	test_server.slit = &mock_slit;
+}
+
 /* Check that response JSON contains "success":true */
 static bool
 response_is_success(const char *json)
@@ -803,6 +842,883 @@ test_ipc_constants(void)
 	printf("  PASS: test_ipc_constants\n");
 }
 
+/* === Group A: Server-only action tests (no focused_view needed) === */
+
+/* Test: FocusPrev dispatches successfully */
+static void
+test_action_focus_prev(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"FocusPrev\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_focus_prev\n");
+}
+
+/* Test: NextWorkspace dispatches successfully */
+static void
+test_action_next_workspace(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"NextWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_next_workspace\n");
+}
+
+/* Test: PrevWorkspace dispatches successfully */
+static void
+test_action_prev_workspace(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"PrevWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_prev_workspace\n");
+}
+
+/* Test: RightWorkspace and LeftWorkspace dispatch successfully */
+static void
+test_action_right_left_workspace(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"RightWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"LeftWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_right_left_workspace\n");
+}
+
+/* Test: ArrangeWindows (grid) dispatches successfully */
+static void
+test_action_arrange_grid(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"ArrangeWindows\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_arrange_grid\n");
+}
+
+/* Test: ArrangeWindowsVertical and ArrangeWindowsHorizontal */
+static void
+test_action_arrange_vert_horiz(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ArrangeWindowsVertical\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ArrangeWindowsHorizontal\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_arrange_vert_horiz\n");
+}
+
+/* Test: CascadeWindows dispatches successfully */
+static void
+test_action_cascade(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"CascadeWindows\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_cascade\n");
+}
+
+/* Test: ArrangeStack variants (Left/Right/Top/Bottom) */
+static void
+test_action_arrange_stack_variants(void)
+{
+	const char *actions[] = {
+		"ArrangeWindowsStackLeft",
+		"ArrangeWindowsStackRight",
+		"ArrangeWindowsStackTop",
+		"ArrangeWindowsStackBottom",
+	};
+	for (int i = 0; i < 4; i++) {
+		setup();
+		char buf[128];
+		snprintf(buf, sizeof(buf),
+			"{\"command\":\"command\",\"action\":\"%s\"}",
+			actions[i]);
+		char *r = wm_ipc_handle_command(&test_ipc, &test_client, buf);
+		assert(r != NULL);
+		assert(response_is_success(r));
+		free(r);
+	}
+	printf("  PASS: test_action_arrange_stack_variants\n");
+}
+
+/* Test: CloseAllWindows dispatches successfully */
+static void
+test_action_close_all_windows(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"CloseAllWindows\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_close_all_windows\n");
+}
+
+/* Test: AddWorkspace and RemoveLastWorkspace */
+static void
+test_action_add_remove_workspace(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"AddWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"RemoveLastWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_add_remove_workspace\n");
+}
+
+/* Test: SendToNextWorkspace and SendToPrevWorkspace */
+static void
+test_action_send_to_next_prev_workspace(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SendToNextWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SendToPrevWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_send_to_next_prev_workspace\n");
+}
+
+/* Test: TakeToNextWorkspace and TakeToPrevWorkspace */
+static void
+test_action_take_to_next_prev_workspace(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"TakeToNextWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"TakeToPrevWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_take_to_next_prev_workspace\n");
+}
+
+/* Test: HideMenus dispatches successfully */
+static void
+test_action_hide_menus(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"HideMenus\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_hide_menus\n");
+}
+
+/* Test: Deiconify variants (no arg, All, AllWorkspace, LastWorkspace) */
+static void
+test_action_deiconify_variants(void)
+{
+	setup();
+	/* No argument: defaults to deiconify last */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Deiconify\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* Deiconify All */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Deiconify All\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* Deiconify AllWorkspace */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"Deiconify AllWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* Deiconify LastWorkspace */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"Deiconify LastWorkspace\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_deiconify_variants\n");
+}
+
+/* Test: Workspace N switches by number */
+static void
+test_action_workspace_number(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Workspace 2\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_workspace_number\n");
+}
+
+/* Test: SendToWorkspace N */
+static void
+test_action_send_to_workspace_number(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SendToWorkspace 3\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_send_to_workspace_number\n");
+}
+
+/* Test: TakeToWorkspace N */
+static void
+test_action_take_to_workspace_number(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"TakeToWorkspace 2\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_take_to_workspace_number\n");
+}
+
+/* Test: SetWorkspaceName sets the name */
+static void
+test_action_set_workspace_name(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetWorkspaceName TestDesk\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_set_workspace_name\n");
+}
+
+/* Test: Reconfigure reloads config and resets keymode */
+static void
+test_action_reconfigure(void)
+{
+	setup();
+	struct wm_config cfg = {0};
+	test_server.config = &cfg;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Reconfigure\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	/* Verify keymode was reset to default */
+	assert(test_server.current_keymode != NULL);
+	assert(strcmp(test_server.current_keymode, "default") == 0);
+	free(test_server.current_keymode);
+	test_server.current_keymode = NULL;
+	free(r);
+	printf("  PASS: test_action_reconfigure\n");
+}
+
+/* Test: FocusLeft/Right/Up/Down dispatch focus direction */
+static void
+test_action_focus_directions(void)
+{
+	const char *actions[] = {
+		"FocusLeft", "FocusRight", "FocusUp", "FocusDown",
+	};
+	for (int i = 0; i < 4; i++) {
+		setup();
+		char buf[128];
+		snprintf(buf, sizeof(buf),
+			"{\"command\":\"command\",\"action\":\"%s\"}",
+			actions[i]);
+		char *r = wm_ipc_handle_command(&test_ipc, &test_client, buf);
+		assert(r != NULL);
+		assert(response_is_success(r));
+		free(r);
+	}
+	printf("  PASS: test_action_focus_directions\n");
+}
+
+/* Test: NextLayout and PrevLayout */
+static void
+test_action_layout_cycling(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"NextLayout\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"PrevLayout\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_layout_cycling\n");
+}
+
+/* === Group B: Mock view action tests === */
+
+/* Test: Raise action with focused view */
+static void
+test_action_raise(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Raise\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_raise\n");
+}
+
+/* Test: Lower action with focused view */
+static void
+test_action_lower(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Lower\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_lower\n");
+}
+
+/* Test: RaiseLayer and LowerLayer with focused view */
+static void
+test_action_raise_lower_layer(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"RaiseLayer\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"LowerLayer\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_raise_lower_layer\n");
+}
+
+/* Test: SetLayer with argument */
+static void
+test_action_set_layer(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"SetLayer Above\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_set_layer\n");
+}
+
+/* Test: Stick toggles sticky state */
+static void
+test_action_stick(void)
+{
+	setup_with_view();
+	mock_view.sticky = false;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Stick\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_stick\n");
+}
+
+/* Test: MaximizeVertical with focused view */
+static void
+test_action_maximize_vert(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"MaximizeVertical\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_maximize_vert\n");
+}
+
+/* Test: MaximizeHorizontal with focused view */
+static void
+test_action_maximize_horiz(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"MaximizeHorizontal\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_maximize_horiz\n");
+}
+
+/* Test: ToggleDecor with focused view */
+static void
+test_action_toggle_decor(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"ToggleDecor\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_toggle_decor\n");
+}
+
+/* Test: LHalf and RHalf tiling */
+static void
+test_action_lhalf_rhalf(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"LHalf\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"RHalf\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_lhalf_rhalf\n");
+}
+
+/* Test: ResizeHorizontal and ResizeVertical with argument */
+static void
+test_action_resize_horiz_vert(void)
+{
+	setup_with_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ResizeHorizontal 10\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ResizeVertical -5\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_resize_horiz_vert\n");
+}
+
+/* Test: NextTab and PrevTab with tabbed view */
+static void
+test_action_next_prev_tab(void)
+{
+	setup_with_tabbed_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"NextTab\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"PrevTab\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_next_prev_tab\n");
+}
+
+/* Test: DetachClient with tabbed view */
+static void
+test_action_detach_client(void)
+{
+	setup_with_tabbed_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"DetachClient\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_detach_client\n");
+}
+
+/* Test: MoveTabLeft and MoveTabRight with tabbed view */
+static void
+test_action_move_tab(void)
+{
+	setup_with_tabbed_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"MoveTabLeft\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"MoveTabRight\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_move_tab\n");
+}
+
+/* Test: SetAlpha with absolute value */
+static void
+test_action_set_alpha_absolute(void)
+{
+	setup_with_view();
+	mock_view.focus_alpha = 255;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"SetAlpha 128\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(mock_view.focus_alpha == 128);
+	assert(mock_view.unfocus_alpha == 128);
+	free(r);
+	printf("  PASS: test_action_set_alpha_absolute\n");
+}
+
+/* Test: SetAlpha with relative +/- offsets */
+static void
+test_action_set_alpha_relative(void)
+{
+	setup_with_view();
+	mock_view.focus_alpha = 200;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"SetAlpha +30\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(mock_view.focus_alpha == 230);
+	free(r);
+
+	/* Relative negative */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"SetAlpha -50\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(mock_view.focus_alpha == 180);
+	free(r);
+	printf("  PASS: test_action_set_alpha_relative\n");
+}
+
+/* Test: SetAlpha clamping to 0-255 range */
+static void
+test_action_set_alpha_clamping(void)
+{
+	setup_with_view();
+	/* Clamp high: 300 -> 255 */
+	mock_view.focus_alpha = 200;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"SetAlpha 300\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(mock_view.focus_alpha == 255);
+	free(r);
+
+	/* Clamp low: 50 + (-100) = -50 -> 0 */
+	mock_view.focus_alpha = 50;
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"SetAlpha -100\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(mock_view.focus_alpha == 0);
+	free(r);
+	printf("  PASS: test_action_set_alpha_clamping\n");
+}
+
+/* Test: KeyMode switches the current keymode */
+static void
+test_action_key_mode(void)
+{
+	setup();
+	test_server.current_keymode = strdup("default");
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"KeyMode custom_mode\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(test_server.current_keymode != NULL);
+	assert(strcmp(test_server.current_keymode, "custom_mode") == 0);
+	free(test_server.current_keymode);
+	test_server.current_keymode = NULL;
+	free(r);
+	printf("  PASS: test_action_key_mode\n");
+}
+
+/* Test: ToggleToolbarAbove and ToggleToolbarVisible */
+static void
+test_action_toolbar_toggles(void)
+{
+	setup_with_toolbar_slit();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleToolbarAbove\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleToolbarVisible\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_toolbar_toggles\n");
+}
+
+/* Test: ToggleSlitAbove and ToggleSlitHidden */
+static void
+test_action_slit_toggles(void)
+{
+	setup_with_toolbar_slit();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleSlitAbove\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleSlitHidden\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_slit_toggles\n");
+}
+
+/* Test: Toolbar/Slit toggles with NULL pointers (no-op) */
+static void
+test_action_toolbar_slit_null(void)
+{
+	setup();
+	/* server->toolbar and server->slit are NULL */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleToolbarAbove\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleSlitHidden\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_toolbar_slit_null\n");
+}
+
+/* Test: View actions with no focused view are no-ops */
+static void
+test_action_view_actions_no_focus(void)
+{
+	setup();
+	/* No focused_view set - all view actions should still succeed */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Raise\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"LHalf\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetAlpha 100\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_view_actions_no_focus\n");
+}
+
+/* Test: Tab actions with no tab group are no-ops */
+static void
+test_action_tab_no_group(void)
+{
+	setup_with_view();
+	/* View has no tab_group */
+	mock_view.tab_group = NULL;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"NextTab\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"DetachClient\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_tab_no_group\n");
+}
+
+/* === Data-populated query tests === */
+
+/* Test: get_workspaces with actual workspace structs */
+static void
+test_get_workspaces_populated(void)
+{
+	setup();
+	struct wm_workspace ws0 = {0};
+	ws0.name = "Desktop 1";
+	ws0.index = 0;
+	struct wm_workspace ws1 = {0};
+	ws1.name = "Desktop 2";
+	ws1.index = 1;
+
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws1.link);
+
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"get_workspaces\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(strstr(r, "\"index\":0") != NULL);
+	assert(strstr(r, "\"Desktop 1\"") != NULL);
+	assert(strstr(r, "\"index\":1") != NULL);
+	assert(strstr(r, "\"Desktop 2\"") != NULL);
+	assert(strstr(r, "\"focused\":false") != NULL);
+	free(r);
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&ws1.link);
+	printf("  PASS: test_get_workspaces_populated\n");
+}
+
+/* Test: get_config with strict_mouse focus and under_mouse placement */
+static void
+test_get_config_strict_mouse(void)
+{
+	setup();
+	struct wm_config cfg = {0};
+	cfg.workspace_count = 6;
+	cfg.focus_policy = WM_FOCUS_STRICT_MOUSE;
+	cfg.placement_policy = WM_PLACEMENT_UNDER_MOUSE;
+	cfg.edge_snap_threshold = 20;
+	cfg.toolbar_visible = true;
+	test_server.config = &cfg;
+
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"get_config\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(strstr(r, "\"focus_policy\":\"strict_mouse\"") != NULL);
+	assert(strstr(r, "\"placement_policy\":\"under_mouse\"") != NULL);
+	assert(strstr(r, "\"workspace_count\":6") != NULL);
+	free(r);
+	printf("  PASS: test_get_config_strict_mouse\n");
+}
+
+/* Test: get_config with col_smart placement */
+static void
+test_get_config_col_smart(void)
+{
+	setup();
+	struct wm_config cfg = {0};
+	cfg.workspace_count = 3;
+	cfg.focus_policy = WM_FOCUS_CLICK;
+	cfg.placement_policy = WM_PLACEMENT_COL_SMART;
+	cfg.edge_snap_threshold = 15;
+	cfg.toolbar_visible = true;
+	test_server.config = &cfg;
+
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"get_config\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(strstr(r, "\"placement_policy\":\"col_smart\"") != NULL);
+	free(r);
+	printf("  PASS: test_get_config_col_smart\n");
+}
+
+/* Test: get_config with min_overlap placement variants */
+static void
+test_get_config_min_overlap(void)
+{
+	setup();
+	struct wm_config cfg = {0};
+	cfg.placement_policy = WM_PLACEMENT_ROW_MIN_OVERLAP;
+	test_server.config = &cfg;
+
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"get_config\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(strstr(r, "\"placement_policy\":\"row_min_overlap\"") != NULL);
+	free(r);
+
+	cfg.placement_policy = WM_PLACEMENT_COL_MIN_OVERLAP;
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"get_config\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(strstr(r, "\"placement_policy\":\"col_min_overlap\"") != NULL);
+	free(r);
+	printf("  PASS: test_get_config_min_overlap\n");
+}
+
 int
 main(void)
 {
@@ -855,6 +1771,59 @@ main(void)
 	test_event_bitmask_distinct();
 	test_client_init();
 	test_ipc_constants();
+
+	/* Group A: Server-only actions */
+	test_action_focus_prev();
+	test_action_next_workspace();
+	test_action_prev_workspace();
+	test_action_right_left_workspace();
+	test_action_arrange_grid();
+	test_action_arrange_vert_horiz();
+	test_action_cascade();
+	test_action_arrange_stack_variants();
+	test_action_close_all_windows();
+	test_action_add_remove_workspace();
+	test_action_send_to_next_prev_workspace();
+	test_action_take_to_next_prev_workspace();
+	test_action_hide_menus();
+	test_action_deiconify_variants();
+	test_action_workspace_number();
+	test_action_send_to_workspace_number();
+	test_action_take_to_workspace_number();
+	test_action_set_workspace_name();
+	test_action_reconfigure();
+	test_action_focus_directions();
+	test_action_layout_cycling();
+
+	/* Group B: Mock view actions */
+	test_action_raise();
+	test_action_lower();
+	test_action_raise_lower_layer();
+	test_action_set_layer();
+	test_action_stick();
+	test_action_maximize_vert();
+	test_action_maximize_horiz();
+	test_action_toggle_decor();
+	test_action_lhalf_rhalf();
+	test_action_resize_horiz_vert();
+	test_action_next_prev_tab();
+	test_action_detach_client();
+	test_action_move_tab();
+	test_action_set_alpha_absolute();
+	test_action_set_alpha_relative();
+	test_action_set_alpha_clamping();
+	test_action_key_mode();
+	test_action_toolbar_toggles();
+	test_action_slit_toggles();
+	test_action_toolbar_slit_null();
+	test_action_view_actions_no_focus();
+	test_action_tab_no_group();
+
+	/* Data-populated query tests */
+	test_get_workspaces_populated();
+	test_get_config_strict_mouse();
+	test_get_config_col_smart();
+	test_get_config_min_overlap();
 
 	printf("All IPC tests passed.\n");
 	return 0;

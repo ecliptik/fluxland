@@ -533,6 +533,488 @@ test_validate_config_errors(void)
 	printf("  PASS: test_validate_config_errors\n");
 }
 
+/* ---- Empty file validation (all 3 types) ---- */
+
+static void
+test_empty_init_file(void)
+{
+	write_file(TEST_INIT, "");
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	/* Empty file should produce no errors */
+	assert(config_result_has_errors(&result) == false);
+	assert(result.count == 0);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_empty_init_file\n");
+}
+
+static void
+test_empty_keys_file(void)
+{
+	write_file(TEST_KEYS, "");
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_keys_file(TEST_KEYS, &result);
+
+	assert(config_result_has_errors(&result) == false);
+	assert(result.count == 0);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_empty_keys_file\n");
+}
+
+static void
+test_empty_style_file(void)
+{
+	write_file(TEST_STYLE, "");
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	assert(config_result_has_errors(&result) == false);
+	assert(result.count == 0);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_empty_style_file\n");
+}
+
+/* ---- Invalid color formats in style validation ---- */
+
+static void
+test_validate_invalid_color_hash_short(void)
+{
+	/* #GGG - not valid hex */
+	write_file(TEST_STYLE,
+		"window.label.focus.textColor: #GGG\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	assert(config_result_has_errors(&result) == true);
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].fatal &&
+		    result.errors[i].message &&
+		    strstr(result.errors[i].message, "invalid color"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_invalid_color_hash_short\n");
+}
+
+static void
+test_validate_invalid_color_too_long(void)
+{
+	/* #FFFFFFFFF - 9 hex digits, neither 3 nor 6 */
+	write_file(TEST_STYLE,
+		"window.borderColor: #FFFFFFFFF\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	assert(config_result_has_errors(&result) == true);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_invalid_color_too_long\n");
+}
+
+/* ---- Invalid font strings in style validation ---- */
+
+static void
+test_validate_invalid_font_string(void)
+{
+	/* Font with no alphabetic characters - just digits */
+	write_file(TEST_STYLE,
+		"window.label.focus.font: 12345\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	/* is_valid_font_string checks for at least one alpha character;
+	 * "12345" has digits which pass the check. Actually let's look again. */
+	/* Actually '1', '2', etc. are not alpha, so the function returns false */
+	assert(config_result_has_errors(&result) == true);
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].fatal &&
+		    result.errors[i].message &&
+		    strstr(result.errors[i].message, "invalid font"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_invalid_font_string\n");
+}
+
+/* ---- Malformed struts ---- */
+
+static void
+test_validate_malformed_struts(void)
+{
+	/* Struts is VT_STRING in validate, so no specific validation error.
+	 * But we can test with non-integer characters to see it's accepted. */
+	write_file(TEST_INIT,
+		"session.screen0.struts: not numbers\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	/* struts is VT_STRING, so any value is accepted by the validator */
+	assert(config_result_has_errors(&result) == false);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_malformed_struts\n");
+}
+
+/* ---- Multiple errors in same file ---- */
+
+static void
+test_multiple_errors_same_file(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.focusModel: BadModel\n"
+		"session.screen0.toolbar.visible: maybe\n"
+		"session.screen0.workspaces: abc\n"
+		"session.screen0.slit.placement: Nowhere\n"
+		"session.screen0.toolbar.placement: Upside\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	/* Should have at least 5 errors (one per invalid value) */
+	int error_count = 0;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].fatal)
+			error_count++;
+	}
+	assert(error_count >= 5);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_multiple_errors_same_file\n");
+}
+
+/* ---- Nonexistent file for keys and style validators ---- */
+
+static void
+test_nonexistent_keys_file(void)
+{
+	struct config_result result;
+	config_result_init(&result);
+	validate_keys_file("/nonexistent/path/keys", &result);
+
+	/* Keys file validator adds a warning (not fatal) for missing file */
+	assert(result.count > 0);
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].message &&
+		    strstr(result.errors[i].message, "cannot open"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_nonexistent_keys_file\n");
+}
+
+static void
+test_nonexistent_style_file(void)
+{
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file("/nonexistent/path/style", &result);
+
+	assert(result.count > 0);
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].message &&
+		    strstr(result.errors[i].message, "cannot open"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_nonexistent_style_file\n");
+}
+
+/* ---- Init file: empty value warning ---- */
+
+static void
+test_init_empty_value(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.workspaces:\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	/* Should produce a warning about empty value */
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].message &&
+		    strstr(result.errors[i].message, "empty value"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_init_empty_value\n");
+}
+
+/* ---- Init file: missing colon warning ---- */
+
+static void
+test_init_missing_colon(void)
+{
+	write_file(TEST_INIT,
+		"this line has no colon separator\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].message &&
+		    strstr(result.errors[i].message, "missing ':'"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_init_missing_colon\n");
+}
+
+/* ---- Style file: negative integer value ---- */
+
+static void
+test_style_negative_integer(void)
+{
+	write_file(TEST_STYLE,
+		"window.borderWidth: -5\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	/* Should produce warning about negative value */
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (!result.errors[i].fatal &&
+		    result.errors[i].message &&
+		    strstr(result.errors[i].message, "negative"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_style_negative_integer\n");
+}
+
+/* ---- Keys file: missing colon ---- */
+
+static void
+test_keys_missing_colon(void)
+{
+	write_file(TEST_KEYS,
+		"Mod4 x Close\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_keys_file(TEST_KEYS, &result);
+
+	assert(config_result_has_errors(&result) == true);
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].fatal &&
+		    result.errors[i].message &&
+		    strstr(result.errors[i].message, "missing ':'"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_keys_missing_colon\n");
+}
+
+/* ---- Init file: all slit enum validations ---- */
+
+static void
+test_validate_slit_enums(void)
+{
+	/* Valid slit placement */
+	write_file(TEST_INIT,
+		"session.screen0.slit.placement: LeftBottom\n"
+		"session.screen0.slit.direction: Horizontal\n"
+		"session.screen0.slit.layer: AboveDock\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	assert(config_result_has_errors(&result) == false);
+
+	config_result_destroy(&result);
+
+	/* Invalid slit direction */
+	write_file(TEST_INIT,
+		"session.screen0.slit.direction: Sideways\n"
+	);
+
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	assert(config_result_has_errors(&result) == true);
+
+	config_result_destroy(&result);
+
+	/* Invalid slit layer */
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: UnknownLayer\n"
+	);
+
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+
+	assert(config_result_has_errors(&result) == true);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_slit_enums\n");
+}
+
+/* ---- Style file: colorTo validation ---- */
+
+static void
+test_validate_color_to(void)
+{
+	write_file(TEST_STYLE,
+		"window.title.focus.colorTo: invalidcolor\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	assert(config_result_has_errors(&result) == true);
+	bool found = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].fatal &&
+		    result.errors[i].message &&
+		    strstr(result.errors[i].message, "invalid color"))
+			found = true;
+	}
+	assert(found);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_color_to\n");
+}
+
+/* ---- Result: warnings-only has no fatal errors ---- */
+
+static void
+test_result_warnings_only(void)
+{
+	struct config_result result;
+	config_result_init(&result);
+
+	config_result_add_warning(&result, "test.conf", 1, "warn 1");
+	config_result_add_warning(&result, "test.conf", 2, "warn 2");
+	config_result_add_warning(&result, "test.conf", 3, "warn 3");
+
+	assert(result.count == 3);
+	assert(config_result_has_errors(&result) == false);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_result_warnings_only\n");
+}
+
+/* ---- Style file: valid integer properties ---- */
+
+static void
+test_validate_style_valid_integers(void)
+{
+	write_file(TEST_STYLE,
+		"window.borderWidth: 2\n"
+		"window.bevelWidth: 3\n"
+		"window.handleWidth: 8\n"
+		"window.title.height: 24\n"
+		"menu.borderWidth: 1\n"
+		"menu.itemHeight: 20\n"
+		"menu.titleHeight: 22\n"
+		"slit.borderWidth: 1\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_style_file(TEST_STYLE, &result);
+
+	assert(config_result_has_errors(&result) == false);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_validate_style_valid_integers\n");
+}
+
+/* ---- Validate config with no init file (defaults used) ---- */
+
+static void
+test_validate_config_no_files(void)
+{
+	clean_files();
+
+	/* No init/keys/style files = defaults used, should be OK */
+	int ret = validate_config(TEST_DIR);
+	assert(ret == 0);
+
+	printf("  PASS: test_validate_config_no_files\n");
+}
+
+/* ---- Comments and blank lines in keys file ---- */
+
+static void
+test_keys_comments_and_blanks(void)
+{
+	write_file(TEST_KEYS,
+		"# Comment\n"
+		"! Another comment\n"
+		"\n"
+		"   \n"
+		"Mod4 Return :Exec foot\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_keys_file(TEST_KEYS, &result);
+
+	assert(config_result_has_errors(&result) == false);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_keys_comments_and_blanks\n");
+}
+
 int
 main(void)
 {
@@ -572,6 +1054,28 @@ main(void)
 	/* Top-level validation */
 	test_validate_config_valid();
 	test_validate_config_errors();
+
+	/* New coverage tests */
+	test_empty_init_file();
+	test_empty_keys_file();
+	test_empty_style_file();
+	test_validate_invalid_color_hash_short();
+	test_validate_invalid_color_too_long();
+	test_validate_invalid_font_string();
+	test_validate_malformed_struts();
+	test_multiple_errors_same_file();
+	test_nonexistent_keys_file();
+	test_nonexistent_style_file();
+	test_init_empty_value();
+	test_init_missing_colon();
+	test_style_negative_integer();
+	test_keys_missing_colon();
+	test_validate_slit_enums();
+	test_validate_color_to();
+	test_result_warnings_only();
+	test_validate_style_valid_integers();
+	test_validate_config_no_files();
+	test_keys_comments_and_blanks();
 
 	cleanup();
 	printf("All validate tests passed.\n");
