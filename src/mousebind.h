@@ -71,8 +71,11 @@ struct wm_mouse_state {
 #define WM_DOUBLE_CLICK_MS  300
 #define WM_CLICK_MOVE_THRESHOLD 3
 
-/* Load mouse bindings from a keys file. Returns 0 on success. */
-int mousebind_load(struct wl_list *bindings, const char *path);
+/* Load mouse bindings from a keys file. Returns 0 on success.
+ * button_map is a 6-element array (index 0 unused, 1-5 = button mappings).
+ * If NULL, default identity mapping is used. */
+int mousebind_load(struct wl_list *bindings, const char *path,
+	const uint32_t *button_map);
 
 /* Find a matching mouse binding. context=NONE matches global bindings. */
 struct wm_mousebind *mousebind_find(struct wl_list *bindings,

@@ -1474,6 +1474,12 @@ cmd_subscribe(struct wm_ipc_client *client, const char *events_str)
 		} else if (strcasecmp(token, "output") == 0) {
 			client->subscribed_events |= WM_IPC_EVENT_OUTPUT_ADD;
 			client->subscribed_events |= WM_IPC_EVENT_OUTPUT_REMOVE;
+		} else if (strcasecmp(token, "style_changed") == 0) {
+			client->subscribed_events |=
+				WM_IPC_EVENT_STYLE_CHANGED;
+		} else if (strcasecmp(token, "config_reloaded") == 0) {
+			client->subscribed_events |=
+				WM_IPC_EVENT_CONFIG_RELOADED;
 		}
 		token = strtok_r(NULL, ", ", &saveptr);
 	}

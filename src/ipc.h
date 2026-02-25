@@ -26,6 +26,8 @@ enum wm_ipc_event {
 	WM_IPC_EVENT_WORKSPACE      = (1 << 4),
 	WM_IPC_EVENT_OUTPUT_ADD     = (1 << 5),
 	WM_IPC_EVENT_OUTPUT_REMOVE  = (1 << 6),
+	WM_IPC_EVENT_STYLE_CHANGED  = (1 << 7),
+	WM_IPC_EVENT_CONFIG_RELOADED = (1 << 8),
 };
 
 struct wm_ipc_client {

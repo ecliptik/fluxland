@@ -15,6 +15,7 @@
 #define WM_CONFIG_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 enum wm_focus_policy {
 	WM_FOCUS_CLICK,
@@ -168,6 +169,9 @@ struct wm_config {
 
 	/* Custom window menu file (NULL = use default) */
 	char *window_menu_file;
+
+	/* Mouse button remapping (index 0 unused, 1-5 = button mappings) */
+	uint32_t mouse_button_map[6];
 
 	/* Paths */
 	char *config_dir;

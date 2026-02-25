@@ -193,16 +193,22 @@ parse_context(const char *token, enum wm_mouse_context *ctx)
 
 /*
  * Map Fluxbox button number to linux input event code.
+ * If button_map is non-NULL, use the configurable mapping table;
+ * otherwise fall back to defaults.
  */
 static uint32_t
-button_number_to_code(int num)
+button_number_to_code(int num, const uint32_t *button_map)
 {
+	if (num < 1 || num > 5)
+		return 0;
+	if (button_map)
+		return button_map[num];
 	switch (num) {
 	case 1: return BTN_LEFT;
 	case 2: return BTN_MIDDLE;
 	case 3: return BTN_RIGHT;
-	case 4: return BTN_SIDE;    /* scroll up mapped to side */
-	case 5: return BTN_EXTRA;   /* scroll down mapped to extra */
+	case 4: return BTN_SIDE;
+	case 5: return BTN_EXTRA;
 	default: return 0;
 	}
 }
@@ -213,7 +219,7 @@ button_number_to_code(int num)
  */
 static bool
 parse_mouse_event(const char *token, enum wm_mouse_event *event,
-		  uint32_t *button)
+		  uint32_t *button, const uint32_t *button_map)
 {
 	const char *num_str = NULL;
 
@@ -240,7 +246,7 @@ parse_mouse_event(const char *token, enum wm_mouse_event *event,
 	if (num < 1 || num > 5)
 		return false;
 
-	*button = button_number_to_code(num);
+	*button = button_number_to_code(num, button_map);
 	return *button != 0;
 }
 
@@ -319,7 +325,7 @@ parse_subcmds(const char *str, int *count)
  * Format: [OnContext] [Modifier ...] EventN :Action [argument]
  */
 static struct wm_mousebind *
-parse_mousebind_line(const char *line)
+parse_mousebind_line(const char *line, const uint32_t *button_map)
 {
 	const char *colon = strchr(line, ':');
 	if (!colon)
@@ -375,7 +381,7 @@ parse_mousebind_line(const char *line)
 	}
 
 	/* Next token should be the mouse event */
-	if (i < token_count && parse_mouse_event(tokens[i], &event, &button)) {
+	if (i < token_count && parse_mouse_event(tokens[i], &event, &button, button_map)) {
 		found_event = true;
 		i++;
 	}
@@ -488,7 +494,8 @@ is_mouse_line(const char *line)
 }
 
 int
-mousebind_load(struct wl_list *bindings, const char *path)
+mousebind_load(struct wl_list *bindings, const char *path,
+	const uint32_t *button_map)
 {
 	FILE *f = fopen(path, "r");
 	if (!f)
@@ -504,7 +511,8 @@ mousebind_load(struct wl_list *bindings, const char *path)
 		if (!is_mouse_line(p))
 			continue;
 
-		struct wm_mousebind *bind = parse_mousebind_line(p);
+		struct wm_mousebind *bind =
+			parse_mousebind_line(p, button_map);
 		if (bind)
 			wl_list_insert(bindings->prev, &bind->link);
 	}

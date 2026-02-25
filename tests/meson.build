@@ -63,6 +63,16 @@ test_menu = executable(
 )
 test('menu', test_menu)
 
+# --- test_validate: config validation tests ---
+test_validate = executable(
+  'test_validate',
+  files('test_validate.c', '../src/validate.c', '../src/rcparser.c'),
+  include_directories: test_inc,
+  dependencies: [],
+  install: false,
+)
+test('validate', test_validate)
+
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
 if wayland_client.found()

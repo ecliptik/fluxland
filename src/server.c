@@ -95,6 +95,11 @@ wm_server_reconfigure(struct wm_server *server)
 		server->show_position = server->config->show_window_position;
 	}
 
+	/* Broadcast config_reloaded event to IPC subscribers */
+	wm_ipc_broadcast_event(&server->ipc,
+		WM_IPC_EVENT_CONFIG_RELOADED,
+		"{\"event\":\"config_reloaded\"}");
+
 	/* 2. Reload keymodes and keybindings */
 	keybind_destroy_all(&server->keymodes);
 	wl_list_init(&server->keymodes);
@@ -122,7 +127,8 @@ wm_server_reconfigure(struct wm_server *server)
 	wl_list_init(&server->mousebindings);
 	if (server->config && server->config->keys_file) {
 		mousebind_load(&server->mousebindings,
-			server->config->keys_file);
+			server->config->keys_file,
+			server->config->mouse_button_map);
 	}
 
 	/* 4. Reload style */
@@ -132,9 +138,30 @@ wm_server_reconfigure(struct wm_server *server)
 			style_load_overlay(server->style,
 				server->config->style_overlay);
 		}
+
+		/* Broadcast style_changed event to IPC subscribers */
+		wm_ipc_broadcast_event(&server->ipc,
+			WM_IPC_EVENT_STYLE_CHANGED,
+			"{\"event\":\"style_changed\"}");
 	}
 
-	/* 5. Reload menus */
+	/* 5. Update workspace names from config */
+	if (server->config) {
+		struct wm_workspace *ws;
+		wl_list_for_each(ws, &server->workspaces, link) {
+			const char *name = NULL;
+			if (ws->index < server->config->workspace_name_count &&
+			    server->config->workspace_names[ws->index]) {
+				name = server->config->workspace_names[ws->index];
+			}
+			if (name && (!ws->name || strcmp(ws->name, name) != 0)) {
+				free(ws->name);
+				ws->name = strdup(name);
+			}
+		}
+	}
+
+	/* 6. Reload menus (after workspace names so submenus reflect changes) */
 	wm_menu_hide_all(server);
 	if (server->root_menu) {
 		wm_menu_destroy(server->root_menu);
@@ -150,7 +177,7 @@ wm_server_reconfigure(struct wm_server *server)
 	}
 	server->window_menu = wm_menu_create_window_menu(server);
 
-	/* 6. Reload rules */
+	/* 7. Reload rules */
 	wm_rules_finish(&server->rules);
 	wm_rules_init(&server->rules);
 	if (server->config && server->config->apps_file) {
@@ -158,15 +185,20 @@ wm_server_reconfigure(struct wm_server *server)
 			server->config->apps_file);
 	}
 
-	/* 7. Reapply XKB keyboard layout from config */
+	/* 8. Reapply XKB keyboard layout from config */
 	wm_keyboard_apply_config(server);
 
-	/* 8. Refresh toolbar with new style */
+	/* 9. Refresh toolbar with new config and style */
 	if (server->toolbar) {
 		wm_toolbar_relayout(server->toolbar);
 	}
 
-	/* 9. Refresh all view decorations with new style */
+	/* 10. Refresh slit with new config and style */
+	if (server->slit) {
+		wm_slit_relayout(server->slit);
+	}
+
+	/* 11. Refresh all view decorations with new style */
 	if (server->style) {
 		struct wm_view *view;
 		wl_list_for_each(view, &server->views, link) {
@@ -399,7 +431,8 @@ wm_server_init(struct wm_server *server)
 	memset(&server->mouse_state, 0, sizeof(server->mouse_state));
 	if (server->config && server->config->keys_file) {
 		mousebind_load(&server->mousebindings,
-			server->config->keys_file);
+			server->config->keys_file,
+			server->config->mouse_button_map);
 	}
 
 	/* Initialize workspaces */

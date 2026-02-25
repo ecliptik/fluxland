@@ -169,6 +169,7 @@ wm_sources = files(
   'src/slit.c',
   'src/tablet.c',
   'src/toolbar.c',
+  'src/validate.c',
   'src/xwayland.c',
 )
 

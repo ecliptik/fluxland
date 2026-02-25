@@ -14,21 +14,24 @@
 #include "config.h"
 #include "keybind.h"
 #include "server.h"
+#include "validate.h"
 
 static const char usage[] =
 	"Usage: fluxland [options...]\n"
 	"  -s, --startup <cmd>  Run command on startup\n"
+	"  -c, --check-config   Validate config and exit\n"
 	"  -d, --debug          Enable debug logging\n"
 	"  -v, --version        Show version and exit\n"
 	"  -l, --list-commands  List available commands and exit\n"
 	"  -h, --help           Show this help\n";
 
 static const struct option long_options[] = {
-	{"startup", required_argument, NULL, 's'},
-	{"debug",   no_argument,       NULL, 'd'},
-	{"version", no_argument,       NULL, 'v'},
-	{"list-commands", no_argument, NULL, 'l'},
-	{"help",    no_argument,       NULL, 'h'},
+	{"startup",      required_argument, NULL, 's'},
+	{"check-config", no_argument,       NULL, 'c'},
+	{"debug",        no_argument,       NULL, 'd'},
+	{"version",      no_argument,       NULL, 'v'},
+	{"list-commands", no_argument,      NULL, 'l'},
+	{"help",         no_argument,       NULL, 'h'},
 	{0, 0, 0, 0},
 };
 
@@ -36,15 +39,20 @@ int
 main(int argc, char *argv[])
 {
 	char *startup_cmd = NULL;
+	bool check_config = false;
 	enum wlr_log_importance verbosity = WLR_ERROR;
 
 	int c;
-	while ((c = getopt_long(argc, argv, "s:dvlh", long_options,
+	while ((c = getopt_long(argc, argv, "s:cdvlh", long_options,
 			NULL)) != -1) {
 		switch (c) {
 		case 's':
 			startup_cmd = optarg;
 			break;
+		case 'c': {
+			check_config = true;
+			break;
+		}
 		case 'd':
 			verbosity = WLR_DEBUG;
 			break;
@@ -59,6 +67,23 @@ main(int argc, char *argv[])
 			printf("%s", usage);
 			return 0;
 		}
+	}
+
+	if (check_config) {
+		struct wm_config *cfg = config_create();
+		if (!cfg) {
+			fprintf(stderr, "failed to create config\n");
+			return 1;
+		}
+		const char *dir = cfg->config_dir;
+		if (!dir) {
+			fprintf(stderr, "cannot determine config directory\n");
+			config_destroy(cfg);
+			return 1;
+		}
+		int ret = validate_config(dir);
+		config_destroy(cfg);
+		return ret;
 	}
 
 	wlr_log_init(verbosity, NULL);

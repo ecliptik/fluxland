@@ -830,6 +830,67 @@ wm_slit_reconfigure(struct wm_slit *slit)
 	}
 }
 
+void
+wm_slit_relayout(struct wm_slit *slit)
+{
+	if (!slit) {
+		return;
+	}
+
+	struct wm_server *server = slit->server;
+	struct wm_config *config = server->config;
+
+	/* Re-read configuration values */
+	if (config) {
+		slit->placement = config->slit_placement;
+		slit->direction = config->slit_direction;
+		slit->auto_hide = config->slit_auto_hide;
+		slit->on_head = config->slit_on_head;
+		slit->alpha = config->slit_alpha;
+
+		/* Handle layer change by reparenting the scene tree */
+		struct wlr_scene_tree *target_layer = server->layer_top;
+		if (config->slit_layer == 6) /* AboveDock/Overlay */
+			target_layer = server->layer_overlay;
+		else if (config->slit_layer == 2) /* Bottom */
+			target_layer = server->layer_bottom;
+
+		if (slit->scene_tree) {
+			wlr_scene_node_reparent(
+				&slit->scene_tree->node, target_layer);
+		}
+	}
+
+	/* Update background color from style */
+	if (server->style && slit->bg_rect) {
+		struct wm_color tc = wm_argb_to_color(
+			server->style->slit_texture.color);
+		float bg_color[4] = {
+			tc.r / 255.0f, tc.g / 255.0f,
+			tc.b / 255.0f, 0.9f
+		};
+		wlr_scene_rect_set_color(slit->bg_rect, bg_color);
+	}
+
+	/* Update border color from style */
+	if (server->style && slit->border_rect) {
+		struct wm_color bc = server->style->slit_border_color;
+		float border_color[4] = {
+			bc.r / 255.0f, bc.g / 255.0f,
+			bc.b / 255.0f, bc.a / 255.0f,
+		};
+		wlr_scene_rect_set_color(slit->border_rect, border_color);
+	}
+
+	/* Apply alpha */
+	if (slit->alpha < 255) {
+		slit_apply_alpha(slit);
+	}
+
+	/* Recalculate layout and position */
+	wm_slit_reconfigure(slit);
+}
+
 bool
 wm_slit_handle_pointer_enter(struct wm_slit *slit, double lx, double ly)
 {

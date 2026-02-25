@@ -1179,6 +1179,45 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	}
 
 	struct wm_config *config = toolbar->server->config;
+
+	/* Re-read configuration values so reconfigure picks up changes */
+	if (config) {
+		toolbar->visible = config->toolbar_visible;
+		toolbar->iconbar_mode = config->iconbar_mode;
+		if (config->toolbar_height > 0) {
+			toolbar->height = config->toolbar_height;
+		}
+
+		/* Handle auto-hide state change */
+		bool new_auto_hide = config->toolbar_auto_hide;
+		if (new_auto_hide != toolbar->auto_hide) {
+			toolbar->auto_hide = new_auto_hide;
+			if (new_auto_hide) {
+				/* Create hide timer if not already present */
+				if (!toolbar->hide_timer) {
+					toolbar->hide_timer =
+						wl_event_loop_add_timer(
+							toolbar->server->wl_event_loop,
+							hide_timer_cb, toolbar);
+				}
+				toolbar->shown = false;
+			} else {
+				/* Cancel any pending hide and show toolbar */
+				if (toolbar->hide_timer) {
+					wl_event_source_timer_update(
+						toolbar->hide_timer, 0);
+				}
+				toolbar->shown = true;
+			}
+		}
+	}
+
+	/* Update scene visibility */
+	bool scene_visible = toolbar->visible &&
+		(!toolbar->auto_hide || toolbar->shown);
+	wlr_scene_node_set_enabled(&toolbar->scene_tree->node,
+		scene_visible);
+
 	int output_width, output_height;
 	wlr_output_effective_resolution(output->wlr_output,
 		&output_width, &output_height);

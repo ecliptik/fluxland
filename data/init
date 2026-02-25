@@ -99,6 +99,16 @@ session.screen0.toolbar.widthPercent: 100
 # session.xkb.options: grp:win_space_toggle
 
 # -------------------------------------------------------------------
+# Mouse button remapping
+# -------------------------------------------------------------------
+
+# Remap logical mouse buttons to different event codes.
+# Values: BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA
+# Example: swap left and right buttons for left-handed use:
+# session.mouse.button1.map: BTN_RIGHT
+# session.mouse.button3.map: BTN_LEFT
+
+# -------------------------------------------------------------------
 # File paths (usually auto-detected; override if needed)
 # -------------------------------------------------------------------
 

@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "rcparser.h"
+#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -352,6 +353,14 @@ config_create(void)
 	config->edge_resize_snap_threshold = 0;
 	config->menu_search = WM_MENU_SEARCH_NOWHERE;
 	config->menu_delay = 200;
+
+	/* Default mouse button mappings (identity map) */
+	config->mouse_button_map[0] = 0;
+	config->mouse_button_map[1] = BTN_LEFT;
+	config->mouse_button_map[2] = BTN_MIDDLE;
+	config->mouse_button_map[3] = BTN_RIGHT;
+	config->mouse_button_map[4] = BTN_SIDE;
+	config->mouse_button_map[5] = BTN_EXTRA;
 
 	config->config_dir = find_config_dir();
 
@@ -712,6 +721,38 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		if (dup) {
 			free(config->xkb_options);
 			config->xkb_options = dup;
+		}
+	}
+
+	/* Mouse button remapping */
+	{
+		static const char *button_keys[5] = {
+			"session.mouse.button1.map",
+			"session.mouse.button2.map",
+			"session.mouse.button3.map",
+			"session.mouse.button4.map",
+			"session.mouse.button5.map",
+		};
+		static const uint32_t button_defaults[5] = {
+			BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA,
+		};
+		for (int i = 0; i < 5; i++) {
+			val = rc_get_string(db, button_keys[i]);
+			if (val) {
+				if (strcasecmp(val, "BTN_LEFT") == 0)
+					config->mouse_button_map[i + 1] = BTN_LEFT;
+				else if (strcasecmp(val, "BTN_MIDDLE") == 0)
+					config->mouse_button_map[i + 1] = BTN_MIDDLE;
+				else if (strcasecmp(val, "BTN_RIGHT") == 0)
+					config->mouse_button_map[i + 1] = BTN_RIGHT;
+				else if (strcasecmp(val, "BTN_SIDE") == 0)
+					config->mouse_button_map[i + 1] = BTN_SIDE;
+				else if (strcasecmp(val, "BTN_EXTRA") == 0)
+					config->mouse_button_map[i + 1] = BTN_EXTRA;
+				else
+					config->mouse_button_map[i + 1] =
+						button_defaults[i];
+			}
 		}
 	}
 
