@@ -78,8 +78,19 @@ if have_xwayland
   add_project_arguments('-DWM_HAS_XWAYLAND', language: 'c')
 endif
 
+# System tray (StatusNotifierItem via sd-bus)
+sdbus_dep = dependency('libsystemd', required: false)
+if not sdbus_dep.found()
+  sdbus_dep = dependency('libelogind', required: false)
+endif
+have_systray = sdbus_dep.found()
+if have_systray
+  add_project_arguments('-DWM_HAS_SYSTRAY', language: 'c')
+endif
+
 conf_data = configuration_data()
 conf_data.set10('HAVE_XWAYLAND', have_xwayland)
+conf_data.set10('WM_HAS_SYSTRAY', have_systray)
 
 configure_file(
   output: 'config.h',
@@ -163,6 +174,11 @@ wm_sources = files(
 
 if have_xwayland
   wm_deps += [xcb, xcb_ewmh, xcb_icccm]
+endif
+
+if have_systray
+  wm_sources += files('src/systray.c')
+  wm_deps += [sdbus_dep]
 endif
 
 # --- Build executable ---

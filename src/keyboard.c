@@ -44,6 +44,137 @@
 #include "view.h"
 #include "workspace.h"
 
+/* --- Condition evaluation for If/ForEach --- */
+
+/*
+ * Check if a boolean property string matches "yes", "true", or "1".
+ */
+static bool
+bool_match(const char *pattern, bool value)
+{
+	bool pat_true = (strcasecmp(pattern, "yes") == 0 ||
+			 strcasecmp(pattern, "true") == 0 ||
+			 strcmp(pattern, "1") == 0);
+	return value == pat_true;
+}
+
+/*
+ * Layer name string for a view layer enum value.
+ */
+static const char *
+layer_name(enum wm_view_layer layer)
+{
+	switch (layer) {
+	case WM_LAYER_DESKTOP: return "Desktop";
+	case WM_LAYER_BELOW:   return "Below";
+	case WM_LAYER_NORMAL:  return "Normal";
+	case WM_LAYER_ABOVE:   return "Above";
+	default:               return "Normal";
+	}
+}
+
+/*
+ * Match a view property against a fnmatch pattern.
+ */
+static bool
+match_property(struct wm_view *view, const char *property,
+	       const char *pattern)
+{
+	if (!view || !property || !pattern)
+		return false;
+
+	if (strcasecmp(property, "title") == 0) {
+		return view->title &&
+		       fnmatch(pattern, view->title, 0) == 0;
+	}
+	if (strcasecmp(property, "class") == 0 ||
+	    strcasecmp(property, "name") == 0) {
+		return view->app_id &&
+		       fnmatch(pattern, view->app_id, 0) == 0;
+	}
+	if (strcasecmp(property, "workspace") == 0) {
+		if (view->workspace && view->workspace->name &&
+		    fnmatch(pattern, view->workspace->name, 0) == 0)
+			return true;
+		/* Also try matching workspace index as string */
+		if (view->workspace) {
+			char idx[16];
+			snprintf(idx, sizeof(idx), "%d",
+				 view->workspace->index + 1);
+			return fnmatch(pattern, idx, 0) == 0;
+		}
+		return false;
+	}
+	if (strcasecmp(property, "maximized") == 0)
+		return bool_match(pattern, view->maximized);
+	if (strcasecmp(property, "minimized") == 0)
+		return bool_match(pattern,
+			!view->scene_tree->node.enabled);
+	if (strcasecmp(property, "fullscreen") == 0)
+		return bool_match(pattern, view->fullscreen);
+	if (strcasecmp(property, "shaded") == 0)
+		return bool_match(pattern,
+			view->decoration && view->decoration->shaded);
+	if (strcasecmp(property, "sticky") == 0)
+		return bool_match(pattern, view->sticky);
+	if (strcasecmp(property, "layer") == 0)
+		return fnmatch(pattern, layer_name(view->layer), 0) == 0;
+
+	wlr_log(WLR_ERROR, "unknown condition property: %s", property);
+	return false;
+}
+
+/*
+ * Recursively evaluate a condition tree against a view.
+ */
+static bool
+evaluate_condition(struct wm_server *server,
+		   struct wm_condition *cond, struct wm_view *view)
+{
+	if (!cond)
+		return false;
+
+	switch (cond->type) {
+	case WM_COND_MATCHES:
+		return match_property(view, cond->property, cond->pattern);
+
+	case WM_COND_SOME: {
+		struct wm_view *v;
+		wl_list_for_each(v, &server->views, link) {
+			if (match_property(v, cond->property, cond->pattern))
+				return true;
+		}
+		return false;
+	}
+
+	case WM_COND_EVERY: {
+		struct wm_view *v;
+		wl_list_for_each(v, &server->views, link) {
+			if (!match_property(v, cond->property, cond->pattern))
+				return false;
+		}
+		return true;
+	}
+
+	case WM_COND_NOT:
+		return !evaluate_condition(server, cond->child, view);
+
+	case WM_COND_AND:
+		return evaluate_condition(server, cond->left, view) &&
+		       evaluate_condition(server, cond->right, view);
+
+	case WM_COND_OR:
+		return evaluate_condition(server, cond->left, view) ||
+		       evaluate_condition(server, cond->right, view);
+
+	case WM_COND_XOR:
+		return evaluate_condition(server, cond->left, view) ^
+		       evaluate_condition(server, cond->right, view);
+	}
+
+	return false;
+}
+
 static void
 exec_command(const char *cmd)
 {
@@ -151,6 +282,26 @@ get_active_bindings(struct wm_server *server)
 static bool execute_action(struct wm_server *server,
 	enum wm_action action, const char *argument);
 
+/* --- Delay timer callback data --- */
+
+struct delay_cb_data {
+	struct wm_server *server;
+	enum wm_action action;
+	char *argument;
+	struct wl_event_source *timer;
+};
+
+static int
+delay_timer_cb(void *data)
+{
+	struct delay_cb_data *cb = data;
+	execute_action(cb->server, cb->action, cb->argument);
+	wl_event_source_remove(cb->timer);
+	free(cb->argument);
+	free(cb);
+	return 0;
+}
+
 /*
  * Execute a keybind, including MacroCmd/ToggleCmd dispatch.
  */
@@ -180,6 +331,77 @@ execute_keybind_action(struct wm_server *server,
 			bind->toggle_index =
 				(bind->toggle_index + 1) % bind->subcmd_count;
 		}
+		return true;
+	}
+
+	if (bind->action == WM_ACTION_IF) {
+		struct wm_view *view = server->focused_view;
+		bool result = evaluate_condition(server,
+			bind->condition, view);
+		if (result && bind->subcmds) {
+			execute_action(server, bind->subcmds->action,
+				bind->subcmds->argument);
+		} else if (!result && bind->else_cmd) {
+			execute_action(server, bind->else_cmd->action,
+				bind->else_cmd->argument);
+		}
+		return true;
+	}
+
+	if (bind->action == WM_ACTION_FOREACH) {
+		if (!bind->subcmds)
+			return true;
+		struct wm_view *saved = server->focused_view;
+		struct wm_view *v, *tmp;
+		wl_list_for_each_safe(v, tmp, &server->views, link) {
+			if (evaluate_condition(server, bind->condition, v)) {
+				server->focused_view = v;
+				execute_action(server,
+					bind->subcmds->action,
+					bind->subcmds->argument);
+			}
+		}
+		server->focused_view = saved;
+		return true;
+	}
+
+	if (bind->action == WM_ACTION_MAP) {
+		if (!bind->subcmds)
+			return true;
+		struct wm_view *saved = server->focused_view;
+		struct wm_view *v, *tmp;
+		wl_list_for_each_safe(v, tmp, &server->views, link) {
+			server->focused_view = v;
+			execute_action(server,
+				bind->subcmds->action,
+				bind->subcmds->argument);
+		}
+		server->focused_view = saved;
+		return true;
+	}
+
+	if (bind->action == WM_ACTION_DELAY) {
+		if (!bind->subcmds)
+			return true;
+		struct delay_cb_data *cb = calloc(1, sizeof(*cb));
+		if (!cb)
+			return false;
+		cb->server = server;
+		cb->action = bind->subcmds->action;
+		if (bind->subcmds->argument)
+			cb->argument = strdup(bind->subcmds->argument);
+		cb->timer = wl_event_loop_add_timer(
+			server->wl_event_loop, delay_timer_cb, cb);
+		if (!cb->timer) {
+			free(cb->argument);
+			free(cb);
+			return false;
+		}
+		/* delay_us is in microseconds, timer wants milliseconds */
+		int ms = bind->delay_us / 1000;
+		if (ms < 1)
+			ms = 1;
+		wl_event_source_timer_update(cb->timer, ms);
 		return true;
 	}
 
@@ -1055,6 +1277,14 @@ execute_action(struct wm_server *server,
 	case WM_ACTION_TOGGLE_CMD:
 		wlr_log(WLR_ERROR,
 			"%s", "MacroCmd/ToggleCmd cannot be nested in subcmds");
+		return false;
+
+	case WM_ACTION_IF:
+	case WM_ACTION_FOREACH:
+	case WM_ACTION_MAP:
+	case WM_ACTION_DELAY:
+		wlr_log(WLR_ERROR,
+			"%s", "If/ForEach/Map/Delay require keybind context");
 		return false;
 	}
 

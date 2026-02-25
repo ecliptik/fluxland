@@ -316,6 +316,8 @@ config_create(void)
 	config->toolbar_layer = 4; /* Dock */
 	config->toolbar_alpha = 255;
 	config->toolbar_on_head = 0;
+	config->toolbar_tools = strdup(
+		"prevworkspace workspacename nextworkspace iconbar clock");
 
 	config->titlebar_left = strdup("Stick");
 	config->titlebar_right = strdup("Shade Minimize Maximize Close");
@@ -327,6 +329,10 @@ config_create(void)
 	config->iconbar_wheel_mode = 0; /* screen (workspace change) */
 	config->auto_tab_placement = false;
 	config->tab_focus_model = 0; /* click */
+	config->tabs_intitlebar = true;
+	config->tab_placement = 0; /* Top */
+	config->tab_width = 0; /* auto from font */
+	config->tab_padding = 0;
 
 	config->full_maximization = false;
 	config->window_focus_alpha = 255;
@@ -454,6 +460,13 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	config->toolbar_on_head =
 		rc_get_int(db, "session.screen0.toolbar.onhead", 0);
 
+	/* Toolbar tools layout */
+	val = rc_get_string(db, "session.screen0.toolbar.tools");
+	if (val) {
+		free(config->toolbar_tools);
+		config->toolbar_tools = strdup(val);
+	}
+
 	/* Titlebar button layout */
 	val = rc_get_string(db, "session.titlebar.left");
 	if (val) {
@@ -518,6 +531,29 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		else
 			config->tab_focus_model = 0; /* ClickTabFocus */
 	}
+
+	/* External tab bar */
+	config->tabs_intitlebar =
+		rc_get_bool(db, "session.screen0.tabs.intitlebar", true);
+	val = rc_get_string(db, "session.screen0.tab.placement");
+	if (val) {
+		if (strcasecmp(val, "Bottom") == 0)
+			config->tab_placement = 1;
+		else if (strcasecmp(val, "Left") == 0)
+			config->tab_placement = 2;
+		else if (strcasecmp(val, "Right") == 0)
+			config->tab_placement = 3;
+		else
+			config->tab_placement = 0; /* Top */
+	}
+	config->tab_width =
+		rc_get_int(db, "session.screen0.tab.width", 0);
+	if (config->tab_width < 0)
+		config->tab_width = 0;
+	config->tab_padding =
+		rc_get_int(db, "session.screen0.tabPadding", 0);
+	if (config->tab_padding < 0)
+		config->tab_padding = 0;
 
 	/* Show window position overlay during move/resize */
 	config->show_window_position =
@@ -771,6 +807,7 @@ config_destroy(struct wm_config *config)
 	free(config->xkb_layout);
 	free(config->xkb_variant);
 	free(config->xkb_options);
+	free(config->toolbar_tools);
 	free(config->root_command);
 	free(config->default_deco);
 	free(config->window_menu_file);

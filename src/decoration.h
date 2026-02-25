@@ -51,6 +51,15 @@ enum wm_decor_region {
 	WM_DECOR_REGION_CLIENT,
 };
 
+/* --- External tab bar placement --- */
+
+enum wm_tab_bar_placement {
+	WM_TAB_BAR_TOP,
+	WM_TAB_BAR_BOTTOM,
+	WM_TAB_BAR_LEFT,
+	WM_TAB_BAR_RIGHT,
+};
+
 /* --- Titlebar button --- */
 
 struct wm_decor_button {
@@ -106,6 +115,12 @@ struct wm_decoration {
 	int content_width;	/* client surface width */
 	int content_height;	/* client surface height */
 	struct wlr_box content_area; /* where the client surface goes, relative to scene_tree */
+
+	/* External tab bar (when tabs are outside the titlebar) */
+	struct wlr_scene_buffer *tab_bar_buf;
+	int tab_bar_size;
+	enum wm_tab_bar_placement tab_bar_placement;
+	struct wlr_box tab_bar_box; /* hit-test area, relative to decoration tree */
 };
 
 /* --- xdg-decoration protocol state --- */

@@ -10,6 +10,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "decoration.h"
 #include "server.h"
 #include "tabgroup.h"
 #include "view.h"
@@ -139,6 +140,13 @@ wm_tab_group_add(struct wm_tab_group *group, struct wm_view *view)
 	sync_view_to_group(group, view);
 	set_view_surface_visible(view, false);
 
+	/* Update decoration to reflect new tab count */
+	if (group->active_view && group->active_view->decoration &&
+	    group->server->style) {
+		wm_decoration_update(group->active_view->decoration,
+			group->server->style);
+	}
+
 	wlr_log(WLR_DEBUG, "added view '%s' to tab group (count=%d)",
 		view->title ? view->title : "(untitled)", group->count);
 }
@@ -193,9 +201,21 @@ wm_tab_group_remove(struct wm_view *view)
 		wl_list_init(&last->tab_link);
 		last->tab_group = NULL;
 		set_view_surface_visible(last, true);
+		/* Update decoration (removes external tab bar) */
+		if (last->decoration && last->server->style) {
+			wm_decoration_update(last->decoration,
+				last->server->style);
+		}
 		free(group);
 		wlr_log(WLR_DEBUG, "%s", "dissolved single-view tab group");
 		return;
+	}
+
+	/* Update active view's decoration */
+	if (group->active_view && group->active_view->decoration &&
+	    group->server->style) {
+		wm_decoration_update(group->active_view->decoration,
+			group->server->style);
 	}
 
 	wlr_log(WLR_DEBUG, "removed view from tab group (count=%d)",
@@ -348,6 +368,13 @@ wm_tab_group_merge(struct wm_tab_group *target,
 		/* Sync geometry and hide */
 		sync_view_to_group(target, view);
 		set_view_surface_visible(view, false);
+	}
+
+	/* Update decoration to reflect merged tabs */
+	if (target->active_view && target->active_view->decoration &&
+	    target->server->style) {
+		wm_decoration_update(target->active_view->decoration,
+			target->server->style);
 	}
 
 	wlr_log(WLR_DEBUG, "merged tab groups (new count=%d)",

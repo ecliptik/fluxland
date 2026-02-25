@@ -46,6 +46,7 @@ struct wm_style;
 struct wm_menu;
 struct wm_toolbar;
 struct wm_slit;
+struct wm_systray;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_primary_selection_v1_device_manager;
 struct wlr_pointer_constraints_v1;
@@ -332,6 +333,11 @@ struct wm_server {
 
 	/* Slit (dockapp container) */
 	struct wm_slit *slit;
+
+#ifdef WM_HAS_SYSTRAY
+	/* System tray (StatusNotifierItem) */
+	struct wm_systray *systray;
+#endif
 
 	/* Menus */
 	struct wm_menu *root_menu;

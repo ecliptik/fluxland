@@ -80,6 +80,7 @@ struct wm_config {
 	int toolbar_layer;
 	int toolbar_alpha;
 	int toolbar_on_head;
+	char *toolbar_tools; /* configurable tool layout string */
 
 	/* Titlebar button layout */
 	char *titlebar_left;
@@ -104,6 +105,12 @@ struct wm_config {
 
 	/* Tab focus model: 0 = click (default), 1 = mouse hover */
 	int tab_focus_model;
+
+	/* External tab bar configuration */
+	bool tabs_intitlebar;       /* true = tabs in titlebar (default), false = external */
+	int tab_placement;          /* 0=Top, 1=Bottom, 2=Left, 3=Right */
+	int tab_width;              /* external tab bar size in pixels (0 = auto from font) */
+	int tab_padding;            /* padding between tabs in pixels */
 
 	/* Full maximization (maximize over toolbar/slit) */
 	bool full_maximization;

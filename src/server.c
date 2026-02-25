@@ -39,6 +39,9 @@
 #include "session_lock.h"
 #include "slit.h"
 #include "style.h"
+#ifdef WM_HAS_SYSTRAY
+#include "systray.h"
+#endif
 #include "text_input.h"
 #include "toolbar.h"
 #include "view.h"
@@ -410,6 +413,11 @@ wm_server_init(struct wm_server *server)
 	/* Create slit (dockapp container) */
 	server->slit = wm_slit_create(server);
 
+#ifdef WM_HAS_SYSTRAY
+	/* Create system tray (StatusNotifierItem D-Bus watcher) */
+	server->systray = wm_systray_create(server);
+#endif
+
 	/* Load per-window rules (Fluxbox apps file) */
 	wm_rules_init(&server->rules);
 	if (server->config && server->config->apps_file) {
@@ -473,6 +481,9 @@ wm_server_destroy(struct wm_server *server)
 	wm_xwayland_finish(server);
 	wl_display_destroy_clients(server->wl_display);
 
+#ifdef WM_HAS_SYSTRAY
+	wm_systray_destroy(server->systray);
+#endif
 	wm_slit_destroy(server->slit);
 	wm_toolbar_destroy(server->toolbar);
 	wm_ipc_destroy(&server->ipc);

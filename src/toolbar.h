@@ -1,13 +1,12 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
  *
- * toolbar.h - Built-in toolbar with workspace switcher, icon bar, and clock
+ * toolbar.h - Built-in toolbar with configurable tool layout
  *
  * The toolbar is a compositor-rendered panel (not a layer-shell client)
- * that sits at the top or bottom of the primary output. It shows:
- *   - Workspace buttons (left)
- *   - Icon bar / window list for current workspace (center)
- *   - Clock with configurable strftime format (right)
+ * that sits at the top or bottom of the primary output. The tools shown
+ * and their order are controlled by session.screen0.toolbar.tools.
+ * Default: "prevworkspace workspacename nextworkspace iconbar clock"
  */
 
 #ifndef WM_TOOLBAR_H
@@ -34,6 +33,28 @@ enum wm_iconbar_mode {
 #define WM_TOOLBAR_PADDING 4
 #define WM_TOOLBAR_CLOCK_FMT "%H:%M"
 #define WM_TOOLBAR_ICONBAR_MAX 64
+#define WM_TOOLBAR_MAX_TOOLS 16
+
+/* Toolbar tool types */
+enum wm_toolbar_tool_type {
+	WM_TOOL_PREV_WORKSPACE,
+	WM_TOOL_NEXT_WORKSPACE,
+	WM_TOOL_WORKSPACE_NAME,
+	WM_TOOL_ICONBAR,
+	WM_TOOL_CLOCK,
+	WM_TOOL_PREV_WINDOW,
+	WM_TOOL_NEXT_WINDOW,
+};
+
+/* A single tool instance in the toolbar */
+struct wm_toolbar_tool {
+	enum wm_toolbar_tool_type type;
+	struct wlr_scene_buffer *buf;
+	int x, width;
+	/* Per-tool hit boxes (workspace buttons within workspace_name, etc.) */
+	struct wlr_box *hit_boxes;
+	int hit_box_count;
+};
 
 /* An entry in the icon bar representing one window */
 struct wm_iconbar_entry {
@@ -51,9 +72,15 @@ struct wm_toolbar {
 	/* Scene graph nodes */
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_buffer *bg_buf;
-	struct wlr_scene_buffer *workspace_buf;
-	struct wlr_scene_buffer *iconbar_buf;
-	struct wlr_scene_buffer *clock_buf;
+
+	/* Configurable tool array */
+	struct wm_toolbar_tool *tools;
+	int tool_count;
+
+	/* Quick-access pointers into tools array (NULL if not configured) */
+	struct wm_toolbar_tool *iconbar_tool;
+	struct wm_toolbar_tool *clock_tool;
+	struct wm_toolbar_tool *ws_name_tool;
 
 	/* Geometry */
 	int x, y;
@@ -66,15 +93,10 @@ struct wm_toolbar {
 	bool shown; /* true when visible during auto-hide mode */
 	struct wl_event_source *hide_timer;
 
-	/* Workspace button hit regions (for click handling) */
-	struct wlr_box *ws_boxes;
-	int ws_box_count;
-
 	/* Icon bar hit regions and entries */
 	struct wlr_box *ib_boxes;
 	struct wm_iconbar_entry *ib_entries;
 	int ib_count;
-	int ib_x_offset; /* icon bar x offset within toolbar */
 
 	/* Clock timer */
 	struct wl_event_source *clock_timer;

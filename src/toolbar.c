@@ -1,7 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
  *
- * toolbar.c - Built-in toolbar with workspace switcher, icon bar, and clock
+ * toolbar.c - Built-in toolbar with configurable tool layout
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -22,6 +22,9 @@
 #include "render.h"
 #include "server.h"
 #include "style.h"
+#ifdef WM_HAS_SYSTRAY
+#include "systray.h"
+#endif
 #include "view.h"
 #include "workspace.h"
 
@@ -126,25 +129,278 @@ get_primary_output(struct wm_server *server)
 		link);
 }
 
-/* --- Helper: compute layout widths --- */
+/* --- Tool parsing --- */
 
-static void
-compute_layout(int total_width, int *ws_width, int *iconbar_width,
-	int *clock_width)
+static bool
+parse_tool_name(const char *name, enum wm_toolbar_tool_type *out)
 {
-	*ws_width = total_width / 4;
-	*clock_width = total_width / 5;
-
-	if (*ws_width < 60) *ws_width = 60;
-	if (*clock_width < 80) *clock_width = 80;
-	*iconbar_width = total_width - *ws_width - *clock_width;
-	if (*iconbar_width < 0) *iconbar_width = 0;
+	if (strcmp(name, "prevworkspace") == 0) {
+		*out = WM_TOOL_PREV_WORKSPACE;
+		return true;
+	}
+	if (strcmp(name, "nextworkspace") == 0) {
+		*out = WM_TOOL_NEXT_WORKSPACE;
+		return true;
+	}
+	if (strcmp(name, "workspacename") == 0) {
+		*out = WM_TOOL_WORKSPACE_NAME;
+		return true;
+	}
+	if (strcmp(name, "iconbar") == 0) {
+		*out = WM_TOOL_ICONBAR;
+		return true;
+	}
+	if (strcmp(name, "clock") == 0) {
+		*out = WM_TOOL_CLOCK;
+		return true;
+	}
+	if (strcmp(name, "prevwindow") == 0) {
+		*out = WM_TOOL_PREV_WINDOW;
+		return true;
+	}
+	if (strcmp(name, "nextwindow") == 0) {
+		*out = WM_TOOL_NEXT_WINDOW;
+		return true;
+	}
+	return false;
 }
 
-/* --- Render workspace buttons --- */
+static void
+parse_toolbar_tools(struct wm_toolbar *toolbar, const char *tools_str)
+{
+	if (!tools_str || !*tools_str) {
+		toolbar->tools = NULL;
+		toolbar->tool_count = 0;
+		return;
+	}
+
+	char *copy = strdup(tools_str);
+	if (!copy) {
+		return;
+	}
+
+	/* First pass: count tokens */
+	int count = 0;
+	enum wm_toolbar_tool_type types[WM_TOOLBAR_MAX_TOOLS];
+	char *saveptr = NULL;
+	char *tok = strtok_r(copy, " \t", &saveptr);
+	while (tok && count < WM_TOOLBAR_MAX_TOOLS) {
+		enum wm_toolbar_tool_type type;
+		if (parse_tool_name(tok, &type)) {
+			types[count++] = type;
+		} else {
+			wlr_log(WLR_INFO,
+				"toolbar: unknown tool '%s', skipping", tok);
+		}
+		tok = strtok_r(NULL, " \t", &saveptr);
+	}
+	free(copy);
+
+	if (count == 0) {
+		toolbar->tools = NULL;
+		toolbar->tool_count = 0;
+		return;
+	}
+
+	toolbar->tools = calloc(count, sizeof(struct wm_toolbar_tool));
+	if (!toolbar->tools) {
+		toolbar->tool_count = 0;
+		return;
+	}
+	toolbar->tool_count = count;
+
+	/* Initialize each tool with a scene buffer */
+	for (int i = 0; i < count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		tool->type = types[i];
+		tool->buf = wlr_scene_buffer_create(toolbar->scene_tree, NULL);
+
+		/* Set quick-access pointers */
+		switch (tool->type) {
+		case WM_TOOL_ICONBAR:
+			toolbar->iconbar_tool = tool;
+			break;
+		case WM_TOOL_CLOCK:
+			toolbar->clock_tool = tool;
+			break;
+		case WM_TOOL_WORKSPACE_NAME:
+			toolbar->ws_name_tool = tool;
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+/* --- Layout computation --- */
+
+static bool
+tool_is_button(enum wm_toolbar_tool_type type)
+{
+	return type == WM_TOOL_PREV_WORKSPACE ||
+		type == WM_TOOL_NEXT_WORKSPACE ||
+		type == WM_TOOL_PREV_WINDOW ||
+		type == WM_TOOL_NEXT_WINDOW;
+}
+
+static void
+compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
+{
+	struct wm_style *style = toolbar->server->style;
+	int h = toolbar->height;
+	int count = toolbar->tool_count;
+	if (count == 0) {
+		return;
+	}
+
+	/* Pass 1: determine fixed widths */
+	int fixed_total = 0;
+	int iconbar_idx = -1;
+	int flex_count = 0;
+
+	for (int i = 0; i < count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		if (tool_is_button(tool->type)) {
+			/* Square button: width = height */
+			tool->width = h;
+			fixed_total += tool->width;
+		} else if (tool->type == WM_TOOL_WORKSPACE_NAME) {
+			/* Measure current workspace name */
+			struct wm_workspace *ws =
+				toolbar->server->current_workspace;
+			const char *name = ws ? ws->name : "1";
+			if (!name || !*name) name = "1";
+			int tw = wm_measure_text_width(name,
+				&style->toolbar_font, 1.0f);
+			tool->width = tw + WM_TOOLBAR_PADDING * 4;
+			if (tool->width < 60) tool->width = 60;
+			fixed_total += tool->width;
+		} else if (tool->type == WM_TOOL_CLOCK) {
+			/* Measure clock text */
+			const char *fmt = WM_TOOLBAR_CLOCK_FMT;
+			if (toolbar->server->config &&
+			    toolbar->server->config->clock_format) {
+				fmt = toolbar->server->config->clock_format;
+			}
+			time_t now = time(NULL);
+			struct tm tm;
+			localtime_r(&now, &tm);
+			char timebuf[64];
+			strftime(timebuf, sizeof(timebuf), fmt, &tm);
+			int tw = wm_measure_text_width(timebuf,
+				&style->toolbar_font, 1.0f);
+			tool->width = tw + WM_TOOLBAR_PADDING * 4;
+			if (tool->width < 80) tool->width = 80;
+			fixed_total += tool->width;
+		} else if (tool->type == WM_TOOL_ICONBAR) {
+			iconbar_idx = i;
+			flex_count++;
+		}
+	}
+
+	/* Reserve space for systray if present */
+	int systray_width = 0;
+#ifdef WM_HAS_SYSTRAY
+	if (toolbar->server->systray) {
+		systray_width = wm_systray_get_width(
+			toolbar->server->systray);
+	}
+#endif
+	fixed_total += systray_width;
+
+	/* Pass 2: assign flex width to iconbar */
+	int remaining = total_width - fixed_total;
+	if (remaining < 0) remaining = 0;
+
+	if (iconbar_idx >= 0) {
+		toolbar->tools[iconbar_idx].width = remaining;
+	} else if (remaining > 0) {
+		/* No iconbar: distribute remaining space among text tools */
+		int text_count = 0;
+		for (int i = 0; i < count; i++) {
+			if (toolbar->tools[i].type == WM_TOOL_WORKSPACE_NAME ||
+			    toolbar->tools[i].type == WM_TOOL_CLOCK) {
+				text_count++;
+			}
+		}
+		if (text_count > 0) {
+			int extra = remaining / text_count;
+			for (int i = 0; i < count; i++) {
+				if (toolbar->tools[i].type ==
+				    WM_TOOL_WORKSPACE_NAME ||
+				    toolbar->tools[i].type ==
+				    WM_TOOL_CLOCK) {
+					toolbar->tools[i].width += extra;
+				}
+			}
+		}
+	}
+
+	/* Pass 3: assign x positions left-to-right */
+	int x = 0;
+	for (int i = 0; i < count; i++) {
+		toolbar->tools[i].x = x;
+		x += toolbar->tools[i].width;
+	}
+}
+
+/* --- Per-tool render functions --- */
 
 static struct wlr_buffer *
-render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
+render_button_tool(struct wm_toolbar *toolbar, const char *label,
+	int width, int height)
+{
+	struct wm_style *style = toolbar->server->style;
+
+	cairo_surface_t *surface =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+
+	cairo_t *cr = cairo_create(surface);
+	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+	cairo_paint(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+	/* Slightly darker background for buttons */
+	cairo_set_source_rgba(cr, 0, 0, 0, 0.15);
+	cairo_rectangle(cr, 0, 0, width, height);
+	cairo_fill(cr);
+
+	/* Draw separator on left edge */
+	cairo_set_source_rgba(cr,
+		style->toolbar_text_color.r / 255.0,
+		style->toolbar_text_color.g / 255.0,
+		style->toolbar_text_color.b / 255.0, 0.3);
+	cairo_set_line_width(cr, 1.0);
+	cairo_move_to(cr, 0.5, 2);
+	cairo_line_to(cr, 0.5, height - 2);
+	cairo_stroke(cr);
+
+	/* Draw label centered */
+	int tw, th;
+	cairo_surface_t *text = wm_render_text(label,
+		&style->toolbar_font, &style->toolbar_text_color,
+		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
+	if (text) {
+		int tx = (width - tw) / 2;
+		int ty = (height - th) / 2;
+		if (tx < 0) tx = 0;
+		if (ty < 0) ty = 0;
+		cairo_set_source_surface(cr, text, tx, ty);
+		cairo_paint(cr);
+		cairo_surface_destroy(text);
+	}
+
+	cairo_destroy(cr);
+	return wlr_buffer_from_cairo(surface);
+}
+
+static struct wlr_buffer *
+render_workspace_name_tool(struct wm_toolbar *toolbar,
+	struct wm_toolbar_tool *tool, int width, int height)
 {
 	struct wm_server *server = toolbar->server;
 	struct wm_style *style = server->style;
@@ -172,15 +428,15 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 	}
 
 	/* Free old hit boxes */
-	free(toolbar->ws_boxes);
-	toolbar->ws_boxes = calloc(ws_count, sizeof(struct wlr_box));
-	if (!toolbar->ws_boxes) {
-		toolbar->ws_box_count = 0;
+	free(tool->hit_boxes);
+	tool->hit_boxes = calloc(ws_count, sizeof(struct wlr_box));
+	if (!tool->hit_boxes) {
+		tool->hit_box_count = 0;
 		cairo_destroy(cr);
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
-	toolbar->ws_box_count = ws_count;
+	tool->hit_box_count = ws_count;
 
 	struct wm_workspace *ws;
 	int i = 0;
@@ -190,13 +446,10 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 
 		/* Render button background */
 		if (i == current) {
-			/* Active workspace: use toolbar texture with
-			 * brightened appearance */
 			cairo_surface_t *bg =
 				wm_render_texture(&style->toolbar_texture,
 					bw, height, 1.0f);
 			if (bg) {
-				/* Brighten active button */
 				cairo_t *bcr = cairo_create(bg);
 				cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
 				cairo_paint(bcr);
@@ -210,7 +463,6 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 				cairo_fill(cr);
 			}
 		} else {
-			/* Inactive workspace: slightly darker */
 			cairo_set_source_rgba(cr, 0, 0, 0, 0.2);
 			cairo_rectangle(cr, bx, 0, bw, height);
 			cairo_fill(cr);
@@ -249,12 +501,12 @@ render_workspace_buttons(struct wm_toolbar *toolbar, int width, int height)
 			cairo_surface_destroy(text);
 		}
 
-		/* Store hit box (in toolbar-local coords) */
-		if (toolbar->ws_boxes) {
-			toolbar->ws_boxes[i].x = bx;
-			toolbar->ws_boxes[i].y = 0;
-			toolbar->ws_boxes[i].width = bw;
-			toolbar->ws_boxes[i].height = height;
+		/* Store hit box (in tool-local coords) */
+		if (tool->hit_boxes) {
+			tool->hit_boxes[i].x = bx;
+			tool->hit_boxes[i].y = 0;
+			tool->hit_boxes[i].width = bw;
+			tool->hit_boxes[i].height = height;
 		}
 
 		i++;
@@ -300,28 +552,23 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 		/* Filter based on icon bar mode */
 		switch (mode) {
 		case WM_ICONBAR_MODE_WORKSPACE:
-			/* Show views on current workspace (default) */
 			if (!on_current_ws) {
 				continue;
 			}
 			break;
 		case WM_ICONBAR_MODE_ALL_WINDOWS:
-			/* Show all views from all workspaces */
 			break;
 		case WM_ICONBAR_MODE_ICONS:
-			/* Show only iconified/minimized views (any ws) */
 			if (!is_iconified) {
 				continue;
 			}
 			break;
 		case WM_ICONBAR_MODE_NO_ICONS:
-			/* Non-iconified views on current workspace */
 			if (!on_current_ws || is_iconified) {
 				continue;
 			}
 			break;
 		case WM_ICONBAR_MODE_WORKSPACE_ICONS:
-			/* Iconified views on current workspace */
 			if (!on_current_ws || !is_iconified) {
 				continue;
 			}
@@ -365,7 +612,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	if (count == 0) {
 		/* No windows — return empty surface */
 		cairo_destroy(cr);
-		/* Free old hit boxes */
 		free(toolbar->ib_boxes);
 		toolbar->ib_boxes = NULL;
 		return wlr_buffer_from_cairo(surface);
@@ -409,7 +655,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	if (style->toolbar_iconbar_has_focused_color) {
 		focused_bg_color = style->toolbar_iconbar_focused_color;
 	} else {
-		/* Default: brighter variant of toolbar color */
 		focused_bg_color = (struct wm_color){
 			.r = 80, .g = 80, .b = 100, .a = 255
 		};
@@ -423,7 +668,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	if (style->toolbar_iconbar_has_unfocused_color) {
 		unfocused_bg_color = style->toolbar_iconbar_unfocused_color;
 	} else {
-		/* Default: transparent (no fill) */
 		unfocused_bg_color = (struct wm_color){
 			.r = 0, .g = 0, .b = 0, .a = 0
 		};
@@ -441,7 +685,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 		int ew;
 		if (fixed_icon_width > 0) {
 			ew = entry_width;
-			/* Clamp last entry to remaining width */
 			if (ex + ew > width)
 				ew = width - ex;
 		} else {
@@ -457,8 +700,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 			&focused_text_color : &unfocused_text_color;
 
 		if (entry->focused) {
-			/* Active window: render with toolbar texture +
-			 * bright overlay */
 			cairo_surface_t *bg =
 				wm_render_texture(&style->toolbar_texture,
 					ew, height, 1.0f);
@@ -509,7 +750,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 
 		char title_buf[256];
 		if (entry->iconified) {
-			/* Wrap iconified window titles using config pattern */
 			const char *pattern = cfg ?
 				cfg->iconbar_iconified_pattern : NULL;
 			if (!pattern)
@@ -605,6 +845,51 @@ render_clock(struct wm_toolbar *toolbar, int width, int height)
 	return wlr_buffer_from_cairo(surface);
 }
 
+/* --- Render a single tool --- */
+
+static void
+render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
+{
+	int w = tool->width;
+	int h = toolbar->height;
+	struct wlr_buffer *buf = NULL;
+
+	if (w <= 0 || h <= 0) {
+		return;
+	}
+
+	switch (tool->type) {
+	case WM_TOOL_PREV_WORKSPACE:
+		buf = render_button_tool(toolbar, "<", w, h);
+		break;
+	case WM_TOOL_NEXT_WORKSPACE:
+		buf = render_button_tool(toolbar, ">", w, h);
+		break;
+	case WM_TOOL_PREV_WINDOW:
+		buf = render_button_tool(toolbar, "\xe2\x97\x80", w, h);
+		break;
+	case WM_TOOL_NEXT_WINDOW:
+		buf = render_button_tool(toolbar, "\xe2\x96\xb6", w, h);
+		break;
+	case WM_TOOL_WORKSPACE_NAME:
+		buf = render_workspace_name_tool(toolbar, tool, w, h);
+		break;
+	case WM_TOOL_ICONBAR:
+		buf = render_iconbar(toolbar, w, h);
+		break;
+	case WM_TOOL_CLOCK:
+		toolbar->cached_clock[0] = '\0'; /* force redraw */
+		buf = render_clock(toolbar, w, h);
+		break;
+	}
+
+	if (buf) {
+		wlr_scene_buffer_set_buffer(tool->buf, buf);
+		wlr_buffer_drop(buf);
+	}
+	wlr_scene_node_set_position(&tool->buf->node, tool->x, 0);
+}
+
 /* --- Full toolbar render --- */
 
 static void
@@ -631,39 +916,28 @@ toolbar_render(struct wm_toolbar *toolbar)
 		wlr_buffer_drop(bg);
 	}
 
-	/* Layout: workspace buttons (left), icon bar (center), clock (right) */
-	int ws_width, iconbar_width, clock_width;
-	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
+	/* Compute layout for all tools */
+	compute_tool_layout(toolbar, w);
 
-	toolbar->ib_x_offset = ws_width;
-
-	/* Workspace buttons */
-	struct wlr_buffer *ws_buf = render_workspace_buttons(toolbar,
-		ws_width, h);
-	wlr_scene_buffer_set_buffer(toolbar->workspace_buf, ws_buf);
-	if (ws_buf) {
-		wlr_buffer_drop(ws_buf);
+	/* Render each tool */
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		render_tool(toolbar, &toolbar->tools[i]);
 	}
-	wlr_scene_node_set_position(&toolbar->workspace_buf->node, 0, 0);
 
-	/* Icon bar */
-	struct wlr_buffer *ib_buf = render_iconbar(toolbar, iconbar_width, h);
-	wlr_scene_buffer_set_buffer(toolbar->iconbar_buf, ib_buf);
-	if (ib_buf) {
-		wlr_buffer_drop(ib_buf);
+#ifdef WM_HAS_SYSTRAY
+	/* Position systray after the last tool */
+	if (server->systray) {
+		int systray_x = 0;
+		if (toolbar->tool_count > 0) {
+			struct wm_toolbar_tool *last =
+				&toolbar->tools[toolbar->tool_count - 1];
+			systray_x = last->x + last->width;
+		}
+		wm_systray_layout(server->systray,
+			toolbar->x + systray_x, toolbar->y,
+			w - systray_x, h);
 	}
-	wlr_scene_node_set_position(&toolbar->iconbar_buf->node,
-		ws_width, 0);
-
-	/* Clock */
-	toolbar->cached_clock[0] = '\0'; /* force redraw */
-	struct wlr_buffer *clock = render_clock(toolbar, clock_width, h);
-	wlr_scene_buffer_set_buffer(toolbar->clock_buf, clock);
-	if (clock) {
-		wlr_buffer_drop(clock);
-	}
-	wlr_scene_node_set_position(&toolbar->clock_buf->node,
-		w - clock_width, 0);
+#endif
 }
 
 /* --- Auto-hide timer callback --- */
@@ -722,17 +996,14 @@ clock_timer_cb(void *data)
 		return 0;
 	}
 
-	int w = toolbar->width;
-	int ws_width, iconbar_width, clock_width;
-	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
-
-	struct wlr_buffer *clock = render_clock(toolbar, clock_width,
-		toolbar->height);
-	if (clock) {
-		/* Only update if render_clock returned a new buffer
-		 * (time string changed) */
-		wlr_scene_buffer_set_buffer(toolbar->clock_buf, clock);
-		wlr_buffer_drop(clock);
+	if (toolbar->clock_tool) {
+		struct wlr_buffer *clock = render_clock(toolbar,
+			toolbar->clock_tool->width, toolbar->height);
+		if (clock) {
+			wlr_scene_buffer_set_buffer(
+				toolbar->clock_tool->buf, clock);
+			wlr_buffer_drop(clock);
+		}
 	}
 
 	/* Re-arm timer */
@@ -780,14 +1051,19 @@ wm_toolbar_create(struct wm_server *server)
 		return NULL;
 	}
 
-	/* Create scene buffer nodes */
+	/* Create background buffer */
 	toolbar->bg_buf = wlr_scene_buffer_create(toolbar->scene_tree, NULL);
-	toolbar->workspace_buf = wlr_scene_buffer_create(
-		toolbar->scene_tree, NULL);
-	toolbar->iconbar_buf = wlr_scene_buffer_create(
-		toolbar->scene_tree, NULL);
-	toolbar->clock_buf = wlr_scene_buffer_create(
-		toolbar->scene_tree, NULL);
+
+	/* Parse toolbar tools from config */
+	const char *tools_str = NULL;
+	if (server->config && server->config->toolbar_tools) {
+		tools_str = server->config->toolbar_tools;
+	}
+	if (!tools_str) {
+		tools_str = "prevworkspace workspacename "
+			"nextworkspace iconbar clock";
+	}
+	parse_toolbar_tools(toolbar, tools_str);
 
 	/* Set visibility: hide if auto-hide is enabled */
 	bool initially_visible = toolbar->visible && toolbar->shown;
@@ -810,8 +1086,10 @@ wm_toolbar_create(struct wm_server *server)
 			server->wl_event_loop, hide_timer_cb, toolbar);
 	}
 
-	wlr_log(WLR_INFO, "toolbar created (visible=%d, auto_hide=%d, on_top=%d)",
-		toolbar->visible, toolbar->auto_hide, toolbar->on_top);
+	wlr_log(WLR_INFO, "toolbar created (visible=%d, auto_hide=%d, "
+		"on_top=%d, tools=%d)",
+		toolbar->visible, toolbar->auto_hide, toolbar->on_top,
+		toolbar->tool_count);
 	return toolbar;
 }
 
@@ -834,7 +1112,12 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 		wlr_scene_node_destroy(&toolbar->scene_tree->node);
 	}
 
-	free(toolbar->ws_boxes);
+	/* Free tool hit boxes */
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		free(toolbar->tools[i].hit_boxes);
+	}
+	free(toolbar->tools);
+
 	free(toolbar->ib_boxes);
 	free(toolbar->ib_entries);
 	free(toolbar->cached_title);
@@ -848,15 +1131,10 @@ wm_toolbar_update_workspace(struct wm_toolbar *toolbar)
 		return;
 	}
 
-	int w = toolbar->width;
-	int ws_width = w / 4;
-	if (ws_width < 60) ws_width = 60;
-
-	struct wlr_buffer *ws_buf = render_workspace_buttons(toolbar,
-		ws_width, toolbar->height);
-	wlr_scene_buffer_set_buffer(toolbar->workspace_buf, ws_buf);
-	if (ws_buf) {
-		wlr_buffer_drop(ws_buf);
+	/* Re-render workspace name tool if configured */
+	if (toolbar->ws_name_tool) {
+		compute_tool_layout(toolbar, toolbar->width);
+		render_tool(toolbar, toolbar->ws_name_tool);
 	}
 
 	/* Workspace change also affects the icon bar window list */
@@ -877,17 +1155,14 @@ wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 		return;
 	}
 
-	int w = toolbar->width;
-	int ws_width, iconbar_width, clock_width;
-	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
-
-	toolbar->ib_x_offset = ws_width;
-
-	struct wlr_buffer *ib_buf = render_iconbar(toolbar, iconbar_width,
-		toolbar->height);
-	wlr_scene_buffer_set_buffer(toolbar->iconbar_buf, ib_buf);
-	if (ib_buf) {
-		wlr_buffer_drop(ib_buf);
+	if (toolbar->iconbar_tool) {
+		struct wlr_buffer *ib_buf = render_iconbar(toolbar,
+			toolbar->iconbar_tool->width, toolbar->height);
+		wlr_scene_buffer_set_buffer(toolbar->iconbar_tool->buf,
+			ib_buf);
+		if (ib_buf) {
+			wlr_buffer_drop(ib_buf);
+		}
 	}
 }
 
@@ -980,40 +1255,99 @@ wm_toolbar_handle_click(struct wm_toolbar *toolbar, double lx, double ly)
 		return false;
 	}
 
-	/* Check workspace buttons */
-	for (int i = 0; i < toolbar->ws_box_count; i++) {
-		struct wlr_box *box = &toolbar->ws_boxes[i];
-		if (local_x >= box->x && local_x < box->x + box->width &&
-		    local_y >= box->y && local_y < box->y + box->height) {
-			wm_workspace_switch(toolbar->server, i);
+	/* Find which tool was clicked */
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		if (local_x < tool->x || local_x >= tool->x + tool->width) {
+			continue;
+		}
+
+		/* Click is within this tool */
+		double tool_local_x = local_x - tool->x;
+
+		switch (tool->type) {
+		case WM_TOOL_PREV_WORKSPACE:
+			wm_workspace_switch_prev(toolbar->server);
+			return true;
+
+		case WM_TOOL_NEXT_WORKSPACE:
+			wm_workspace_switch_next(toolbar->server);
+			return true;
+
+		case WM_TOOL_PREV_WINDOW:
+			wm_focus_prev_view(toolbar->server);
+			return true;
+
+		case WM_TOOL_NEXT_WINDOW:
+			wm_focus_next_view(toolbar->server);
+			return true;
+
+		case WM_TOOL_WORKSPACE_NAME:
+			/* Check workspace button hit boxes */
+			for (int j = 0; j < tool->hit_box_count; j++) {
+				struct wlr_box *box = &tool->hit_boxes[j];
+				if (tool_local_x >= box->x &&
+				    tool_local_x < box->x + box->width &&
+				    local_y >= box->y &&
+				    local_y < box->y + box->height) {
+					wm_workspace_switch(
+						toolbar->server, j);
+					return true;
+				}
+			}
+			return true;
+
+		case WM_TOOL_ICONBAR:
+			/* Check iconbar entry hit boxes */
+			for (int j = 0; j < toolbar->ib_count; j++) {
+				if (!toolbar->ib_boxes) {
+					break;
+				}
+				struct wlr_box *box = &toolbar->ib_boxes[j];
+				if (tool_local_x >= box->x &&
+				    tool_local_x < box->x + box->width &&
+				    local_y >= box->y &&
+				    local_y < box->y + box->height) {
+					struct wm_view *view =
+						toolbar->ib_entries[j].view;
+					if (toolbar->ib_entries[j].iconified) {
+						wlr_scene_node_set_enabled(
+							&view->scene_tree->node,
+							true);
+					}
+					wm_focus_view(view,
+						view->xdg_toplevel->base->surface);
+					wm_view_raise(view);
+					wm_toolbar_update_iconbar(toolbar);
+					return true;
+				}
+			}
+			return true;
+
+		case WM_TOOL_CLOCK:
+			/* No click action for clock */
 			return true;
 		}
 	}
 
-	/* Check icon bar entries */
-	double ib_local_x = local_x - toolbar->ib_x_offset;
-	for (int i = 0; i < toolbar->ib_count; i++) {
-		if (!toolbar->ib_boxes) {
-			break;
+#ifdef WM_HAS_SYSTRAY
+	/* Check systray area (positioned after all tools) */
+	if (toolbar->server->systray) {
+		struct wm_systray *systray = toolbar->server->systray;
+		int systray_x = 0;
+		if (toolbar->tool_count > 0) {
+			struct wm_toolbar_tool *last =
+				&toolbar->tools[toolbar->tool_count - 1];
+			systray_x = last->x + last->width;
 		}
-		struct wlr_box *box = &toolbar->ib_boxes[i];
-		if (ib_local_x >= box->x &&
-		    ib_local_x < box->x + box->width &&
-		    local_y >= box->y &&
-		    local_y < box->y + box->height) {
-			struct wm_view *view = toolbar->ib_entries[i].view;
-			if (toolbar->ib_entries[i].iconified) {
-				/* De-iconify: re-enable scene node */
-				wlr_scene_node_set_enabled(
-					&view->scene_tree->node, true);
-			}
-			wm_focus_view(view,
-				view->xdg_toplevel->base->surface);
-			wm_view_raise(view);
-			wm_toolbar_update_iconbar(toolbar);
-			return true;
+		double st_local_x = local_x - systray_x;
+		if (st_local_x >= 0 &&
+		    st_local_x < wm_systray_get_width(systray)) {
+			return wm_systray_handle_click(systray,
+				st_local_x, local_y, 0x110);
 		}
 	}
+#endif
 
 	return false;
 }
@@ -1036,36 +1370,46 @@ wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
 		return false;
 	}
 
-	/* Check if scroll is over the iconbar area */
-	int w = toolbar->width;
-	int ws_width, iconbar_width, clock_width;
-	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
+	/* Find which tool was scrolled */
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		if (local_x < tool->x || local_x >= tool->x + tool->width) {
+			continue;
+		}
 
-	if (local_x >= ws_width && local_x < ws_width + iconbar_width) {
-		/* Iconbar area: check wheel mode config */
-		struct wm_config *cfg = toolbar->server->config;
-		int wheel_mode = cfg ? cfg->iconbar_wheel_mode : 0;
-		if (wheel_mode == 1) {
-			/* Off: ignore wheel on iconbar */
-			return true; /* consumed but ignored */
+		switch (tool->type) {
+		case WM_TOOL_ICONBAR: {
+			/* Check wheel mode config */
+			struct wm_config *cfg = toolbar->server->config;
+			int wheel_mode = cfg ? cfg->iconbar_wheel_mode : 0;
+			if (wheel_mode == 1) {
+				/* Off: ignore wheel on iconbar */
+				return true;
+			}
+			/* Screen mode: change workspace */
+			if (delta > 0) {
+				wm_workspace_switch_next(toolbar->server);
+			} else if (delta < 0) {
+				wm_workspace_switch_prev(toolbar->server);
+			}
+			return true;
 		}
-		/* Screen mode: change workspace */
-		if (delta > 0) {
-			wm_workspace_switch_next(toolbar->server);
-		} else if (delta < 0) {
-			wm_workspace_switch_prev(toolbar->server);
-		}
-		return true;
-	}
 
-	/* Scroll on workspace buttons: also change workspace */
-	if (local_x < ws_width) {
-		if (delta > 0) {
-			wm_workspace_switch_next(toolbar->server);
-		} else if (delta < 0) {
-			wm_workspace_switch_prev(toolbar->server);
+		case WM_TOOL_WORKSPACE_NAME:
+		case WM_TOOL_PREV_WORKSPACE:
+		case WM_TOOL_NEXT_WORKSPACE:
+			/* Scroll on workspace-related tools: change ws */
+			if (delta > 0) {
+				wm_workspace_switch_next(toolbar->server);
+			} else if (delta < 0) {
+				wm_workspace_switch_prev(toolbar->server);
+			}
+			return true;
+
+		default:
+			/* Scroll on other tools: no action */
+			return true;
 		}
-		return true;
 	}
 
 	return false;

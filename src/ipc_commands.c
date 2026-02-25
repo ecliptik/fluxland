@@ -358,6 +358,10 @@ static const struct action_entry action_table[] = {
 	{"NextGroup",        WM_ACTION_NEXT_GROUP},
 	{"PrevGroup",        WM_ACTION_PREV_GROUP},
 	{"Unclutter",        WM_ACTION_UNCLUTTER},
+	{"If",               WM_ACTION_IF},
+	{"ForEach",          WM_ACTION_FOREACH},
+	{"Map",              WM_ACTION_MAP},
+	{"Delay",            WM_ACTION_DELAY},
 	{NULL, WM_ACTION_NOP},
 };
 
@@ -1252,6 +1256,14 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_TOGGLE_CMD:
 		wlr_log(WLR_INFO,
 			"%s", "MacroCmd/ToggleCmd not supported via IPC");
+		return false;
+
+	case WM_ACTION_IF:
+	case WM_ACTION_FOREACH:
+	case WM_ACTION_MAP:
+	case WM_ACTION_DELAY:
+		wlr_log(WLR_INFO,
+			"%s", "If/ForEach/Map/Delay not supported via IPC");
 		return false;
 
 	case WM_ACTION_NOP:
