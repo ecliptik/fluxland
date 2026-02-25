@@ -9,6 +9,8 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_input_method_v2.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -16,6 +18,7 @@
 #include <wlr/util/log.h>
 
 #include "text_input.h"
+#include "output.h"
 #include "server.h"
 
 /*
@@ -90,6 +93,9 @@ relay_send_im_state(struct wm_text_input_relay *relay,
 
 /*
  * Send cursor rectangle to all popup surfaces of the input method.
+ *
+ * The cursor rectangle is adjusted to account for output bounds and
+ * panel exclusion zones, so the popup stays on-screen.
  */
 static void
 relay_send_im_popup_position(struct wm_text_input_relay *relay,
@@ -105,10 +111,47 @@ relay_send_im_popup_position(struct wm_text_input_relay *relay,
 		return;
 	}
 
+	struct wlr_box cursor_rect = text_input->current.cursor_rectangle;
+
+	/*
+	 * Adjust the cursor rectangle to stay within the focused surface's
+	 * output usable area. This prevents the IM popup from going
+	 * off-screen or overlapping with panels.
+	 */
+	struct wlr_output *wlr_output =
+		wlr_output_layout_output_at(
+			relay->server->output_layout,
+			relay->server->cursor->x,
+			relay->server->cursor->y);
+	if (wlr_output) {
+		struct wm_output *output = wm_output_from_wlr(
+			relay->server, wlr_output);
+		if (output) {
+			struct wlr_box usable = output->usable_area;
+
+			/*
+			 * Clamp: if the cursor rect bottom edge would
+			 * push the popup below the usable area,
+			 * position it above the cursor rect instead.
+			 */
+			int abs_y = cursor_rect.y + cursor_rect.height;
+			if (abs_y > usable.y + usable.height) {
+				cursor_rect.y = cursor_rect.y -
+					cursor_rect.height;
+				if (cursor_rect.y < usable.y)
+					cursor_rect.y = usable.y;
+			}
+
+			/* Clamp horizontal to usable area */
+			if (cursor_rect.x < usable.x)
+				cursor_rect.x = usable.x;
+		}
+	}
+
 	struct wlr_input_popup_surface_v2 *popup;
 	wl_list_for_each(popup, &im->popup_surfaces, link) {
 		wlr_input_popup_surface_v2_send_text_input_rectangle(
-			popup, &text_input->current.cursor_rectangle);
+			popup, &cursor_rect);
 	}
 }
 

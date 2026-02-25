@@ -34,7 +34,11 @@
 #include "gamma_control.h"
 #include "screencopy.h"
 #include "session_lock.h"
+#include "drm_lease.h"
+#include "drm_syncobj.h"
+#include "focus_nav.h"
 #include "text_input.h"
+#include "transient_seat.h"
 #include "viewporter.h"
 #include "xwayland.h"
 
@@ -77,6 +81,9 @@ struct wlr_xdg_foreign_registry;
 struct wlr_xdg_foreign_v1;
 struct wlr_xdg_foreign_v2;
 struct wlr_ext_foreign_toplevel_list_v1;
+struct wlr_drm_lease_v1_manager;
+struct wlr_transient_seat_manager_v1;
+struct wlr_linux_drm_syncobj_manager_v1;
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -224,6 +231,9 @@ struct wm_server {
 	/* IPC server */
 	struct wm_ipc_server ipc;
 
+	/* Keyboard focus navigation (accessibility) */
+	struct wm_focus_nav focus_nav;
+
 	/* Foreign toplevel management (taskbar support) */
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 
@@ -332,6 +342,17 @@ struct wm_server {
 
 	/* Session lock (ext-session-lock-v1) */
 	struct wm_session_lock session_lock;
+
+	/* DRM lease (wp-drm-lease-v1 for VR headsets) */
+	struct wlr_drm_lease_v1_manager *drm_lease_mgr;
+	struct wl_listener drm_lease_request;
+
+	/* Transient seat (ext-transient-seat-v1 for remote desktop) */
+	struct wlr_transient_seat_manager_v1 *transient_seat_mgr;
+	struct wl_listener transient_seat_create;
+
+	/* Explicit sync (linux-drm-syncobj-v1) */
+	struct wlr_linux_drm_syncobj_manager_v1 *syncobj_mgr;
 
 	/* Toolbar */
 	struct wm_toolbar *toolbar;

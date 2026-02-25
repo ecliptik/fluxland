@@ -18,6 +18,7 @@
 
 #include "toolbar.h"
 #include "config.h"
+#include "focus_nav.h"
 #include "output.h"
 #include "render.h"
 #include "server.h"
@@ -922,6 +923,68 @@ toolbar_render(struct wm_toolbar *toolbar)
 	/* Render each tool */
 	for (int i = 0; i < toolbar->tool_count; i++) {
 		render_tool(toolbar, &toolbar->tools[i]);
+	}
+
+	/* Draw keyboard focus indicator if toolbar has focus */
+	int focus_idx = wm_focus_nav_get_toolbar_index(server);
+	if (focus_idx >= 0 && focus_idx < toolbar->tool_count) {
+		struct wm_toolbar_tool *focused_tool =
+			&toolbar->tools[focus_idx];
+		int fx = focused_tool->x;
+		int fw = focused_tool->width;
+		int fh = h;
+		if (fw > 4 && fh > 4) {
+			cairo_surface_t *focus_surf =
+				cairo_image_surface_create(
+					CAIRO_FORMAT_ARGB32, fw, fh);
+			cairo_t *cr = cairo_create(focus_surf);
+			/* High-contrast yellow border by default,
+			 * use focused iconbar color if available */
+			double fc_r = 1.0, fc_g = 1.0, fc_b = 0.0;
+			if (style->toolbar_iconbar_has_focused_color) {
+				fc_r = style->toolbar_iconbar_focused_color.r
+					/ 255.0;
+				fc_g = style->toolbar_iconbar_focused_color.g
+					/ 255.0;
+				fc_b = style->toolbar_iconbar_focused_color.b
+					/ 255.0;
+			}
+			cairo_set_source_rgba(cr, fc_r, fc_g, fc_b, 1.0);
+			cairo_set_line_width(cr, 2.0);
+			cairo_rectangle(cr, 1, 1, fw - 2, fh - 2);
+			cairo_stroke(cr);
+			cairo_destroy(cr);
+
+			struct wlr_buffer *focus_buf =
+				wlr_buffer_from_cairo(focus_surf);
+			if (focus_buf) {
+				if (!toolbar->focus_indicator) {
+					toolbar->focus_indicator =
+						wlr_scene_buffer_create(
+							toolbar->scene_tree,
+							focus_buf);
+				} else {
+					wlr_scene_buffer_set_buffer(
+						toolbar->focus_indicator,
+						focus_buf);
+				}
+				if (toolbar->focus_indicator) {
+					wlr_scene_node_set_position(
+						&toolbar->focus_indicator->node,
+						fx, 0);
+					wlr_scene_node_set_enabled(
+						&toolbar->focus_indicator->node,
+						true);
+					wlr_scene_node_raise_to_top(
+						&toolbar->focus_indicator->node);
+				}
+				wlr_buffer_drop(focus_buf);
+			}
+		}
+	} else if (toolbar->focus_indicator) {
+		/* No focus — hide the indicator */
+		wlr_scene_node_set_enabled(
+			&toolbar->focus_indicator->node, false);
 	}
 
 #ifdef WM_HAS_SYSTRAY

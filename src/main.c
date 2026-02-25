@@ -5,6 +5,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include <getopt.h>
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,18 +13,19 @@
 
 #include "autostart.h"
 #include "config.h"
+#include "i18n.h"
 #include "keybind.h"
 #include "server.h"
 #include "validate.h"
 
-static const char usage[] =
+static const char usage[] = N_(
 	"Usage: fluxland [options...]\n"
 	"  -s, --startup <cmd>  Run command on startup\n"
 	"  -c, --check-config   Validate config and exit\n"
 	"  -d, --debug          Enable debug logging\n"
 	"  -v, --version        Show version and exit\n"
 	"  -l, --list-commands  List available commands and exit\n"
-	"  -h, --help           Show this help\n";
+	"  -h, --help           Show this help\n");
 
 static const struct option long_options[] = {
 	{"startup",      required_argument, NULL, 's'},
@@ -38,6 +40,12 @@ static const struct option long_options[] = {
 int
 main(int argc, char *argv[])
 {
+	setlocale(LC_ALL, "");
+#ifdef HAVE_GETTEXT
+	bindtextdomain("fluxland", LOCALEDIR);
+	textdomain("fluxland");
+#endif
+
 	char *startup_cmd = NULL;
 	bool check_config = false;
 	enum wlr_log_importance verbosity = WLR_ERROR;
@@ -64,7 +72,7 @@ main(int argc, char *argv[])
 			return 0;
 		case 'h':
 		default:
-			printf("%s", usage);
+			printf("%s", _(usage));
 			return 0;
 		}
 	}
@@ -72,12 +80,13 @@ main(int argc, char *argv[])
 	if (check_config) {
 		struct wm_config *cfg = config_create();
 		if (!cfg) {
-			fprintf(stderr, "failed to create config\n");
+			fprintf(stderr, "%s\n", _("failed to create config"));
 			return 1;
 		}
 		const char *dir = cfg->config_dir;
 		if (!dir) {
-			fprintf(stderr, "cannot determine config directory\n");
+			fprintf(stderr, "%s\n",
+				_("cannot determine config directory"));
 			config_destroy(cfg);
 			return 1;
 		}

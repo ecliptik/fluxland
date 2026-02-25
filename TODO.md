@@ -95,12 +95,12 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ## Protocols
 
-- [ ] DRM lease protocol (`wp-drm-lease-v1`) for VR headset passthrough
-- [ ] Transient seat protocol (`ext-transient-seat-v1`) for remote desktop
+- [x] DRM lease protocol (`wp-drm-lease-v1`) for VR headset passthrough
+- [x] Transient seat protocol (`ext-transient-seat-v1`) for remote desktop
   temporary seats
-- [ ] Explicit sync protocol (`linux-drm-syncobj-v1`) for GPU
+- [x] Explicit sync protocol (`linux-drm-syncobj-v1`) for GPU
   synchronization
-- [ ] Input method popup positioning improvements
+- [x] Input method popup positioning improvements
 
 ## Testing
 
@@ -126,16 +126,17 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ## Accessibility
 
-- [ ] Screen reader integration (AT-SPI bridge or similar)
-- [ ] High-contrast theme support
-- [ ] Keyboard-only navigation mode for all UI elements (menus, toolbar)
-- [ ] Focus indication improvements for low-vision users
+- [x] Screen reader integration (IPC event bridge: focus_changed,
+  menu_opened/closed, accessibility meta-subscription)
+- [x] High-contrast theme support
+- [x] Keyboard-only navigation mode for all UI elements (menus, toolbar)
+- [x] Focus indication improvements for low-vision users
 
 ## Localization
 
-- [ ] i18n support for log messages and IPC error strings
-- [ ] Translatable menu labels
-- [ ] Right-to-left layout support for decorations
+- [x] i18n support for log messages and IPC error strings
+- [x] Translatable menu labels
+- [x] Right-to-left layout support for decorations
 
 ## Quality of life
 

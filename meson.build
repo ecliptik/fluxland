@@ -43,6 +43,16 @@ if git.found()
 endif
 add_project_arguments('-DFLUXLAND_VERSION=@0@'.format(version), language: 'c')
 
+# --- Gettext / i18n ---
+
+intl_dep = dependency('intl', required: false)
+have_gettext = intl_dep.found() or cc.has_function('gettext', prefix: '#include <libintl.h>')
+if have_gettext
+  add_project_arguments('-DHAVE_GETTEXT', language: 'c')
+  localedir = get_option('prefix') / get_option('localedir')
+  add_project_arguments('-DLOCALEDIR="@0@"'.format(localedir), language: 'c')
+endif
+
 # --- Core dependencies ---
 
 wlroots = dependency(
@@ -131,6 +141,10 @@ wm_deps = [
   math,
 ]
 
+if have_gettext and intl_dep.found()
+  wm_deps += [intl_dep]
+endif
+
 wm_sources = files(
   'src/main.c',
   'src/animation.c',
@@ -149,6 +163,7 @@ wm_sources = files(
   'src/style.c',
   'src/render.c',
   'src/decoration.c',
+  'src/focus_nav.c',
   'src/fractional_scale.c',
   'src/gamma_control.c',
   'src/foreign_toplevel.c',
@@ -165,6 +180,9 @@ wm_sources = files(
   'src/screencopy.c',
   'src/session_lock.c',
   'src/text_input.c',
+  'src/transient_seat.c',
+  'src/drm_lease.c',
+  'src/drm_syncobj.c',
   'src/viewporter.c',
   'src/menu.c',
   'src/slit.c',
@@ -214,6 +232,7 @@ if get_option('wlcs')
     'src/style.c',
     'src/render.c',
     'src/decoration.c',
+    'src/focus_nav.c',
     'src/fractional_scale.c',
     'src/gamma_control.c',
     'src/foreign_toplevel.c',
@@ -230,6 +249,9 @@ if get_option('wlcs')
     'src/screencopy.c',
     'src/session_lock.c',
     'src/text_input.c',
+    'src/transient_seat.c',
+    'src/drm_lease.c',
+    'src/drm_syncobj.c',
     'src/viewporter.c',
     'src/menu.c',
     'src/slit.c',

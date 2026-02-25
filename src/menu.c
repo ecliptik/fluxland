@@ -22,10 +22,13 @@
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
+#include <pango/pango.h>
 #include <xkbcommon/xkbcommon.h>
 
 #include "config.h"
 #include "foreign_toplevel.h"
+#include "i18n.h"
+#include "ipc.h"
 #include "menu.h"
 #include "output.h"
 #include "render.h"
@@ -46,6 +49,31 @@
 #define MENU_SEARCH_TIMEOUT_MS 500
 
 static void cancel_pending_submenu(void);
+
+/*
+ * Determine the base text direction by scanning for the first character
+ * with a strong directionality.  Uses pango_unichar_direction() which is
+ * deprecated in Pango >= 1.44 but has no simple replacement without FriBidi.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+static PangoDirection
+find_base_dir(const char *text)
+{
+	if (!text)
+		return PANGO_DIRECTION_NEUTRAL;
+	const char *p = text;
+	while (*p) {
+		gunichar ch = g_utf8_get_char(p);
+		PangoDirection dir = pango_unichar_direction(ch);
+		if (dir == PANGO_DIRECTION_LTR ||
+		    dir == PANGO_DIRECTION_RTL)
+			return dir;
+		p = g_utf8_next_char(p);
+	}
+	return PANGO_DIRECTION_NEUTRAL;
+}
+#pragma GCC diagnostic pop
 
 /* --- Cairo-to-wlr_buffer bridge (same as decoration.c) --- */
 
@@ -740,10 +768,10 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			char *dir = parse_brace(&rest);
 			struct wm_menu_item *item =
 				menu_item_create(WM_MENU_SUBMENU,
-					label ? label : "Wallpapers");
+					label ? label : _("Wallpapers"));
 			if (item) {
 				item->submenu = menu_create(server,
-					label ? label : "Wallpapers");
+					label ? label : _("Wallpapers"));
 				if (item->submenu) {
 					item->submenu->parent = menu;
 					add_wallpaper_entries(
@@ -763,10 +791,10 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			char *dir = parse_brace(&rest);
 			struct wm_menu_item *item =
 				menu_item_create(WM_MENU_SUBMENU,
-					label ? label : "Styles");
+					label ? label : _("Styles"));
 			if (item) {
 				item->submenu = menu_create(server,
-					label ? label : "Styles");
+					label ? label : _("Styles"));
 				if (item->submenu) {
 					item->submenu->parent = menu;
 					if (dir)
@@ -848,7 +876,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			label = maybe_convert_label(label, encoding);
 			char *command = parse_brace(&rest);
 			struct wm_menu_item *item = menu_item_create(
-				WM_MENU_RESTART, label ? label : "Restart");
+				WM_MENU_RESTART, label ? label : _("Restart"));
 			if (item) {
 				item->command = command;
 				wl_list_insert(menu->items.prev, &item->link);
@@ -900,7 +928,7 @@ wm_menu_load(struct wm_server *server, const char *path)
 		return NULL;
 	}
 
-	struct wm_menu *menu = menu_create(server, "Menu");
+	struct wm_menu *menu = menu_create(server, _("Menu"));
 	if (!menu) {
 		fclose(fp);
 		free(expanded);
@@ -921,32 +949,34 @@ wm_menu_load(struct wm_server *server, const char *path)
 struct wm_menu *
 wm_menu_create_window_menu(struct wm_server *server)
 {
-	struct wm_menu *menu = menu_create(server, "Window");
+	struct wm_menu *menu = menu_create(server, _("Window"));
 
 	struct {
 		enum wm_menu_item_type type;
 		const char *label;
 	} entries[] = {
-		{WM_MENU_SHADE,    "Shade"},
-		{WM_MENU_STICK,    "Stick"},
-		{WM_MENU_MAXIMIZE, "Maximize"},
-		{WM_MENU_ICONIFY,  "Iconify"},
+		{WM_MENU_SHADE,    N_("Shade")},
+		{WM_MENU_STICK,    N_("Stick")},
+		{WM_MENU_MAXIMIZE, N_("Maximize")},
+		{WM_MENU_ICONIFY,  N_("Iconify")},
 		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_SENDTO,   "Send To..."},
-		{WM_MENU_LAYER,    "Layer"},
+		{WM_MENU_SENDTO,   N_("Send To...")},
+		{WM_MENU_LAYER,    N_("Layer")},
 		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_RAISE,    "Raise"},
-		{WM_MENU_LOWER,    "Lower"},
+		{WM_MENU_RAISE,    N_("Raise")},
+		{WM_MENU_LOWER,    N_("Lower")},
 		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_CLOSE,    "Close"},
-		{WM_MENU_KILL,     "Kill"},
+		{WM_MENU_CLOSE,    N_("Close")},
+		{WM_MENU_KILL,     N_("Kill")},
 		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_REMEMBER, "Remember"},
+		{WM_MENU_REMEMBER, N_("Remember")},
 	};
 
 	for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
 		struct wm_menu_item *item = menu_item_create(
-			entries[i].type, entries[i].label);
+			entries[i].type,
+			entries[i].label ? _(entries[i].label)
+					 : NULL);
 		if (item) {
 			/* Create SendTo submenu with workspace list */
 			if (entries[i].type == WM_MENU_SENDTO) {
@@ -958,12 +988,12 @@ wm_menu_create_window_menu(struct wm_server *server)
 			}
 			/* Create Layer submenu */
 			if (entries[i].type == WM_MENU_LAYER) {
-				item->submenu = menu_create(server, "Layer");
+				item->submenu = menu_create(server, _("Layer"));
 				if (item->submenu) {
 					item->submenu->parent = menu;
 					const char *layers[] = {
-						"Above Dock", "Dock",
-						"Normal", "Bottom", "Desktop"
+						_("Above Dock"), _("Dock"),
+						_("Normal"), _("Bottom"), _("Desktop")
 					};
 					for (int j = 0; j < 5; j++) {
 						struct wm_menu_item *li =
@@ -997,13 +1027,13 @@ wm_menu_create_window_menu(struct wm_server *server)
 struct wm_menu *
 wm_menu_create_workspace_menu(struct wm_server *server)
 {
-	struct wm_menu *menu = menu_create(server, "Workspaces");
+	struct wm_menu *menu = menu_create(server, _("Workspaces"));
 
 	struct wm_workspace *ws;
 	wl_list_for_each(ws, &server->workspaces, link) {
 		char label[128];
 		snprintf(label, sizeof(label), "%d: %s", ws->index + 1,
-			ws->name ? ws->name : "Workspace");
+			ws->name ? ws->name : _("Workspace"));
 		struct wm_menu_item *item = menu_item_create(
 			WM_MENU_COMMAND, label);
 		if (item) {
@@ -1023,7 +1053,7 @@ wm_menu_create_workspace_menu(struct wm_server *server)
 struct wm_menu *
 wm_menu_create_window_list(struct wm_server *server)
 {
-	struct wm_menu *menu = menu_create(server, "Windows");
+	struct wm_menu *menu = menu_create(server, _("Windows"));
 	if (!menu) {
 		return NULL;
 	}
@@ -1406,11 +1436,24 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 			if (has_arrow) {
 				max_w -= MENU_ARROW_SIZE + 4;
 			}
+			/* Detect RTL text for menu item alignment */
+			bool item_rtl = (find_base_dir(
+				item->label) == PANGO_DIRECTION_RTL);
+			enum wm_justify item_just = item_rtl
+				? WM_JUSTIFY_RIGHT : WM_JUSTIFY_LEFT;
 			cairo_surface_t *text = wm_render_text(item->label,
 				&style->menu_frame_font, text_color,
-				max_w, &tw, &th, WM_JUSTIFY_LEFT, 1.0f);
+				max_w, &tw, &th, item_just, 1.0f);
 			if (text) {
-				int tx = MENU_ITEM_PADDING + icon_col_w;
+				int tx;
+				if (item_rtl) {
+					tx = inner_w - MENU_ITEM_PADDING -
+						tw;
+					if (has_arrow)
+						tx -= MENU_ARROW_SIZE + 4;
+				} else {
+					tx = MENU_ITEM_PADDING + icon_col_w;
+				}
 				int ty = y + (item_h - th) / 2;
 				if (ty < y) {
 					ty = y;
@@ -1432,9 +1475,15 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 
 			/* Skip drawing if "empty" */
 			if (strcasecmp(bullet, "empty") != 0) {
-				bool on_left =
+				/* For RTL labels, mirror the arrow side */
+				bool lbl_rtl = item->label &&
+					(find_base_dir(item->label)
+						== PANGO_DIRECTION_RTL);
+				bool style_left =
 					(style->menu_bullet_position ==
 					 WM_JUSTIFY_LEFT);
+				bool on_left = lbl_rtl
+					? !style_left : style_left;
 				double ax;
 				if (on_left) {
 					ax = MENU_ITEM_PADDING;
@@ -1607,6 +1656,29 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 		bw, bw + menu->title_height);
 
 	menu->visible = true;
+
+	/* Broadcast menu_opened IPC event for screen readers */
+	{
+		char esc_title[256], buf[512];
+		const char *t = menu->title ? menu->title : "";
+		size_t j = 0;
+		for (size_t i = 0; t[i] && j + 1 < sizeof(esc_title); i++) {
+			unsigned char c = (unsigned char)t[i];
+			if (c == '"' || c == '\\') {
+				if (j + 2 >= sizeof(esc_title)) break;
+				esc_title[j++] = '\\';
+			}
+			if (c >= 0x20) esc_title[j++] = c;
+		}
+		esc_title[j] = '\0';
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"menu_opened\","
+			"\"title\":\"%s\","
+			"\"items\":%d}",
+			esc_title, menu->item_count);
+		wm_ipc_broadcast_event(&server->ipc,
+			WM_IPC_EVENT_MENU, buf);
+	}
 }
 
 void
@@ -1640,6 +1712,28 @@ wm_menu_hide(struct wm_menu *menu)
 	menu->search_buf[0] = '\0';
 
 	cancel_pending_submenu();
+
+	/* Broadcast menu_closed IPC event for screen readers */
+	if (menu->server) {
+		char esc_title[256], buf[512];
+		const char *t = menu->title ? menu->title : "";
+		size_t j = 0;
+		for (size_t i = 0; t[i] && j + 1 < sizeof(esc_title); i++) {
+			unsigned char c = (unsigned char)t[i];
+			if (c == '"' || c == '\\') {
+				if (j + 2 >= sizeof(esc_title)) break;
+				esc_title[j++] = '\\';
+			}
+			if (c >= 0x20) esc_title[j++] = c;
+		}
+		esc_title[j] = '\0';
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"menu_closed\","
+			"\"title\":\"%s\"}",
+			esc_title);
+		wm_ipc_broadcast_event(&menu->server->ipc,
+			WM_IPC_EVENT_MENU, buf);
+	}
 }
 
 void
@@ -2670,7 +2764,7 @@ wm_menu_show_workspace_menu(struct wm_server *server, int x, int y)
 	wm_menu_hide_all(server);
 
 	/* Build a dynamic workspace menu for switching (not "Send To") */
-	struct wm_menu *menu = menu_create(server, "Workspaces");
+	struct wm_menu *menu = menu_create(server, _("Workspaces"));
 	if (!menu) {
 		return;
 	}
@@ -2682,7 +2776,7 @@ wm_menu_show_workspace_menu(struct wm_server *server, int x, int y)
 		snprintf(label, sizeof(label), "%s%d: %s",
 			is_current ? "* " : "  ",
 			ws->index + 1,
-			ws->name ? ws->name : "Workspace");
+			ws->name ? ws->name : _("Workspace"));
 		struct wm_menu_item *item = menu_item_create(
 			WM_MENU_COMMAND, label);
 		if (item) {
@@ -2708,7 +2802,7 @@ wm_menu_show_client_menu(struct wm_server *server, const char *pattern,
 
 	wm_menu_hide_all(server);
 
-	struct wm_menu *menu = menu_create(server, "Clients");
+	struct wm_menu *menu = menu_create(server, _("Clients"));
 	if (!menu) {
 		return;
 	}

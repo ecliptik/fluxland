@@ -15,6 +15,7 @@
 #include <wlr/util/log.h>
 
 #include "config.h"
+#include "drm_lease.h"
 #include "ipc.h"
 #include "layer_shell.h"
 #include "output.h"
@@ -176,6 +177,9 @@ handle_new_output(struct wl_listener *listener, void *data)
 		wm_ipc_broadcast_event(&server->ipc,
 			WM_IPC_EVENT_OUTPUT_ADD, buf);
 	}
+
+	/* Offer output for DRM leasing (VR headsets) */
+	wm_drm_lease_offer_output(server, wlr_output);
 
 	/* Arrange any existing layer surfaces on this output */
 	wm_layer_shell_arrange(output);

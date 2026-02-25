@@ -22,6 +22,7 @@
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
+#include "i18n.h"
 #include "ipc.h"
 #include "config.h"
 #include "decoration.h"
@@ -362,6 +363,10 @@ static const struct action_entry action_table[] = {
 	{"ForEach",          WM_ACTION_FOREACH},
 	{"Map",              WM_ACTION_MAP},
 	{"Delay",            WM_ACTION_DELAY},
+	{"FocusToolbar",     WM_ACTION_FOCUS_TOOLBAR},
+	{"FocusNextElement", WM_ACTION_FOCUS_NEXT_ELEMENT},
+	{"FocusPrevElement", WM_ACTION_FOCUS_PREV_ELEMENT},
+	{"FocusActivate",    WM_ACTION_FOCUS_ACTIVATE},
 	{NULL, WM_ACTION_NOP},
 };
 
@@ -1427,18 +1432,18 @@ static char *
 cmd_command(struct wm_server *server, const char *action_str)
 {
 	if (!action_str || !*action_str) {
-		return make_error("missing action argument");
+		return make_error(_("missing action argument"));
 	}
 
 	enum wm_action action;
 	const char *arg;
 	if (!parse_action(action_str, &action, &arg)) {
-		return make_error("unknown action");
+		return make_error(_("unknown action"));
 	}
 
 	bool ok = ipc_execute_action(server, action, arg);
 	if (!ok) {
-		return make_error("action not supported via IPC");
+		return make_error(_("action not supported via IPC"));
 	}
 	return make_ok();
 }
@@ -1447,12 +1452,12 @@ static char *
 cmd_subscribe(struct wm_ipc_client *client, const char *events_str)
 {
 	if (!events_str || !*events_str) {
-		return make_error("missing event types");
+		return make_error(_("missing event types"));
 	}
 
 	/* Parse comma- or space-separated event names */
 	char *copy = strdup(events_str);
-	if (!copy) return make_error("out of memory");
+	if (!copy) return make_error(_("out of memory"));
 
 	char *saveptr;
 	char *token = strtok_r(copy, ", ", &saveptr);
@@ -1480,6 +1485,22 @@ cmd_subscribe(struct wm_ipc_client *client, const char *events_str)
 		} else if (strcasecmp(token, "config_reloaded") == 0) {
 			client->subscribed_events |=
 				WM_IPC_EVENT_CONFIG_RELOADED;
+		} else if (strcasecmp(token, "focus_changed") == 0) {
+			client->subscribed_events |=
+				WM_IPC_EVENT_FOCUS_CHANGED;
+		} else if (strcasecmp(token, "menu") == 0) {
+			client->subscribed_events |=
+				WM_IPC_EVENT_MENU;
+		} else if (strcasecmp(token, "accessibility") == 0) {
+			/* Subscribe to all accessibility events */
+			client->subscribed_events |=
+				WM_IPC_EVENT_FOCUS_CHANGED;
+			client->subscribed_events |=
+				WM_IPC_EVENT_MENU;
+			client->subscribed_events |=
+				WM_IPC_EVENT_WORKSPACE;
+			client->subscribed_events |=
+				WM_IPC_EVENT_WINDOW_FOCUS;
 		}
 		token = strtok_r(NULL, ", ", &saveptr);
 	}
@@ -1495,13 +1516,13 @@ wm_ipc_handle_command(struct wm_ipc_server *ipc,
 	struct wm_ipc_client *client, const char *json_request)
 {
 	if (!json_request || !*json_request) {
-		return make_error("empty request");
+		return make_error(_("empty request"));
 	}
 
 	/* Extract "command" field */
 	char *command = json_get_string(json_request, "command");
 	if (!command) {
-		return make_error("missing 'command' field");
+		return make_error(_("missing 'command' field"));
 	}
 
 	struct wm_server *server = ipc->server;
@@ -1526,7 +1547,7 @@ wm_ipc_handle_command(struct wm_ipc_server *ipc,
 	} else if (strcmp(command, "ping") == 0) {
 		result = make_ok();
 	} else {
-		result = make_error("unknown command");
+		result = make_error(_("unknown command"));
 	}
 
 	free(command);

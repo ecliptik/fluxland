@@ -246,6 +246,20 @@ Mod4 F2 :WindowMenu
 Mod4 Escape :HideMenus
 
 # -------------------------------------------------------------------
+# Accessibility: keyboard-only navigation
+# -------------------------------------------------------------------
+
+# Move keyboard focus to toolbar
+Mod4 F6 :FocusToolbar
+
+# Cycle through toolbar elements (when toolbar has focus)
+Mod4 F7 :FocusNextElement
+Mod4 Shift F7 :FocusPrevElement
+
+# Activate focused toolbar element (Enter/Space equivalent)
+Mod4 F8 :FocusActivate
+
+# -------------------------------------------------------------------
 # Key chain example: Mod4+x prefix, then second key
 # -------------------------------------------------------------------
 

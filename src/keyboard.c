@@ -28,6 +28,7 @@
 #include "keyboard.h"
 #include "server.h"
 #include "config.h"
+#include "focus_nav.h"
 #include "output.h"
 #include "decoration.h"
 #include "idle.h"
@@ -1278,6 +1279,22 @@ execute_action(struct wm_server *server,
 		wlr_log(WLR_ERROR,
 			"%s", "MacroCmd/ToggleCmd cannot be nested in subcmds");
 		return false;
+
+	case WM_ACTION_FOCUS_TOOLBAR:
+		wm_focus_nav_enter_toolbar(server);
+		return true;
+
+	case WM_ACTION_FOCUS_NEXT_ELEMENT:
+		wm_focus_nav_next_element(server);
+		return true;
+
+	case WM_ACTION_FOCUS_PREV_ELEMENT:
+		wm_focus_nav_prev_element(server);
+		return true;
+
+	case WM_ACTION_FOCUS_ACTIVATE:
+		wm_focus_nav_activate(server);
+		return true;
 
 	case WM_ACTION_IF:
 	case WM_ACTION_FOREACH:

@@ -1,0 +1,4 @@
+src/ipc_commands.c
+src/main.c
+src/menu.c
+src/validate.c

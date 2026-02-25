@@ -42,8 +42,11 @@
 #ifdef WM_HAS_SYSTRAY
 #include "systray.h"
 #endif
+#include "drm_lease.h"
+#include "drm_syncobj.h"
 #include "text_input.h"
 #include "toolbar.h"
+#include "transient_seat.h"
 #include "view.h"
 #include "viewporter.h"
 #include "workspace.h"
@@ -404,6 +407,15 @@ wm_server_init(struct wm_server *server)
 	/* Tablet input (tablet-v2 protocol for stylus/pad devices) */
 	wm_tablet_init(server);
 
+	/* DRM lease (wp-drm-lease-v1 for VR headsets) */
+	wm_drm_lease_init(server);
+
+	/* Transient seat (ext-transient-seat-v1 for remote desktop) */
+	wm_transient_seat_init(server);
+
+	/* Explicit sync (linux-drm-syncobj-v1) */
+	wm_drm_syncobj_init(server);
+
 	/* Load configuration */
 	server->config = config_create();
 	if (server->config) {
@@ -460,6 +472,9 @@ wm_server_init(struct wm_server *server)
 	int ws_count = server->config ?
 		server->config->workspace_count : WM_DEFAULT_WORKSPACE_COUNT;
 	wm_workspaces_init(server, ws_count);
+
+	/* Initialize keyboard focus navigation (accessibility) */
+	wm_focus_nav_init(&server->focus_nav);
 
 	/* Create toolbar (after workspaces so it can display them) */
 	server->toolbar = wm_toolbar_create(server);
@@ -545,6 +560,9 @@ wm_server_destroy(struct wm_server *server)
 	wm_menu_destroy(server->window_menu);
 	wm_rules_finish(&server->rules);
 
+	wm_drm_syncobj_finish(server);
+	wm_transient_seat_finish(server);
+	wm_drm_lease_finish(server);
 	wm_tablet_finish(server);
 	wm_text_input_finish(server);
 	wm_protocols_finish(server);

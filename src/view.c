@@ -162,15 +162,34 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 			view->app_id);
 		json_escape(esc_title, sizeof(esc_title),
 			view->title);
+		struct wlr_box geo;
+		wm_view_get_geometry(view, &geo);
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"window_focus\","
 			"\"id\":%u,"
 			"\"app_id\":\"%s\","
-			"\"title\":\"%s\"}",
+			"\"title\":\"%s\","
+			"\"x\":%d,\"y\":%d,"
+			"\"width\":%d,\"height\":%d}",
 			view->id,
-			esc_app, esc_title);
+			esc_app, esc_title,
+			geo.x, geo.y, geo.width, geo.height);
 		wm_ipc_broadcast_event(&server->ipc,
 			WM_IPC_EVENT_WINDOW_FOCUS, buf);
+		/* Also broadcast on focus_changed for screen readers */
+		snprintf(buf, sizeof(buf),
+			"{\"event\":\"focus_changed\","
+			"\"target\":\"window\","
+			"\"id\":%u,"
+			"\"app_id\":\"%s\","
+			"\"title\":\"%s\","
+			"\"x\":%d,\"y\":%d,"
+			"\"width\":%d,\"height\":%d}",
+			view->id,
+			esc_app, esc_title,
+			geo.x, geo.y, geo.width, geo.height);
+		wm_ipc_broadcast_event(&server->ipc,
+			WM_IPC_EVENT_FOCUS_CHANGED, buf);
 	}
 
 	/* Update decoration on newly focused view */

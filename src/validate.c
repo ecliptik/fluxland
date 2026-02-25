@@ -10,6 +10,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "validate.h"
+#include "i18n.h"
 #include "rcparser.h"
 #include <ctype.h>
 #include <stdarg.h>
@@ -529,8 +530,9 @@ static const char *valid_actions[] = {
 	"CascadeWindows", "Close", "ClientMenu", "CloseAllWindows",
 	"CustomMenu", "Deiconify", "Delay", "DetachClient",
 	"Exec", "ExecCommand", "Execute", "Exit", "Export",
-	"Focus", "FocusDown", "FocusLeft", "ForEach",
-	"FocusNext", "FocusPrev", "FocusRight", "FocusUp",
+	"Focus", "FocusActivate", "FocusDown", "FocusLeft", "ForEach",
+	"FocusNext", "FocusNextElement", "FocusPrev", "FocusPrevElement",
+	"FocusRight", "FocusToolbar", "FocusUp",
 	"Fullscreen", "GotoWindow", "HideMenus",
 	"Iconify", "If", "KeyMode", "Kill", "KillWindow",
 	"LeftWorkspace", "LHalf", "Lower", "LowerLayer",

@@ -14,8 +14,36 @@
 #include <cairo.h>
 #include <math.h>
 #include <pango/pangocairo.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* --- RTL detection helper --- */
+
+/*
+ * Determine the base text direction by scanning for the first character
+ * with a strong directionality.  Uses pango_unichar_direction() which is
+ * deprecated in Pango >= 1.44 but has no simple replacement without FriBidi.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+static PangoDirection
+find_base_dir(const char *text)
+{
+	if (!text)
+		return PANGO_DIRECTION_NEUTRAL;
+	const char *p = text;
+	while (*p) {
+		gunichar ch = g_utf8_get_char(p);
+		PangoDirection dir = pango_unichar_direction(ch);
+		if (dir == PANGO_DIRECTION_LTR ||
+		    dir == PANGO_DIRECTION_RTL)
+			return dir;
+		p = g_utf8_next_char(p);
+	}
+	return PANGO_DIRECTION_NEUTRAL;
+}
+#pragma GCC diagnostic pop
 
 /* --- Color helpers --- */
 
@@ -464,16 +492,30 @@ wm_render_text(const char *text, const struct wm_font *font,
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
 	pango_layout_set_single_paragraph_mode(layout, TRUE);
 
-	/* Alignment */
+	/* RTL auto-detection: detect base direction of the text and
+	 * set Pango context direction accordingly so that RTL scripts
+	 * (Arabic, Hebrew, etc.) render correctly. */
+	PangoDirection base_dir = find_base_dir(text);
+	bool is_rtl = (base_dir == PANGO_DIRECTION_RTL);
+	if (is_rtl) {
+		PangoContext *pango_ctx = pango_layout_get_context(layout);
+		pango_context_set_base_dir(pango_ctx, PANGO_DIRECTION_RTL);
+		pango_layout_context_changed(layout);
+	}
+
+	/* Alignment — for RTL text, mirror left/right when using
+	 * the default (left) justification. */
 	switch (justify) {
 	case WM_JUSTIFY_CENTER:
 		pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
 		break;
 	case WM_JUSTIFY_RIGHT:
-		pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+		pango_layout_set_alignment(layout,
+			is_rtl ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
 		break;
 	default:
-		pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
+		pango_layout_set_alignment(layout,
+			is_rtl ? PANGO_ALIGN_RIGHT : PANGO_ALIGN_LEFT);
 		break;
 	}
 

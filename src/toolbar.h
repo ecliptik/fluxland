@@ -105,6 +105,9 @@ struct wm_toolbar {
 	int cached_ws_index;
 	char *cached_title;
 	char cached_clock[64];
+
+	/* Keyboard focus indicator overlay */
+	struct wlr_scene_buffer *focus_indicator;
 };
 
 /* Create the toolbar and add it to the scene graph */
