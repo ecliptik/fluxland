@@ -80,7 +80,7 @@ Phases 1-5 are complete; these are the remaining gaps.
   - Matrix: Debian stable, Ubuntu LTS, Fedora latest
   - Build with both GCC and Clang
   - Run `meson test` and report failures
-- [ ] Automated linting (clang-format check, clang-tidy)
+- [x] Automated linting (clang-format check, clang-tidy)
 
 ## Window management
 

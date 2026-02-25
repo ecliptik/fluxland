@@ -327,3 +327,40 @@ install_man(
 # --- Tests ---
 
 subdir('tests')
+
+# --- Linting targets ---
+
+clang_format = find_program('clang-format', required: false, disabler: true)
+clang_tidy_prog = find_program('clang-tidy', required: false, disabler: true)
+
+lint_src_dirs = [
+  meson.project_source_root() / 'src',
+  meson.project_source_root() / 'tools',
+  meson.project_source_root() / 'tests',
+]
+
+lint_c = run_command('find', lint_src_dirs, '-name', '*.c', check: true,
+).stdout().strip().split('\n')
+
+lint_h = run_command('find', lint_src_dirs, '-name', '*.h', check: true,
+).stdout().strip().split('\n')
+
+run_target('clang-format',
+  command: [clang_format, '-i'] + lint_c + lint_h,
+)
+
+run_target('clang-format-check',
+  command: [clang_format, '--dry-run', '--Werror'] + lint_c + lint_h,
+)
+
+# Exclude files not in compile_commands.json (fuzz targets, wlcs shim)
+tidy_c = run_command('find', lint_src_dirs,
+  '-name', '*.c',
+  '-not', '-path', '*/fuzz/*',
+  '-not', '-name', 'wlcs_shim.c',
+  check: true,
+).stdout().strip().split('\n')
+
+run_target('clang-tidy',
+  command: [clang_tidy_prog, '-p', meson.project_build_root()] + tidy_c,
+)
