@@ -52,25 +52,25 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ### Low Complexity (S)
 
-- [ ] **BindKey** — Add keybindings at runtime via `BindKey` command
-- [ ] **SetEnv/Export** — Set environment variables from keys file
-- [ ] **ShowWindowPosition** — Coordinate overlay during move/resize
-- [ ] **Slit Styling** — `slit.*` style properties (borderWidth, color, etc.)
-- [ ] **Menu Bullet Style** — `menu.bullet`, `menu.bullet.position` style props
-- [ ] **Menu Item/Title Height** — `menu.itemHeight`, `menu.titleHeight` style props
-- [ ] **SetAlpha Relative** — `SetAlpha +10` / `SetAlpha -10` relative adjustment
-- [ ] **NextWindow/PrevWindow Pattern** — Filter cycling by pattern argument
-- [ ] **NextGroup/PrevGroup** — Cycle between tab groups
-- [ ] **GotoWindow N** — Focus window at stack position N
-- [ ] **Unclutter** — Reduce window overlap without resizing
-- [ ] **AutotabPlacement** — Auto-tab new windows into existing groups
-- [ ] **--list-commands CLI** — Print all available commands and exit
-- [ ] **[encoding]/[endencoding]** — Menu character encoding tags
-- [ ] **[wallpapers] Menu Tag** — Browse wallpaper directory
-- [ ] **[stylesmenu] Menu Tag** — Auto-generated style list
-- [ ] **Iconbar Enhancements** — alignment, iconWidth, usePixmap, wheelMode,
+- [x] **BindKey** — Add keybindings at runtime via `BindKey` command
+- [x] **SetEnv/Export** — Set environment variables from keys file
+- [x] **ShowWindowPosition** — Coordinate overlay during move/resize
+- [x] **Slit Styling** — `slit.*` style properties (borderWidth, color, etc.)
+- [x] **Menu Bullet Style** — `menu.bullet`, `menu.bullet.position` style props
+- [x] **Menu Item/Title Height** — `menu.itemHeight`, `menu.titleHeight` style props
+- [x] **SetAlpha Relative** — `SetAlpha +10` / `SetAlpha -10` relative adjustment
+- [x] **NextWindow/PrevWindow Pattern** — Filter cycling by pattern argument
+- [x] **NextGroup/PrevGroup** — Cycle between tab groups
+- [x] **GotoWindow N** — Focus window at stack position N
+- [x] **Unclutter** — Reduce window overlap without resizing
+- [x] **AutotabPlacement** — Auto-tab new windows into existing groups
+- [x] **--list-commands CLI** — Print all available commands and exit
+- [x] **[encoding]/[endencoding]** — Menu character encoding tags
+- [x] **[wallpapers] Menu Tag** — Browse wallpaper directory
+- [x] **[stylesmenu] Menu Tag** — Auto-generated style list
+- [x] **Iconbar Enhancements** — alignment, iconWidth, usePixmap, wheelMode,
   iconifiedPattern config options
-- [ ] **Tab-Specific Focus Models** — ClickTabFocus / MouseTabFocus
+- [x] **Tab-Specific Focus Models** — ClickTabFocus / MouseTabFocus
 
 ---
 
