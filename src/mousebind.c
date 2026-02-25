@@ -15,6 +15,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "mousebind.h"
+#include "util.h"
 #include <ctype.h>
 #include <linux/input-event-codes.h>
 #include <stdio.h>
@@ -242,8 +243,8 @@ parse_mouse_event(const char *token, enum wm_mouse_event *event,
 	if (!num_str || !*num_str)
 		return false;
 
-	int num = atoi(num_str);
-	if (num < 1 || num > 5)
+	int num;
+	if (!safe_atoi(num_str, &num) || num < 1 || num > 5)
 		return false;
 
 	*button = button_number_to_code(num, button_map);

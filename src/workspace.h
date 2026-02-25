@@ -45,9 +45,6 @@ void wm_workspace_switch_next(struct wm_server *server);
 /* Switch to the previous workspace (wraps around) */
 void wm_workspace_switch_prev(struct wm_server *server);
 
-/* Get the current active workspace */
-struct wm_workspace *wm_workspace_get_current(struct wm_server *server);
-
 /* Get workspace by index */
 struct wm_workspace *wm_workspace_get(struct wm_server *server, int index);
 
@@ -93,13 +90,5 @@ void wm_workspace_set_name(struct wm_server *server, const char *name);
  * In global mode, returns server->current_workspace.
  */
 struct wm_workspace *wm_workspace_get_active(struct wm_server *server);
-
-/*
- * Check if a view should be visible on a given output in per-output mode.
- * Returns true if the view's workspace matches the output's active workspace,
- * or if the view is sticky.
- */
-bool wm_view_visible_on_output(struct wm_view *view,
-	struct wm_output *output);
 
 #endif /* WM_WORKSPACE_H */

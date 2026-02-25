@@ -258,7 +258,9 @@ wm_server_init(struct wm_server *server)
 		server->wl_event_loop, SIGHUP, handle_sighup, server);
 	server->sigchld_source = wl_event_loop_add_signal(
 		server->wl_event_loop, SIGCHLD, handle_sigchld, server);
-	signal(SIGPIPE, SIG_IGN);
+	struct sigaction sa_pipe = {0};
+	sa_pipe.sa_handler = SIG_IGN;
+	sigaction(SIGPIPE, &sa_pipe, NULL);
 
 	/*
 	 * The backend abstracts the underlying input and output hardware.

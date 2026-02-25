@@ -158,10 +158,6 @@ void wm_decoration_update(struct wm_decoration *decoration,
 void wm_decoration_set_focused(struct wm_decoration *decoration,
 	bool focused, struct wm_style *style);
 
-/* Resize decorations to match new client surface size */
-void wm_decoration_set_size(struct wm_decoration *decoration,
-	int width, int height, struct wm_style *style);
-
 /*
  * Parse button layout strings from config.
  * left_str: e.g. "Stick"

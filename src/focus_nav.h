@@ -43,9 +43,6 @@ void wm_focus_nav_prev_element(struct wm_server *server);
 /* Activate (Enter/Space) the currently focused toolbar element */
 void wm_focus_nav_activate(struct wm_server *server);
 
-/* Check if toolbar has keyboard focus */
-bool wm_focus_nav_in_toolbar(struct wm_server *server);
-
 /* Get the currently focused toolbar tool index (-1 if none) */
 int wm_focus_nav_get_toolbar_index(struct wm_server *server);
 

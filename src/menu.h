@@ -192,11 +192,6 @@ bool wm_menu_handle_button_for(struct wm_menu *root_menu,
  */
 void wm_menu_destroy(struct wm_menu *menu);
 
-/*
- * Check if any menu is currently visible.
- */
-bool wm_menu_is_open(struct wm_server *server);
-
 /* --- Action dispatch --- */
 
 /*

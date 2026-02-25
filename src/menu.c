@@ -35,6 +35,7 @@
 #include "rules.h"
 #include "server.h"
 #include "style.h"
+#include "util.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -744,13 +745,61 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			if (raw_path) {
 				char *path = expand_path(raw_path);
 				if (path) {
-					FILE *inc_fp = fopen(path, "r");
+					/* Validate include path to prevent traversal */
+					if (strstr(path, "..")) {
+						wlr_log(WLR_ERROR,
+							"menu: rejecting include path with '..': %s",
+							path);
+						free(path);
+						free(raw_path);
+						continue;
+					}
+					char *resolved = realpath(path, NULL);
+					if (!resolved) {
+						wlr_log(WLR_ERROR,
+							"menu: cannot resolve include path: %s",
+							path);
+						free(path);
+						free(raw_path);
+						continue;
+					}
+					/* Only allow includes under home, config, or system dirs */
+					const char *home = getenv("HOME");
+					bool allowed = false;
+					if (home && strncmp(resolved, home,
+							strlen(home)) == 0)
+						allowed = true;
+					if (server && server->config &&
+					    server->config->config_dir &&
+					    strncmp(resolved,
+						server->config->config_dir,
+						strlen(server->config->config_dir)) == 0)
+						allowed = true;
+					if (strncmp(resolved, "/usr/share/", 11) == 0)
+						allowed = true;
+					if (strncmp(resolved, "/usr/local/share/", 17) == 0)
+						allowed = true;
+					if (strncmp(resolved, "/etc/", 5) == 0)
+						allowed = true;
+					if (strncmp(resolved, "/tmp/", 5) == 0)
+						allowed = true;
+					if (!allowed) {
+						wlr_log(WLR_ERROR,
+							"menu: include path outside allowed directories: %s",
+							resolved);
+						free(resolved);
+						free(path);
+						free(raw_path);
+						continue;
+					}
+					FILE *inc_fp = fopen(resolved, "r");
 					if (inc_fp) {
 						parse_menu_items_depth(menu,
 							inc_fp, server,
 							depth + 1);
 						fclose(inc_fp);
 					}
+					free(resolved);
 					free(path);
 				}
 				free(raw_path);
@@ -2059,8 +2108,9 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		}
 		/* Switch to the view's workspace */
 		if (item->command) {
-			int ws_idx = atoi(item->command);
-			wm_workspace_switch(server, ws_idx);
+			int ws_idx;
+			if (safe_atoi(item->command, &ws_idx))
+				wm_workspace_switch(server, ws_idx);
 		}
 		/* De-iconify if minimized */
 		if (!target->scene_tree->node.enabled) {
@@ -2667,33 +2717,6 @@ wm_menu_destroy(struct wm_menu *menu)
 
 	free(menu->title);
 	free(menu);
-}
-
-bool
-wm_menu_is_open(struct wm_server *server)
-{
-	if (!server) {
-		return false;
-	}
-	if (server->root_menu && server->root_menu->visible) {
-		return true;
-	}
-	if (server->window_menu && server->window_menu->visible) {
-		return true;
-	}
-	if (server->window_list_menu && server->window_list_menu->visible) {
-		return true;
-	}
-	if (server->workspace_menu && server->workspace_menu->visible) {
-		return true;
-	}
-	if (server->client_menu && server->client_menu->visible) {
-		return true;
-	}
-	if (server->custom_menu && server->custom_menu->visible) {
-		return true;
-	}
-	return false;
 }
 
 /* --- Action dispatch --- */

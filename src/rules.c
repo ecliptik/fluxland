@@ -18,6 +18,7 @@
 
 #include "rules.h"
 #include "decoration.h"
+#include "util.h"
 #include "output.h"
 #include "view.h"
 #include "server.h"
@@ -236,8 +237,11 @@ static void parse_rule_setting(const char *line, struct wm_window_rule *rule) {
 	char *val = strip(value);
 
 	if (streqi(name, "Workspace")) {
-		rule->has_workspace = true;
-		rule->workspace = atoi(val);
+		int ws;
+		if (safe_atoi(val, &ws)) {
+			rule->has_workspace = true;
+			rule->workspace = ws;
+		}
 	} else if (streqi(name, "Dimensions")) {
 		int w = 0, h = 0;
 		if (sscanf(val, "%d %d", &w, &h) == 2) {
@@ -266,8 +270,11 @@ static void parse_rule_setting(const char *line, struct wm_window_rule *rule) {
 		rule->has_sticky = true;
 		rule->sticky = parse_bool(val);
 	} else if (streqi(name, "Layer")) {
-		rule->has_layer = true;
-		rule->layer = atoi(val);
+		int layer;
+		if (safe_atoi(val, &layer)) {
+			rule->has_layer = true;
+			rule->layer = layer;
+		}
 	} else if (streqi(name, "Alpha")) {
 		int fa = 255, ua = 255;
 		if (sscanf(val, "%d %d", &fa, &ua) >= 1) {
@@ -291,8 +298,11 @@ static void parse_rule_setting(const char *line, struct wm_window_rule *rule) {
 		rule->has_focus_new = true;
 		rule->focus_new = parse_bool(val);
 	} else if (streqi(name, "Head")) {
-		rule->has_head = true;
-		rule->head = atoi(val);
+		int head;
+		if (safe_atoi(val, &head)) {
+			rule->has_head = true;
+			rule->head = head;
+		}
 	} else if (streqi(name, "FocusProtection")) {
 		rule->has_focus_protection = true;
 		rule->focus_protection = 0;

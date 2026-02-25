@@ -50,6 +50,7 @@
 #endif
 #include "tabgroup.h"
 #include "toolbar.h"
+#include "util.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -321,8 +322,9 @@ execute_mouse_action(struct wm_server *server,
 
 	case WM_ACTION_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_workspace_switch(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_workspace_switch(server, ws - 1);
 		}
 		break;
 

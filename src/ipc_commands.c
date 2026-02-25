@@ -37,6 +37,7 @@
 #include "style.h"
 #include "toolbar.h"
 #include "rules.h"
+#include "util.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -127,9 +128,16 @@ json_get_string(const char *json, const char *key)
 						after++;
 						const char *end = after;
 						while (*end && *end != '"') {
-							if (*end == '\\' && *(end + 1))
+							if (*end == '\\') {
+								if (*(end + 1) == '\0')
+									break;
 								end++;
+							}
 							end++;
+						}
+						/* Unterminated string — no closing quote */
+						if (*end != '"') {
+							return NULL;
 						}
 						size_t vlen = (size_t)(end - after);
 						char *val = malloc(vlen + 1);
@@ -670,15 +678,17 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_workspace_switch(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_workspace_switch(server, ws - 1);
 		}
 		return true;
 
 	case WM_ACTION_SEND_TO_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_view_send_to_workspace(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_view_send_to_workspace(server, ws - 1);
 		}
 		return true;
 
@@ -714,37 +724,45 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_MOVE_LEFT:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->x -= px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->x -= px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
 	case WM_ACTION_MOVE_RIGHT:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->x += px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->x += px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
 	case WM_ACTION_MOVE_UP:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->y -= px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->y -= px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
 	case WM_ACTION_MOVE_DOWN:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->y += px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->y += px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
@@ -840,8 +858,9 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_ACTIVATE_TAB:
 		if (view && argument) {
-			int idx = atoi(argument) - 1;
-			wm_view_activate_tab(view, idx);
+			int idx;
+			if (safe_atoi(argument, &idx))
+				wm_view_activate_tab(view, idx - 1);
 		}
 		return true;
 
@@ -901,8 +920,41 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_SET_STYLE:
 		if (argument && server->config) {
+			/* Reject paths with traversal sequences */
+			if (strstr(argument, "..")) {
+				wlr_log(WLR_ERROR,
+					"SetStyle: rejecting path with '..': %s",
+					argument);
+				return true;
+			}
+			char *resolved = realpath(argument, NULL);
+			if (!resolved) {
+				wlr_log(WLR_ERROR,
+					"SetStyle: cannot resolve path: %s",
+					argument);
+				return true;
+			}
+			/* Only allow style files under home or system dirs */
+			const char *home = getenv("HOME");
+			bool allowed = false;
+			if (home && strncmp(resolved, home,
+					strlen(home)) == 0)
+				allowed = true;
+			if (strncmp(resolved, "/usr/share/", 11) == 0)
+				allowed = true;
+			if (strncmp(resolved, "/usr/local/share/", 17) == 0)
+				allowed = true;
+			if (strncmp(resolved, "/etc/", 5) == 0)
+				allowed = true;
+			if (!allowed) {
+				wlr_log(WLR_ERROR,
+					"SetStyle: path outside allowed directories: %s",
+					resolved);
+				free(resolved);
+				return true;
+			}
 			free(server->config->style_file);
-			server->config->style_file = strdup(argument);
+			server->config->style_file = resolved;
 			if (server->style && server->config->style_file)
 				style_load(server->style,
 					server->config->style_file);
@@ -983,8 +1035,9 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_TAKE_TO_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_view_take_to_workspace(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_view_take_to_workspace(server, ws - 1);
 		}
 		return true;
 
@@ -1024,15 +1077,17 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_RESIZE_HORIZ:
 		if (view && argument) {
-			int dw = atoi(argument);
-			wm_view_resize_by(view, dw, 0);
+			int dw;
+			if (safe_atoi(argument, &dw))
+				wm_view_resize_by(view, dw, 0);
 		}
 		return true;
 
 	case WM_ACTION_RESIZE_VERT:
 		if (view && argument) {
-			int dh = atoi(argument);
-			wm_view_resize_by(view, 0, dh);
+			int dh;
+			if (safe_atoi(argument, &dh))
+				wm_view_resize_by(view, 0, dh);
 		}
 		return true;
 
@@ -1054,8 +1109,9 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_SET_HEAD:
 		if (view && argument) {
-			int head = atoi(argument);
-			wm_view_set_head(view, head);
+			int head;
+			if (safe_atoi(argument, &head))
+				wm_view_set_head(view, head);
 		}
 		return true;
 
@@ -1136,10 +1192,13 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		if (view && argument) {
 			int alpha;
 			if (argument[0] == '+' || argument[0] == '-') {
-				int offset = atoi(argument);
+				int offset;
+				if (!safe_atoi(argument, &offset))
+					return true;
 				alpha = view->focus_alpha + offset;
 			} else {
-				alpha = atoi(argument);
+				if (!safe_atoi(argument, &alpha))
+					return true;
 			}
 			if (alpha < 0) alpha = 0;
 			if (alpha > 255) alpha = 255;
@@ -1198,8 +1257,8 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	case WM_ACTION_GOTO_WINDOW:
 		if (argument) {
-			int n = atoi(argument);
-			if (n >= 1) {
+			int n;
+			if (safe_atoi(argument, &n) && n >= 1) {
 				struct wm_workspace *ws =
 					wm_workspace_get_active(server);
 				int count = 0;

@@ -18,6 +18,8 @@
 
 #include "keybind.h"
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -779,8 +781,13 @@ parse_conditional_args(enum wm_action action, const char *argument,
 
 		/* Parse delay value */
 		skip_ws(&p);
-		if (*p)
-			bind->delay_us = atoi(p);
+		if (*p) {
+			char *end;
+			errno = 0;
+			long val = strtol(p, &end, 10);
+			if (!errno && end != p && val > 0 && val <= INT_MAX)
+				bind->delay_us = (int)val;
+		}
 		if (bind->delay_us <= 0)
 			bind->delay_us = 1000000; /* default 1 second */
 		return true;

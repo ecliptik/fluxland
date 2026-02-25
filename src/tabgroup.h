@@ -84,18 +84,4 @@ void wm_tab_group_move_right(struct wm_tab_group *group,
 void wm_tab_group_move_left(struct wm_tab_group *group,
 	struct wm_view *view);
 
-/*
- * Merge two tab groups.  All views from `other` are appended to
- * `target`.  The `other` group is destroyed afterward.
- */
-void wm_tab_group_merge(struct wm_tab_group *target,
-	struct wm_tab_group *other);
-
-/*
- * Get the tab index (0-based) of a view within its group.
- * Returns -1 if the view is not in a group.
- */
-int wm_tab_group_index_of(struct wm_tab_group *group,
-	struct wm_view *view);
-
 #endif /* WM_TABGROUP_H */

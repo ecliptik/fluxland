@@ -19,6 +19,29 @@
 #include "workspace.h"
 #include "view.h"
 
+/* Escape a string for safe inclusion in JSON (writes into dst). */
+static void
+json_escape_buf(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) {
+		if (dst_size > 0) dst[0] = '\0';
+		return;
+	}
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') {
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c < 0x20) {
+			continue;
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
+
 void
 wm_focus_nav_init(struct wm_focus_nav *nav)
 {
@@ -84,31 +107,10 @@ wm_focus_nav_return_to_windows(struct wm_server *server)
 	/* Re-announce the focused window for screen readers */
 	if (server->focused_view) {
 		char esc_app[256], esc_title[256], buf[1024];
-		const char *app = server->focused_view->app_id;
-		const char *title = server->focused_view->title;
-		/* Simple JSON escape */
-		if (!app) app = "";
-		if (!title) title = "";
-		size_t j = 0;
-		for (size_t i = 0; app[i] && j + 1 < sizeof(esc_app); i++) {
-			unsigned char c = (unsigned char)app[i];
-			if (c == '"' || c == '\\') {
-				if (j + 2 >= sizeof(esc_app)) break;
-				esc_app[j++] = '\\';
-			}
-			if (c >= 0x20) esc_app[j++] = c;
-		}
-		esc_app[j] = '\0';
-		j = 0;
-		for (size_t i = 0; title[i] && j + 1 < sizeof(esc_title); i++) {
-			unsigned char c = (unsigned char)title[i];
-			if (c == '"' || c == '\\') {
-				if (j + 2 >= sizeof(esc_title)) break;
-				esc_title[j++] = '\\';
-			}
-			if (c >= 0x20) esc_title[j++] = c;
-		}
-		esc_title[j] = '\0';
+		json_escape_buf(esc_app, sizeof(esc_app),
+			server->focused_view->app_id);
+		json_escape_buf(esc_title, sizeof(esc_title),
+			server->focused_view->title);
 
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"focus_changed\","
@@ -271,12 +273,6 @@ wm_focus_nav_activate(struct wm_server *server)
 		/* No action for clock */
 		break;
 	}
-}
-
-bool
-wm_focus_nav_in_toolbar(struct wm_server *server)
-{
-	return server->focus_nav.zone == WM_FOCUS_ZONE_TOOLBAR;
 }
 
 int

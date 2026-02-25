@@ -29,10 +29,6 @@ void wm_keyboard_setup(struct wm_server *server,
 void wm_keyboard_next_layout(struct wm_server *server);
 void wm_keyboard_prev_layout(struct wm_server *server);
 
-/* Get the name of the current XKB layout (for toolbar display).
- * Returns a static string valid until the next layout change. */
-const char *wm_keyboard_get_layout_name(struct wm_server *server);
-
 /* Recreate keymaps on all keyboards (e.g., after config reload) */
 void wm_keyboard_apply_config(struct wm_server *server);
 

@@ -40,10 +40,9 @@ json_escape(char *dst, size_t dst_size, const char *src)
 		return;
 	}
 	size_t j = 0;
-	for (size_t i = 0; src[i] && j + 1 < dst_size; i++) {
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
 		unsigned char c = (unsigned char)src[i];
 		if (c == '"' || c == '\\') {
-			if (j + 2 >= dst_size) break;
 			dst[j++] = '\\';
 			dst[j++] = c;
 		} else if (c < 0x20) {
@@ -1289,6 +1288,8 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 	/* Assign unique view ID for IPC */
 	static uint32_t next_view_id = 1;
 	view->id = next_view_id++;
+	if (next_view_id == 0)
+		next_view_id = 1;
 
 	/* Default opacity from config or fully opaque */
 	view->focus_alpha = 255;

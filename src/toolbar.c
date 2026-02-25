@@ -1224,13 +1224,6 @@ wm_toolbar_update_workspace(struct wm_toolbar *toolbar)
 }
 
 void
-wm_toolbar_update_title(struct wm_toolbar *toolbar)
-{
-	/* Title changes affect the icon bar */
-	wm_toolbar_update_iconbar(toolbar);
-}
-
-void
 wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 {
 	if (!toolbar || !toolbar->visible) {
@@ -1357,120 +1350,6 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	}
 
 	toolbar_render(toolbar);
-}
-
-bool
-wm_toolbar_handle_click(struct wm_toolbar *toolbar, double lx, double ly)
-{
-	if (!toolbar || !toolbar->visible) {
-		return false;
-	}
-
-	/* Convert layout coords to toolbar-local coords */
-	double local_x = lx - toolbar->x;
-	double local_y = ly - toolbar->y;
-
-	/* Check bounds */
-	if (local_x < 0 || local_x >= toolbar->width ||
-	    local_y < 0 || local_y >= toolbar->height) {
-		return false;
-	}
-
-	/* Find which tool was clicked */
-	for (int i = 0; i < toolbar->tool_count; i++) {
-		struct wm_toolbar_tool *tool = &toolbar->tools[i];
-		if (local_x < tool->x || local_x >= tool->x + tool->width) {
-			continue;
-		}
-
-		/* Click is within this tool */
-		double tool_local_x = local_x - tool->x;
-
-		switch (tool->type) {
-		case WM_TOOL_PREV_WORKSPACE:
-			wm_workspace_switch_prev(toolbar->server);
-			return true;
-
-		case WM_TOOL_NEXT_WORKSPACE:
-			wm_workspace_switch_next(toolbar->server);
-			return true;
-
-		case WM_TOOL_PREV_WINDOW:
-			wm_focus_prev_view(toolbar->server);
-			return true;
-
-		case WM_TOOL_NEXT_WINDOW:
-			wm_focus_next_view(toolbar->server);
-			return true;
-
-		case WM_TOOL_WORKSPACE_NAME:
-			/* Check workspace button hit boxes */
-			for (int j = 0; j < tool->hit_box_count; j++) {
-				struct wlr_box *box = &tool->hit_boxes[j];
-				if (tool_local_x >= box->x &&
-				    tool_local_x < box->x + box->width &&
-				    local_y >= box->y &&
-				    local_y < box->y + box->height) {
-					wm_workspace_switch(
-						toolbar->server, j);
-					return true;
-				}
-			}
-			return true;
-
-		case WM_TOOL_ICONBAR:
-			/* Check iconbar entry hit boxes */
-			for (int j = 0; j < toolbar->ib_count; j++) {
-				if (!toolbar->ib_boxes) {
-					break;
-				}
-				struct wlr_box *box = &toolbar->ib_boxes[j];
-				if (tool_local_x >= box->x &&
-				    tool_local_x < box->x + box->width &&
-				    local_y >= box->y &&
-				    local_y < box->y + box->height) {
-					struct wm_view *view =
-						toolbar->ib_entries[j].view;
-					if (toolbar->ib_entries[j].iconified) {
-						wlr_scene_node_set_enabled(
-							&view->scene_tree->node,
-							true);
-					}
-					wm_focus_view(view,
-						view->xdg_toplevel->base->surface);
-					wm_view_raise(view);
-					wm_toolbar_update_iconbar(toolbar);
-					return true;
-				}
-			}
-			return true;
-
-		case WM_TOOL_CLOCK:
-			/* No click action for clock */
-			return true;
-		}
-	}
-
-#ifdef WM_HAS_SYSTRAY
-	/* Check systray area (positioned after all tools) */
-	if (toolbar->server->systray) {
-		struct wm_systray *systray = toolbar->server->systray;
-		int systray_x = 0;
-		if (toolbar->tool_count > 0) {
-			struct wm_toolbar_tool *last =
-				&toolbar->tools[toolbar->tool_count - 1];
-			systray_x = last->x + last->width;
-		}
-		double st_local_x = local_x - systray_x;
-		if (st_local_x >= 0 &&
-		    st_local_x < wm_systray_get_width(systray)) {
-			return wm_systray_handle_click(systray,
-				st_local_x, local_y, 0x110);
-		}
-	}
-#endif
-
-	return false;
 }
 
 bool

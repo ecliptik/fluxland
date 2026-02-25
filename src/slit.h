@@ -120,13 +120,6 @@ void wm_slit_reconfigure(struct wm_slit *slit);
 /* Re-read slit config/style and recalculate layout (call on reconfigure) */
 void wm_slit_relayout(struct wm_slit *slit);
 
-/* Handle pointer entering slit area (for auto-hide) */
-bool wm_slit_handle_pointer_enter(struct wm_slit *slit,
-	double lx, double ly);
-
-/* Handle pointer leaving slit area (for auto-hide) */
-void wm_slit_handle_pointer_leave(struct wm_slit *slit);
-
 /* Toggle slit between top layer and overlay layer (above windows) */
 void wm_slit_toggle_above(struct wm_slit *slit);
 

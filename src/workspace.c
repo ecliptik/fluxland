@@ -29,10 +29,9 @@ json_escape_buf(char *dst, size_t dst_size, const char *src)
 		return;
 	}
 	size_t j = 0;
-	for (size_t i = 0; src[i] && j + 1 < dst_size; i++) {
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
 		unsigned char c = (unsigned char)src[i];
 		if (c == '"' || c == '\\') {
-			if (j + 2 >= dst_size) break;
 			dst[j++] = '\\';
 			dst[j++] = c;
 		} else if (c < 0x20) {
@@ -189,12 +188,6 @@ wm_workspaces_finish(struct wm_server *server)
 		workspace_destroy(ws);
 	}
 	server->current_workspace = NULL;
-}
-
-struct wm_workspace *
-wm_workspace_get_current(struct wm_server *server)
-{
-	return server->current_workspace;
 }
 
 struct wm_workspace *
@@ -587,12 +580,3 @@ wm_workspace_get_active(struct wm_server *server)
 	return server->current_workspace;
 }
 
-bool
-wm_view_visible_on_output(struct wm_view *view, struct wm_output *output)
-{
-	if (view->sticky)
-		return true;
-	if (!output || !output->active_workspace)
-		return true;
-	return view->workspace == output->active_workspace;
-}

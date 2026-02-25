@@ -12,6 +12,7 @@
 #include "validate.h"
 #include "i18n.h"
 #include "rcparser.h"
+#include "util.h"
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -37,9 +38,15 @@ static void
 result_add(struct config_result *result, const char *file, int line,
 	   bool fatal, const char *fmt, va_list ap)
 {
+	/* Cap maximum number of collected errors to prevent unbounded growth */
+	if (result->count >= 1000)
+		return;
+
 	if (result->count >= result->capacity) {
 		int new_cap = result->capacity ? result->capacity * 2
 			: INITIAL_CAPACITY;
+		if (new_cap > 1000)
+			new_cap = 1000;
 		struct config_error *new_errs = realloc(result->errors,
 			(size_t)new_cap * sizeof(struct config_error));
 		if (!new_errs)
@@ -613,10 +620,9 @@ is_mouse_event(const char *token)
 		size_t plen = strlen(prefixes[i]);
 		if (strncasecmp(token, prefixes[i], plen) == 0) {
 			const char *num = token + plen;
-			if (*num && isdigit((unsigned char)*num)) {
-				int n = atoi(num);
+			int n;
+			if (*num && safe_atoi(num, &n))
 				return n >= 1 && n <= 5;
-			}
 		}
 	}
 	return false;
@@ -631,8 +637,8 @@ is_mouse_event_bad_button(const char *token)
 		size_t plen = strlen(prefixes[i]);
 		if (strncasecmp(token, prefixes[i], plen) == 0) {
 			const char *num = token + plen;
-			if (*num && isdigit((unsigned char)*num)) {
-				int n = atoi(num);
+			int n;
+			if (*num && safe_atoi(num, &n)) {
 				if (n < 1 || n > 5)
 					return true;
 			}

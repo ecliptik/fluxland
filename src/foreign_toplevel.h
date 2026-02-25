@@ -38,7 +38,4 @@ void wm_foreign_toplevel_set_fullscreen(struct wm_view *view, bool fullscreen);
 /* Update minimized state */
 void wm_foreign_toplevel_set_minimized(struct wm_view *view, bool minimized);
 
-/* Update output (call when the view moves between outputs) */
-void wm_foreign_toplevel_update_output(struct wm_view *view);
-
 #endif /* WM_FOREIGN_TOPLEVEL_H */

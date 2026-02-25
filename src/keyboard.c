@@ -28,6 +28,7 @@
 #include "keyboard.h"
 #include "server.h"
 #include "config.h"
+#include "util.h"
 #include "focus_nav.h"
 #include "output.h"
 #include "decoration.h"
@@ -605,15 +606,17 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_workspace_switch(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_workspace_switch(server, ws - 1);
 		}
 		return true;
 
 	case WM_ACTION_SEND_TO_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_view_send_to_workspace(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_view_send_to_workspace(server, ws - 1);
 		}
 		return true;
 
@@ -663,37 +666,45 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_MOVE_LEFT:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->x -= px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->x -= px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
 	case WM_ACTION_MOVE_RIGHT:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->x += px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->x += px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
 	case WM_ACTION_MOVE_UP:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->y -= px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->y -= px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
 	case WM_ACTION_MOVE_DOWN:
 		if (view && argument) {
-			int px = atoi(argument);
-			view->y += px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
+			int px;
+			if (safe_atoi(argument, &px)) {
+				view->y += px;
+				wlr_scene_node_set_position(
+					&view->scene_tree->node, view->x, view->y);
+			}
 		}
 		return true;
 
@@ -925,8 +936,9 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_ACTIVATE_TAB:
 		if (view && argument) {
-			int idx = atoi(argument) - 1;
-			wm_view_activate_tab(view, idx);
+			int idx;
+			if (safe_atoi(argument, &idx))
+				wm_view_activate_tab(view, idx - 1);
 		}
 		return true;
 
@@ -993,8 +1005,9 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_TAKE_TO_WORKSPACE:
 		if (argument) {
-			int ws = atoi(argument) - 1;
-			wm_view_take_to_workspace(server, ws);
+			int ws;
+			if (safe_atoi(argument, &ws))
+				wm_view_take_to_workspace(server, ws - 1);
 		}
 		return true;
 
@@ -1034,15 +1047,17 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_RESIZE_HORIZ:
 		if (view && argument) {
-			int dw = atoi(argument);
-			wm_view_resize_by(view, dw, 0);
+			int dw;
+			if (safe_atoi(argument, &dw))
+				wm_view_resize_by(view, dw, 0);
 		}
 		return true;
 
 	case WM_ACTION_RESIZE_VERT:
 		if (view && argument) {
-			int dh = atoi(argument);
-			wm_view_resize_by(view, 0, dh);
+			int dh;
+			if (safe_atoi(argument, &dh))
+				wm_view_resize_by(view, 0, dh);
 		}
 		return true;
 
@@ -1064,8 +1079,9 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_SET_HEAD:
 		if (view && argument) {
-			int head = atoi(argument);
-			wm_view_set_head(view, head);
+			int head;
+			if (safe_atoi(argument, &head))
+				wm_view_set_head(view, head);
 		}
 		return true;
 
@@ -1130,10 +1146,13 @@ execute_action(struct wm_server *server,
 			int alpha;
 			if (argument[0] == '+' || argument[0] == '-') {
 				/* Relative adjustment */
-				int offset = atoi(argument);
+				int offset;
+				if (!safe_atoi(argument, &offset))
+					return true;
 				alpha = view->focus_alpha + offset;
 			} else {
-				alpha = atoi(argument);
+				if (!safe_atoi(argument, &alpha))
+					return true;
 			}
 			if (alpha < 0) alpha = 0;
 			if (alpha > 255) alpha = 255;
@@ -1196,8 +1215,8 @@ execute_action(struct wm_server *server,
 
 	case WM_ACTION_GOTO_WINDOW:
 		if (argument) {
-			int n = atoi(argument);
-			if (n < 1)
+			int n;
+			if (!safe_atoi(argument, &n) || n < 1)
 				return true;
 			struct wm_workspace *ws = wm_workspace_get_active(server);
 			int count = 0;
@@ -1713,29 +1732,6 @@ wm_keyboard_prev_layout(struct wm_server *server)
 		wlr_log(WLR_INFO, "keyboard layout switched to index %u",
 			prev);
 	}
-}
-
-const char *
-wm_keyboard_get_layout_name(struct wm_server *server)
-{
-	struct wm_keyboard *keyboard;
-	wl_list_for_each(keyboard, &server->keyboards, link) {
-		struct xkb_state *state = keyboard->wlr_keyboard->xkb_state;
-		if (!state)
-			continue;
-		xkb_layout_index_t num_layouts =
-			xkb_keymap_num_layouts(
-				keyboard->wlr_keyboard->keymap);
-		for (xkb_layout_index_t i = 0; i < num_layouts; i++) {
-			if (xkb_state_layout_index_is_active(state, i,
-					XKB_STATE_LAYOUT_EFFECTIVE)) {
-				return xkb_keymap_layout_get_name(
-					keyboard->wlr_keyboard->keymap, i);
-			}
-		}
-		break; /* Only check first keyboard */
-	}
-	return "default";
 }
 
 void

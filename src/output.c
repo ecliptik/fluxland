@@ -33,10 +33,9 @@ json_escape_buf(char *dst, size_t dst_size, const char *src)
 		return;
 	}
 	size_t j = 0;
-	for (size_t i = 0; src[i] && j + 1 < dst_size; i++) {
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
 		unsigned char c = (unsigned char)src[i];
 		if (c == '"' || c == '\\') {
-			if (j + 2 >= dst_size) break;
 			dst[j++] = '\\';
 			dst[j++] = c;
 		} else if (c < 0x20) {

@@ -11,6 +11,7 @@
 
 #include "style.h"
 #include "rcparser.h"
+#include "util.h"
 #include <ctype.h>
 #include <errno.h>
 #include <libgen.h>
@@ -184,11 +185,12 @@ style_parse_font(const char *value)
 		}
 		if (all_digits && *(dash + 1) != '\0') {
 			*dash = '\0';
-			font.size = atoi(dash + 1);
-			if (font.size <= 0)
+			int fsize;
+			if (safe_atoi(dash + 1, &fsize) && fsize > 0 &&
+			    fsize <= MAX_FONT_SIZE)
+				font.size = fsize;
+			else
 				font.size = DEFAULT_FONT_SIZE;
-			if (font.size > MAX_FONT_SIZE)
-				font.size = MAX_FONT_SIZE;
 		}
 	}
 

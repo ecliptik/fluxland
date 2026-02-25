@@ -274,34 +274,3 @@ wm_foreign_toplevel_set_minimized(struct wm_view *view, bool minimized)
 		view->foreign_toplevel_handle, minimized);
 }
 
-void
-wm_foreign_toplevel_update_output(struct wm_view *view)
-{
-	if (!view->foreign_toplevel_handle) {
-		return;
-	}
-
-	struct wlr_output *output = wlr_output_layout_output_at(
-		view->server->output_layout,
-		view->x + 1, view->y + 1);
-
-	/*
-	 * Clear all existing outputs and set the current one.
-	 * The wlr handle tracks outputs internally; we leave/enter
-	 * as the view moves.
-	 */
-	struct wlr_foreign_toplevel_handle_v1_output *handle_output, *tmp;
-	wl_list_for_each_safe(handle_output, tmp,
-		&view->foreign_toplevel_handle->outputs, link) {
-		if (handle_output->output != output) {
-			wlr_foreign_toplevel_handle_v1_output_leave(
-				view->foreign_toplevel_handle,
-				handle_output->output);
-		}
-	}
-
-	if (output) {
-		wlr_foreign_toplevel_handle_v1_output_enter(
-			view->foreign_toplevel_handle, output);
-	}
-}

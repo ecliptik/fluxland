@@ -119,18 +119,11 @@ void wm_toolbar_destroy(struct wm_toolbar *toolbar);
 /* Update the workspace display (call on workspace switch) */
 void wm_toolbar_update_workspace(struct wm_toolbar *toolbar);
 
-/* Update the window title display (call on focus change or title change) */
-void wm_toolbar_update_title(struct wm_toolbar *toolbar);
-
 /* Update the icon bar window list (call on map/unmap/focus/title change) */
 void wm_toolbar_update_iconbar(struct wm_toolbar *toolbar);
 
 /* Recalculate toolbar geometry (call on output resize) */
 void wm_toolbar_relayout(struct wm_toolbar *toolbar);
-
-/* Handle pointer click at layout coordinates; returns true if consumed */
-bool wm_toolbar_handle_click(struct wm_toolbar *toolbar,
-	double lx, double ly);
 
 /* Handle scroll/wheel on toolbar; returns true if consumed */
 bool wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,

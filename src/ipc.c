@@ -170,6 +170,20 @@ handle_new_connection(int fd, uint32_t mask, void *data)
 		return 0;
 	}
 
+	/* Verify peer credentials — only allow connections from same UID */
+	struct ucred cred;
+	socklen_t cred_len = sizeof(cred);
+	if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED, &cred,
+			&cred_len) == 0) {
+		if (cred.uid != getuid()) {
+			wlr_log(WLR_ERROR,
+				"IPC: rejected connection from uid %d "
+				"(expected %d)", cred.uid, getuid());
+			close(client_fd);
+			return 0;
+		}
+	}
+
 	struct wm_ipc_client *client = calloc(1, sizeof(*client));
 	if (!client) {
 		close(client_fd);
@@ -215,6 +229,37 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 	if (!runtime_dir) {
 		wlr_log(WLR_ERROR, "IPC: %s", "XDG_RUNTIME_DIR not set");
 		return -1;
+	}
+
+	/* Validate XDG_RUNTIME_DIR for safety */
+	if (strstr(runtime_dir, "..") != NULL) {
+		wlr_log(WLR_ERROR,
+			"IPC: XDG_RUNTIME_DIR contains '..': %s",
+			runtime_dir);
+		return -1;
+	}
+
+	struct stat runtime_st;
+	if (stat(runtime_dir, &runtime_st) == 0) {
+		if (!S_ISDIR(runtime_st.st_mode)) {
+			wlr_log(WLR_INFO,
+				"IPC: XDG_RUNTIME_DIR is not a directory: %s",
+				runtime_dir);
+		} else if (runtime_st.st_uid != getuid()) {
+			wlr_log(WLR_INFO,
+				"IPC: XDG_RUNTIME_DIR owned by uid %d, "
+				"expected %d: %s",
+				runtime_st.st_uid, getuid(), runtime_dir);
+		} else if (runtime_st.st_mode & (S_IWGRP | S_IWOTH)) {
+			wlr_log(WLR_INFO,
+				"IPC: XDG_RUNTIME_DIR has unsafe "
+				"permissions (0%o): %s",
+				runtime_st.st_mode & 0777, runtime_dir);
+		}
+	} else {
+		wlr_log(WLR_INFO,
+			"IPC: cannot stat XDG_RUNTIME_DIR: %s: %s",
+			runtime_dir, strerror(errno));
 	}
 
 	const char *wl_display = server->socket;

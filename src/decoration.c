@@ -1352,22 +1352,6 @@ wm_decoration_set_focused(struct wm_decoration *decoration,
 }
 
 void
-wm_decoration_set_size(struct wm_decoration *decoration,
-	int width, int height, struct wm_style *style)
-{
-	if (!decoration) {
-		return;
-	}
-	if (decoration->content_width == width &&
-	    decoration->content_height == height) {
-		return;
-	}
-	decoration->content_width = width;
-	decoration->content_height = height;
-	wm_decoration_update(decoration, style);
-}
-
-void
 wm_decoration_configure_buttons(struct wm_decoration *decoration,
 	const char *left_str, const char *right_str)
 {
@@ -1590,12 +1574,6 @@ wm_decoration_tab_at(struct wm_decoration *decoration, double x, double y)
 
 	/* Compute label area (same logic as layout_and_render) */
 	int el = 0, er = 0;
-	if (decoration->tab_bar_size > 0) {
-		if (decoration->tab_bar_placement == WM_TAB_BAR_LEFT)
-			el = decoration->tab_bar_size;
-		else if (decoration->tab_bar_placement == WM_TAB_BAR_RIGHT)
-			er = decoration->tab_bar_size;
-	}
 	int titlebar_width = el + decoration->content_width + er;
 	int button_size = th - 2 * BUTTON_PADDING;
 	if (button_size < 6)
