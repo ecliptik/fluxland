@@ -40,6 +40,25 @@
 #include "view.h"
 #include "workspace.h"
 
+/* ---------- security helpers ---------- */
+
+/* Environment variables that must not be set via IPC or keybinds */
+static bool
+is_blocked_env_var(const char *name)
+{
+	static const char *blocked[] = {
+		"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
+		"LD_DEBUG", "LD_PROFILE",
+		"PATH", "IFS", "SHELL", "HOME",
+		"XDG_RUNTIME_DIR", "WAYLAND_DISPLAY",
+	};
+	for (size_t i = 0; i < sizeof(blocked) / sizeof(blocked[0]); i++) {
+		if (strcasecmp(name, blocked[i]) == 0)
+			return true;
+	}
+	return false;
+}
+
 /* ---------- minimal JSON helpers ---------- */
 
 /* Escape a string for JSON output. Returns malloc'd string. */
@@ -51,6 +70,8 @@ json_escape(const char *s)
 	}
 	/* Worst case: every char needs escaping (\uXXXX = 6 chars) */
 	size_t len = strlen(s);
+	if (len > SIZE_MAX / 6 - 1)
+		return NULL;
 	size_t cap = len * 6 + 3; /* quotes + null */
 	char *out = malloc(cap);
 	if (!out) return NULL;
@@ -1135,7 +1156,13 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 				char *eq = strchr(buf, '=');
 				if (eq) {
 					*eq = '\0';
-					setenv(buf, eq + 1, 1);
+					if (is_blocked_env_var(buf)) {
+						wlr_log(WLR_ERROR,
+							"SetEnv: blocked security-sensitive "
+							"variable: %s", buf);
+					} else {
+						setenv(buf, eq + 1, 1);
+					}
 				} else {
 					char *sp = strchr(buf, ' ');
 					if (sp) {
@@ -1143,7 +1170,13 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 						sp++;
 						while (*sp == ' ' || *sp == '\t')
 							sp++;
-						setenv(buf, sp, 1);
+						if (is_blocked_env_var(buf)) {
+							wlr_log(WLR_ERROR,
+								"SetEnv: blocked security-sensitive "
+								"variable: %s", buf);
+						} else {
+							setenv(buf, sp, 1);
+						}
 					}
 				}
 				free(buf);

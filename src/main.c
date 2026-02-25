@@ -97,6 +97,13 @@ main(int argc, char *argv[])
 
 	wlr_log_init(verbosity, NULL);
 
+	if (getuid() == 0 || geteuid() == 0) {
+		wlr_log(WLR_ERROR, "%s",
+			"Running as root is not supported. "
+			"Use a non-root user account.");
+		return 1;
+	}
+
 	if (!getenv("XDG_RUNTIME_DIR")) {
 		wlr_log(WLR_ERROR, "%s", "XDG_RUNTIME_DIR is not set");
 		return 1;

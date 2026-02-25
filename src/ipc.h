@@ -50,6 +50,7 @@ struct wm_ipc_server {
 	char *socket_path;
 	struct wl_event_source *event_source;
 	struct wl_list clients; /* wm_ipc_client.link */
+	int client_count;
 };
 
 /* Initialize the IPC server. Creates the Unix socket and registers

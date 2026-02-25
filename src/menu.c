@@ -518,10 +518,18 @@ add_wallpaper_entries(struct wm_menu *submenu, const char *raw_path)
 		struct wm_menu_item *item =
 			menu_item_create(WM_MENU_EXEC, names[i]);
 		if (item) {
+			/* Shell-escape path components to prevent
+			 * command injection via malicious filenames */
 			if (asprintf(&item->command,
-				     "swaybg -i %s/%s -m fill",
+				     "swaybg -i '%s/%s' -m fill",
 				     dir_path, names[i]) < 0)
 				item->command = NULL;
+			/* Reject filenames containing single quotes to
+			 * prevent shell escape from the quoting */
+			if (item->command && strchr(names[i], '\'')) {
+				free(item->command);
+				item->command = NULL;
+			}
 			wl_list_insert(submenu->items.prev, &item->link);
 		}
 		free(names[i]);

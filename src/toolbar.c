@@ -646,6 +646,11 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	/* Allocate hit boxes */
 	free(toolbar->ib_boxes);
 	toolbar->ib_boxes = calloc(count, sizeof(struct wlr_box));
+	if (!toolbar->ib_boxes) {
+		cairo_destroy(cr);
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
 
 	/* Get icon bar colors (fall back to toolbar defaults) */
 	struct wm_color focused_bg_color;
@@ -755,8 +760,22 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 				cfg->iconbar_iconified_pattern : NULL;
 			if (!pattern)
 				pattern = "(%s)";
-			snprintf(title_buf, sizeof(title_buf),
-				pattern, raw_title);
+			/* Use %s with the pattern as data to avoid
+			 * format string injection from config */
+			size_t plen = strlen(pattern);
+			const char *pct_s = strstr(pattern, "%s");
+			if (pct_s) {
+				size_t prefix = (size_t)(pct_s - pattern);
+				size_t suffix = plen - prefix - 2;
+				snprintf(title_buf, sizeof(title_buf),
+					"%.*s%s%.*s",
+					(int)prefix, pattern,
+					raw_title,
+					(int)suffix, pct_s + 2);
+			} else {
+				snprintf(title_buf, sizeof(title_buf),
+					"%s", pattern);
+			}
 		} else {
 			snprintf(title_buf, sizeof(title_buf),
 				"%s", raw_title);

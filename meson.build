@@ -31,6 +31,23 @@ add_project_arguments(cc.get_supported_arguments([
   '-Wmissing-prototypes',
   '-Wshadow',
   '-Wno-unused-parameter',
+  # Security hardening
+  '-fstack-protector-strong',
+  '-fstack-clash-protection',
+  '-Wformat',
+  '-Wformat-security',
+]), language: 'c')
+
+# Security hardening: FORTIFY_SOURCE requires optimization
+if get_option('buildtype') != 'debug'
+  add_project_arguments(cc.get_supported_arguments([
+    '-D_FORTIFY_SOURCE=2',
+  ]), language: 'c')
+endif
+
+add_project_link_arguments(cc.get_supported_link_arguments([
+  '-Wl,-z,relro',
+  '-Wl,-z,now',
 ]), language: 'c')
 
 version = '"@0@"'.format(meson.project_version())

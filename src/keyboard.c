@@ -45,6 +45,25 @@
 #include "view.h"
 #include "workspace.h"
 
+/* --- Security helpers --- */
+
+/* Environment variables that must not be set via keybinds */
+static bool
+is_blocked_env_var(const char *name)
+{
+	static const char *blocked[] = {
+		"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
+		"LD_DEBUG", "LD_PROFILE",
+		"PATH", "IFS", "SHELL", "HOME",
+		"XDG_RUNTIME_DIR", "WAYLAND_DISPLAY",
+	};
+	for (size_t i = 0; i < sizeof(blocked) / sizeof(blocked[0]); i++) {
+		if (strcasecmp(name, blocked[i]) == 0)
+			return true;
+	}
+	return false;
+}
+
 /* --- Condition evaluation for If/ForEach --- */
 
 /*
@@ -1131,7 +1150,13 @@ execute_action(struct wm_server *server,
 				char *eq = strchr(buf, '=');
 				if (eq) {
 					*eq = '\0';
-					setenv(buf, eq + 1, 1);
+					if (is_blocked_env_var(buf)) {
+						wlr_log(WLR_ERROR,
+							"SetEnv: blocked security-sensitive "
+							"variable: %s", buf);
+					} else {
+						setenv(buf, eq + 1, 1);
+					}
 				} else {
 					/* "VAR value" format */
 					char *sp = strchr(buf, ' ');
@@ -1140,7 +1165,13 @@ execute_action(struct wm_server *server,
 						sp++;
 						while (*sp == ' ' || *sp == '\t')
 							sp++;
-						setenv(buf, sp, 1);
+						if (is_blocked_env_var(buf)) {
+							wlr_log(WLR_ERROR,
+								"SetEnv: blocked security-sensitive "
+								"variable: %s", buf);
+						} else {
+							setenv(buf, sp, 1);
+						}
 					}
 				}
 				free(buf);

@@ -24,6 +24,7 @@
 
 #define IPC_READ_BUF_INITIAL 1024
 #define IPC_READ_BUF_MAX     (64 * 1024)
+#define IPC_MAX_CLIENTS      128
 
 static void
 ipc_client_destroy(struct wm_ipc_client *client)
@@ -31,6 +32,7 @@ ipc_client_destroy(struct wm_ipc_client *client)
 	wl_event_source_remove(client->event_source);
 	close(client->fd);
 	wl_list_remove(&client->link);
+	client->ipc->client_count--;
 	free(client->read_buf);
 	free(client);
 }
@@ -151,6 +153,16 @@ handle_new_connection(int fd, uint32_t mask, void *data)
 	(void)fd;
 	(void)mask;
 
+	if (ipc->client_count >= IPC_MAX_CLIENTS) {
+		int reject_fd = accept4(ipc->socket_fd, NULL, NULL,
+			SOCK_CLOEXEC);
+		if (reject_fd >= 0)
+			close(reject_fd);
+		wlr_log(WLR_ERROR, "IPC: max clients (%d) reached, "
+			"rejecting connection", IPC_MAX_CLIENTS);
+		return 0;
+	}
+
 	int client_fd = accept4(ipc->socket_fd, NULL, NULL,
 		SOCK_CLOEXEC | SOCK_NONBLOCK);
 	if (client_fd < 0) {
@@ -183,7 +195,9 @@ handle_new_connection(int fd, uint32_t mask, void *data)
 		handle_client_readable, client);
 
 	wl_list_insert(&ipc->clients, &client->link);
-	wlr_log(WLR_DEBUG, "IPC client connected (fd %d)", client_fd);
+	ipc->client_count++;
+	wlr_log(WLR_DEBUG, "IPC client connected (fd %d, total %d)",
+		client_fd, ipc->client_count);
 
 	return 0;
 }
@@ -246,14 +260,19 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 	}
 	strncpy(addr.sun_path, ipc->socket_path, sizeof(addr.sun_path) - 1);
 
+	/* Set restrictive umask before bind to prevent race window
+	 * where socket exists with permissive permissions */
+	mode_t old_umask = umask(0077);
 	if (bind(ipc->socket_fd, (struct sockaddr *)&addr,
 			sizeof(addr)) < 0) {
+		umask(old_umask);
 		wlr_log(WLR_ERROR, "IPC: bind() failed: %s",
 			strerror(errno));
 		goto err;
 	}
+	umask(old_umask);
 
-	/* Restrict socket to owner only */
+	/* Defense-in-depth: also explicitly set permissions */
 	if (fchmod(ipc->socket_fd, 0600) < 0) {
 		wlr_log(WLR_ERROR, "IPC: fchmod() failed: %s",
 			strerror(errno));

@@ -8,6 +8,7 @@
 
 #include "rcparser.h"
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -166,8 +167,11 @@ rc_get_int(struct rc_database *db, const char *key, int default_val)
 		return default_val;
 
 	char *end;
+	errno = 0;
 	long result = strtol(val, &end, 10);
 	if (end == val || *end != '\0')
+		return default_val;
+	if (errno == ERANGE || result > INT_MAX || result < INT_MIN)
 		return default_val;
 
 	return (int)result;

@@ -12,11 +12,15 @@
 #include "style.h"
 #include "rcparser.h"
 #include <ctype.h>
+#include <errno.h>
 #include <libgen.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+#define MAX_FONT_SIZE 200
 
 /* Forward declaration */
 static void style_clear(struct wm_style *s);
@@ -183,6 +187,8 @@ style_parse_font(const char *value)
 			font.size = atoi(dash + 1);
 			if (font.size <= 0)
 				font.size = DEFAULT_FONT_SIZE;
+			if (font.size > MAX_FONT_SIZE)
+				font.size = MAX_FONT_SIZE;
 		}
 	}
 
@@ -350,8 +356,11 @@ style_get_int(struct rc_database *db, const char *key, int default_val)
 	if (!val)
 		return default_val;
 	char *end;
+	errno = 0;
 	long result = strtol(val, &end, 10);
 	if (end == val || *end != '\0')
+		return default_val;
+	if (errno == ERANGE || result > INT_MAX || result < INT_MIN)
 		return default_val;
 	return (int)result;
 }
