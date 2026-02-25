@@ -35,6 +35,28 @@ if have_fuzzer
     dependencies: [wayland_server, wlroots, xkbcommon],
     install: false,
   )
+
+  # --- fuzz_style: style/theme file fuzzer ---
+  executable(
+    'fuzz_style',
+    files('fuzz_style.c', '../../src/style.c', '../../src/rcparser.c'),
+    include_directories: fuzz_inc,
+    c_args: fuzz_args,
+    link_args: fuzz_link_args,
+    dependencies: [],
+    install: false,
+  )
+
+  # --- fuzz_menu: menu file parser fuzzer ---
+  executable(
+    'fuzz_menu',
+    files('fuzz_menu.c', '../../src/menu.c'),
+    include_directories: fuzz_inc,
+    c_args: fuzz_args,
+    link_args: fuzz_link_args,
+    dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+    install: false,
+  )
 else
   message('Fuzz targets disabled: compiler does not support -fsanitize=fuzzer')
 endif

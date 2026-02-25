@@ -1,0 +1,28 @@
+window.title.focus:                 Raised Gradient Vertical
+window.title.focus.color:           #3b4252
+window.title.focus.colorTo:         #2e3440
+window.title.unfocus:               Flat Solid
+window.title.unfocus.color:         #2e3440
+window.title.height:                22
+window.label.focus:                 Flat Solid
+window.label.focus.color:           #3b4252
+window.label.focus.textColor:       #eceff4
+window.label.focus.font:            sans-11:bold
+window.label.unfocus.font:          sans-11
+window.justify:                     Center
+window.button.focus:                Raised Gradient Vertical
+window.button.focus.color:          #434c5e
+window.button.focus.colorTo:        #3b4252
+window.borderColor:                 #1a1d23
+window.borderWidth:                 1
+window.bevelWidth:                  1
+menu.title:                         Raised Gradient Vertical
+menu.title.color:                   #3b4252
+menu.title.textColor:               #eceff4
+menu.frame:                         Flat Solid
+menu.frame.color:                   #2e3440
+menu.hilite:                        Flat Solid
+menu.hilite.color:                  #5e81ac
+toolbar:                            Flat Solid
+toolbar.color:                      #2e3440
+toolbar.textColor:                  #d8dee9

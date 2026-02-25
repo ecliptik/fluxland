@@ -1,0 +1,29 @@
+[begin] (Test)
+[exec] (No Command)
+[exec] () {}
+[nop] (Disabled)
+[nop]
+[separator]
+[separator]
+[submenu] (Empty Sub)
+[end]
+[submenu] (Nested)
+  [submenu] (Deep)
+    [submenu] (Deeper)
+      [exec] (Bottom) {echo bottom}
+    [end]
+  [end]
+[end]
+[style] (Theme) {/nonexistent/path}
+[command] (Action) {SomeCommand}
+[shade] (Shade)
+[stick] (Stick)
+[maximize] (Maximize)
+[iconify] (Iconify)
+[close] (Close)
+[kill] (Kill)
+[raise] (Raise)
+[lower] (Lower)
+[exec] (Special Chars) {echo "hello world" | cat}
+[exec] (Unicode) {echo ??????}
+[end]

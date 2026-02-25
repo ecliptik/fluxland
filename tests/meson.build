@@ -131,7 +131,43 @@ if wayland_client.found()
     install: false,
   )
   test('xdg_shell', test_xdg_shell, timeout: 30)
+
+  # --- test_multi_client: multi-client integration tests ---
+  test_multi_client = executable(
+    'test_multi_client',
+    files('test_multi_client.c'),
+    xdg_shell_client_h,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('multi_client', test_multi_client, timeout: 30)
 endif
+
+# --- Visual regression tests (decoration rendering) ---
+visual_inc = include_directories('visual')
+image_compare_lib = static_library(
+  'image_compare',
+  files('visual/image_compare.c'),
+  include_directories: [test_inc, visual_inc],
+  dependencies: [pangocairo, math],
+  install: false,
+)
+
+image_compare_dep = declare_dependency(
+  link_with: image_compare_lib,
+  include_directories: [visual_inc],
+)
+
+test_decorations = executable(
+  'test_decorations',
+  files('visual/test_decorations.c', '../src/render.c', '../src/style.c',
+        '../src/rcparser.c'),
+  include_directories: [test_inc, visual_inc],
+  dependencies: [pangocairo, math, image_compare_dep],
+  install: false,
+)
+test('decorations', test_decorations, timeout: 30)
 
 # --- Fuzz targets (requires -fsanitize=fuzzer support) ---
 subdir('fuzz')

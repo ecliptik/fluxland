@@ -1,0 +1,19 @@
+window.title.focus: Sunken Gradient Diagonal Interlaced Bevel2
+window.title.focus.color: rgb:255/128/0
+window.title.focus.colorTo: #FFF
+window.label.focus.font: monospace-8:bold:italic:halo
+window.label.focus.textColor: white
+window.roundCorners: TopLeft TopRight BottomLeft BottomRight
+window.handleWidth: 0
+window.borderWidth: 99
+menu.bullet: diamond
+menu.bullet.position: Left
+*color: #000000
+*.textColor: red
+: empty key
+very.long.key.with.many.dots.that.goes.on.and.on: value
+window.title.unfocus: parentrelative
+window.title.focus: Flat Gradient Elliptic
+window.button.pressed: Raised Gradient PipeCross
+slit: Sunken Gradient Rectangle
+toolbar: Flat Gradient Pyramid

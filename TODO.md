@@ -84,13 +84,13 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ## Window management
 
-- [ ] Per-output workspaces (configurable global vs per-output mode)
-- [ ] Window snap zones (quarter/half screen tiling, Windows/macOS style)
+- [x] Per-output workspaces (configurable global vs per-output mode)
+- [x] Window snap zones (quarter/half screen tiling, Windows/macOS style)
   - Snap to screen edges and corners
   - Visual preview overlay during drag
-- [ ] Animations
+- [x] Animations
   - Fade in/out on map/unmap
-  - Workspace slide transitions
+  - ~~Workspace slide transitions~~ (deferred)
   - Minimize/restore effects
 
 ## Protocols
@@ -104,16 +104,16 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ## Testing
 
-- [ ] Integration test suite expansion
+- [x] Integration test suite expansion
   - Client-side protocol conformance testing
   - Multi-output scenarios
   - Workspace switching with active clients
-- [ ] Fuzzing with AFL or libFuzzer on config/keys/style parsers
+- [x] Fuzzing with AFL or libFuzzer on config/keys/style parsers
   - `rcparser.c` (init file parser)
   - `keybind.c` (keys file parser)
   - `style.c` (style file parser)
 - [ ] WLCS (Wayland protocol conformance test suite) integration
-- [ ] Automated screenshot comparison tests for decoration rendering
+- [x] Automated screenshot comparison tests for decoration rendering
 
 ## Packaging & distribution
 
@@ -139,7 +139,7 @@ Phases 1-5 are complete; these are the remaining gaps.
 
 ## Quality of life
 
-- [ ] Configuration file validation tool (`fluxland --check-config`)
-- [ ] Runtime config reload for more options (currently partial)
-- [ ] IPC event subscriptions for style/theme changes
-- [ ] Mouse button remapping in config
+- [x] Configuration file validation tool (`fluxland --check-config`)
+- [x] Runtime config reload for more options (currently partial)
+- [x] IPC event subscriptions for style/theme changes
+- [x] Mouse button remapping in config
