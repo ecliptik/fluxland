@@ -252,12 +252,11 @@ execute_mouse_action(struct wm_server *server,
 	case WM_ACTION_START_RESIZING:
 		if (view) {
 			/* Determine edges based on cursor position */
-			uint32_t edges = WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT;
 			struct wlr_box geo;
 			wm_view_get_geometry(view, &geo);
 			double cx = server->cursor->x - view->x;
 			double cy = server->cursor->y - view->y;
-			edges = 0;
+			uint32_t edges = 0;
 			if (cx < geo.width / 2)
 				edges |= WLR_EDGE_LEFT;
 			else

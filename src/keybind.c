@@ -837,14 +837,13 @@ parse_action_part(const char *action_str, struct wm_keybind *bind)
 		argument = NULL;
 
 	if (action == WM_ACTION_MACRO_CMD || action == WM_ACTION_TOGGLE_CMD) {
-		/* Parse sub-commands from argument */
 		if (argument) {
+			/* Parse sub-commands from argument */
 			bind->subcmds = parse_subcmds(argument,
 				&bind->subcmd_count);
-		}
-		/* Store raw argument too for reference */
-		if (argument)
+			/* Store raw argument too for reference */
 			bind->argument = strdup(argument);
+		}
 	} else if (action == WM_ACTION_IF || action == WM_ACTION_FOREACH ||
 		   action == WM_ACTION_MAP || action == WM_ACTION_DELAY) {
 		if (argument) {

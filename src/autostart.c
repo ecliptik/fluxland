@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -96,19 +97,25 @@ wm_autostart_run(const char *config_dir, const char *wayland_display)
 	struct script_data sd;
 	snprintf(sd.path, sizeof(sd.path), "%s/startup", config_dir);
 
-	struct stat st;
-	if (lstat(sd.path, &st) != 0) {
+	/* Open the file and use fstat() to avoid TOCTOU race between
+	 * stat check and later exec.  O_NOFOLLOW is omitted because users
+	 * may symlink their startup scripts. */
+	int fd = open(sd.path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) {
 		wlr_log(WLR_DEBUG, "autostart: no startup file at %s", sd.path);
 		return -1;
 	}
 
-	if (!S_ISREG(st.st_mode)) {
+	struct stat st;
+	if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
 		wlr_log(WLR_ERROR, "autostart: %s is not a regular file",
 			sd.path);
+		close(fd);
 		return -1;
 	}
 
 	sd.executable = (st.st_mode & S_IXUSR) != 0;
+	close(fd);
 	wlr_log(WLR_INFO, "autostart: running %s (%s)", sd.path,
 		sd.executable ? "executable" : "via /bin/sh");
 

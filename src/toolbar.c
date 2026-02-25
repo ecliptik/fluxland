@@ -832,7 +832,7 @@ render_clock(struct wm_toolbar *toolbar, int width, int height)
 	if (strcmp(timebuf, toolbar->cached_clock) == 0) {
 		return NULL; /* no change */
 	}
-	strncpy(toolbar->cached_clock, timebuf, sizeof(toolbar->cached_clock));
+	strncpy(toolbar->cached_clock, timebuf, sizeof(toolbar->cached_clock) - 1);
 	toolbar->cached_clock[sizeof(toolbar->cached_clock) - 1] = '\0';
 
 	cairo_surface_t *surface =

@@ -12,6 +12,7 @@
 #define WM_IPC_H
 
 #include <stdint.h>
+#include <time.h>
 #include <wayland-server-core.h>
 
 struct wm_server;
@@ -44,6 +45,13 @@ struct wm_ipc_client {
 	size_t read_cap;
 };
 
+/* Rate limiting for high-frequency IPC event broadcasts */
+#define IPC_EVENT_THROTTLE_MS 16 /* ~60fps for high-frequency events */
+
+struct ipc_event_throttle {
+	struct timespec last_sent;
+};
+
 struct wm_ipc_server {
 	struct wm_server *server;
 	int socket_fd;
@@ -51,6 +59,7 @@ struct wm_ipc_server {
 	struct wl_event_source *event_source;
 	struct wl_list clients; /* wm_ipc_client.link */
 	int client_count;
+	struct ipc_event_throttle event_throttle[32]; /* one per event bit */
 };
 
 /* Initialize the IPC server. Creates the Unix socket and registers

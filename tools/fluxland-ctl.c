@@ -25,6 +25,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#define MAX_RESPONSE_SIZE (10 * 1024 * 1024) /* 10 MiB */
+
 static const char usage[] =
 	"Usage: fluxland-ctl [options] <command> [args...]\n"
 	"\n"
@@ -146,7 +148,7 @@ static char *
 json_escape_str(const char *s)
 {
 	size_t len = strlen(s);
-	size_t cap = len * 2 + 3;
+	size_t cap = len * 6 + 3;
 	char *out = malloc(cap);
 	if (!out) return NULL;
 
@@ -160,7 +162,13 @@ json_escape_str(const char *s)
 		case '\n': *p++ = '\\'; *p++ = 'n';  break;
 		case '\r': *p++ = '\\'; *p++ = 'r';  break;
 		case '\t': *p++ = '\\'; *p++ = 't';  break;
-		default:   *p++ = (char)c;            break;
+		default:
+			if (c < 0x20) {
+				p += sprintf(p, "\\u%04x", c);
+			} else {
+				*p++ = (char)c;
+			}
+			break;
 		}
 	}
 	*p++ = '"';
@@ -255,6 +263,10 @@ read_response(int fd)
 	while (1) {
 		if (len >= cap - 1) {
 			cap *= 2;
+			if (cap > MAX_RESPONSE_SIZE) {
+				free(buf);
+				return NULL;
+			}
 			char *new_buf = realloc(buf, cap);
 			if (!new_buf) { free(buf); return NULL; }
 			buf = new_buf;

@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
 
@@ -304,6 +305,7 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 		goto err;
 	}
 	strncpy(addr.sun_path, ipc->socket_path, sizeof(addr.sun_path) - 1);
+	addr.sun_path[sizeof(addr.sun_path) - 1] = '\0';
 
 	/* Set restrictive umask before bind to prevent race window
 	 * where socket exists with permissive permissions */
@@ -376,10 +378,39 @@ wm_ipc_destroy(struct wm_ipc_server *ipc)
 	unsetenv("FLUXLAND_SOCK");
 }
 
+/* Events that are high-frequency and should be rate-limited */
+#define IPC_THROTTLED_EVENTS \
+	(WM_IPC_EVENT_WINDOW_FOCUS | WM_IPC_EVENT_WINDOW_TITLE | \
+	 WM_IPC_EVENT_WORKSPACE | WM_IPC_EVENT_FOCUS_CHANGED)
+
+static bool
+should_throttle_event(struct wm_ipc_server *ipc, enum wm_ipc_event event)
+{
+	if (!(event & IPC_THROTTLED_EVENTS))
+		return false;
+
+	int idx = __builtin_ctz((unsigned)event);
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+
+	int64_t diff_ms =
+		(now.tv_sec - ipc->event_throttle[idx].last_sent.tv_sec) * 1000 +
+		(now.tv_nsec - ipc->event_throttle[idx].last_sent.tv_nsec) / 1000000;
+
+	if (diff_ms < IPC_EVENT_THROTTLE_MS)
+		return true;
+
+	ipc->event_throttle[idx].last_sent = now;
+	return false;
+}
+
 void
 wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 	enum wm_ipc_event event, const char *json_event)
 {
+	if (should_throttle_event(ipc, event))
+		return;
+
 	struct wm_ipc_client *client, *tmp;
 	wl_list_for_each_safe(client, tmp, &ipc->clients, link) {
 		if (client->subscribed_events & event) {

@@ -465,11 +465,6 @@ handle_xwayland_request_move(struct wl_listener *listener, void *data)
 	 * by temporarily pointing grabbed_view at a synthetic wm_view.
 	 * Instead, we set the grab manually here.
 	 */
-	server->cursor_mode = WM_CURSOR_MOVE;
-	server->grabbed_view = NULL; /* no XDG view */
-	server->grab_x = server->cursor->x - xview->x;
-	server->grab_y = server->cursor->y - xview->y;
-
 	/*
 	 * Note: interactive move/resize for XWayland views would need
 	 * further integration with the cursor module.  For now we accept

@@ -28,9 +28,9 @@ No remotely exploitable vulnerabilities were found. All critical and
 high-severity findings require local access (IPC socket connection or config
 file write access).
 
-**Remediation status:** All critical, high, and medium findings have been
-resolved across 3 phases (27 individual fixes). One low-risk medium item
-(IPC event broadcast rate limiting) and minor code quality items remain.
+**Remediation status:** All critical, high, medium, and low findings have been
+resolved across 4 phases (36 individual fixes). Only informational items and
+minor code quality suggestions remain — none with security impact.
 
 ---
 
@@ -858,7 +858,30 @@ The following security fixes have been implemented and verified (all tests pass)
 | 26 | **MEDIUM-8:** Regex DoS in window rules | Capped regex pattern length at 1024 bytes before `regcomp()` | `src/rules.c` |
 | 27 | **HIGH-5 (addendum):** Wallpaper dir path injection | Reject wallpaper directory paths containing single quotes | `src/menu.c` |
 
-### Remaining Unfixed (documented for future work)
+### Phase 4 — Low-Priority Fixes (2026-02-25)
 
-- **MEDIUM-4:** No rate limit on IPC event broadcasts (low practical risk — requires sustained local IPC flood)
-- **LOW items:** Additional const-correctness, static linkage improvements (code quality only, no security impact)
+| # | Finding | Fix | Files Changed |
+|---|---------|-----|---------------|
+| 28 | **LOW-3a:** strncpy NUL-termination | Added explicit NUL-termination after strncpy for IPC socket path | `src/ipc.c` |
+| 29 | **LOW-3c:** strncpy off-by-one | Changed strncpy size to `sizeof(...) - 1` to avoid truncating clock string | `src/toolbar.c` |
+| 30 | **LOW-5:** Autostart TOCTOU | Replaced `lstat()` with `open(O_RDONLY|O_CLOEXEC)` + `fstat()` to eliminate TOCTOU race | `src/autostart.c` |
+| 31 | **LOW-6:** Duplicate condition | Combined two identical `if (argument)` checks into one block | `src/keybind.c` |
+| 32 | **LOW-7a:** Dead code | Removed redundant initial assignment of `edges` variable | `src/cursor.c` |
+| 33 | **LOW-7b:** Dead code | Removed dead stores to cursor_mode, grabbed_view, grab_x/y before passthrough override | `src/xwayland.c` |
+| 34 | **LOW-12a:** JSON escape control chars | `json_escape_str()` now escapes all control characters (0x00-0x1F) as `\u00XX`; buffer sized for worst case | `tools/fluxland-ctl.c` |
+| 35 | **LOW-12b:** Unbounded response buffer | Added 10 MiB cap (`MAX_RESPONSE_SIZE`) to `read_response()` | `tools/fluxland-ctl.c` |
+| 36 | **MEDIUM-4:** IPC event flood | Added per-event-type throttle (16ms / ~60fps) for high-frequency events (focus, title, workspace); infrequent events always delivered immediately | `src/ipc.c`, `src/ipc.h` |
+
+### Verified Non-Issues
+
+| Finding | Status | Reason |
+|---------|--------|--------|
+| **LOW-3b** (rules.c strncpy) | False positive | Already NUL-terminated on next line |
+| **LOW-8** (menu.c ternary) | False positive | No identical ternary branches found at reported location |
+| **LOW-9** (view.c conditions) | Correct code | Output cycling logic is sound; cppcheck misunderstands control flow |
+| **LOW-10** (unused functions) | Resolved | 13 removed in Phase 2; remaining 2 (`style_reload`, `wm_color_to_argb`) used by test/fuzz targets |
+| **LOW-11** (static linkage) | Deferred | ~30 functions could be made static; code quality only, no security impact |
+
+### Remaining
+
+All critical, high, medium, and low security findings have been resolved. Only informational items (INFO-1 through INFO-7) and minor code quality suggestions (const-correctness, static linkage) remain — none have security impact.
