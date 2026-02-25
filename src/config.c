@@ -227,8 +227,65 @@ dir_exists(const char *path)
 }
 
 /*
+ * Validate config directory ownership and permissions.
+ * Returns true if safe to use.
+ * For env-provided dirs (from_env=true), returns false on ownership or
+ * permission failures so the caller can fall back to the default path.
+ * For default dirs, only warns but still returns true.
+ * Path traversal ("..") always causes rejection.
+ */
+static bool
+validate_config_dir(const char *path, bool from_env)
+{
+	if (!path)
+		return false;
+
+	/* Reject path traversal components */
+	if (strstr(path, "..")) {
+		fprintf(stderr,
+			"[fluxland] config directory path contains '..': %s\n",
+			path);
+		return false;
+	}
+
+	struct stat st;
+	if (stat(path, &st) != 0) {
+		/* Directory doesn't exist yet — can't validate further */
+		return true;
+	}
+
+	if (!S_ISDIR(st.st_mode)) {
+		fprintf(stderr,
+			"[fluxland] config path is not a directory: %s\n",
+			path);
+		return false;
+	}
+
+	bool safe = true;
+
+	if (st.st_uid != getuid()) {
+		fprintf(stderr,
+			"[fluxland] config directory not owned by current "
+			"user: %s (owned by uid %d, current uid %d)\n",
+			path, (int)st.st_uid, (int)getuid());
+		if (from_env)
+			safe = false;
+	}
+
+	if (st.st_mode & (S_IWGRP | S_IWOTH)) {
+		fprintf(stderr,
+			"[fluxland] config directory has insecure permissions "
+			"(group/world writable): %s\n", path);
+		if (from_env)
+			safe = false;
+	}
+
+	return safe;
+}
+
+/*
  * Find the config directory, searching in order:
- *   1. $FLUXLAND_CONFIG_DIR
+ *   1. $FLUXLAND_CONFIG_DIR (validated for ownership/permissions)
  *   2. $XDG_CONFIG_HOME/fluxland
  *   3. ~/.config/fluxland
  *   4. ~/.fluxbox (Fluxbox compat fallback)
@@ -240,14 +297,24 @@ find_config_dir(void)
 	char path[4096];
 
 	env = getenv("FLUXLAND_CONFIG_DIR");
-	if (env && dir_exists(env))
-		return strdup(env);
+	if (env) {
+		if (!validate_config_dir(env, true)) {
+			fprintf(stderr,
+				"[fluxland] FLUXLAND_CONFIG_DIR failed "
+				"validation, falling back to default "
+				"config path\n");
+		} else if (dir_exists(env)) {
+			return strdup(env);
+		}
+	}
 
 	env = getenv("XDG_CONFIG_HOME");
 	if (env) {
 		snprintf(path, sizeof(path), "%s/fluxland", env);
-		if (dir_exists(path))
+		if (dir_exists(path)) {
+			validate_config_dir(path, false);
 			return strdup(path);
+		}
 	}
 
 	const char *home = getenv("HOME");
@@ -255,12 +322,16 @@ find_config_dir(void)
 		return NULL;
 
 	snprintf(path, sizeof(path), "%s/.config/fluxland", home);
-	if (dir_exists(path))
+	if (dir_exists(path)) {
+		validate_config_dir(path, false);
 		return strdup(path);
+	}
 
 	snprintf(path, sizeof(path), "%s/.fluxbox", home);
-	if (dir_exists(path))
+	if (dir_exists(path)) {
+		validate_config_dir(path, false);
 		return strdup(path);
+	}
 
 	/* Default to XDG location even if it doesn't exist yet */
 	snprintf(path, sizeof(path), "%s/.config/fluxland", home);

@@ -151,6 +151,17 @@ static int parse_patterns(const char *line, struct wm_match_pattern **out_patter
 		}
 		pat->negate = negate;
 
+		/* Cap regex length to prevent ReDoS / excessive compilation cost */
+		if (strlen(regex) > 1024) {
+			wlr_log(WLR_ERROR, "rules: regex too long (%zu bytes): %.32s...",
+				strlen(regex), regex);
+			free(pat->property);
+			free(pat->regex_str);
+			free(content);
+			p = close + 1;
+			continue;
+		}
+
 		int rc = regcomp(&pat->compiled, regex, REG_EXTENDED | REG_NOSUB);
 		if (rc != 0) {
 			char errbuf[128];
@@ -358,7 +369,7 @@ void wm_rules_finish(struct wm_rules *rules) {
 }
 
 bool wm_rules_load(struct wm_rules *rules, const char *path) {
-	FILE *f = fopen(path, "r");
+	FILE *f = fopen_nofollow(path, "r");
 	if (!f) {
 		wlr_log(WLR_INFO, "rules: no apps file at %s", path);
 		return false;
@@ -732,7 +743,7 @@ int wm_rules_remember_window(struct wm_view *view, const char *apps_path) {
 	if (!view || !apps_path)
 		return -1;
 
-	FILE *f = fopen(apps_path, "a");
+	FILE *f = fopen_nofollow(apps_path, "a");
 	if (!f) {
 		wlr_log(WLR_ERROR, "rules: cannot open %s for appending",
 			apps_path);

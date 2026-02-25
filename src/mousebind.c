@@ -498,7 +498,7 @@ int
 mousebind_load(struct wl_list *bindings, const char *path,
 	const uint32_t *button_map)
 {
-	FILE *f = fopen(path, "r");
+	FILE *f = fopen_nofollow(path, "r");
 	if (!f)
 		return -1;
 

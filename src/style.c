@@ -873,14 +873,14 @@ resolve_style_path(const char *path)
 		return NULL;
 
 	snprintf(try_path, len + 12, "%s/theme.cfg", path);
-	FILE *f = fopen(try_path, "r");
+	FILE *f = fopen_nofollow(try_path, "r");
 	if (f) {
 		fclose(f);
 		return try_path;
 	}
 
 	snprintf(try_path, len + 12, "%s/style.cfg", path);
-	f = fopen(try_path, "r");
+	f = fopen_nofollow(try_path, "r");
 	if (f) {
 		fclose(f);
 		return try_path;

@@ -17,6 +17,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "keybind.h"
+#include "util.h"
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -1024,7 +1025,7 @@ keybind_get_mode(struct wl_list *keymodes, const char *name)
 int
 keybind_load(struct wl_list *keymodes, const char *path)
 {
-	FILE *f = fopen(path, "r");
+	FILE *f = fopen_nofollow(path, "r");
 	if (!f)
 		return -1;
 

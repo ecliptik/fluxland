@@ -469,6 +469,20 @@ add_wallpaper_entries(struct wm_menu *submenu, const char *raw_path)
 		return;
 	}
 
+	/* Reject directory paths containing single quotes to prevent
+	 * shell escape from the single-quoted swaybg command */
+	if (strchr(dir_path, '\'')) {
+		wlr_log(WLR_ERROR,
+			"wallpaper directory path contains single quote, "
+			"skipping: %s", dir_path);
+		struct wm_menu_item *item =
+			menu_item_create(WM_MENU_NOP, "(invalid path)");
+		if (item)
+			wl_list_insert(submenu->items.prev, &item->link);
+		free(dir_path);
+		return;
+	}
+
 	DIR *dir = opendir(dir_path);
 	if (!dir) {
 		struct wm_menu_item *item =
@@ -792,7 +806,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 						free(raw_path);
 						continue;
 					}
-					FILE *inc_fp = fopen(resolved, "r");
+					FILE *inc_fp = fopen_nofollow(resolved, "r");
 					if (inc_fp) {
 						parse_menu_items_depth(menu,
 							inc_fp, server,
@@ -978,7 +992,7 @@ wm_menu_load(struct wm_server *server, const char *path)
 		return NULL;
 	}
 
-	FILE *fp = fopen(expanded, "r");
+	FILE *fp = fopen_nofollow(expanded, "r");
 	if (!fp) {
 		wlr_log(WLR_ERROR, "failed to open menu file: %s", expanded);
 		free(expanded);

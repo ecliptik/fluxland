@@ -459,6 +459,11 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 
 	switch (action) {
 	case WM_ACTION_EXEC:
+		if (server->ipc_no_exec) {
+			wlr_log(WLR_INFO, "%s",
+				"IPC Exec blocked by --ipc-no-exec");
+			return true;
+		}
 		exec_command(argument);
 		return true;
 
@@ -919,6 +924,11 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		return true;
 
 	case WM_ACTION_SET_STYLE:
+		if (server->ipc_no_exec) {
+			wlr_log(WLR_INFO, "%s",
+				"IPC SetStyle blocked by --ipc-no-exec");
+			return true;
+		}
 		if (argument && server->config) {
 			/* Reject paths with traversal sequences */
 			if (strstr(argument, "..")) {
@@ -1244,6 +1254,11 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		return true;
 
 	case WM_ACTION_BIND_KEY: {
+		if (server->ipc_no_exec) {
+			wlr_log(WLR_INFO, "%s",
+				"IPC BindKey blocked by --ipc-no-exec");
+			return true;
+		}
 		if (!argument)
 			return true;
 		struct wm_keymode *mode = keybind_get_mode(

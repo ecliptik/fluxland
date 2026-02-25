@@ -28,6 +28,10 @@ No remotely exploitable vulnerabilities were found. All critical and
 high-severity findings require local access (IPC socket connection or config
 file write access).
 
+**Remediation status:** All critical, high, and medium findings have been
+resolved across 3 phases (27 individual fixes). One low-risk medium item
+(IPC event broadcast rate limiting) and minor code quality items remain.
+
 ---
 
 ## Tool Results Summary
@@ -828,12 +832,33 @@ The following security fixes have been implemented and verified (all tests pass)
 | 10 | **LOW-1:** Missing NULL check | Added NULL check after `calloc()` for `ib_boxes` in toolbar iconbar | `src/toolbar.c` |
 | 11 | **LOW-2:** Integer overflow in json_escape | Added overflow check `len > SIZE_MAX / 6 - 1` before allocation | `src/ipc_commands.c` |
 
+### Phase 2 — High-Priority Fixes (2026-02-25)
+
+| # | Finding | Fix | Files Changed |
+|---|---------|-----|---------------|
+| 12 | **HIGH-2:** Unsafe `atoi()` calls | Replaced all 36 `atoi()` calls with `safe_atoi()` wrapper (strtol-based, overflow-safe) | `src/util.h` (new), `src/keyboard.c`, `src/ipc_commands.c`, `src/rules.c`, `src/cursor.c`, `src/menu.c`, `src/mousebind.c`, `src/validate.c`, `src/style.c`, `src/keybind.c` |
+| 13 | **HIGH-6:** Unrestricted menu includes | Menu `[include]` paths restricted via `realpath()` + directory allowlist (config dir, /usr/share, /usr/local/share, /etc, /tmp) | `src/ipc_commands.c` |
+| 14 | **HIGH-7:** Unrestricted SetStyle paths | `SetStyle` IPC command validates path via `realpath()` + same allowlist; rejects `..` traversal | `src/ipc_commands.c` |
+| 15 | **HIGH-8:** cppcheck missingReturn | Verified as **false positives** — both `break` inside `wl_list_for_each` loops, not function endings | No changes needed |
+| 16 | **MEDIUM-3:** Fragile JSON parser | Hardened IPC JSON parser against unterminated strings | `src/ipc_commands.c` |
+| 17 | **HIGH (IPC):** No peer credential check | Added `SO_PEERCRED` UID verification on IPC connections + `XDG_RUNTIME_DIR` ownership/permissions validation | `src/ipc.c` |
+| 18 | **MEDIUM-7:** Unbounded validation results | Capped error collection at 1000 entries | `src/validate.c` |
+| 19 | **LOW:** signal() usage | Replaced `signal(SIGPIPE, SIG_IGN)` with `sigaction()` for portable behavior | `src/server.c` |
+| 20 | **MEDIUM-12:** JSON escape buffer truncation | Added `j+6` safety margin check in all JSON escape loops | `src/view.c`, `src/focus_nav.c`, `src/workspace.c`, `src/output.c` |
+| 21 | **LOW:** View ID overflow | Added wrap-around protection (`next_view_id` skips 0) | `src/view.c` |
+| 22 | **MEDIUM-11:** Dead/unreachable code | Removed 13 unused functions across the codebase | `src/decoration.c/h`, `src/focus_nav.c/h`, `src/foreign_toplevel.c/h`, `src/keyboard.c/h`, `src/menu.c/h`, `src/slit.c/h`, `src/tabgroup.c/h`, `src/toolbar.c/h`, `src/workspace.c/h` |
+
+### Phase 3 — Medium-Priority Fixes (2026-02-25)
+
+| # | Finding | Fix | Files Changed |
+|---|---------|-----|---------------|
+| 23 | **MEDIUM-6:** IPC BindKey/Exec attack surface | Added `--ipc-no-exec` CLI flag that disables `Exec`, `BindKey`, and `SetStyle` IPC actions | `src/main.c`, `src/server.h`, `src/ipc_commands.c` |
+| 24 | **MEDIUM-9:** Symlink attacks on config files | Added `fopen_nofollow()` helper using `O_NOFOLLOW`; applied to config parser, style loader, and menu file loading | `src/util.h`, `src/rcparser.c`, `src/style.c`, `src/menu.c` |
+| 25 | **MEDIUM-10:** Config dir env hijacking | Added `validate_config_dir()` — checks ownership (uid), permissions (group/world writable), path traversal; FLUXLAND_CONFIG_DIR falls back to default on failure | `src/config.c` |
+| 26 | **MEDIUM-8:** Regex DoS in window rules | Capped regex pattern length at 1024 bytes before `regcomp()` | `src/rules.c` |
+| 27 | **HIGH-5 (addendum):** Wallpaper dir path injection | Reject wallpaper directory paths containing single quotes | `src/menu.c` |
+
 ### Remaining Unfixed (documented for future work)
 
-- **HIGH-2:** Replace ~30 `atoi()` calls with safe `strtol()` wrapper (systematic, low risk)
-- **HIGH-6:** Restrict menu `[include]` paths to config directory
-- **HIGH-7:** Validate `SetStyle` file paths within allowed directories
-- **HIGH-8:** Missing return statements in `ipc_commands.c:486` and `menu.c:2299` (verified as cppcheck false positives — both functions have proper default returns)
-- **MEDIUM-3:** Harden IPC JSON parser against malformed input
-- **MEDIUM-6 to MEDIUM-12:** Various medium-severity items (env var validation, symlink protection, dead code)
-- **LOW items:** Code quality improvements (unused functions, static linkage, const-correctness)
+- **MEDIUM-4:** No rate limit on IPC event broadcasts (low practical risk — requires sustained local IPC flood)
+- **LOW items:** Additional const-correctness, static linkage improvements (code quality only, no security impact)

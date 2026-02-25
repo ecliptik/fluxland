@@ -25,7 +25,12 @@ static const char usage[] = N_(
 	"  -d, --debug          Enable debug logging\n"
 	"  -v, --version        Show version and exit\n"
 	"  -l, --list-commands  List available commands and exit\n"
+	"  --ipc-no-exec        Disable Exec/BindKey/SetStyle via IPC\n"
 	"  -h, --help           Show this help\n");
+
+enum {
+	OPT_IPC_NO_EXEC = 256,
+};
 
 static const struct option long_options[] = {
 	{"startup",      required_argument, NULL, 's'},
@@ -33,6 +38,7 @@ static const struct option long_options[] = {
 	{"debug",        no_argument,       NULL, 'd'},
 	{"version",      no_argument,       NULL, 'v'},
 	{"list-commands", no_argument,      NULL, 'l'},
+	{"ipc-no-exec",  no_argument,       NULL, OPT_IPC_NO_EXEC},
 	{"help",         no_argument,       NULL, 'h'},
 	{0, 0, 0, 0},
 };
@@ -48,6 +54,7 @@ main(int argc, char *argv[])
 
 	char *startup_cmd = NULL;
 	bool check_config = false;
+	bool ipc_no_exec = false;
 	enum wlr_log_importance verbosity = WLR_ERROR;
 
 	int c;
@@ -63,6 +70,9 @@ main(int argc, char *argv[])
 		}
 		case 'd':
 			verbosity = WLR_DEBUG;
+			break;
+		case OPT_IPC_NO_EXEC:
+			ipc_no_exec = true;
 			break;
 		case 'v':
 			printf("fluxland %s\n", FLUXLAND_VERSION);
@@ -114,6 +124,7 @@ main(int argc, char *argv[])
 		wlr_log(WLR_ERROR, "%s", "failed to initialize server");
 		return 1;
 	}
+	server.ipc_no_exec = ipc_no_exec;
 
 	if (!wm_server_start(&server)) {
 		wlr_log(WLR_ERROR, "%s", "failed to start server");

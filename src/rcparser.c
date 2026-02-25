@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "rcparser.h"
+#include "util.h"
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -110,7 +111,7 @@ rc_set(struct rc_database *db, const char *key, const char *value)
 int
 rc_load(struct rc_database *db, const char *path)
 {
-	FILE *f = fopen(path, "r");
+	FILE *f = fopen_nofollow(path, "r");
 	if (!f)
 		return -1;
 

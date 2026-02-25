@@ -389,6 +389,9 @@ struct wm_server {
 	struct wl_event_source *sigchld_source;
 
 	const char *socket;
+
+	/* Security: --ipc-no-exec disables Exec/BindKey/SetStyle via IPC */
+	bool ipc_no_exec;
 };
 
 /* Initialize the server (create display, backend, renderer, scene, etc.) */
