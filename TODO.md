@@ -112,17 +112,17 @@ Phases 1-5 are complete; these are the remaining gaps.
   - `rcparser.c` (init file parser)
   - `keybind.c` (keys file parser)
   - `style.c` (style file parser)
-- [ ] WLCS (Wayland protocol conformance test suite) integration
+- [x] WLCS (Wayland protocol conformance test suite) integration
 - [x] Automated screenshot comparison tests for decoration rendering
 
 ## Packaging & distribution
 
-- [ ] Debian `.deb` package
-- [ ] Arch Linux `PKGBUILD`
-- [ ] Nix flake
-- [ ] Fedora `.spec` file
-- [ ] AppImage or Flatpak (if feasible for a compositor)
-- [ ] `.desktop` session entry for display managers
+- [x] Debian `.deb` package
+- [x] Arch Linux `PKGBUILD`
+- [x] Nix flake
+- [x] Fedora `.spec` file
+- [x] Flatpak manifest (experimental — compositors in Flatpak are unusual)
+- [x] `.desktop` session entry for display managers
 
 ## Accessibility
 

@@ -1,0 +1,53 @@
+# WARNING: Wayland compositors are not a typical Flatpak use case.
+# Compositors need direct access to DRM, input devices, and the Wayland
+# socket, which conflicts with Flatpak's sandboxing model. This manifest
+# is provided as an EXPERIMENTAL starting point and will require
+# significant additional configuration (--device=all, --socket=wayland,
+# host filesystem access, etc.) to function.
+
+app-id: com.fluxland.Fluxland
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: fluxland
+
+finish-args:
+  # A compositor needs direct device access
+  - --device=all
+  - --socket=wayland
+  - --share=ipc
+  # Needed for DRM/KMS access
+  - --filesystem=/dev/dri
+  # Needed to manage displays
+  - --filesystem=/sys/class/drm:ro
+  # Access user config
+  - --filesystem=~/.config/fluxland:create
+  # Access to run directory for Wayland socket creation
+  - --filesystem=/run/user/$UID:create
+
+modules:
+  - name: wayland-protocols
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.38/downloads/wayland-protocols-1.38.tar.xz
+        sha256: ff17292c05159d2b20ce1a72190497bcb0b19752cf706d4f401a972ede3dd01b
+
+  - name: wlroots
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Dbackends=drm,libinput
+      - -Drenderers=gles2,vulkan
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/wlroots/wlroots/-/releases/0.18.2/downloads/wlroots-0.18.2.tar.gz
+        sha256: FIXME
+
+  - name: fluxland
+    buildsystem: meson
+    config-opts:
+      - -Dxwayland=auto
+    sources:
+      - type: dir
+        path: ..

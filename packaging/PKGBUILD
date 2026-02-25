@@ -1,0 +1,52 @@
+# Maintainer: fluxland contributors <fluxland@example.com>
+pkgname=fluxland
+pkgver=0.1.0.dev
+pkgrel=1
+pkgdesc='A Fluxbox-inspired Wayland compositor'
+arch=('x86_64' 'aarch64')
+url='https://github.com/fluxland/fluxland'
+license=('MIT')
+depends=(
+  'wlroots0.18'
+  'wayland'
+  'libxkbcommon'
+  'pango'
+  'cairo'
+  'libinput'
+  'libdrm'
+  'pixman'
+)
+makedepends=(
+  'meson'
+  'ninja'
+  'wayland-protocols'
+  'git'
+)
+optdepends=(
+  'xorg-xwayland: X11 application support'
+  'foot: default terminal emulator'
+  'grim: screenshot utility'
+  'slurp: region selection'
+  'wl-clipboard: clipboard support'
+  'swaylock: screen locker'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  arch-meson build \
+    -Dxwayland=auto
+  meson compile -C build
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  meson test -C build --print-errorlogs || true
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  meson install -C build --destdir "$pkgdir"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -193,6 +193,69 @@ executable(
   install: true,
 )
 
+# --- WLCS integration module (optional) ---
+
+if get_option('wlcs')
+  # All compositor sources except main.c (rebuilt for shared library)
+  wlcs_compositor_sources = files(
+    'src/animation.c',
+    'src/autostart.c',
+    'src/server.c',
+    'src/output.c',
+    'src/input.c',
+    'src/keyboard.c',
+    'src/cursor.c',
+    'src/view.c',
+    'src/workspace.c',
+    'src/config.c',
+    'src/rcparser.c',
+    'src/keybind.c',
+    'src/mousebind.c',
+    'src/style.c',
+    'src/render.c',
+    'src/decoration.c',
+    'src/fractional_scale.c',
+    'src/gamma_control.c',
+    'src/foreign_toplevel.c',
+    'src/tabgroup.c',
+    'src/ipc.c',
+    'src/ipc_commands.c',
+    'src/rules.c',
+    'src/placement.c',
+    'src/idle.c',
+    'src/layer_shell.c',
+    'src/output_management.c',
+    'src/protocols.c',
+    'src/presentation.c',
+    'src/screencopy.c',
+    'src/session_lock.c',
+    'src/text_input.c',
+    'src/viewporter.c',
+    'src/menu.c',
+    'src/slit.c',
+    'src/tablet.c',
+    'src/toolbar.c',
+    'src/validate.c',
+    'src/xwayland.c',
+  )
+
+  if have_systray
+    wlcs_compositor_sources += files('src/systray.c')
+  endif
+
+  threads = dependency('threads')
+  wayland_client_dep = dependency('wayland-client')
+
+  shared_library(
+    'fluxland-wlcs',
+    wlcs_compositor_sources + files('src/wlcs_shim.c'),
+    include_directories: [wm_inc],
+    dependencies: wm_deps + [threads, wayland_client_dep],
+    gnu_symbol_visibility: 'hidden',
+    install: false,
+  )
+endif
+
 # --- IPC client tool ---
 
 executable(
@@ -205,6 +268,11 @@ executable(
 
 install_data(
   'data/fluxland.desktop',
+  install_dir: get_option('datadir') / 'applications',
+)
+
+install_data(
+  'data/fluxland-session.desktop',
   install_dir: get_option('datadir') / 'wayland-sessions',
 )
 
