@@ -63,6 +63,29 @@ test_menu = executable(
 )
 test('menu', test_menu)
 
+# --- test_animation: animation system tests ---
+# animation.c is #included directly in the test to allow stubbing wlroots deps.
+# Needs wlroots in include path so animation.c's #include <wlr/util/log.h> resolves
+# (the header guard WLR_UTIL_LOG_H blocks it from being processed).
+test_animation = executable(
+  'test_animation',
+  files('test_animation.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('animation', test_animation)
+
+# --- test_ipc: IPC command dispatch and subscription tests ---
+test_ipc = executable(
+  'test_ipc',
+  files('test_ipc.c', '../src/ipc_commands.c', '../src/ipc.c'),
+  include_directories: test_inc,
+  dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+  install: false,
+)
+test('ipc', test_ipc)
+
 # --- test_validate: config validation tests ---
 test_validate = executable(
   'test_validate',
@@ -72,6 +95,26 @@ test_validate = executable(
   install: false,
 )
 test('validate', test_validate)
+
+# --- test_autostart: autostart module tests ---
+test_autostart = executable(
+  'test_autostart',
+  files('test_autostart.c', '../src/autostart.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('autostart', test_autostart)
+
+# --- test_mousebind: mouse binding parser tests ---
+test_mousebind = executable(
+  'test_mousebind',
+  files('test_mousebind.c', '../src/mousebind.c'),
+  include_directories: test_inc,
+  dependencies: [wayland_server, wlroots, xkbcommon],
+  install: false,
+)
+test('mousebind', test_mousebind)
 
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
