@@ -587,6 +587,18 @@ style_create(void)
 	s->window_title_height = DEFAULT_TITLE_HEIGHT;
 	s->menu_border_width = DEFAULT_BORDER_WIDTH;
 
+	/* Menu bullet defaults */
+	s->menu_bullet = strdup("triangle");
+	s->menu_bullet_position = WM_JUSTIFY_RIGHT;
+	s->menu_item_height = 0;
+	s->menu_title_height = 0;
+
+	/* Slit defaults (fall back to toolbar texture) */
+	s->slit_texture = default_texture(DEFAULT_FOCUS_COLOR,
+		DEFAULT_UNFOCUS_COLOR);
+	s->slit_border_color = color_from_argb(DEFAULT_BORDER_COLOR);
+	s->slit_border_width = DEFAULT_BORDER_WIDTH;
+
 	/* Default fonts */
 	s->window_label_focus_font = default_font();
 	s->window_label_unfocus_font = default_font();
@@ -726,6 +738,28 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 	load_color(db, "menu.borderColor", &s->menu_border_color);
 	s->menu_border_width = style_get_int(db, "menu.borderWidth",
 		s->menu_border_width);
+
+	/* Menu bullet style */
+	const char *bullet = style_get(db, "menu.bullet");
+	if (bullet) {
+		free(s->menu_bullet);
+		s->menu_bullet = strdup(bullet);
+	}
+	const char *bullet_pos = style_get(db, "menu.bullet.position");
+	if (bullet_pos)
+		s->menu_bullet_position = parse_justify(bullet_pos);
+
+	/* Menu item/title heights */
+	s->menu_item_height = style_get_int(db, "menu.itemHeight",
+		s->menu_item_height);
+	s->menu_title_height = style_get_int(db, "menu.titleHeight",
+		s->menu_title_height);
+
+	/* --- Slit --- */
+	load_texture(db, "slit", &s->slit_texture, sd);
+	load_color(db, "slit.borderColor", &s->slit_border_color);
+	s->slit_border_width = style_get_int(db, "slit.borderWidth",
+		s->slit_border_width);
 
 	/* --- Toolbar --- */
 	load_texture(db, "toolbar", &s->toolbar_texture, sd);
@@ -944,6 +978,7 @@ style_clear(struct wm_style *s)
 	texture_finish(&s->menu_title);
 	texture_finish(&s->menu_frame);
 	texture_finish(&s->menu_hilite);
+	texture_finish(&s->slit_texture);
 	texture_finish(&s->toolbar_texture);
 
 	/* Fonts */
@@ -952,6 +987,9 @@ style_clear(struct wm_style *s)
 	font_finish(&s->menu_title_font);
 	font_finish(&s->menu_frame_font);
 	font_finish(&s->toolbar_font);
+
+	/* Menu bullet */
+	free(s->menu_bullet);
 
 	/* Button pixmaps */
 	free(s->window_close_pixmap);

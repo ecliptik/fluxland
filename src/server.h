@@ -171,6 +171,10 @@ struct wm_server {
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
 
+	/* Show window position/size overlay during move/resize */
+	bool show_position;
+	struct wlr_scene_buffer *position_overlay;
+
 	/* Focus policy (click-to-focus, sloppy) */
 	int focus_policy; /* enum wm_focus_policy from view.h */
 	struct wm_view *focused_view;

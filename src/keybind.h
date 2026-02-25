@@ -119,6 +119,14 @@ enum wm_action {
 	WM_ACTION_TOGGLE_SLIT_HIDDEN,
 	WM_ACTION_TOGGLE_TOOLBAR_ABOVE,
 	WM_ACTION_TOGGLE_TOOLBAR_VISIBLE,
+	WM_ACTION_SET_ALPHA,
+	WM_ACTION_SET_ENV,
+	WM_ACTION_BIND_KEY,
+	WM_ACTION_GOTO_WINDOW,
+	WM_ACTION_NEXT_GROUP,
+	WM_ACTION_PREV_GROUP,
+	WM_ACTION_UNCLUTTER,
+	WM_ACTION_TOGGLE_SHOW_POSITION,
 };
 
 /*
@@ -191,5 +199,12 @@ void keybind_destroy_all(struct wl_list *keymodes);
 
 /* Legacy: destroy a flat binding list (used during transition) */
 void keybind_destroy_list(struct wl_list *bindings);
+
+/* Parse a keybinding line (e.g. "Mod4 t :Exec xterm") and add to bindings.
+ * Returns true on success. Used by BindKey action. */
+bool keybind_add_from_string(struct wl_list *bindings, const char *line);
+
+/* List all available action names to stdout (for --list-commands) */
+void wm_keybind_list_actions(void);
 
 #endif /* WM_KEYBIND_H */

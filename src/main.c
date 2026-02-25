@@ -12,6 +12,7 @@
 
 #include "autostart.h"
 #include "config.h"
+#include "keybind.h"
 #include "server.h"
 
 static const char usage[] =
@@ -19,12 +20,14 @@ static const char usage[] =
 	"  -s, --startup <cmd>  Run command on startup\n"
 	"  -d, --debug          Enable debug logging\n"
 	"  -v, --version        Show version and exit\n"
+	"  -l, --list-commands  List available commands and exit\n"
 	"  -h, --help           Show this help\n";
 
 static const struct option long_options[] = {
 	{"startup", required_argument, NULL, 's'},
 	{"debug",   no_argument,       NULL, 'd'},
 	{"version", no_argument,       NULL, 'v'},
+	{"list-commands", no_argument, NULL, 'l'},
 	{"help",    no_argument,       NULL, 'h'},
 	{0, 0, 0, 0},
 };
@@ -36,7 +39,7 @@ main(int argc, char *argv[])
 	enum wlr_log_importance verbosity = WLR_ERROR;
 
 	int c;
-	while ((c = getopt_long(argc, argv, "s:dvh", long_options,
+	while ((c = getopt_long(argc, argv, "s:dvlh", long_options,
 			NULL)) != -1) {
 		switch (c) {
 		case 's':
@@ -47,6 +50,9 @@ main(int argc, char *argv[])
 			break;
 		case 'v':
 			printf("fluxland %s\n", FLUXLAND_VERSION);
+			return 0;
+		case 'l':
+			wm_keybind_list_actions();
 			return 0;
 		case 'h':
 		default:

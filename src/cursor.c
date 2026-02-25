@@ -27,18 +27,23 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/interfaces/wlr_buffer.h>
+#include <wlr/types/wlr_buffer.h>
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
+#include <drm_fourcc.h>
 
 #include "config.h"
 #include "cursor.h"
 #include "server.h"
 #include "decoration.h"
+#include "render.h"
 #include "idle.h"
 #include "menu.h"
 #include "placement.h"
 #include "session_lock.h"
 #include "slit.h"
+#include "tabgroup.h"
 #include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
@@ -356,6 +361,177 @@ execute_mouse_action(struct wm_server *server,
 	}
 }
 
+/* --- Position overlay (pixel buffer bridge, same as menu.c) --- */
+
+struct wm_cursor_pixel_buffer {
+	struct wlr_buffer base;
+	void *data;
+	uint32_t format;
+	size_t stride;
+};
+
+static void cursor_pixel_buffer_destroy(struct wlr_buffer *wlr_buffer)
+{
+	struct wm_cursor_pixel_buffer *buffer =
+		wl_container_of(wlr_buffer, buffer, base);
+	free(buffer->data);
+	free(buffer);
+}
+
+static bool cursor_pixel_buffer_begin_data_ptr_access(
+	struct wlr_buffer *wlr_buffer, uint32_t flags,
+	void **data, uint32_t *format, size_t *stride)
+{
+	struct wm_cursor_pixel_buffer *buffer =
+		wl_container_of(wlr_buffer, buffer, base);
+	if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE)
+		return false;
+	*data = buffer->data;
+	*format = buffer->format;
+	*stride = buffer->stride;
+	return true;
+}
+
+static void cursor_pixel_buffer_end_data_ptr_access(
+	struct wlr_buffer *wlr_buffer)
+{
+	/* nothing */
+}
+
+static const struct wlr_buffer_impl cursor_pixel_buffer_impl = {
+	.destroy = cursor_pixel_buffer_destroy,
+	.begin_data_ptr_access = cursor_pixel_buffer_begin_data_ptr_access,
+	.end_data_ptr_access = cursor_pixel_buffer_end_data_ptr_access,
+};
+
+static struct wlr_buffer *
+cursor_wlr_buffer_from_cairo(cairo_surface_t *surface)
+{
+	if (!surface)
+		return NULL;
+
+	cairo_surface_flush(surface);
+
+	int width = cairo_image_surface_get_width(surface);
+	int height = cairo_image_surface_get_height(surface);
+	int stride = cairo_image_surface_get_stride(surface);
+	unsigned char *src = cairo_image_surface_get_data(surface);
+
+	if (width <= 0 || height <= 0 || stride <= 0 || !src) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+
+	size_t size = (size_t)stride * (size_t)height;
+	void *data = malloc(size);
+	if (!data) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+	memcpy(data, src, size);
+
+	struct wm_cursor_pixel_buffer *buffer =
+		calloc(1, sizeof(*buffer));
+	if (!buffer) {
+		free(data);
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+
+	wlr_buffer_init(&buffer->base, &cursor_pixel_buffer_impl,
+		width, height);
+	buffer->data = data;
+	buffer->format = DRM_FORMAT_ARGB8888;
+	buffer->stride = stride;
+
+	cairo_surface_destroy(surface);
+	return &buffer->base;
+}
+
+static void
+position_overlay_destroy(struct wm_server *server)
+{
+	if (server->position_overlay) {
+		wlr_scene_node_destroy(
+			&server->position_overlay->node);
+		server->position_overlay = NULL;
+	}
+}
+
+static void
+position_overlay_update(struct wm_server *server, const char *text)
+{
+	if (!server->show_position || !server->grabbed_view)
+		return;
+
+	struct wm_style *style = server->style;
+	struct wm_font font = {
+		.family = "sans",
+		.size = 11,
+		.bold = true,
+		.italic = false,
+		.shadow_x = 0,
+		.shadow_y = 0,
+		.shadow_color = {0, 0, 0, 0xFF},
+	};
+	struct wm_color fg = {0xE0, 0xE0, 0xE0, 0xFF};
+	if (style) {
+		font = style->toolbar_font;
+		fg = style->toolbar_text_color;
+	}
+
+	int tw = 0, th = 0;
+	cairo_surface_t *text_surf = wm_render_text(text, &font,
+		&fg, 300, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
+	if (!text_surf)
+		return;
+
+	/* Create background surface with padding */
+	int pad = 4;
+	int w = tw + 2 * pad;
+	int h = th + 2 * pad;
+	cairo_surface_t *surf = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, w, h);
+	if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surf);
+		cairo_surface_destroy(text_surf);
+		return;
+	}
+	cairo_t *cr = cairo_create(surf);
+	cairo_set_source_rgba(cr, 0.1, 0.1, 0.1, 0.85);
+	cairo_paint(cr);
+	cairo_set_source_surface(cr, text_surf, pad,
+		(h - th) / 2);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+	cairo_surface_destroy(text_surf);
+
+	struct wlr_buffer *buf = cursor_wlr_buffer_from_cairo(surf);
+	if (!buf)
+		return;
+
+	if (server->position_overlay) {
+		wlr_scene_buffer_set_buffer(
+			server->position_overlay, buf);
+	} else {
+		server->position_overlay =
+			wlr_scene_buffer_create(
+				server->layer_overlay, buf);
+	}
+	wlr_buffer_drop(buf);
+
+	if (server->position_overlay) {
+		/* Position near the top-left corner of the window */
+		struct wm_view *view = server->grabbed_view;
+		int ox = view->x + 4;
+		int oy = view->y - h - 2;
+		if (oy < 0)
+			oy = view->y + 4;
+		wlr_scene_node_set_position(
+			&server->position_overlay->node, ox, oy);
+	}
+}
+
 static void
 process_cursor_move(struct wm_server *server, uint32_t time)
 {
@@ -421,6 +597,13 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 	view->y = snap_y;
 	wlr_scene_node_set_position(&view->scene_tree->node,
 		view->x, view->y);
+
+	/* Update position overlay */
+	if (server->show_position) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "%d, %d", view->x, view->y);
+		position_overlay_update(server, buf);
+	}
 }
 
 static void
@@ -461,6 +644,12 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 	view->y = new_y;
 	wlr_scene_node_set_position(&view->scene_tree->node, new_x, new_y);
 	wlr_xdg_toplevel_set_size(view->xdg_toplevel, new_w, new_h);
+
+	if (server->show_position) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "%d x %d", new_w, new_h);
+		position_overlay_update(server, buf);
+	}
 }
 
 /*
@@ -625,6 +814,32 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		}
 	}
 
+	/* MouseTabFocus: hover over a tab to activate it */
+	if (view && view->decoration && view->tab_group &&
+	    view->tab_group->count > 1 &&
+	    server->config && server->config->tab_focus_model == 1) {
+		double dx = server->cursor->x - view->x;
+		double dy = server->cursor->y - view->y;
+		int tab_idx = wm_decoration_tab_at(view->decoration, dx, dy);
+		if (tab_idx >= 0) {
+			int i = 0;
+			struct wm_view *tab_view;
+			wl_list_for_each(tab_view, &view->tab_group->views,
+					tab_link) {
+				if (i == tab_idx) {
+					if (tab_view !=
+					    view->tab_group->active_view) {
+						wm_tab_group_activate(
+							view->tab_group,
+							tab_view);
+					}
+					break;
+				}
+				i++;
+			}
+		}
+	}
+
 	if (surface) {
 		wlr_seat_pointer_notify_enter(server->seat,
 			surface, sx, sy);
@@ -725,6 +940,7 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		if (server->cursor_mode != WM_CURSOR_PASSTHROUGH) {
 			server->cursor_mode = WM_CURSOR_PASSTHROUGH;
 			server->grabbed_view = NULL;
+			position_overlay_destroy(server);
 		}
 
 		/* Notify seat */
@@ -1010,6 +1226,13 @@ handle_cursor_axis(struct wl_listener *listener, void *data)
 	struct wm_server *server =
 		wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
+
+	/* Check if toolbar consumes this scroll event */
+	if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL &&
+	    wm_toolbar_handle_scroll(server->toolbar,
+		    server->cursor->x, server->cursor->y, event->delta)) {
+		return;
+	}
 
 	/* Forward scroll events to the focused client */
 	wlr_seat_pointer_notify_axis(server->seat,

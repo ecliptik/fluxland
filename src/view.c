@@ -727,6 +727,32 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 		wm_tab_group_add(group_peer->tab_group, view);
 	}
 
+	/* Auto-tab placement: group new windows with matching app_id */
+	if (!view->tab_group && view->app_id && *view->app_id &&
+	    view->server->config &&
+	    view->server->config->auto_tab_placement) {
+		struct wm_view *peer;
+		wl_list_for_each(peer, &view->server->views, link) {
+			if (peer == view || !peer->app_id)
+				continue;
+			if (peer->workspace != view->workspace &&
+			    !peer->sticky)
+				continue;
+			if (strcmp(peer->app_id, view->app_id) != 0)
+				continue;
+			/* Found a matching peer */
+			if (peer->tab_group) {
+				wm_tab_group_add(peer->tab_group, view);
+			} else {
+				struct wm_tab_group *tg =
+					wm_tab_group_create(peer);
+				if (tg)
+					wm_tab_group_add(tg, view);
+			}
+			break;
+		}
+	}
+
 	/* Apply automatic window placement */
 	wm_placement_apply(view->server, view);
 	wlr_scene_node_set_position(&view->scene_tree->node,

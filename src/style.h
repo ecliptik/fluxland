@@ -174,6 +174,19 @@ struct wm_style {
 	struct wm_color menu_border_color;
 	int menu_border_width;
 
+	/* Menu bullet (submenu indicator) */
+	char *menu_bullet;		/* "triangle", "square", "diamond", "empty" */
+	enum wm_justify menu_bullet_position;	/* LEFT or RIGHT (default) */
+
+	/* Menu item/title heights (0 = auto from font) */
+	int menu_item_height;
+	int menu_title_height;
+
+	/* Slit */
+	struct wm_texture slit_texture;
+	struct wm_color slit_border_color;
+	int slit_border_width;
+
 	/* Toolbar */
 	struct wm_texture toolbar_texture;
 	struct wm_color toolbar_text_color;

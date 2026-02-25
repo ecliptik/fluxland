@@ -92,6 +92,19 @@ struct wm_config {
 	 * 3=NoIcons, 4=WorkspaceIcons */
 	int iconbar_mode;
 
+	/* Iconbar enhancements */
+	int iconbar_alignment;              /* 0=left, 1=center (default), 2=right */
+	int iconbar_icon_width;             /* 0 = auto, or fixed pixel width */
+	bool iconbar_use_pixmap;            /* show app icon pixmaps (default true) */
+	int iconbar_wheel_mode;             /* 0 = screen (ws change), 1 = off */
+	char *iconbar_iconified_pattern;    /* e.g. "(%s)" for iconified windows */
+
+	/* Auto-tab placement: group windows with same app_id */
+	bool auto_tab_placement;
+
+	/* Tab focus model: 0 = click (default), 1 = mouse hover */
+	int tab_focus_model;
+
 	/* Full maximization (maximize over toolbar/slit) */
 	bool full_maximization;
 
@@ -133,6 +146,9 @@ struct wm_config {
 
 	/* Manual struts [left, right, top, bottom] in pixels */
 	int struts[4];
+
+	/* Show window position/size during move/resize */
+	bool show_window_position;
 
 	/* Menu type-ahead search */
 	enum wm_menu_search menu_search;

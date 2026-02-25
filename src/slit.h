@@ -69,6 +69,7 @@ struct wm_slit {
 	/* Scene graph nodes */
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_rect *bg_rect;
+	struct wlr_scene_rect *border_rect;
 
 	/* Configuration */
 	enum wm_slit_placement placement;

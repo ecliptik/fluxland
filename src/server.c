@@ -89,6 +89,7 @@ wm_server_reconfigure(struct wm_server *server)
 	if (server->config) {
 		config_reload(server->config);
 		server->focus_policy = server->config->focus_policy;
+		server->show_position = server->config->show_window_position;
 	}
 
 	/* 2. Reload keymodes and keybindings */
@@ -352,6 +353,7 @@ wm_server_init(struct wm_server *server)
 	if (server->config) {
 		config_load(server->config, NULL);
 		server->focus_policy = server->config->focus_policy;
+		server->show_position = server->config->show_window_position;
 		wlr_log(WLR_INFO, "config dir: %s",
 			server->config->config_dir ?
 			server->config->config_dir : "(none)");

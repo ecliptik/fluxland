@@ -371,8 +371,30 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 		return wlr_buffer_from_cairo(surface);
 	}
 
-	int entry_width = width / count;
+	/* Determine entry width: fixed iconWidth or auto (divide equally) */
+	struct wm_config *cfg = server->config;
+	int fixed_icon_width = cfg ? cfg->iconbar_icon_width : 0;
+	int entry_width;
+	if (fixed_icon_width > 0) {
+		entry_width = fixed_icon_width;
+	} else {
+		entry_width = width / count;
+	}
 	if (entry_width < 1) entry_width = 1;
+
+	/* Compute total content width and alignment offset */
+	int total_content_width = entry_width * count;
+	if (total_content_width > width)
+		total_content_width = width;
+	int align_offset = 0;
+	int alignment = cfg ? cfg->iconbar_alignment : 1;
+	if (total_content_width < width) {
+		if (alignment == 2) /* right */
+			align_offset = width - total_content_width;
+		else if (alignment == 1) /* center */
+			align_offset = (width - total_content_width) / 2;
+		/* left: offset stays 0 */
+	}
 
 	/* Allocate hit boxes */
 	free(toolbar->ib_boxes);
@@ -415,8 +437,18 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 
 	for (int i = 0; i < count; i++) {
 		struct wm_iconbar_entry *entry = &toolbar->ib_entries[i];
-		int ex = i * entry_width;
-		int ew = (i == count - 1) ? (width - ex) : entry_width;
+		int ex = align_offset + i * entry_width;
+		int ew;
+		if (fixed_icon_width > 0) {
+			ew = entry_width;
+			/* Clamp last entry to remaining width */
+			if (ex + ew > width)
+				ew = width - ex;
+		} else {
+			ew = (i == count - 1) ?
+				(width - (ex - align_offset) - align_offset) :
+				entry_width;
+		}
 
 		/* Background */
 		struct wm_color *bg_color = entry->focused ?
@@ -477,9 +509,13 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 
 		char title_buf[256];
 		if (entry->iconified) {
-			/* Wrap iconified window titles in parentheses */
+			/* Wrap iconified window titles using config pattern */
+			const char *pattern = cfg ?
+				cfg->iconbar_iconified_pattern : NULL;
+			if (!pattern)
+				pattern = "(%s)";
 			snprintf(title_buf, sizeof(title_buf),
-				"(%s)", raw_title);
+				pattern, raw_title);
 		} else {
 			snprintf(title_buf, sizeof(title_buf),
 				"%s", raw_title);
@@ -977,6 +1013,59 @@ wm_toolbar_handle_click(struct wm_toolbar *toolbar, double lx, double ly)
 			wm_toolbar_update_iconbar(toolbar);
 			return true;
 		}
+	}
+
+	return false;
+}
+
+bool
+wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
+	double lx, double ly, double delta)
+{
+	if (!toolbar || !toolbar->visible) {
+		return false;
+	}
+
+	/* Convert layout coords to toolbar-local coords */
+	double local_x = lx - toolbar->x;
+	double local_y = ly - toolbar->y;
+
+	/* Check bounds */
+	if (local_x < 0 || local_x >= toolbar->width ||
+	    local_y < 0 || local_y >= toolbar->height) {
+		return false;
+	}
+
+	/* Check if scroll is over the iconbar area */
+	int w = toolbar->width;
+	int ws_width, iconbar_width, clock_width;
+	compute_layout(w, &ws_width, &iconbar_width, &clock_width);
+
+	if (local_x >= ws_width && local_x < ws_width + iconbar_width) {
+		/* Iconbar area: check wheel mode config */
+		struct wm_config *cfg = toolbar->server->config;
+		int wheel_mode = cfg ? cfg->iconbar_wheel_mode : 0;
+		if (wheel_mode == 1) {
+			/* Off: ignore wheel on iconbar */
+			return true; /* consumed but ignored */
+		}
+		/* Screen mode: change workspace */
+		if (delta > 0) {
+			wm_workspace_switch_next(toolbar->server);
+		} else if (delta < 0) {
+			wm_workspace_switch_prev(toolbar->server);
+		}
+		return true;
+	}
+
+	/* Scroll on workspace buttons: also change workspace */
+	if (local_x < ws_width) {
+		if (delta > 0) {
+			wm_workspace_switch_next(toolbar->server);
+		} else if (delta < 0) {
+			wm_workspace_switch_prev(toolbar->server);
+		}
+		return true;
 	}
 
 	return false;

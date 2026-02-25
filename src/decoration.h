@@ -166,6 +166,13 @@ struct wm_decor_button *wm_decoration_button_at(
 enum wm_decor_region wm_decoration_region_at(
 	struct wm_decoration *decoration, double x, double y);
 
+/*
+ * Determine which tab index (0-based) is at (x, y) relative to the
+ * decoration tree. Returns -1 if not over a tab label area.
+ */
+int wm_decoration_tab_at(struct wm_decoration *decoration,
+	double x, double y);
+
 /* Toggle shade state (hide/show client surface) */
 void wm_decoration_set_shaded(struct wm_decoration *decoration,
 	bool shaded, struct wm_style *style);

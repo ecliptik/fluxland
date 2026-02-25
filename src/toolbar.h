@@ -107,6 +107,10 @@ void wm_toolbar_relayout(struct wm_toolbar *toolbar);
 bool wm_toolbar_handle_click(struct wm_toolbar *toolbar,
 	double lx, double ly);
 
+/* Handle scroll/wheel on toolbar; returns true if consumed */
+bool wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
+	double lx, double ly, double delta);
+
 /* Notify toolbar of pointer motion (for auto-hide trigger) */
 void wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 	double lx, double ly);

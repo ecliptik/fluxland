@@ -298,11 +298,11 @@ wm_slit_create(struct wm_server *server)
 		return NULL;
 	}
 
-	/* Background rect using style colors */
+	/* Background rect using slit style, falling back to toolbar */
 	float bg_color[4] = {0.2f, 0.2f, 0.2f, 0.85f};
 	if (server->style) {
 		struct wm_color tc = wm_argb_to_color(
-			server->style->toolbar_texture.color);
+			server->style->slit_texture.color);
 		bg_color[0] = tc.r / 255.0f;
 		bg_color[1] = tc.g / 255.0f;
 		bg_color[2] = tc.b / 255.0f;
@@ -310,6 +310,21 @@ wm_slit_create(struct wm_server *server)
 	}
 	slit->bg_rect = wlr_scene_rect_create(slit->scene_tree,
 		slit->width, slit->height, bg_color);
+
+	/* Border rect behind the background */
+	if (server->style && server->style->slit_border_width > 0) {
+		struct wm_color bc = server->style->slit_border_color;
+		float border_color[4] = {
+			bc.r / 255.0f, bc.g / 255.0f,
+			bc.b / 255.0f, bc.a / 255.0f,
+		};
+		slit->border_rect = wlr_scene_rect_create(
+			slit->scene_tree, slit->width, slit->height,
+			border_color);
+		/* Border rect behind bg rect */
+		wlr_scene_node_lower_to_bottom(
+			&slit->border_rect->node);
+	}
 
 	/* Auto-hide timer */
 	slit->hide_timer = wl_event_loop_add_timer(
@@ -434,10 +449,24 @@ wm_slit_reconfigure(struct wm_slit *slit)
 	/* Layout clients and compute slit dimensions */
 	slit_layout_clients(slit);
 
-	/* Update background rect size */
+	/* Get border width from style */
+	int bw = 0;
+	if (slit->server->style)
+		bw = slit->server->style->slit_border_width;
+
+	/* Update background rect size (inset by border width) */
 	if (slit->bg_rect) {
 		wlr_scene_rect_set_size(slit->bg_rect,
 			slit->width, slit->height);
+		wlr_scene_node_set_position(&slit->bg_rect->node,
+			bw, bw);
+	}
+
+	/* Update border rect size (full size including border) */
+	if (slit->border_rect) {
+		wlr_scene_rect_set_size(slit->border_rect,
+			slit->width + 2 * bw,
+			slit->height + 2 * bw);
 	}
 
 	/* Position based on output and placement */

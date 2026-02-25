@@ -299,6 +299,12 @@ config_create(void)
 	config->titlebar_right = strdup("Shade Minimize Maximize Close");
 	config->clock_format = strdup("%H:%M");
 	config->iconbar_mode = 0;
+	config->iconbar_alignment = 1; /* center */
+	config->iconbar_icon_width = 0; /* auto */
+	config->iconbar_use_pixmap = true;
+	config->iconbar_wheel_mode = 0; /* screen (workspace change) */
+	config->auto_tab_placement = false;
+	config->tab_focus_model = 0; /* click */
 
 	config->full_maximization = false;
 	config->window_focus_alpha = 255;
@@ -444,6 +450,52 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	/* Iconbar mode */
 	val = rc_get_string(db, "session.screen0.iconbar.mode");
 	config->iconbar_mode = parse_iconbar_mode(val);
+
+	/* Iconbar enhancements */
+	val = rc_get_string(db, "session.screen0.iconbar.alignment");
+	if (val) {
+		if (strcasecmp(val, "Left") == 0)
+			config->iconbar_alignment = 0;
+		else if (strcasecmp(val, "Right") == 0)
+			config->iconbar_alignment = 2;
+		else
+			config->iconbar_alignment = 1; /* Center */
+	}
+	config->iconbar_icon_width =
+		rc_get_int(db, "session.screen0.iconbar.iconWidth", 0);
+	if (config->iconbar_icon_width < 0)
+		config->iconbar_icon_width = 0;
+	config->iconbar_use_pixmap =
+		rc_get_bool(db, "session.screen0.iconbar.usePixmap", true);
+	val = rc_get_string(db, "session.screen0.iconbar.wheelMode");
+	if (val) {
+		if (strcasecmp(val, "Off") == 0)
+			config->iconbar_wheel_mode = 1;
+		else
+			config->iconbar_wheel_mode = 0; /* Screen */
+	}
+	val = rc_get_string(db, "session.screen0.iconbar.iconifiedPattern");
+	if (val) {
+		free(config->iconbar_iconified_pattern);
+		config->iconbar_iconified_pattern = strdup(val);
+	}
+
+	/* Auto-tab placement */
+	config->auto_tab_placement =
+		rc_get_bool(db, "session.screen0.autoTabPlacement", false);
+
+	/* Tab focus model */
+	val = rc_get_string(db, "session.screen0.tabFocusModel");
+	if (val) {
+		if (strcasecmp(val, "MouseTabFocus") == 0)
+			config->tab_focus_model = 1;
+		else
+			config->tab_focus_model = 0; /* ClickTabFocus */
+	}
+
+	/* Show window position overlay during move/resize */
+	config->show_window_position =
+		rc_get_bool(db, "session.screen0.showWindowPosition", false);
 
 	/* Full maximization */
 	config->full_maximization =
@@ -678,6 +730,7 @@ config_destroy(struct wm_config *config)
 	free(config->root_command);
 	free(config->default_deco);
 	free(config->window_menu_file);
+	free(config->iconbar_iconified_pattern);
 	free(config->config_dir);
 	free(config->keys_file);
 	free(config->apps_file);

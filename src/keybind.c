@@ -35,6 +35,7 @@ static const struct action_map actions[] = {
 	{"ActivateTab",        WM_ACTION_ACTIVATE_TAB},
 	{"AddWorkspace",       WM_ACTION_ADD_WORKSPACE},
 	{"ArrangeWindows",     WM_ACTION_ARRANGE_WINDOWS},
+	{"BindKey",            WM_ACTION_BIND_KEY},
 	{"ArrangeWindowsHorizontal", WM_ACTION_ARRANGE_HORIZ},
 	{"ArrangeWindowsStackBottom", WM_ACTION_ARRANGE_STACK_BOTTOM},
 	{"ArrangeWindowsStackLeft", WM_ACTION_ARRANGE_STACK_LEFT},
@@ -52,6 +53,7 @@ static const struct action_map actions[] = {
 	{"ExecCommand",        WM_ACTION_EXEC},
 	{"Execute",            WM_ACTION_EXEC},
 	{"Exit",               WM_ACTION_EXIT},
+	{"Export",             WM_ACTION_SET_ENV},
 	{"Focus",              WM_ACTION_FOCUS},
 	{"FocusDown",          WM_ACTION_FOCUS_DOWN},
 	{"FocusLeft",          WM_ACTION_FOCUS_LEFT},
@@ -60,6 +62,7 @@ static const struct action_map actions[] = {
 	{"FocusRight",         WM_ACTION_FOCUS_RIGHT},
 	{"FocusUp",            WM_ACTION_FOCUS_UP},
 	{"Fullscreen",         WM_ACTION_FULLSCREEN},
+	{"GotoWindow",         WM_ACTION_GOTO_WINDOW},
 	{"HideMenus",         WM_ACTION_HIDE_MENUS},
 	{"Iconify",            WM_ACTION_MINIMIZE},
 	{"KeyMode",            WM_ACTION_KEY_MODE},
@@ -82,10 +85,12 @@ static const struct action_map actions[] = {
 	{"MoveTabRight",       WM_ACTION_MOVE_TAB_RIGHT},
 	{"MoveTo",             WM_ACTION_MOVE_TO},
 	{"MoveUp",             WM_ACTION_MOVE_UP},
+	{"NextGroup",          WM_ACTION_NEXT_GROUP},
 	{"NextLayout",         WM_ACTION_NEXT_LAYOUT},
 	{"NextTab",            WM_ACTION_NEXT_TAB},
 	{"NextWindow",         WM_ACTION_NEXT_WINDOW},
 	{"NextWorkspace",      WM_ACTION_NEXT_WORKSPACE},
+	{"PrevGroup",          WM_ACTION_PREV_GROUP},
 	{"PrevLayout",         WM_ACTION_PREV_LAYOUT},
 	{"PrevTab",            WM_ACTION_PREV_TAB},
 	{"PrevWindow",         WM_ACTION_PREV_WINDOW},
@@ -104,6 +109,7 @@ static const struct action_map actions[] = {
 	{"ResizeTo",           WM_ACTION_RESIZE_TO},
 	{"ResizeVertical",     WM_ACTION_RESIZE_VERT},
 	{"RightWorkspace",     WM_ACTION_RIGHT_WORKSPACE},
+	{"SetAlpha",           WM_ACTION_SET_ALPHA},
 	{"SendToNextHead",     WM_ACTION_SEND_TO_NEXT_HEAD},
 	{"SendToNextWorkspace", WM_ACTION_SEND_TO_NEXT_WORKSPACE},
 	{"SendToPrevHead",     WM_ACTION_SEND_TO_PREV_HEAD},
@@ -111,6 +117,7 @@ static const struct action_map actions[] = {
 	{"SendToWorkspace",    WM_ACTION_SEND_TO_WORKSPACE},
 	{"SetHead",            WM_ACTION_SET_HEAD},
 	{"SetDecor",           WM_ACTION_SET_DECOR},
+	{"SetEnv",             WM_ACTION_SET_ENV},
 	{"SetLayer",           WM_ACTION_SET_LAYER},
 	{"SetWorkspaceName",   WM_ACTION_SET_WORKSPACE_NAME},
 	{"SetStyle",           WM_ACTION_SET_STYLE},
@@ -128,11 +135,13 @@ static const struct action_map actions[] = {
 	{"TakeToPrevWorkspace", WM_ACTION_TAKE_TO_PREV_WORKSPACE},
 	{"TakeToWorkspace",    WM_ACTION_TAKE_TO_WORKSPACE},
 	{"ToggleCmd",          WM_ACTION_TOGGLE_CMD},
+	{"Unclutter",          WM_ACTION_UNCLUTTER},
 	{"ToggleDecor",        WM_ACTION_TOGGLE_DECOR},
 	{"ToggleSlitAbove",    WM_ACTION_TOGGLE_SLIT_ABOVE},
 	{"ToggleSlitHidden",   WM_ACTION_TOGGLE_SLIT_HIDDEN},
 	{"ToggleToolbarAbove", WM_ACTION_TOGGLE_TOOLBAR_ABOVE},
 	{"ToggleToolbarVisible", WM_ACTION_TOGGLE_TOOLBAR_VISIBLE},
+	{"ToggleShowPosition", WM_ACTION_TOGGLE_SHOW_POSITION},
 	{"WindowList",         WM_ACTION_WINDOW_LIST},
 	{"WindowMenu",         WM_ACTION_WINDOW_MENU},
 	{"WorkspaceMenu",      WM_ACTION_WORKSPACE_MENU},
@@ -680,4 +689,35 @@ keybind_destroy_all(struct wl_list *keymodes)
 		free(mode->name);
 		free(mode);
 	}
+}
+
+bool
+keybind_add_from_string(struct wl_list *bindings, const char *line)
+{
+	return parse_keybind_line(line, bindings);
+}
+
+static int
+action_name_cmp(const void *a, const void *b)
+{
+	return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+void
+wm_keybind_list_actions(void)
+{
+	size_t n = sizeof(actions) / sizeof(actions[0]);
+	const char **names = malloc(n * sizeof(*names));
+	if (!names)
+		return;
+
+	for (size_t i = 0; i < n; i++)
+		names[i] = actions[i].name;
+
+	qsort(names, n, sizeof(*names), action_name_cmp);
+
+	for (size_t i = 0; i < n; i++)
+		printf("%s\n", names[i]);
+
+	free(names);
 }

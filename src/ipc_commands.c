@@ -8,6 +8,7 @@
 
 #define _GNU_SOURCE
 #include <ctype.h>
+#include <fnmatch.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -344,10 +345,19 @@ static const struct action_entry action_table[] = {
 	{"ToggleSlitHidden", WM_ACTION_TOGGLE_SLIT_HIDDEN},
 	{"ToggleToolbarAbove", WM_ACTION_TOGGLE_TOOLBAR_ABOVE},
 	{"ToggleToolbarVisible", WM_ACTION_TOGGLE_TOOLBAR_VISIBLE},
+	{"ToggleShowPosition", WM_ACTION_TOGGLE_SHOW_POSITION},
 	{"MacroCmd",         WM_ACTION_MACRO_CMD},
 	{"ToggleCmd",        WM_ACTION_TOGGLE_CMD},
 	{"Reconfigure",      WM_ACTION_RECONFIGURE},
 	{"Exit",             WM_ACTION_EXIT},
+	{"SetAlpha",         WM_ACTION_SET_ALPHA},
+	{"SetEnv",           WM_ACTION_SET_ENV},
+	{"Export",           WM_ACTION_SET_ENV},
+	{"BindKey",          WM_ACTION_BIND_KEY},
+	{"GotoWindow",       WM_ACTION_GOTO_WINDOW},
+	{"NextGroup",        WM_ACTION_NEXT_GROUP},
+	{"PrevGroup",        WM_ACTION_PREV_GROUP},
+	{"Unclutter",        WM_ACTION_UNCLUTTER},
 	{NULL, WM_ACTION_NOP},
 };
 
@@ -442,11 +452,93 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		return true;
 
 	case WM_ACTION_NEXT_WINDOW:
-		wm_view_cycle_next(server);
+		if (argument) {
+			struct wm_workspace *ws = server->current_workspace;
+			struct wm_view *focused = server->focused_view;
+			struct wm_view *candidate = NULL;
+			bool past_focused = (focused == NULL);
+			struct wm_view *first_match = NULL;
+			struct wm_view *nwv;
+			wl_list_for_each(nwv, &server->views, link) {
+				if (nwv->workspace != ws && !nwv->sticky)
+					continue;
+				bool match = (nwv->title &&
+					fnmatch(argument, nwv->title,
+						0) == 0) ||
+					(nwv->app_id &&
+					fnmatch(argument, nwv->app_id,
+						0) == 0);
+				if (!match)
+					continue;
+				if (!first_match)
+					first_match = nwv;
+				if (past_focused) {
+					candidate = nwv;
+					break;
+				}
+				if (nwv == focused)
+					past_focused = true;
+			}
+			if (!candidate)
+				candidate = first_match;
+			if (candidate && candidate != focused)
+				wm_focus_view(candidate,
+					candidate->xdg_toplevel->base->surface);
+		} else {
+			wm_view_cycle_next(server);
+		}
 		return true;
 
 	case WM_ACTION_PREV_WINDOW:
-		wm_view_cycle_prev(server);
+		if (argument) {
+			struct wm_workspace *ws = server->current_workspace;
+			struct wm_view *focused = server->focused_view;
+			struct wm_view *candidate = NULL;
+			struct wm_view *last_match = NULL;
+			struct wm_view *pwv;
+			wl_list_for_each(pwv, &server->views, link) {
+				if (pwv->workspace != ws && !pwv->sticky)
+					continue;
+				bool match = (pwv->title &&
+					fnmatch(argument, pwv->title,
+						0) == 0) ||
+					(pwv->app_id &&
+					fnmatch(argument, pwv->app_id,
+						0) == 0);
+				if (!match)
+					continue;
+				if (pwv == focused) {
+					if (candidate)
+						break;
+					continue;
+				}
+				candidate = pwv;
+				last_match = pwv;
+			}
+			if (!candidate) {
+				wl_list_for_each(pwv, &server->views, link) {
+					if (pwv->workspace != ws &&
+					    !pwv->sticky)
+						continue;
+					bool m = (pwv->title &&
+						fnmatch(argument,
+							pwv->title,
+							0) == 0) ||
+						(pwv->app_id &&
+						fnmatch(argument,
+							pwv->app_id,
+							0) == 0);
+					if (m)
+						last_match = pwv;
+				}
+				candidate = last_match;
+			}
+			if (candidate && candidate != focused)
+				wm_focus_view(candidate,
+					candidate->xdg_toplevel->base->surface);
+		} else {
+			wm_view_cycle_prev(server);
+		}
 		return true;
 
 	case WM_ACTION_DEICONIFY:
@@ -1005,6 +1097,156 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		if (server->toolbar)
 			wm_toolbar_toggle_visible(server->toolbar);
 		return true;
+
+	case WM_ACTION_TOGGLE_SHOW_POSITION:
+		server->show_position = !server->show_position;
+		return true;
+
+	case WM_ACTION_SET_ALPHA:
+		if (view && argument) {
+			int alpha;
+			if (argument[0] == '+' || argument[0] == '-') {
+				int offset = atoi(argument);
+				alpha = view->focus_alpha + offset;
+			} else {
+				alpha = atoi(argument);
+			}
+			if (alpha < 0) alpha = 0;
+			if (alpha > 255) alpha = 255;
+			view->focus_alpha = alpha;
+			view->unfocus_alpha = alpha;
+			wm_view_set_opacity(view, alpha);
+		}
+		return true;
+
+	case WM_ACTION_SET_ENV:
+		if (argument) {
+			char *buf = strdup(argument);
+			if (buf) {
+				char *eq = strchr(buf, '=');
+				if (eq) {
+					*eq = '\0';
+					setenv(buf, eq + 1, 1);
+				} else {
+					char *sp = strchr(buf, ' ');
+					if (sp) {
+						*sp = '\0';
+						sp++;
+						while (*sp == ' ' || *sp == '\t')
+							sp++;
+						setenv(buf, sp, 1);
+					}
+				}
+				free(buf);
+			}
+		}
+		return true;
+
+	case WM_ACTION_BIND_KEY: {
+		if (!argument)
+			return true;
+		struct wm_keymode *mode = keybind_get_mode(
+			&server->keymodes, server->current_keymode ?
+			server->current_keymode : "default");
+		if (!mode)
+			return true;
+		keybind_add_from_string(&mode->bindings, argument);
+		return true;
+	}
+
+	case WM_ACTION_GOTO_WINDOW:
+		if (argument) {
+			int n = atoi(argument);
+			if (n >= 1) {
+				struct wm_workspace *ws =
+					server->current_workspace;
+				int count = 0;
+				struct wm_view *gv;
+				wl_list_for_each(gv, &server->views, link) {
+					if (gv->workspace != ws && !gv->sticky)
+						continue;
+					count++;
+					if (count == n) {
+						wm_focus_view(gv,
+							gv->xdg_toplevel->base
+							->surface);
+						break;
+					}
+				}
+			}
+		}
+		return true;
+
+	case WM_ACTION_NEXT_GROUP:
+	case WM_ACTION_PREV_GROUP: {
+		struct wm_workspace *ws = server->current_workspace;
+		struct wm_tab_group *groups[256];
+		int ngroups = 0;
+		struct wm_view *gv;
+		wl_list_for_each(gv, &server->views, link) {
+			if (gv->workspace != ws && !gv->sticky)
+				continue;
+			if (!gv->tab_group)
+				continue;
+			bool found = false;
+			for (int i = 0; i < ngroups; i++) {
+				if (groups[i] == gv->tab_group) {
+					found = true;
+					break;
+				}
+			}
+			if (!found && ngroups < 256)
+				groups[ngroups++] = gv->tab_group;
+		}
+		if (ngroups < 2)
+			return true;
+		int cur_idx = -1;
+		if (view && view->tab_group) {
+			for (int i = 0; i < ngroups; i++) {
+				if (groups[i] == view->tab_group) {
+					cur_idx = i;
+					break;
+				}
+			}
+		}
+		int next_idx;
+		if (cur_idx < 0) {
+			next_idx = 0;
+		} else if (action == WM_ACTION_NEXT_GROUP) {
+			next_idx = (cur_idx + 1) % ngroups;
+		} else {
+			next_idx = (cur_idx - 1 + ngroups) % ngroups;
+		}
+		struct wm_view *target = groups[next_idx]->active_view;
+		if (target)
+			wm_focus_view(target,
+				target->xdg_toplevel->base->surface);
+		return true;
+	}
+
+	case WM_ACTION_UNCLUTTER: {
+		struct wm_workspace *ws = server->current_workspace;
+		struct wlr_box area = {0, 0, 800, 600};
+		struct wm_output *output;
+		wl_list_for_each(output, &server->outputs, link) {
+			area = output->usable_area;
+			break;
+		}
+		int ipc_offset = 0;
+		struct wm_view *uv;
+		wl_list_for_each(uv, &server->views, link) {
+			if (uv->workspace != ws && !uv->sticky)
+				continue;
+			if (!uv->scene_tree->node.enabled)
+				continue;
+			uv->x = area.x + ipc_offset;
+			uv->y = area.y + ipc_offset;
+			wlr_scene_node_set_position(
+				&uv->scene_tree->node, uv->x, uv->y);
+			ipc_offset += 30;
+		}
+		return true;
+	}
 
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:

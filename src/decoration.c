@@ -1122,6 +1122,79 @@ wm_decoration_region_at(struct wm_decoration *decoration, double x, double y)
 	return WM_DECOR_REGION_CLIENT;
 }
 
+int
+wm_decoration_tab_at(struct wm_decoration *decoration, double x, double y)
+{
+	if (!decoration || !decoration->view->tab_group) {
+		return -1;
+	}
+
+	int bw = decoration->border_width;
+	int th = decoration->titlebar_height;
+
+	bool has_titlebar = (decoration->preset == WM_DECOR_NORMAL ||
+		decoration->preset == WM_DECOR_TAB ||
+		decoration->preset == WM_DECOR_TINY ||
+		decoration->preset == WM_DECOR_TOOL);
+
+	if (!has_titlebar) {
+		return -1;
+	}
+
+	/* Check if in titlebar y range */
+	if (y < bw || y >= bw + th) {
+		return -1;
+	}
+
+	/* Compute label area (same logic as wm_decoration_update) */
+	int titlebar_width = decoration->content_width;
+	int button_size = th - 2 * BUTTON_PADDING;
+	if (button_size < 6)
+		button_size = 6;
+
+	int left_buttons_width = 0;
+	if (decoration->buttons_left_count > 0) {
+		left_buttons_width = BUTTON_PADDING +
+			decoration->buttons_left_count *
+			(button_size + BUTTON_PADDING);
+	}
+
+	int right_buttons_width = 0;
+	if (decoration->buttons_right_count > 0) {
+		right_buttons_width = decoration->buttons_right_count *
+			(button_size + BUTTON_PADDING) + BUTTON_PADDING;
+	}
+
+	int label_x = bw + left_buttons_width;
+	int label_width = titlebar_width - left_buttons_width -
+		right_buttons_width;
+	if (label_width < 10)
+		label_width = 10;
+
+	/* Check if x is within the label area */
+	double lx = x - label_x;
+	if (lx < 0 || lx >= label_width) {
+		return -1;
+	}
+
+	/* Compute tab index */
+	struct wm_tab_group *tg = decoration->view->tab_group;
+	int tab_count = tg->count;
+	if (tab_count <= 0) {
+		return -1;
+	}
+
+	int tab_width = label_width / tab_count;
+	if (tab_width < 1)
+		tab_width = 1;
+
+	int idx = (int)lx / tab_width;
+	if (idx >= tab_count)
+		idx = tab_count - 1;
+
+	return idx;
+}
+
 void
 wm_decoration_set_shaded(struct wm_decoration *decoration,
 	bool shaded, struct wm_style *style)

@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <iconv.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/interfaces/wlr_buffer.h>
@@ -279,6 +280,52 @@ parse_angle(const char **pos)
 	return result;
 }
 
+/* --- Encoding conversion --- */
+
+/*
+ * If an [encoding] block is active, convert label from that encoding to UTF-8.
+ * Takes ownership of label; returns converted string (caller must free).
+ * If no conversion needed, returns label unchanged.
+ */
+static char *
+maybe_convert_label(char *label, const char *encoding)
+{
+	if (!label || !encoding)
+		return label;
+	if (strcasecmp(encoding, "UTF-8") == 0)
+		return label;
+
+	iconv_t cd = iconv_open("UTF-8", encoding);
+	if (cd == (iconv_t)-1) {
+		wlr_log(WLR_ERROR, "menu: unknown encoding '%s'", encoding);
+		return label;
+	}
+
+	size_t inlen = strlen(label);
+	size_t outlen = inlen * 4 + 1;
+	char *outbuf = malloc(outlen);
+	if (!outbuf) {
+		iconv_close(cd);
+		return label;
+	}
+
+	char *inp = label;
+	char *outp = outbuf;
+	size_t inleft = inlen;
+	size_t outleft = outlen - 1;
+
+	if (iconv(cd, &inp, &inleft, &outp, &outleft) == (size_t)-1) {
+		iconv_close(cd);
+		free(outbuf);
+		return label;
+	}
+
+	*outp = '\0';
+	iconv_close(cd);
+	free(label);
+	return outbuf;
+}
+
 /* --- Menu allocation --- */
 
 static struct wm_menu *
@@ -359,6 +406,161 @@ add_stylesdir_entries(struct wm_menu *submenu, const char *raw_path)
 	free(dir_path);
 }
 
+/* --- Directory scanning helpers --- */
+
+static int
+strcmp_qsort(const void *a, const void *b)
+{
+	return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+static bool
+is_image_file(const char *name)
+{
+	const char *ext = strrchr(name, '.');
+	if (!ext)
+		return false;
+	return strcasecmp(ext, ".png") == 0 ||
+	       strcasecmp(ext, ".jpg") == 0 ||
+	       strcasecmp(ext, ".jpeg") == 0 ||
+	       strcasecmp(ext, ".bmp") == 0 ||
+	       strcasecmp(ext, ".gif") == 0 ||
+	       strcasecmp(ext, ".webp") == 0;
+}
+
+static void
+add_wallpaper_entries(struct wm_menu *submenu, const char *raw_path)
+{
+	char *dir_path = expand_path(raw_path);
+	if (!dir_path) {
+		struct wm_menu_item *item =
+			menu_item_create(WM_MENU_NOP, "(empty)");
+		if (item)
+			wl_list_insert(submenu->items.prev, &item->link);
+		return;
+	}
+
+	DIR *dir = opendir(dir_path);
+	if (!dir) {
+		struct wm_menu_item *item =
+			menu_item_create(WM_MENU_NOP, "(empty)");
+		if (item)
+			wl_list_insert(submenu->items.prev, &item->link);
+		free(dir_path);
+		return;
+	}
+
+	/* Collect image filenames */
+	char **names = NULL;
+	size_t count = 0;
+	size_t cap = 0;
+	struct dirent *entry;
+
+	while ((entry = readdir(dir)) != NULL) {
+		if (entry->d_name[0] == '.')
+			continue;
+		if (!is_image_file(entry->d_name))
+			continue;
+		if (count >= cap) {
+			cap = cap ? cap * 2 : 32;
+			char **tmp = realloc(names, cap * sizeof(*names));
+			if (!tmp)
+				break;
+			names = tmp;
+		}
+		names[count] = strdup(entry->d_name);
+		if (names[count])
+			count++;
+	}
+	closedir(dir);
+
+	if (count == 0) {
+		struct wm_menu_item *item =
+			menu_item_create(WM_MENU_NOP, "(empty)");
+		if (item)
+			wl_list_insert(submenu->items.prev, &item->link);
+		free(names);
+		free(dir_path);
+		return;
+	}
+
+	qsort(names, count, sizeof(*names), strcmp_qsort);
+
+	for (size_t i = 0; i < count; i++) {
+		struct wm_menu_item *item =
+			menu_item_create(WM_MENU_EXEC, names[i]);
+		if (item) {
+			if (asprintf(&item->command,
+				     "swaybg -i %s/%s -m fill",
+				     dir_path, names[i]) < 0)
+				item->command = NULL;
+			wl_list_insert(submenu->items.prev, &item->link);
+		}
+		free(names[i]);
+	}
+	free(names);
+	free(dir_path);
+}
+
+static void
+add_stylesmenu_entries(struct wm_menu *submenu, const char *raw_path)
+{
+	char *dir_path = expand_path(raw_path);
+	if (!dir_path) {
+		wlr_log(WLR_ERROR, "%s", "menu: failed to expand stylesmenu path");
+		return;
+	}
+
+	DIR *dir = opendir(dir_path);
+	if (!dir) {
+		wlr_log(WLR_ERROR, "menu: cannot open styles directory: %s",
+			dir_path);
+		free(dir_path);
+		return;
+	}
+
+	/* Collect entry names */
+	char **names = NULL;
+	size_t count = 0;
+	size_t cap = 0;
+	struct dirent *entry;
+
+	while ((entry = readdir(dir)) != NULL) {
+		if (entry->d_name[0] == '.')
+			continue;
+		if (count >= cap) {
+			cap = cap ? cap * 2 : 32;
+			char **tmp = realloc(names, cap * sizeof(*names));
+			if (!tmp)
+				break;
+			names = tmp;
+		}
+		names[count] = strdup(entry->d_name);
+		if (names[count])
+			count++;
+	}
+	closedir(dir);
+
+	if (count > 0) {
+		qsort(names, count, sizeof(*names), strcmp_qsort);
+		for (size_t i = 0; i < count; i++) {
+			struct wm_menu_item *item =
+				menu_item_create(WM_MENU_STYLE, names[i]);
+			if (item) {
+				if (asprintf(&item->command, "%s/%s",
+					     dir_path, names[i]) < 0)
+					item->command = NULL;
+				wl_list_insert(submenu->items.prev,
+					&item->link);
+			}
+			free(names[i]);
+		}
+	}
+
+	free(names);
+	free(dir_path);
+}
+
 /* --- Parser --- */
 
 /*
@@ -378,6 +580,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 	}
 
 	char line[1024];
+	char *encoding = NULL;
 
 	while (fgets(line, sizeof(line), fp)) {
 		/* Skip remainder of lines longer than buffer */
@@ -408,6 +611,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 		const char *rest = tag_end + 1;
 
 		if (strcasecmp(tag, "end") == 0) {
+			free(encoding);
 			return;
 		}
 
@@ -421,8 +625,22 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			continue;
 		}
 
+		if (strcasecmp(tag, "encoding") == 0) {
+			char *enc = parse_brace(&rest);
+			free(encoding);
+			encoding = enc;
+			continue;
+		}
+
+		if (strcasecmp(tag, "endencoding") == 0) {
+			free(encoding);
+			encoding = NULL;
+			continue;
+		}
+
 		if (strcasecmp(tag, "exec") == 0) {
 			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
 			char *command = parse_brace(&rest);
 			char *icon = parse_angle(&rest);
 			struct wm_menu_item *item =
@@ -441,6 +659,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 
 		if (strcasecmp(tag, "submenu") == 0) {
 			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
 			char *sub_title = parse_brace(&rest);
 			char *icon = parse_angle(&rest);
 			struct wm_menu_item *item =
@@ -474,6 +693,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 
 		if (strcasecmp(tag, "nop") == 0) {
 			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
 			struct wm_menu_item *item =
 				menu_item_create(WM_MENU_NOP, label);
 			if (item) {
@@ -514,8 +734,55 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			continue;
 		}
 
+		if (strcasecmp(tag, "wallpapers") == 0) {
+			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
+			char *dir = parse_brace(&rest);
+			struct wm_menu_item *item =
+				menu_item_create(WM_MENU_SUBMENU,
+					label ? label : "Wallpapers");
+			if (item) {
+				item->submenu = menu_create(server,
+					label ? label : "Wallpapers");
+				if (item->submenu) {
+					item->submenu->parent = menu;
+					add_wallpaper_entries(
+						item->submenu,
+						dir ? dir : "");
+				}
+				wl_list_insert(menu->items.prev, &item->link);
+			}
+			free(label);
+			free(dir);
+			continue;
+		}
+
+		if (strcasecmp(tag, "stylesmenu") == 0) {
+			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
+			char *dir = parse_brace(&rest);
+			struct wm_menu_item *item =
+				menu_item_create(WM_MENU_SUBMENU,
+					label ? label : "Styles");
+			if (item) {
+				item->submenu = menu_create(server,
+					label ? label : "Styles");
+				if (item->submenu) {
+					item->submenu->parent = menu;
+					if (dir)
+						add_stylesmenu_entries(
+							item->submenu, dir);
+				}
+				wl_list_insert(menu->items.prev, &item->link);
+			}
+			free(label);
+			free(dir);
+			continue;
+		}
+
 		if (strcasecmp(tag, "style") == 0) {
 			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
 			char *filename = parse_brace(&rest);
 			char *icon = parse_angle(&rest);
 			struct wm_menu_item *item =
@@ -559,6 +826,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 		for (int i = 0; simple_tags[i].name; i++) {
 			if (strcasecmp(tag, simple_tags[i].name) == 0) {
 				char *label = parse_paren(&rest);
+				label = maybe_convert_label(label, encoding);
 				struct wm_menu_item *item = menu_item_create(
 					simple_tags[i].type,
 					label ? label : simple_tags[i].name);
@@ -577,6 +845,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 
 		if (strcasecmp(tag, "restart") == 0) {
 			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
 			char *command = parse_brace(&rest);
 			struct wm_menu_item *item = menu_item_create(
 				WM_MENU_RESTART, label ? label : "Restart");
@@ -592,6 +861,7 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 
 		if (strcasecmp(tag, "command") == 0) {
 			char *label = parse_paren(&rest);
+			label = maybe_convert_label(label, encoding);
 			char *command = parse_brace(&rest);
 			struct wm_menu_item *item =
 				menu_item_create(WM_MENU_COMMAND, label);
@@ -605,6 +875,8 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 			continue;
 		}
 	}
+
+	free(encoding);
 }
 
 /* --- Public: Load menu --- */
@@ -839,12 +1111,22 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 	const struct wm_font *title_font = &style->menu_title_font;
 	const struct wm_font *frame_font = &style->menu_frame_font;
 
-	int title_h = title_font->size > 0 ? title_font->size : 12;
-	title_h += 2 * MENU_TITLE_PADDING;
+	int title_h;
+	if (style->menu_title_height > 0) {
+		title_h = style->menu_title_height;
+	} else {
+		title_h = title_font->size > 0 ? title_font->size : 12;
+		title_h += 2 * MENU_TITLE_PADDING;
+	}
 	menu->title_height = title_h;
 
-	int item_h = frame_font->size > 0 ? frame_font->size : 12;
-	item_h += 2 * MENU_ITEM_PADDING;
+	int item_h;
+	if (style->menu_item_height > 0) {
+		item_h = style->menu_item_height;
+	} else {
+		item_h = frame_font->size > 0 ? frame_font->size : 12;
+		item_h += 2 * MENU_ITEM_PADDING;
+	}
 	menu->item_height = item_h;
 
 	menu->border_width = style->menu_border_width > 0 ?
@@ -1085,26 +1367,82 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 			}
 		}
 
-		/* Draw submenu arrow indicator */
+		/* Draw submenu bullet indicator */
 		bool has_submenu = (item->type == WM_MENU_SUBMENU ||
 			item->type == WM_MENU_SENDTO ||
 			item->type == WM_MENU_LAYER);
 		if (has_submenu) {
-			double ax = inner_w - MENU_ITEM_PADDING -
-				MENU_ARROW_SIZE;
-			double ay = y + (item_h - MENU_ARROW_SIZE) / 2.0;
+			const char *bullet = style->menu_bullet;
+			if (!bullet)
+				bullet = "triangle";
 
-			cairo_set_source_rgba(cr,
-				text_color->r / 255.0,
-				text_color->g / 255.0,
-				text_color->b / 255.0,
-				text_color->a / 255.0);
-			cairo_move_to(cr, ax, ay);
-			cairo_line_to(cr, ax + MENU_ARROW_SIZE,
-				ay + MENU_ARROW_SIZE / 2.0);
-			cairo_line_to(cr, ax, ay + MENU_ARROW_SIZE);
-			cairo_close_path(cr);
-			cairo_fill(cr);
+			/* Skip drawing if "empty" */
+			if (strcasecmp(bullet, "empty") != 0) {
+				bool on_left =
+					(style->menu_bullet_position ==
+					 WM_JUSTIFY_LEFT);
+				double ax;
+				if (on_left) {
+					ax = MENU_ITEM_PADDING;
+				} else {
+					ax = inner_w - MENU_ITEM_PADDING -
+						MENU_ARROW_SIZE;
+				}
+				double ay = y +
+					(item_h - MENU_ARROW_SIZE) / 2.0;
+
+				cairo_set_source_rgba(cr,
+					text_color->r / 255.0,
+					text_color->g / 255.0,
+					text_color->b / 255.0,
+					text_color->a / 255.0);
+
+				if (strcasecmp(bullet, "square") == 0) {
+					cairo_rectangle(cr, ax, ay,
+						MENU_ARROW_SIZE,
+						MENU_ARROW_SIZE);
+					cairo_fill(cr);
+				} else if (strcasecmp(bullet,
+					   "diamond") == 0) {
+					double cx = ax +
+						MENU_ARROW_SIZE / 2.0;
+					double cy = ay +
+						MENU_ARROW_SIZE / 2.0;
+					double r = MENU_ARROW_SIZE / 2.0;
+					cairo_move_to(cr, cx, ay);
+					cairo_line_to(cr, cx + r, cy);
+					cairo_line_to(cr, cx, ay +
+						MENU_ARROW_SIZE);
+					cairo_line_to(cr, cx - r, cy);
+					cairo_close_path(cr);
+					cairo_fill(cr);
+				} else {
+					/* Default: triangle */
+					if (on_left) {
+						/* Point left */
+						cairo_move_to(cr,
+							ax + MENU_ARROW_SIZE,
+							ay);
+						cairo_line_to(cr, ax,
+							ay +
+							MENU_ARROW_SIZE / 2.0);
+						cairo_line_to(cr,
+							ax + MENU_ARROW_SIZE,
+							ay + MENU_ARROW_SIZE);
+					} else {
+						/* Point right */
+						cairo_move_to(cr, ax, ay);
+						cairo_line_to(cr,
+							ax + MENU_ARROW_SIZE,
+							ay +
+							MENU_ARROW_SIZE / 2.0);
+						cairo_line_to(cr, ax,
+							ay + MENU_ARROW_SIZE);
+					}
+					cairo_close_path(cr);
+					cairo_fill(cr);
+				}
+			}
 		}
 
 		y += item_h;
