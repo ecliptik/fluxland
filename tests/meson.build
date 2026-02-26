@@ -87,6 +87,28 @@ test_tabgroup = executable(
 )
 test('tabgroup', test_tabgroup)
 
+# --- test_workspace: workspace management logic tests ---
+# workspace.c is #included directly in the test to allow stubbing wlroots deps.
+test_workspace = executable(
+  'test_workspace',
+  files('test_workspace.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('workspace', test_workspace)
+
+# --- test_view_logic: view pure logic function tests ---
+# view.c is #included directly in the test to allow stubbing wlroots deps.
+test_view_logic = executable(
+  'test_view_logic',
+  files('test_view_logic.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, math],
+  install: false,
+)
+test('view_logic', test_view_logic)
+
 # --- test_ipc: IPC command dispatch and subscription tests ---
 test_ipc = executable(
   'test_ipc',
@@ -136,6 +158,50 @@ test_mousebind = executable(
   install: false,
 )
 test('mousebind', test_mousebind)
+
+# --- test_toolbar_layout: toolbar layout and parsing tests ---
+# toolbar.c is #included directly in the test to allow stubbing wlroots/cairo deps.
+test_toolbar_layout = executable(
+  'test_toolbar_layout',
+  files('test_toolbar_layout.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, pangocairo, libdrm],
+  install: false,
+)
+test('toolbar_layout', test_toolbar_layout)
+
+# --- test_slit: slit dockapp container tests ---
+# slit.c is #included directly in the test to allow stubbing wlroots/XWayland deps.
+test_slit = executable(
+  'test_slit',
+  files('test_slit.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('slit', test_slit)
+
+# --- test_menu_interaction: menu interaction logic tests ---
+# menu.c is #included directly in the test to allow stubbing wlroots/cairo/pango deps.
+test_menu_interaction = executable(
+  'test_menu_interaction',
+  files('test_menu_interaction.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, xkbcommon, pangocairo, libdrm],
+  install: false,
+)
+test('menu_interaction', test_menu_interaction)
+
+# --- test_decoration_logic: decoration hit-testing and layout tests ---
+# decoration.c is #included directly in the test to allow stubbing wlroots/cairo deps.
+test_decoration_logic = executable(
+  'test_decoration_logic',
+  files('test_decoration_logic.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, pangocairo, libdrm, math],
+  install: false,
+)
+test('decoration_logic', test_decoration_logic)
 
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
