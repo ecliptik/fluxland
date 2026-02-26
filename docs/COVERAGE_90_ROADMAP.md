@@ -49,17 +49,19 @@ These modules have testable code paths remaining but need careful stub work:
 
 **Estimated gain: +7-10 percentage points**
 
-### Phase 7: Keyboard Refactoring (est. → 75-80%)
+### Phase 7: Keyboard Refactoring (TODO — deferred)
 
-The highest single-module ROI remaining:
+The highest single-module ROI remaining. Deferred as a future TODO — current keyboard.c
+is at 64.8% via extensive stubs, and this refactor is a significant architectural change.
 
 - **Refactor keyboard.c** into:
   - `keyboard_actions.c/h` — action dispatch via vtable (70 function pointers)
   - `condition_eval.c/h` — `evaluate_condition()`, `match_property()`, `bool_match()`
   - `chain_state.c/h` — chain timeout state machine
-- This would make the remaining ~50% of keyboard.c (event handlers, key processing)
+- This would make the remaining ~35% of keyboard.c (event handlers, key processing)
   testable via the vtable pattern instead of 65+ individual stubs
-- **Estimated gain: keyboard.c 50% → 80%, overall +3%**
+- **Estimated gain: keyboard.c 64.8% → 80%+, overall +2-3%**
+- **Prerequisite:** Should be done when there's appetite for a larger refactor, not just test additions
 
 ### Phase 8: Advanced Integration Tests (est. → 80-84%)
 

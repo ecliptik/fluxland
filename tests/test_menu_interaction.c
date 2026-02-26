@@ -5689,6 +5689,488 @@ test_handle_key_priority_order(void)
 	printf("  PASS: handle_key_priority_order\n");
 }
 
+/* ===================== Additional coverage tests ===================== */
+
+/* Test wm_menu_show_root toggle behavior: show then hide */
+static void
+test_show_root_toggle_on_off(void)
+{
+	setup_server();
+	struct wm_menu *root = make_test_menu(3);
+	prepare_menu(root, 50, 50);
+	test_server.root_menu = root;
+
+	/* First call: menu is already visible, should hide it */
+	wm_menu_show_root(&test_server, 60, 70);
+	assert(root->visible == false);
+
+	/* Second call: menu is hidden, should show it */
+	wm_menu_show_root(&test_server, 60, 70);
+	assert(root->visible == true);
+
+	test_server.root_menu = NULL;
+	wm_menu_destroy(root);
+	printf("  PASS: show_root_toggle_on_off\n");
+}
+
+/* Test wm_menu_show_window with no window menu - shows nothing */
+static void
+test_show_window_no_menu_available(void)
+{
+	setup_server();
+	test_server.window_menu = NULL;
+	test_config.window_menu_file = NULL;
+	wm_menu_show_window(&test_server, 10, 20);
+	/* Should not crash, no menu shown */
+	assert(test_server.window_menu == NULL);
+	printf("  PASS: show_window_no_menu_available\n");
+}
+
+/* Test wm_menu_show_window_list creates dynamic list */
+static void
+test_show_window_list_dynamic(void)
+{
+	setup_server();
+
+	/* Add a view */
+	struct wm_view view1;
+	memset(&view1, 0, sizeof(view1));
+	view1.title = "Terminal";
+	view1.app_id = "xterm";
+	struct wlr_scene_tree scene1;
+	memset(&scene1, 0, sizeof(scene1));
+	scene1.node.enabled = 1;
+	view1.scene_tree = &scene1;
+	struct wlr_xdg_toplevel tl1;
+	memset(&tl1, 0, sizeof(tl1));
+	struct wlr_xdg_surface xs1;
+	memset(&xs1, 0, sizeof(xs1));
+	struct wlr_surface surf1;
+	memset(&surf1, 0, sizeof(surf1));
+	xs1.surface = &surf1;
+	tl1.base = &xs1;
+	view1.xdg_toplevel = &tl1;
+	wl_list_insert(&test_server.views, &view1.link);
+
+	wm_menu_show_window_list(&test_server, 100, 200);
+	/* A window list menu should have been created */
+	assert(test_server.window_list_menu != NULL);
+
+	/* Cleanup */
+	wl_list_remove(&view1.link);
+	wm_menu_destroy(test_server.window_list_menu);
+	test_server.window_list_menu = NULL;
+	printf("  PASS: show_window_list_dynamic\n");
+}
+
+/* Test wm_menu_show_workspace_menu creates workspace list */
+static void
+test_show_workspace_menu_dynamic(void)
+{
+	setup_server();
+
+	/* Add two workspaces */
+	struct wm_workspace ws1 = { .name = "Desktop 1", .index = 0 };
+	struct wm_workspace ws2 = { .name = "Desktop 2", .index = 1 };
+	wl_list_init(&ws1.link);
+	wl_list_init(&ws2.link);
+	wl_list_insert(&test_server.workspaces, &ws2.link);
+	wl_list_insert(&test_server.workspaces, &ws1.link);
+
+	wm_menu_show_workspace_menu(&test_server, 50, 50);
+	assert(test_server.workspace_menu != NULL);
+
+	wl_list_remove(&ws1.link);
+	wl_list_remove(&ws2.link);
+	wm_menu_destroy(test_server.workspace_menu);
+	test_server.workspace_menu = NULL;
+	printf("  PASS: show_workspace_menu_dynamic\n");
+}
+
+/* Test wm_menu_show_custom with null/empty path does nothing */
+static void
+test_show_custom_empty_path(void)
+{
+	setup_server();
+	wm_menu_show_custom(&test_server, NULL, 10, 20);
+	assert(test_server.custom_menu == NULL);
+	wm_menu_show_custom(&test_server, "", 10, 20);
+	assert(test_server.custom_menu == NULL);
+	printf("  PASS: show_custom_empty_path\n");
+}
+
+/* Test submenu_delay_cb fires when item has submenu */
+static void
+test_submenu_delay_cb_fires(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+
+	/* Get the submenu item */
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(sub_item != NULL);
+	assert(sub_item->submenu != NULL);
+
+	/* Set up pending submenu state directly */
+	pending_submenu.item = sub_item;
+	pending_submenu.sub_x = 200;
+	pending_submenu.sub_y = 120;
+
+	submenu_delay_cb(NULL);
+	/* After callback, submenu should be shown and pending cleared */
+	assert(pending_submenu.item == NULL);
+	assert(sub_item->submenu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: submenu_delay_cb_fires\n");
+}
+
+/* Test submenu_delay_cb with no pending submenu */
+static void
+test_submenu_delay_cb_no_item(void)
+{
+	pending_submenu.item = NULL;
+	submenu_delay_cb(NULL);
+	/* No crash */
+	printf("  PASS: submenu_delay_cb_no_item\n");
+}
+
+/* Test motion handler with menu_delay > 0 schedules a timer */
+static void
+test_motion_with_delay(void)
+{
+	setup_server();
+	test_config.menu_delay = 100; /* 100ms delay */
+
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+	test_server.root_menu = menu;
+
+	/* Move to the submenu item (index 1) */
+	/* The item is at y = menu->y + border + title_height + item_height */
+	int item_y = menu->y + menu->border_width + menu->title_height +
+		menu->item_height;
+	bool handled = wm_menu_handle_motion_for(menu,
+		menu->x + 10, item_y + 5);
+	assert(handled == true);
+	assert(menu->selected_index == 1);
+
+	test_config.menu_delay = 0;
+	test_server.root_menu = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: motion_with_delay\n");
+}
+
+/* Test h-key at root menu level (no parent) */
+static void
+test_key_h_at_root(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	menu->selected_index = 0;
+
+	/* h at root has no parent to go back to */
+	bool handled = wm_menu_handle_key_for(menu, XKB_KEY_h);
+	assert(handled == true);
+	/* Menu should remain visible */
+	assert(menu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_h_at_root\n");
+}
+
+/* Test wm_menu_handle_button with window_list_menu priority */
+static void
+test_button_window_list_priority(void)
+{
+	setup_server();
+	struct wm_menu *root = make_test_menu(3);
+	struct wm_menu *wl = make_test_menu(3);
+	prepare_menu(root, 100, 100);
+	prepare_menu(wl, 100, 100);
+
+	test_server.root_menu = root;
+	test_server.window_list_menu = wl;
+
+	/* Click in menu area - window_list_menu takes priority */
+	bool handled = wm_menu_handle_button(&test_server,
+		wl->x + 10, wl->y + wl->border_width + wl->title_height + 5,
+		0x110, true);
+	assert(handled == true);
+
+	test_server.root_menu = NULL;
+	test_server.window_list_menu = NULL;
+	wm_menu_destroy(root);
+	wm_menu_destroy(wl);
+	printf("  PASS: button_window_list_priority\n");
+}
+
+/* Test wm_menu_handle_motion with window_list_menu priority */
+static void
+test_motion_window_list_priority(void)
+{
+	setup_server();
+	struct wm_menu *root = make_test_menu(3);
+	struct wm_menu *wl = make_test_menu(3);
+	prepare_menu(root, 100, 100);
+	prepare_menu(wl, 100, 100);
+
+	test_server.root_menu = root;
+	test_server.window_list_menu = wl;
+
+	bool handled = wm_menu_handle_motion(&test_server,
+		wl->x + 10, wl->y + wl->border_width + wl->title_height + 5);
+	assert(handled == true);
+
+	test_server.root_menu = NULL;
+	test_server.window_list_menu = NULL;
+	wm_menu_destroy(root);
+	wm_menu_destroy(wl);
+	printf("  PASS: motion_window_list_priority\n");
+}
+
+/* Test wm_menu_handle_motion with null server */
+static void
+test_motion_null_server(void)
+{
+	bool handled = wm_menu_handle_motion(NULL, 0, 0);
+	assert(handled == false);
+	printf("  PASS: motion_null_server\n");
+}
+
+/* Test wm_menu_handle_button with null server */
+static void
+test_button_null_server(void)
+{
+	bool handled = wm_menu_handle_button(NULL, 0, 0, 0, true);
+	assert(handled == false);
+	printf("  PASS: button_null_server\n");
+}
+
+/* Test wm_menu_handle_motion with window_menu priority */
+static void
+test_motion_window_menu_priority(void)
+{
+	setup_server();
+	struct wm_menu *root = make_test_menu(3);
+	struct wm_menu *win = make_test_menu(3);
+	prepare_menu(root, 100, 100);
+	prepare_menu(win, 100, 100);
+
+	test_server.root_menu = root;
+	test_server.window_menu = win;
+
+	bool handled = wm_menu_handle_motion(&test_server,
+		win->x + 10, win->y + win->border_width + win->title_height + 5);
+	assert(handled == true);
+
+	test_server.root_menu = NULL;
+	test_server.window_menu = NULL;
+	wm_menu_destroy(root);
+	wm_menu_destroy(win);
+	printf("  PASS: motion_window_menu_priority\n");
+}
+
+/* Test wm_menu_handle_button with window_menu priority */
+static void
+test_button_window_menu_priority(void)
+{
+	setup_server();
+	struct wm_menu *root = make_test_menu(3);
+	struct wm_menu *win = make_test_menu(3);
+	prepare_menu(root, 100, 100);
+	prepare_menu(win, 100, 100);
+
+	test_server.root_menu = root;
+	test_server.window_menu = win;
+
+	bool handled = wm_menu_handle_button(&test_server,
+		win->x + 10, win->y + win->border_width + win->title_height + 5,
+		0x110, true);
+	assert(handled == true);
+
+	test_server.root_menu = NULL;
+	test_server.window_menu = NULL;
+	wm_menu_destroy(root);
+	wm_menu_destroy(win);
+	printf("  PASS: button_window_menu_priority\n");
+}
+
+/* Test client menu with a view */
+static void
+test_show_client_menu_with_views(void)
+{
+	setup_server();
+
+	struct wm_view view1;
+	memset(&view1, 0, sizeof(view1));
+	view1.title = "Browser";
+	view1.app_id = "firefox";
+	struct wlr_scene_tree scene1;
+	memset(&scene1, 0, sizeof(scene1));
+	scene1.node.enabled = 1;
+	view1.scene_tree = &scene1;
+	wl_list_insert(&test_server.views, &view1.link);
+
+	wm_menu_show_client_menu(&test_server, NULL, 50, 50);
+	assert(test_server.client_menu != NULL);
+
+	wl_list_remove(&view1.link);
+	wm_menu_destroy(test_server.client_menu);
+	test_server.client_menu = NULL;
+	printf("  PASS: show_client_menu_with_views\n");
+}
+
+/* Test client menu with filter pattern */
+static void
+test_show_client_menu_filtered(void)
+{
+	setup_server();
+
+	struct wm_view view1;
+	memset(&view1, 0, sizeof(view1));
+	view1.title = "Browser";
+	view1.app_id = "firefox";
+	struct wlr_scene_tree scene1;
+	memset(&scene1, 0, sizeof(scene1));
+	scene1.node.enabled = 1;
+	view1.scene_tree = &scene1;
+
+	struct wm_view view2;
+	memset(&view2, 0, sizeof(view2));
+	view2.title = "Editor";
+	view2.app_id = "vim";
+	struct wlr_scene_tree scene2;
+	memset(&scene2, 0, sizeof(scene2));
+	scene2.node.enabled = 1;
+	view2.scene_tree = &scene2;
+
+	wl_list_insert(&test_server.views, &view2.link);
+	wl_list_insert(&test_server.views, &view1.link);
+
+	/* Filter for "fire" should only include firefox */
+	wm_menu_show_client_menu(&test_server, "fire", 50, 50);
+	assert(test_server.client_menu != NULL);
+
+	wl_list_remove(&view1.link);
+	wl_list_remove(&view2.link);
+	wm_menu_destroy(test_server.client_menu);
+	test_server.client_menu = NULL;
+	printf("  PASS: show_client_menu_filtered\n");
+}
+
+/* Test type-ahead with space character */
+static void
+test_type_ahead_space_key(void)
+{
+	setup_server();
+	test_config.menu_search = WM_MENU_SEARCH_SOMEWHERE;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "No Match");
+	struct wm_menu_item *i1 = menu_item_create(WM_MENU_EXEC, "Has Space Here");
+	wl_list_insert(menu->items.prev, &i0->link);
+	wl_list_insert(menu->items.prev, &i1->link);
+	prepare_menu(menu, 0, 0);
+	menu->selected_index = -1;
+
+	/* Type space character */
+	bool handled = wm_menu_handle_key_for(menu, XKB_KEY_space);
+	assert(handled == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: type_ahead_space_key\n");
+}
+
+/* Test motion handler returns false when no menu at position */
+static void
+test_motion_for_no_hit(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+
+	/* Motion way outside menu */
+	bool handled = wm_menu_handle_motion_for(menu, 9999, 9999);
+	assert(handled == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: motion_for_no_hit\n");
+}
+
+/* Test button release inside menu returns true (no action) */
+static void
+test_button_release_inside_menu(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	test_server.root_menu = menu;
+
+	/* Release (not press) inside menu */
+	bool handled = wm_menu_handle_button_for(menu,
+		menu->x + 10, menu->y + menu->border_width + menu->title_height + 5,
+		0x110, false);
+	/* Release inside menu should return true (found menu) */
+	assert(handled == true);
+
+	test_server.root_menu = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: button_release_inside_menu\n");
+}
+
+/* Test wm_menu_show_client_menu with null server */
+static void
+test_show_client_menu_null_server(void)
+{
+	wm_menu_show_client_menu(NULL, NULL, 0, 0);
+	/* No crash */
+	printf("  PASS: show_client_menu_null_server\n");
+}
+
+/* Test search_timer_cb resets search state */
+static void
+test_search_timer_cb_reset(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+
+	/* Manually set search state */
+	menu->search_len = 5;
+	strcpy(menu->search_buf, "hello");
+
+	search_timer_cb(menu);
+	assert(menu->search_len == 0);
+	assert(menu->search_buf[0] == '\0');
+
+	wm_menu_destroy(menu);
+	printf("  PASS: search_timer_cb_reset\n");
+}
+
+/* Test button click on title area (idx < 0) returns true */
+static void
+test_button_on_title_area(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	test_server.root_menu = menu;
+
+	/* Click on title bar area (y within border + title_height) */
+	bool handled = wm_menu_handle_button_for(menu,
+		menu->x + 10, menu->y + 5, 0x110, true);
+	assert(handled == true);
+	/* Menu should still be visible */
+	assert(menu->visible == true);
+
+	test_server.root_menu = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: button_on_title_area\n");
+}
+
 /* ===================== Main ===================== */
 
 int
@@ -5892,6 +6374,43 @@ main(void)
 	test_cancel_pending_submenu();
 	test_parse_long_line();
 	test_parse_window_menu_tags();
+
+	/* Show/hide lifecycle extensions */
+	test_show_root_toggle_on_off();
+	test_show_window_no_menu_available();
+	test_show_window_list_dynamic();
+	test_show_workspace_menu_dynamic();
+	test_show_custom_empty_path();
+
+	/* Submenu delay */
+	test_submenu_delay_cb_fires();
+	test_submenu_delay_cb_no_item();
+	test_motion_with_delay();
+
+	/* Key navigation extensions */
+	test_key_h_at_root();
+
+	/* Type-ahead extensions */
+	test_type_ahead_space_key();
+
+	/* Button/Motion priority dispatch */
+	test_button_window_list_priority();
+	test_motion_window_list_priority();
+	test_motion_null_server();
+	test_button_null_server();
+	test_motion_window_menu_priority();
+	test_button_window_menu_priority();
+	test_motion_for_no_hit();
+	test_button_release_inside_menu();
+
+	/* Client menu */
+	test_show_client_menu_with_views();
+	test_show_client_menu_filtered();
+
+	/* Additional coverage */
+	test_show_client_menu_null_server();
+	test_search_timer_cb_reset();
+	test_button_on_title_area();
 
 	printf("All menu interaction tests passed.\n");
 	return 0;

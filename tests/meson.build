@@ -259,6 +259,17 @@ test_ipc_server = executable(
 )
 test('ipc_server', test_ipc_server)
 
+# --- test_server: server init, reconfigure, and lifecycle tests ---
+# server.c is #included directly in the test to allow stubbing wlroots/wayland deps.
+test_server = executable(
+  'test_server',
+  files('test_server.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('server', test_server)
+
 # --- test_systray: system tray layout, hit-testing, and icon management tests ---
 # systray.c is #included directly in the test to allow stubbing wlroots/cairo deps.
 # Requires libsystemd (or libelogind) for sd-bus type definitions and vtable macros.

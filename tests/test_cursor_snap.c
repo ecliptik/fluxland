@@ -1408,6 +1408,14 @@ static void closefrom(int fd) { (void)fd; }
 
 #include "cursor.c"
 
+/* --- Signal init helper (mirrors wl_signal_init) --- */
+
+static inline void
+wl_signal_init_stub(struct wl_signal *signal)
+{
+	wl_list_init(&signal->listener_list);
+}
+
 /* --- Test helpers --- */
 
 static struct wm_server test_server;
@@ -1902,6 +1910,954 @@ test_snap_zone_geometry_top_bottom(void)
 	printf("  PASS: snap_zone_geometry_top_bottom\n");
 }
 
+/*
+ * Test 19: process_cursor_move computes correct position in opaque mode.
+ */
+static void
+test_process_cursor_move_opaque(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 200;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grab_x = 50;
+	test_server.grab_y = 60;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 800, 600};
+	test_config.opaque_move = true;
+
+	/* Move cursor to (150, 180) — view should move to (200, 320) */
+	test_cursor.x = 150;
+	test_cursor.y = 180;
+	reset_globals();
+	process_cursor_move(&test_server, 0);
+
+	/* new_x = 150 - 50 + 100 = 200, new_y = 180 - 60 + 200 = 320 */
+	assert(view.x == 200);
+	assert(view.y == 320);
+	assert(g_set_position_count > 0);
+	printf("  PASS: process_cursor_move_opaque\n");
+}
+
+/*
+ * Test 20: process_cursor_move with no grabbed view is a no-op.
+ */
+static void
+test_process_cursor_move_no_view(void)
+{
+	setup();
+	test_server.grabbed_view = NULL;
+	reset_globals();
+	process_cursor_move(&test_server, 0);
+	assert(g_set_position_count == 0);
+	printf("  PASS: process_cursor_move_no_view\n");
+}
+
+/*
+ * Test 21: process_cursor_move in wireframe (non-opaque) mode
+ * does NOT move the view directly, but sets wireframe state.
+ */
+static void
+test_process_cursor_move_wireframe(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 200;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grab_x = 50;
+	test_server.grab_y = 60;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 800, 600};
+	test_config.opaque_move = false; /* wireframe mode */
+
+	test_cursor.x = 200;
+	test_cursor.y = 300;
+	process_cursor_move(&test_server, 0);
+
+	/* View position should NOT change in wireframe mode */
+	assert(view.x == 100);
+	assert(view.y == 200);
+	printf("  PASS: process_cursor_move_wireframe\n");
+}
+
+/*
+ * Test 22: process_cursor_resize with right+bottom edges (opaque mode).
+ */
+static void
+test_process_cursor_resize_right_bottom(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 200;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.resize_edges = WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
+	test_server.grab_x = 500;
+	test_server.grab_y = 400;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 800, 600};
+	test_config.opaque_resize = true;
+
+	/* Move cursor 50px right and 30px down from grab point */
+	test_cursor.x = 550;
+	test_cursor.y = 430;
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+
+	/* Width should grow by 50, height by 30 */
+	assert(toplevel.width == 850);
+	assert(toplevel.height == 630);
+	/* Position should NOT change for right+bottom resize */
+	assert(view.x == 100);
+	assert(view.y == 200);
+	printf("  PASS: process_cursor_resize_right_bottom\n");
+}
+
+/*
+ * Test 23: process_cursor_resize with left+top edges moves origin.
+ */
+static void
+test_process_cursor_resize_left_top(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 200;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.resize_edges = WLR_EDGE_LEFT | WLR_EDGE_TOP;
+	test_server.grab_x = 100;
+	test_server.grab_y = 200;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 800, 600};
+	test_config.opaque_resize = true;
+
+	/* Drag 30px left and 20px up */
+	test_cursor.x = 70;
+	test_cursor.y = 180;
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+
+	/* x/y should shift left/up, w/h should grow */
+	assert(view.x == 70);
+	assert(view.y == 180);
+	assert(toplevel.width == 830);   /* 800 - (-30) = 830 */
+	assert(toplevel.height == 620);  /* 600 - (-20) = 620 */
+	printf("  PASS: process_cursor_resize_left_top\n");
+}
+
+/*
+ * Test 24: process_cursor_resize clamps minimum size to 1x1.
+ */
+static void
+test_process_cursor_resize_min_size(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.resize_edges = WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
+	test_server.grab_x = 500;
+	test_server.grab_y = 400;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 100, 80};
+	test_config.opaque_resize = true;
+
+	/* Drag way past origin — would produce negative size */
+	test_cursor.x = 200;   /* dx = -300, w = 100 + (-300) = -200 */
+	test_cursor.y = 100;   /* dy = -300, h = 80 + (-300) = -220 */
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+
+	/* Should be clamped to 1x1 minimum */
+	assert(toplevel.width == 1);
+	assert(toplevel.height == 1);
+	printf("  PASS: process_cursor_resize_min_size\n");
+}
+
+/*
+ * Test 25: process_cursor_resize with no grabbed view is a no-op.
+ */
+static void
+test_process_cursor_resize_no_view(void)
+{
+	setup();
+	test_server.grabbed_view = NULL;
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+	assert(g_set_size_count == 0);
+	assert(g_set_position_count == 0);
+	printf("  PASS: process_cursor_resize_no_view\n");
+}
+
+/*
+ * Test 26: execute_mouse_action dispatches RAISE action.
+ */
+static void
+test_execute_mouse_action_raise(void)
+{
+	setup();
+	struct wm_view view = {0};
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_RAISE, NULL, &view);
+	assert(g_view_raise_count == 1);
+	printf("  PASS: execute_mouse_action_raise\n");
+}
+
+/*
+ * Test 27: execute_mouse_action dispatches FOCUS action.
+ */
+static void
+test_execute_mouse_action_focus(void)
+{
+	setup();
+	struct wm_view view = {0};
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_FOCUS, NULL, &view);
+	assert(g_focus_view_count == 1);
+	assert(test_server.focus_user_initiated == true);
+	printf("  PASS: execute_mouse_action_focus\n");
+}
+
+/*
+ * Test 28: execute_mouse_action dispatches START_MOVING action.
+ */
+static void
+test_execute_mouse_action_start_moving(void)
+{
+	setup();
+	struct wm_view view = {0};
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_START_MOVING,
+		NULL, &view);
+	assert(g_begin_interactive_count == 1);
+	printf("  PASS: execute_mouse_action_start_moving\n");
+}
+
+/*
+ * Test 29: execute_mouse_action dispatches START_RESIZING action
+ * with correct edge calculation.
+ */
+static void
+test_execute_mouse_action_start_resizing(void)
+{
+	setup();
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wlr_xdg_surface xdg_surface = {0};
+	toplevel.base = &xdg_surface;
+	struct wm_view view = {0};
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 100;
+
+	/* Cursor in bottom-right quadrant of view */
+	test_cursor.x = 600;
+	test_cursor.y = 500;
+
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_START_RESIZING,
+		NULL, &view);
+	assert(g_begin_interactive_count == 1);
+	printf("  PASS: execute_mouse_action_start_resizing\n");
+}
+
+/*
+ * Test 30: execute_mouse_action NEXT/PREV_WORKSPACE actions.
+ */
+static void
+test_execute_mouse_action_workspace_switch(void)
+{
+	setup();
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_NEXT_WORKSPACE,
+		NULL, NULL);
+	assert(g_switch_next_count == 1);
+
+	execute_mouse_action(&test_server, WM_ACTION_PREV_WORKSPACE,
+		NULL, NULL);
+	assert(g_switch_prev_count == 1);
+	printf("  PASS: execute_mouse_action_workspace_switch\n");
+}
+
+/*
+ * Test 31: execute_mouse_action with NULL view is safe for view-
+ * dependent actions (RAISE, FOCUS, CLOSE, etc.).
+ */
+static void
+test_execute_mouse_action_null_view(void)
+{
+	setup();
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_RAISE, NULL, NULL);
+	assert(g_view_raise_count == 0);
+
+	execute_mouse_action(&test_server, WM_ACTION_FOCUS, NULL, NULL);
+	assert(g_focus_view_count == 0);
+
+	execute_mouse_action(&test_server, WM_ACTION_START_MOVING,
+		NULL, NULL);
+	assert(g_begin_interactive_count == 0);
+
+	execute_mouse_action(&test_server, WM_ACTION_CLOSE, NULL, NULL);
+	execute_mouse_action(&test_server, WM_ACTION_STICK, NULL, NULL);
+	execute_mouse_action(&test_server, WM_ACTION_LOWER, NULL, NULL);
+
+	/* No crashes — all handled gracefully */
+	printf("  PASS: execute_mouse_action_null_view\n");
+}
+
+/*
+ * Test 32: execute_mouse_action WORKSPACE with numeric argument.
+ */
+static void
+test_execute_mouse_action_workspace_number(void)
+{
+	setup();
+	/* workspace switch to index (arg is 1-based, converted to 0-based) */
+	execute_mouse_action(&test_server, WM_ACTION_WORKSPACE, "3", NULL);
+	/* No crash, the stub wm_workspace_switch was called */
+
+	/* Invalid argument */
+	execute_mouse_action(&test_server, WM_ACTION_WORKSPACE, "abc", NULL);
+	execute_mouse_action(&test_server, WM_ACTION_WORKSPACE, NULL, NULL);
+	printf("  PASS: execute_mouse_action_workspace_number\n");
+}
+
+/*
+ * Test 33: execute_mouse_action NOP and default cases are no-ops.
+ */
+static void
+test_execute_mouse_action_nop(void)
+{
+	setup();
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_NOP, NULL, NULL);
+	execute_mouse_action(&test_server, WM_ACTION_KILL, NULL, NULL);
+	assert(g_view_raise_count == 0);
+	assert(g_focus_view_count == 0);
+	printf("  PASS: execute_mouse_action_nop\n");
+}
+
+/*
+ * Test 34: execute_mousebind dispatches simple (non-macro) binding.
+ */
+static void
+test_execute_mousebind_simple(void)
+{
+	setup();
+	struct wm_view view = {0};
+	struct wm_mousebind bind = {0};
+	bind.action = WM_ACTION_RAISE;
+
+	reset_globals();
+	execute_mousebind(&test_server, &bind, &view);
+	assert(g_view_raise_count == 1);
+	printf("  PASS: execute_mousebind_simple\n");
+}
+
+/*
+ * Test 35: execute_mousebind handles MACRO_CMD by running all subcmds.
+ */
+static void
+test_execute_mousebind_macro(void)
+{
+	setup();
+	struct wm_view view = {0};
+	struct wm_subcmd cmd2 = {
+		.action = WM_ACTION_FOCUS, .argument = NULL, .next = NULL
+	};
+	struct wm_subcmd cmd1 = {
+		.action = WM_ACTION_RAISE, .argument = NULL, .next = &cmd2
+	};
+	struct wm_mousebind bind = {0};
+	bind.action = WM_ACTION_MACRO_CMD;
+	bind.subcmds = &cmd1;
+
+	reset_globals();
+	execute_mousebind(&test_server, &bind, &view);
+	assert(g_view_raise_count == 1);
+	assert(g_focus_view_count == 1);
+	printf("  PASS: execute_mousebind_macro\n");
+}
+
+/*
+ * Test 36: execute_mousebind handles TOGGLE_CMD cycling through subcmds.
+ */
+static void
+test_execute_mousebind_toggle(void)
+{
+	setup();
+	struct wm_subcmd cmd2 = {
+		.action = WM_ACTION_NEXT_WORKSPACE, .argument = NULL,
+		.next = NULL
+	};
+	struct wm_subcmd cmd1 = {
+		.action = WM_ACTION_PREV_WORKSPACE, .argument = NULL,
+		.next = &cmd2
+	};
+	struct wm_mousebind bind = {0};
+	bind.action = WM_ACTION_TOGGLE_CMD;
+	bind.subcmds = &cmd1;
+	bind.subcmd_count = 2;
+	bind.toggle_index = 0;
+
+	reset_globals();
+
+	/* First toggle: should execute cmd1 (PREV_WORKSPACE) */
+	execute_mousebind(&test_server, &bind, NULL);
+	assert(g_switch_prev_count == 1);
+	assert(g_switch_next_count == 0);
+	assert(bind.toggle_index == 1);
+
+	/* Second toggle: should execute cmd2 (NEXT_WORKSPACE) */
+	execute_mousebind(&test_server, &bind, NULL);
+	assert(g_switch_next_count == 1);
+	assert(bind.toggle_index == 0); /* wraps back to 0 */
+
+	printf("  PASS: execute_mousebind_toggle\n");
+}
+
+/*
+ * Test 37: cancel_auto_raise clears auto_raise_view.
+ */
+static void
+test_cancel_auto_raise(void)
+{
+	setup();
+	struct wm_view view = {0};
+	test_server.auto_raise_view = &view;
+	cancel_auto_raise(&test_server);
+	assert(test_server.auto_raise_view == NULL);
+	printf("  PASS: cancel_auto_raise\n");
+}
+
+/*
+ * Test 38: auto_raise_timer_callback raises view if it matches
+ * focused_view, clears auto_raise_view.
+ */
+static void
+test_auto_raise_timer_callback_match(void)
+{
+	setup();
+	struct wm_view view = {0};
+	test_server.auto_raise_view = &view;
+	test_server.focused_view = &view;
+
+	reset_globals();
+	int ret = auto_raise_timer_callback(&test_server);
+	assert(ret == 0);
+	assert(g_view_raise_count == 1);
+	assert(test_server.auto_raise_view == NULL);
+	printf("  PASS: auto_raise_timer_callback_match\n");
+}
+
+/*
+ * Test 39: auto_raise_timer_callback does NOT raise if view
+ * doesn't match focused_view.
+ */
+static void
+test_auto_raise_timer_callback_mismatch(void)
+{
+	setup();
+	struct wm_view view1 = {0};
+	struct wm_view view2 = {0};
+	test_server.auto_raise_view = &view1;
+	test_server.focused_view = &view2;
+
+	reset_globals();
+	auto_raise_timer_callback(&test_server);
+	assert(g_view_raise_count == 0);
+	assert(test_server.auto_raise_view == NULL);
+	printf("  PASS: auto_raise_timer_callback_mismatch\n");
+}
+
+/*
+ * Test 40: schedule_auto_raise with raise_on_focus=false is a no-op.
+ */
+static void
+test_schedule_auto_raise_disabled(void)
+{
+	setup();
+	struct wm_view view = {0};
+	test_config.raise_on_focus = false;
+	reset_globals();
+	schedule_auto_raise(&test_server, &view);
+	assert(g_view_raise_count == 0);
+	printf("  PASS: schedule_auto_raise_disabled\n");
+}
+
+/*
+ * Test 41: schedule_auto_raise with delay=0 raises immediately.
+ */
+static void
+test_schedule_auto_raise_immediate(void)
+{
+	setup();
+	struct wm_view view = {0};
+	test_config.raise_on_focus = true;
+	test_config.auto_raise_delay_ms = 0;
+	reset_globals();
+	schedule_auto_raise(&test_server, &view);
+	assert(g_view_raise_count == 1);
+	printf("  PASS: schedule_auto_raise_immediate\n");
+}
+
+/*
+ * Test 42: schedule_auto_raise with delay>0 stores the view for later.
+ */
+static void
+test_schedule_auto_raise_delayed(void)
+{
+	setup();
+	struct wm_view view = {0};
+	test_config.raise_on_focus = true;
+	test_config.auto_raise_delay_ms = 200;
+	reset_globals();
+	schedule_auto_raise(&test_server, &view);
+	/* Timer stub returns NULL, so fallback raises immediately */
+	assert(g_view_raise_count == 1);
+	printf("  PASS: schedule_auto_raise_delayed\n");
+}
+
+/*
+ * Test 43: snap_preview_destroy resets snap state.
+ */
+static void
+test_snap_preview_destroy(void)
+{
+	setup();
+	test_server.snap_zone = WM_SNAP_ZONE_LEFT_HALF;
+	test_server.snap_preview = NULL; /* already NULL, should not crash */
+	snap_preview_destroy(&test_server);
+	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
+	assert(test_server.snap_preview == NULL);
+	printf("  PASS: snap_preview_destroy\n");
+}
+
+/*
+ * Test 44: cursor_pixel_buffer_begin_data_ptr_access denies write access.
+ */
+static void
+test_pixel_buffer_write_denied(void)
+{
+	struct wm_cursor_pixel_buffer buf = {0};
+	buf.data = (void *)0x1234;
+	buf.format = DRM_FORMAT_ARGB8888;
+	buf.stride = 100;
+
+	void *data;
+	uint32_t format;
+	size_t stride;
+	bool ok = cursor_pixel_buffer_begin_data_ptr_access(
+		&buf.base, WLR_BUFFER_DATA_PTR_ACCESS_WRITE,
+		&data, &format, &stride);
+	assert(!ok);
+	printf("  PASS: pixel_buffer_write_denied\n");
+}
+
+/*
+ * Test 45: cursor_pixel_buffer_begin_data_ptr_access allows read access.
+ */
+static void
+test_pixel_buffer_read_allowed(void)
+{
+	struct wm_cursor_pixel_buffer buf = {0};
+	buf.data = (void *)0x5678;
+	buf.format = DRM_FORMAT_ARGB8888;
+	buf.stride = 256;
+
+	void *data;
+	uint32_t format;
+	size_t stride;
+	bool ok = cursor_pixel_buffer_begin_data_ptr_access(
+		&buf.base, 0, &data, &format, &stride);
+	assert(ok);
+	assert(data == (void *)0x5678);
+	assert(format == DRM_FORMAT_ARGB8888);
+	assert(stride == 256);
+	printf("  PASS: pixel_buffer_read_allowed\n");
+}
+
+/*
+ * Test 46: cursor_wlr_buffer_from_cairo returns NULL for NULL surface.
+ */
+static void
+test_cursor_wlr_buffer_from_cairo_null(void)
+{
+	struct wlr_buffer *result = cursor_wlr_buffer_from_cairo(NULL);
+	assert(result == NULL);
+	printf("  PASS: cursor_wlr_buffer_from_cairo_null\n");
+}
+
+/*
+ * Test 47: wireframe_hide resets wireframe state.
+ */
+static void
+test_wireframe_hide(void)
+{
+	setup();
+	test_server.wireframe_active = true;
+	/* All rects are NULL (never created), hide should handle it */
+	wireframe_hide(&test_server);
+	assert(test_server.wireframe_active == false);
+	printf("  PASS: wireframe_hide\n");
+}
+
+/*
+ * Test 48: wireframe_show sets state even though stubs return NULL rects.
+ * The function calls wlr_scene_rect_create (returns NULL in stubs)
+ * but still updates position/size state.
+ */
+static void
+test_wireframe_show_state(void)
+{
+	setup();
+	test_server.wireframe_active = false;
+	wireframe_show(&test_server, 10, 20, 300, 400);
+	assert(test_server.wireframe_active == true);
+	assert(test_server.wireframe_x == 10);
+	assert(test_server.wireframe_y == 20);
+	assert(test_server.wireframe_w == 300);
+	assert(test_server.wireframe_h == 400);
+	printf("  PASS: wireframe_show_state\n");
+}
+
+/*
+ * Test 49: wireframe_show clamps minimum size to 1x1.
+ */
+static void
+test_wireframe_show_min_size(void)
+{
+	setup();
+	wireframe_show(&test_server, 0, 0, -5, 0);
+	assert(test_server.wireframe_w == 1);
+	assert(test_server.wireframe_h == 1);
+	printf("  PASS: wireframe_show_min_size\n");
+}
+
+/*
+ * Test 50: process_cursor_motion dispatches to move handler when
+ * cursor_mode is WM_CURSOR_MOVE.
+ */
+static void
+test_process_cursor_motion_move_mode(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 50;
+	view.y = 50;
+
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grabbed_view = &view;
+	test_server.grab_x = 10;
+	test_server.grab_y = 10;
+	test_server.grab_geobox = (struct wlr_box){50, 50, 400, 300};
+	test_config.opaque_move = true;
+
+	test_cursor.x = 100;
+	test_cursor.y = 100;
+	reset_globals();
+	process_cursor_motion(&test_server, 1000);
+
+	/* Should have moved the view */
+	assert(view.x == 140); /* 100 - 10 + 50 = 140 */
+	assert(view.y == 140); /* 100 - 10 + 50 = 140 */
+	printf("  PASS: process_cursor_motion_move_mode\n");
+}
+
+/*
+ * Test 51: process_cursor_motion dispatches to resize handler when
+ * cursor_mode is WM_CURSOR_RESIZE.
+ */
+static void
+test_process_cursor_motion_resize_mode(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.grabbed_view = &view;
+	test_server.resize_edges = WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
+	test_server.grab_x = 400;
+	test_server.grab_y = 300;
+	test_server.grab_geobox = (struct wlr_box){0, 0, 400, 300};
+	test_config.opaque_resize = true;
+
+	test_cursor.x = 450;
+	test_cursor.y = 350;
+	reset_globals();
+	process_cursor_motion(&test_server, 1000);
+
+	assert(toplevel.width == 450);
+	assert(toplevel.height == 350);
+	printf("  PASS: process_cursor_motion_resize_mode\n");
+}
+
+/*
+ * Test 52: process_cursor_motion returns early when session is locked.
+ */
+static void
+test_process_cursor_motion_locked(void)
+{
+	setup();
+	test_server.session_lock.locked = true;
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	reset_globals();
+	process_cursor_motion(&test_server, 1000);
+	/* Should return after clearing focus, no move/resize */
+	assert(g_set_position_count == 0);
+	printf("  PASS: process_cursor_motion_locked\n");
+}
+
+/*
+ * Test 53: wm_cursor_init hooks up all listener notify functions.
+ */
+static void
+test_wm_cursor_init(void)
+{
+	setup();
+	/* Initialize cursor signal lists */
+	wl_signal_init_stub(&test_cursor.events.motion);
+	wl_signal_init_stub(&test_cursor.events.motion_absolute);
+	wl_signal_init_stub(&test_cursor.events.button);
+	wl_signal_init_stub(&test_cursor.events.axis);
+	wl_signal_init_stub(&test_cursor.events.frame);
+	wl_signal_init_stub(&test_cursor.events.touch_down);
+	wl_signal_init_stub(&test_cursor.events.touch_up);
+	wl_signal_init_stub(&test_cursor.events.touch_motion);
+	wl_signal_init_stub(&test_cursor.events.touch_cancel);
+	wl_signal_init_stub(&test_cursor.events.touch_frame);
+	wl_signal_init_stub(&test_cursor.events.swipe_begin);
+	wl_signal_init_stub(&test_cursor.events.swipe_update);
+	wl_signal_init_stub(&test_cursor.events.swipe_end);
+	wl_signal_init_stub(&test_cursor.events.pinch_begin);
+	wl_signal_init_stub(&test_cursor.events.pinch_update);
+	wl_signal_init_stub(&test_cursor.events.pinch_end);
+	wl_signal_init_stub(&test_cursor.events.hold_begin);
+	wl_signal_init_stub(&test_cursor.events.hold_end);
+
+	wm_cursor_init(&test_server);
+
+	/* Verify all notify functions are set */
+	assert(test_server.cursor_motion.notify != NULL);
+	assert(test_server.cursor_motion_absolute.notify != NULL);
+	assert(test_server.cursor_button.notify != NULL);
+	assert(test_server.cursor_axis.notify != NULL);
+	assert(test_server.cursor_frame.notify != NULL);
+	assert(test_server.cursor_touch_down.notify != NULL);
+	assert(test_server.cursor_touch_up.notify != NULL);
+	assert(test_server.cursor_touch_motion.notify != NULL);
+	assert(test_server.cursor_touch_cancel.notify != NULL);
+	assert(test_server.cursor_touch_frame.notify != NULL);
+	assert(test_server.cursor_swipe_begin.notify != NULL);
+	assert(test_server.cursor_swipe_update.notify != NULL);
+	assert(test_server.cursor_swipe_end.notify != NULL);
+	assert(test_server.cursor_pinch_begin.notify != NULL);
+	assert(test_server.cursor_pinch_update.notify != NULL);
+	assert(test_server.cursor_pinch_end.notify != NULL);
+	assert(test_server.cursor_hold_begin.notify != NULL);
+	assert(test_server.cursor_hold_end.notify != NULL);
+
+	/* Clean up: wm_cursor_finish removes listeners */
+	wm_cursor_finish(&test_server);
+	printf("  PASS: wm_cursor_init\n");
+}
+
+/*
+ * Test 54: execute_mouse_action SHADE toggles decoration shaded state.
+ */
+static void
+test_execute_mouse_action_shade(void)
+{
+	setup();
+	struct wm_style style = {0};
+	struct wm_decoration decor = {0};
+	decor.shaded = false;
+	struct wm_view view = {0};
+	view.decoration = &decor;
+	test_server.style = &style;
+
+	execute_mouse_action(&test_server, WM_ACTION_SHADE, NULL, &view);
+	/* wm_decoration_set_shaded is a stub but the call path is exercised */
+	printf("  PASS: execute_mouse_action_shade\n");
+}
+
+/*
+ * Test 55: execute_mouse_action SHADE with no decoration is safe.
+ */
+static void
+test_execute_mouse_action_shade_no_decor(void)
+{
+	setup();
+	struct wm_view view = {0};
+	view.decoration = NULL;
+	execute_mouse_action(&test_server, WM_ACTION_SHADE, NULL, &view);
+	/* No crash */
+	printf("  PASS: execute_mouse_action_shade_no_decor\n");
+}
+
+/*
+ * Test 56: position_overlay_update is a no-op when show_position is false.
+ */
+static void
+test_position_overlay_not_shown(void)
+{
+	setup();
+	struct wm_view view = {0};
+	test_server.grabbed_view = &view;
+	test_server.show_position = false;
+	position_overlay_update(&test_server, "100, 200");
+	/* No crash, no overlay created */
+	assert(test_server.position_overlay == NULL);
+	printf("  PASS: position_overlay_not_shown\n");
+}
+
+/*
+ * Test 57: position_overlay_destroy with NULL overlay is safe.
+ */
+static void
+test_position_overlay_destroy_null(void)
+{
+	setup();
+	test_server.position_overlay = NULL;
+	position_overlay_destroy(&test_server);
+	assert(test_server.position_overlay == NULL);
+	printf("  PASS: position_overlay_destroy_null\n");
+}
+
+/*
+ * Test 58: snap_zone_check with snapping disabled destroys preview.
+ */
+static void
+test_snap_zone_check_disabled(void)
+{
+	setup();
+	test_config.enable_window_snapping = false;
+	test_server.snap_zone = WM_SNAP_ZONE_LEFT_HALF;
+	snap_zone_check(&test_server);
+	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
+	printf("  PASS: snap_zone_check_disabled\n");
+}
+
+/*
+ * Test 59: snap_zone_check with NULL config destroys preview.
+ */
+static void
+test_snap_zone_check_null_config(void)
+{
+	setup();
+	test_server.config = NULL;
+	test_server.snap_zone = WM_SNAP_ZONE_RIGHT_HALF;
+	snap_zone_check(&test_server);
+	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
+	printf("  PASS: snap_zone_check_null_config\n");
+}
+
+/*
+ * Test 60: process_cursor_resize wireframe mode does NOT resize view.
+ */
+static void
+test_process_cursor_resize_wireframe(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.resize_edges = WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
+	test_server.grab_x = 400;
+	test_server.grab_y = 300;
+	test_server.grab_geobox = (struct wlr_box){0, 0, 400, 300};
+	test_config.opaque_resize = false; /* wireframe mode */
+
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+
+	/* In wireframe mode, xdg_toplevel should NOT get resized */
+	assert(g_set_size_count == 0);
+	printf("  PASS: process_cursor_resize_wireframe\n");
+}
+
+/*
+ * Test 61: execute_mousebind toggle with 0 subcmd_count is safe.
+ */
+static void
+test_execute_mousebind_toggle_empty(void)
+{
+	setup();
+	struct wm_mousebind bind = {0};
+	bind.action = WM_ACTION_TOGGLE_CMD;
+	bind.subcmds = NULL;
+	bind.subcmd_count = 0;
+
+	reset_globals();
+	execute_mousebind(&test_server, &bind, NULL);
+	/* No crash */
+	printf("  PASS: execute_mousebind_toggle_empty\n");
+}
+
+/*
+ * Test 62: schedule_auto_raise with NULL config is a no-op.
+ */
+static void
+test_schedule_auto_raise_null_config(void)
+{
+	setup();
+	test_server.config = NULL;
+	struct wm_view view = {0};
+	reset_globals();
+	schedule_auto_raise(&test_server, &view);
+	assert(g_view_raise_count == 0);
+	printf("  PASS: schedule_auto_raise_null_config\n");
+}
+
 int
 main(void)
 {
@@ -1930,6 +2886,70 @@ main(void)
 	test_snap_zone_geometry_odd_dimensions();
 	test_snap_zone_geometry_none();
 	test_snap_zone_geometry_top_bottom();
+
+	/* process_cursor_move tests */
+	test_process_cursor_move_opaque();
+	test_process_cursor_move_no_view();
+	test_process_cursor_move_wireframe();
+
+	/* process_cursor_resize tests */
+	test_process_cursor_resize_right_bottom();
+	test_process_cursor_resize_left_top();
+	test_process_cursor_resize_min_size();
+	test_process_cursor_resize_no_view();
+	test_process_cursor_resize_wireframe();
+
+	/* execute_mouse_action tests */
+	test_execute_mouse_action_raise();
+	test_execute_mouse_action_focus();
+	test_execute_mouse_action_start_moving();
+	test_execute_mouse_action_start_resizing();
+	test_execute_mouse_action_workspace_switch();
+	test_execute_mouse_action_null_view();
+	test_execute_mouse_action_workspace_number();
+	test_execute_mouse_action_nop();
+	test_execute_mouse_action_shade();
+	test_execute_mouse_action_shade_no_decor();
+
+	/* execute_mousebind tests */
+	test_execute_mousebind_simple();
+	test_execute_mousebind_macro();
+	test_execute_mousebind_toggle();
+	test_execute_mousebind_toggle_empty();
+
+	/* auto-raise tests */
+	test_cancel_auto_raise();
+	test_auto_raise_timer_callback_match();
+	test_auto_raise_timer_callback_mismatch();
+	test_schedule_auto_raise_disabled();
+	test_schedule_auto_raise_immediate();
+	test_schedule_auto_raise_delayed();
+	test_schedule_auto_raise_null_config();
+
+	/* snap preview/wireframe tests */
+	test_snap_preview_destroy();
+	test_wireframe_hide();
+	test_wireframe_show_state();
+	test_wireframe_show_min_size();
+
+	/* pixel buffer tests */
+	test_pixel_buffer_write_denied();
+	test_pixel_buffer_read_allowed();
+	test_cursor_wlr_buffer_from_cairo_null();
+
+	/* process_cursor_motion dispatch tests */
+	test_process_cursor_motion_move_mode();
+	test_process_cursor_motion_resize_mode();
+	test_process_cursor_motion_locked();
+
+	/* cursor init/overlay tests */
+	test_wm_cursor_init();
+	test_position_overlay_not_shown();
+	test_position_overlay_destroy_null();
+
+	/* snap_zone_check tests */
+	test_snap_zone_check_disabled();
+	test_snap_zone_check_null_config();
 
 	printf("All cursor_snap tests passed.\n");
 	return 0;

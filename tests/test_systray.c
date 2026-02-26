@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -407,12 +408,26 @@ wlr_scene_tree_create(struct wlr_scene_tree *parent)
 /* Provide the vtable format reference symbol */
 const unsigned sd_bus_object_vtable_format = 0;
 
-/* sd-bus function stubs (all no-ops for test purposes) */
+/* --- Configurable sd-bus stub globals --- */
+static int g_sdbus_read_ret = -1;
+static const char *g_sdbus_read_str1 = NULL;
+static const char *g_sdbus_read_str2 = NULL;
+static const char *g_sdbus_read_str3 = NULL;
+static const char *g_sdbus_get_sender_ret = NULL;
+static int g_sdbus_is_method_error_ret = 0;
+static int g_sdbus_process_ret = 0;
+static int g_sdbus_open_user_ret = -1;
+static int g_sdbus_emit_signal_count = 0;
+static int g_sdbus_call_method_async_count = 0;
+static int g_sdbus_reply_method_return_count = 0;
+static int g_sdbus_reply_method_errorf_count = 0;
+
+/* sd-bus function stubs (configurable for test purposes) */
 
 int sd_bus_open_user(sd_bus **ret)
 {
 	(void)ret;
-	return -1; /* fail in tests - we don't test create */
+	return g_sdbus_open_user_ret;
 }
 
 int sd_bus_add_object_vtable(sd_bus *bus, sd_bus_slot **slot,
@@ -449,7 +464,7 @@ int sd_bus_get_fd(sd_bus *bus)
 int sd_bus_process(sd_bus *bus, sd_bus_message **ret)
 {
 	(void)bus; (void)ret;
-	return 0;
+	return g_sdbus_process_ret;
 }
 
 int sd_bus_call_method_async(sd_bus *bus, sd_bus_slot **slot,
@@ -461,6 +476,7 @@ int sd_bus_call_method_async(sd_bus *bus, sd_bus_slot **slot,
 	(void)bus; (void)slot; (void)destination; (void)path;
 	(void)interface; (void)member; (void)callback; (void)userdata;
 	(void)types;
+	g_sdbus_call_method_async_count++;
 	return 0;
 }
 
@@ -469,12 +485,14 @@ int sd_bus_emit_signal(sd_bus *bus, const char *path,
 	const char *types, ...)
 {
 	(void)bus; (void)path; (void)interface; (void)member; (void)types;
+	g_sdbus_emit_signal_count++;
 	return 0;
 }
 
 int sd_bus_reply_method_return(sd_bus_message *call, const char *types, ...)
 {
 	(void)call; (void)types;
+	g_sdbus_reply_method_return_count++;
 	return 0;
 }
 
@@ -482,25 +500,50 @@ int sd_bus_reply_method_errorf(sd_bus_message *call, const char *name,
 	const char *format, ...)
 {
 	(void)call; (void)name; (void)format;
+	g_sdbus_reply_method_errorf_count++;
 	return 0;
 }
 
 int sd_bus_message_read(sd_bus_message *m, const char *types, ...)
 {
-	(void)m; (void)types;
-	return -1;
+	(void)m;
+	if (g_sdbus_read_ret < 0) return g_sdbus_read_ret;
+
+	va_list ap;
+	va_start(ap, types);
+
+	if (strcmp(types, "s") == 0) {
+		const char **p = va_arg(ap, const char **);
+		*p = g_sdbus_read_str1;
+	} else if (strcmp(types, "sss") == 0) {
+		const char **p1 = va_arg(ap, const char **);
+		const char **p2 = va_arg(ap, const char **);
+		const char **p3 = va_arg(ap, const char **);
+		*p1 = g_sdbus_read_str1;
+		*p2 = g_sdbus_read_str2;
+		*p3 = g_sdbus_read_str3;
+	} else if (strcmp(types, "v") == 0) {
+		const char *vtype = va_arg(ap, const char *);
+		if (strcmp(vtype, "s") == 0) {
+			const char **p = va_arg(ap, const char **);
+			*p = g_sdbus_read_str1;
+		}
+	}
+
+	va_end(ap);
+	return g_sdbus_read_ret;
 }
 
 const char *sd_bus_message_get_sender(sd_bus_message *m)
 {
 	(void)m;
-	return NULL;
+	return g_sdbus_get_sender_ret;
 }
 
 int sd_bus_message_is_method_error(sd_bus_message *m, const char *name)
 {
 	(void)m; (void)name;
-	return 0;
+	return g_sdbus_is_method_error_ret;
 }
 
 int sd_bus_message_open_container(sd_bus_message *m, char type,
@@ -644,10 +687,23 @@ reset_globals(void)
 	g_scene_node_destroy_count = 0;
 	g_scene_buffer_create_count = 0;
 	g_scene_buffer_set_buffer_count = 0;
+	g_scene_buffer_next = 0;
 	g_toolbar_relayout_count = 0;
 	g_cairo_surface_create_count = 0;
 	g_cairo_destroy_count = 0;
 	g_cairo_surface_destroy_count = 0;
+	g_sdbus_read_ret = -1;
+	g_sdbus_read_str1 = NULL;
+	g_sdbus_read_str2 = NULL;
+	g_sdbus_read_str3 = NULL;
+	g_sdbus_get_sender_ret = NULL;
+	g_sdbus_is_method_error_ret = 0;
+	g_sdbus_process_ret = 0;
+	g_sdbus_open_user_ret = -1;
+	g_sdbus_emit_signal_count = 0;
+	g_sdbus_call_method_async_count = 0;
+	g_sdbus_reply_method_return_count = 0;
+	g_sdbus_reply_method_errorf_count = 0;
 }
 
 /*
@@ -1321,6 +1377,691 @@ test_load_icon_empty_name(void)
 	printf("  PASS: test_load_icon_empty_name\n");
 }
 
+/*
+ * Test 21: wlr_buffer_from_cairo with a valid surface.
+ */
+static void
+test_buffer_from_cairo_valid(void)
+{
+	reset_globals();
+
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 18, 18);
+	assert(surface != NULL);
+
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
+	assert(buf != NULL);
+	assert(buf->width == 18);
+	assert(buf->height == 18);
+
+	/* Surface should have been destroyed by wlr_buffer_from_cairo */
+	wlr_buffer_drop(buf);
+	/* Free the pixel_buffer (it allocated data + struct) */
+	struct wm_pixel_buffer *pb = wl_container_of(buf, pb, base);
+	free(pb->data);
+	free(pb);
+
+	printf("  PASS: test_buffer_from_cairo_valid\n");
+}
+
+/*
+ * Test 22: wlr_buffer_from_cairo with NULL surface.
+ */
+static void
+test_buffer_from_cairo_null(void)
+{
+	reset_globals();
+
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(NULL);
+	assert(buf == NULL);
+
+	printf("  PASS: test_buffer_from_cairo_null\n");
+}
+
+/*
+ * Test 23: wlr_buffer_from_cairo with zero-dimension surface.
+ */
+static void
+test_buffer_from_cairo_zero(void)
+{
+	reset_globals();
+
+	/* Create a surface with zero dimensions */
+	cairo_surface_t *surface = calloc(1, sizeof(*surface));
+	surface->width = 0;
+	surface->height = 0;
+	surface->stride = 0;
+	surface->data = NULL;
+	surface->refcount = 1;
+	surface->status = CAIRO_STATUS_SUCCESS;
+
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
+	/* Should return NULL because width/height/stride are 0 */
+	assert(buf == NULL);
+	/* Surface was destroyed inside wlr_buffer_from_cairo */
+
+	printf("  PASS: test_buffer_from_cairo_zero\n");
+}
+
+/*
+ * Test 24: pixel_buffer_begin_data_ptr_access rejects write access.
+ */
+static void
+test_pixel_buffer_write_reject(void)
+{
+	reset_globals();
+
+	/* Create a pixel buffer via wlr_buffer_from_cairo */
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 4, 4);
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
+	assert(buf != NULL);
+
+	/* Try write access - should fail */
+	void *data;
+	uint32_t format;
+	size_t stride;
+	bool ok = pixel_buffer_begin_data_ptr_access(buf,
+		WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride);
+	assert(ok == false);
+
+	/* Try read access - should succeed */
+	ok = pixel_buffer_begin_data_ptr_access(buf, 0, &data, &format, &stride);
+	assert(ok == true);
+	assert(data != NULL);
+	assert(format == DRM_FORMAT_ARGB8888);
+	assert(stride > 0);
+
+	pixel_buffer_end_data_ptr_access(buf);
+
+	struct wm_pixel_buffer *pb = wl_container_of(buf, pb, base);
+	free(pb->data);
+	free(pb);
+
+	printf("  PASS: test_pixel_buffer_write_reject\n");
+}
+
+/*
+ * Test 25: pixel_buffer_destroy frees data.
+ */
+static void
+test_pixel_buffer_destroy(void)
+{
+	reset_globals();
+
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 4, 4);
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
+	assert(buf != NULL);
+
+	/* Calling destroy should free the buffer's data and struct */
+	pixel_buffer_destroy(buf);
+	/* If we get here without crash, it worked */
+
+	printf("  PASS: test_pixel_buffer_destroy\n");
+}
+
+/*
+ * Test 26: bus_dispatch calls sd_bus_process.
+ */
+static void
+test_bus_dispatch(void)
+{
+	reset_globals();
+
+	struct wm_systray *systray = make_test_systray();
+
+	/* sd_bus_process returns 0 (no more to process) */
+	g_sdbus_process_ret = 0;
+	int ret = bus_dispatch(3, 0, systray);
+	assert(ret == 0);
+
+	/* sd_bus_process returns error */
+	g_sdbus_process_ret = -1;
+	ret = bus_dispatch(3, 0, systray);
+	assert(ret == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_bus_dispatch\n");
+}
+
+/*
+ * Test 27: wm_systray_destroy cleans up items properly.
+ * We test the real destroy function by giving it a systray with
+ * manually allocated items that match what destroy expects.
+ */
+static void
+test_systray_destroy_with_items(void)
+{
+	reset_globals();
+
+	struct wm_systray *systray = make_test_systray();
+	/* Add items with icon_buf that systray_item_destroy will call
+	 * wlr_scene_node_destroy on */
+	struct wm_systray_item *item1 = add_test_item(systray, ":1.a1", false);
+	(void)item1;
+	struct wm_systray_item *item2 = add_test_item(systray, ":1.a2", false);
+	(void)item2;
+
+	assert(systray->item_count == 2);
+
+	/* Call wm_systray_destroy - it will call systray_item_destroy for each,
+	 * then clean up bus/slot/scene_tree.
+	 * Our bus/slots are NULL so sd_bus functions will handle NULL gracefully. */
+	wm_systray_destroy(systray);
+
+	/* If we got here without crash, the destroy worked */
+	assert(g_scene_node_destroy_count >= 1);
+
+	printf("  PASS: test_systray_destroy_with_items\n");
+}
+
+/*
+ * Test 28: wm_systray_destroy with NULL is safe.
+ */
+static void
+test_systray_destroy_null(void)
+{
+	reset_globals();
+	wm_systray_destroy(NULL);
+	/* Should not crash */
+	printf("  PASS: test_systray_destroy_null\n");
+}
+
+/*
+ * Test 29: handle_get_id with successful read sets item->id.
+ */
+static void
+test_handle_get_id_success(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.b0", false);
+	assert(item->id == NULL);
+
+	/* Configure sd_bus_message_read to succeed and return "myapp" */
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = "myapp";
+	g_sdbus_is_method_error_ret = 0;
+
+	int ret = handle_get_id(NULL, item, NULL);
+	assert(ret == 0);
+	assert(item->id != NULL);
+	assert(strcmp(item->id, "myapp") == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_handle_get_id_success\n");
+}
+
+/*
+ * Test 30: handle_get_id with method error returns early.
+ */
+static void
+test_handle_get_id_error(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.b1", false);
+
+	g_sdbus_is_method_error_ret = 1;
+
+	int ret = handle_get_id(NULL, item, NULL);
+	assert(ret == 0);
+	assert(item->id == NULL); /* not set */
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_handle_get_id_error\n");
+}
+
+/*
+ * Test 31: handle_get_icon_name with successful read sets icon_name
+ * and triggers update_scene + layout + toolbar relayout.
+ */
+static void
+test_handle_get_icon_name_success(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.c0", false);
+	assert(item->icon_name == NULL);
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = "network-wireless";
+	g_sdbus_is_method_error_ret = 0;
+
+	int ret = handle_get_icon_name(NULL, item, NULL);
+	assert(ret == 0);
+	assert(item->icon_name != NULL);
+	assert(strcmp(item->icon_name, "network-wireless") == 0);
+
+	/* update_scene should have been called (creates scene buffer) */
+	assert(g_scene_buffer_create_count >= 1);
+	/* toolbar relayout should have been called */
+	assert(g_toolbar_relayout_count == 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_handle_get_icon_name_success\n");
+}
+
+/*
+ * Test 32: handle_get_icon_name with method error still triggers update_scene.
+ */
+static void
+test_handle_get_icon_name_error(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.c1", false);
+
+	g_sdbus_is_method_error_ret = 1;
+
+	int ret = handle_get_icon_name(NULL, item, NULL);
+	assert(ret == 0);
+	assert(item->icon_name == NULL);
+
+	/* update_scene and layout should still be called on error path */
+	assert(g_scene_buffer_create_count >= 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_handle_get_icon_name_error\n");
+}
+
+/*
+ * Test 33: method_register_item with a bus name string.
+ */
+static void
+test_register_item_bus_name(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = ":1.42";
+
+	int ret = method_register_item(NULL, systray, NULL);
+	assert(ret == 0);
+	assert(systray->item_count == 1);
+	assert(g_sdbus_emit_signal_count == 1);
+	assert(g_sdbus_reply_method_return_count == 1);
+
+	/* Verify the item was created with correct bus_name */
+	struct wm_systray_item *item = find_item_by_bus_name(systray, ":1.42");
+	assert(item != NULL);
+	assert(strcmp(item->object_path, "/StatusNotifierItem") == 0);
+
+	/* query_item_properties should have been called (2 async calls) */
+	assert(g_sdbus_call_method_async_count == 2);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_register_item_bus_name\n");
+}
+
+/*
+ * Test 34: method_register_item with an object path (uses sender).
+ */
+static void
+test_register_item_object_path(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = "/org/custom/StatusNotifierItem";
+	g_sdbus_get_sender_ret = ":1.99";
+
+	int ret = method_register_item(NULL, systray, NULL);
+	assert(ret == 0);
+	assert(systray->item_count == 1);
+
+	struct wm_systray_item *item = find_item_by_bus_name(systray, ":1.99");
+	assert(item != NULL);
+	assert(strcmp(item->object_path, "/org/custom/StatusNotifierItem") == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_register_item_object_path\n");
+}
+
+/*
+ * Test 35: method_register_item with object path but NULL sender fails.
+ */
+static void
+test_register_item_null_sender(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = "/StatusNotifierItem";
+	g_sdbus_get_sender_ret = NULL;
+
+	int ret = method_register_item(NULL, systray, NULL);
+	/* Should return an error reply */
+	assert(systray->item_count == 0);
+	assert(g_sdbus_reply_method_errorf_count == 1);
+	(void)ret;
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_register_item_null_sender\n");
+}
+
+/*
+ * Test 36: method_register_item with duplicate bus name.
+ */
+static void
+test_register_item_duplicate(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+
+	/* Register first item */
+	add_test_item(systray, ":1.50", true);
+
+	/* Try to register same bus name */
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = ":1.50";
+
+	int ret = method_register_item(NULL, systray, NULL);
+	assert(ret == 0);
+	/* Should not add a duplicate */
+	assert(systray->item_count == 1);
+	assert(g_sdbus_reply_method_return_count == 1);
+	/* No signal emitted for duplicate */
+	assert(g_sdbus_emit_signal_count == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_register_item_duplicate\n");
+}
+
+/*
+ * Test 37: method_register_item with sd_bus_message_read failure.
+ */
+static void
+test_register_item_read_fail(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+
+	g_sdbus_read_ret = -1;
+
+	int ret = method_register_item(NULL, systray, NULL);
+	assert(ret == -1);
+	assert(systray->item_count == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_register_item_read_fail\n");
+}
+
+/*
+ * Test 38: method_register_host just acknowledges.
+ */
+static void
+test_register_host(void)
+{
+	reset_globals();
+
+	int ret = method_register_host(NULL, NULL, NULL);
+	assert(ret == 0);
+	assert(g_sdbus_reply_method_return_count == 1);
+
+	printf("  PASS: test_register_host\n");
+}
+
+/*
+ * Test 39: property_get_host_registered returns true.
+ */
+static void
+test_property_host_registered(void)
+{
+	reset_globals();
+
+	int ret = property_get_host_registered(NULL, NULL, NULL, NULL,
+		NULL, NULL, NULL);
+	assert(ret == 0);
+
+	printf("  PASS: test_property_host_registered\n");
+}
+
+/*
+ * Test 40: property_get_protocol_version returns 0.
+ */
+static void
+test_property_protocol_version(void)
+{
+	reset_globals();
+
+	int ret = property_get_protocol_version(NULL, NULL, NULL, NULL,
+		NULL, NULL, NULL);
+	assert(ret == 0);
+
+	printf("  PASS: test_property_protocol_version\n");
+}
+
+/*
+ * Test 41: handle_name_owner_changed with matching item removes it.
+ */
+static void
+test_name_owner_changed_match(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.d0", true);
+	add_test_item(systray, ":1.d1", true);
+	assert(systray->item_count == 2);
+
+	/* Simulate name ":1.d0" vanishing (old_owner non-empty, new_owner empty) */
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = ":1.d0";  /* name */
+	g_sdbus_read_str2 = ":1.d0";  /* old_owner */
+	g_sdbus_read_str3 = "";       /* new_owner (empty = vanished) */
+
+	int ret = handle_name_owner_changed(NULL, systray, NULL);
+	assert(ret == 0);
+	assert(systray->item_count == 1);
+	assert(find_item_by_bus_name(systray, ":1.d0") == NULL);
+	assert(find_item_by_bus_name(systray, ":1.d1") != NULL);
+	/* Unregistered signal should be emitted */
+	assert(g_sdbus_emit_signal_count == 1);
+	/* Toolbar relayout should be called */
+	assert(g_toolbar_relayout_count == 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_name_owner_changed_match\n");
+}
+
+/*
+ * Test 42: handle_name_owner_changed with non-matching name is no-op.
+ */
+static void
+test_name_owner_changed_no_match(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.e0", true);
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = ":1.unknown";
+	g_sdbus_read_str2 = ":1.unknown";
+	g_sdbus_read_str3 = "";
+
+	int ret = handle_name_owner_changed(NULL, systray, NULL);
+	assert(ret == 0);
+	assert(systray->item_count == 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_name_owner_changed_no_match\n");
+}
+
+/*
+ * Test 43: handle_name_owner_changed with non-empty new_owner (name transfer)
+ * is ignored.
+ */
+static void
+test_name_owner_changed_transfer(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.f0", true);
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = ":1.f0";
+	g_sdbus_read_str2 = ":1.f0";
+	g_sdbus_read_str3 = ":1.f1"; /* new owner non-empty = transfer */
+
+	int ret = handle_name_owner_changed(NULL, systray, NULL);
+	assert(ret == 0);
+	/* Item should NOT be removed */
+	assert(systray->item_count == 1);
+	assert(find_item_by_bus_name(systray, ":1.f0") != NULL);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_name_owner_changed_transfer\n");
+}
+
+/*
+ * Test 44: handle_name_owner_changed with read failure is no-op.
+ */
+static void
+test_name_owner_changed_read_fail(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.g0", true);
+
+	g_sdbus_read_ret = -1;
+
+	int ret = handle_name_owner_changed(NULL, systray, NULL);
+	assert(ret == 0);
+	assert(systray->item_count == 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_name_owner_changed_read_fail\n");
+}
+
+/*
+ * Test 45: systray_item_update_scene with icon_pixmap set uses the pixmap.
+ */
+static void
+test_item_update_scene_with_pixmap(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.h0", false);
+
+	/* Give it a pixmap (same size as icon_size) */
+	item->icon_pixmap = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, WM_SYSTRAY_ICON_SIZE, WM_SYSTRAY_ICON_SIZE);
+	assert(item->icon_pixmap != NULL);
+
+	systray_item_update_scene(item);
+
+	/* Should have created a scene buffer using the pixmap path */
+	assert(g_scene_buffer_create_count == 1);
+	assert(g_scene_buffer_set_buffer_count == 1);
+	assert(item->icon_buf != NULL);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_item_update_scene_with_pixmap\n");
+}
+
+/*
+ * Test 46: systray_item_update_scene with existing icon_buf reuses it.
+ */
+static void
+test_item_update_scene_existing_buf(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.i0", true);
+	/* item already has icon_buf from add_test_item */
+	assert(item->icon_buf != NULL);
+
+	systray_item_update_scene(item);
+
+	/* Should NOT create a new scene buffer (reuses existing) */
+	assert(g_scene_buffer_create_count == 0);
+	/* But should set the buffer on the existing one */
+	assert(g_scene_buffer_set_buffer_count == 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_item_update_scene_existing_buf\n");
+}
+
+/*
+ * Test 47: query_item_properties makes two async calls.
+ */
+static void
+test_query_item_properties(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.j0", false);
+
+	query_item_properties(systray, item);
+
+	/* Should have made 2 async method calls (Id + IconName) */
+	assert(g_sdbus_call_method_async_count == 2);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_query_item_properties\n");
+}
+
+/*
+ * Test 48: file_exists returns false for non-existent path.
+ */
+static void
+test_file_exists_nonexistent(void)
+{
+	reset_globals();
+
+	bool exists = file_exists("/nonexistent/path/to/nothing");
+	assert(exists == false);
+
+	printf("  PASS: test_file_exists_nonexistent\n");
+}
+
+/*
+ * Test 49: handle_name_owner_changed with empty old_owner is ignored.
+ */
+static void
+test_name_owner_changed_empty_old(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.k0", true);
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = ":1.k0";
+	g_sdbus_read_str2 = "";       /* old_owner empty = new name appearance */
+	g_sdbus_read_str3 = "";
+
+	int ret = handle_name_owner_changed(NULL, systray, NULL);
+	assert(ret == 0);
+	/* Should not remove any items because old_owner is empty */
+	assert(systray->item_count == 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_name_owner_changed_empty_old\n");
+}
+
+/*
+ * Test 50: property_get_registered_items iterates items.
+ */
+static void
+test_property_get_registered_items(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.l0", true);
+	add_test_item(systray, ":1.l1", true);
+
+	int ret = property_get_registered_items(NULL, NULL, NULL, NULL,
+		NULL, systray, NULL);
+	assert(ret == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_property_get_registered_items\n");
+}
+
 int
 main(void)
 {
@@ -1346,6 +2087,36 @@ main(void)
 	test_item_update_scene_placeholder();
 	test_load_icon_null_name();
 	test_load_icon_empty_name();
+	test_buffer_from_cairo_valid();
+	test_buffer_from_cairo_null();
+	test_buffer_from_cairo_zero();
+	test_pixel_buffer_write_reject();
+	test_pixel_buffer_destroy();
+	test_bus_dispatch();
+	test_systray_destroy_with_items();
+	test_systray_destroy_null();
+	test_handle_get_id_success();
+	test_handle_get_id_error();
+	test_handle_get_icon_name_success();
+	test_handle_get_icon_name_error();
+	test_register_item_bus_name();
+	test_register_item_object_path();
+	test_register_item_null_sender();
+	test_register_item_duplicate();
+	test_register_item_read_fail();
+	test_register_host();
+	test_property_host_registered();
+	test_property_protocol_version();
+	test_name_owner_changed_match();
+	test_name_owner_changed_no_match();
+	test_name_owner_changed_transfer();
+	test_name_owner_changed_read_fail();
+	test_item_update_scene_with_pixmap();
+	test_item_update_scene_existing_buf();
+	test_query_item_properties();
+	test_file_exists_nonexistent();
+	test_name_owner_changed_empty_old();
+	test_property_get_registered_items();
 
 	printf("All systray tests passed.\n");
 	return 0;
