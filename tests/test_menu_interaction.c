@@ -542,19 +542,24 @@ wlr_scene_tree_from_node(struct wlr_scene_node *node)
 	return (struct wlr_scene_tree *)node;
 }
 
+static struct wlr_output g_stub_wlr_output_obj;
+static struct wlr_output *g_stub_output_at_result = NULL;
+
 static struct wlr_output *
 wlr_output_layout_output_at(struct wlr_output_layout *layout,
 	double lx, double ly)
 {
 	(void)layout; (void)lx; (void)ly;
-	return NULL; /* No output clamping in tests */
+	return g_stub_output_at_result;
 }
+
+static struct wlr_box g_stub_output_box = {0, 0, 0, 0};
 
 static void wlr_output_layout_get_box(struct wlr_output_layout *layout,
 	struct wlr_output *output, struct wlr_box *box)
 {
 	(void)layout; (void)output;
-	memset(box, 0, sizeof(*box));
+	*box = g_stub_output_box;
 }
 
 static void wlr_xdg_toplevel_send_close(struct wlr_xdg_toplevel *tl)
@@ -852,6 +857,7 @@ typedef uint32_t xkb_keysym_t;
 #define XKB_KEY_j         0x006a
 #define XKB_KEY_l         0x006c
 #define XKB_KEY_h         0x0068
+#define XKB_KEY_B         0x0042
 
 /* --- Include menu.c --- */
 
@@ -2938,6 +2944,2751 @@ test_parse_angle_no_match(void)
 	printf("  PASS: parse_angle_no_match\n");
 }
 
+/* --- Execute menu item: reconfig --- */
+
+static void
+test_execute_reconfig(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_RECONFIG, "Reconfig");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; just logs */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_reconfig\n");
+}
+
+/* --- Execute menu item: restart --- */
+
+static void
+test_execute_restart(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_RESTART, "Restart");
+	item->command = strdup("fluxland");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; just logs */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_restart\n");
+}
+
+/* --- Execute menu item: shade (with decoration) --- */
+
+static void
+test_execute_shade(void)
+{
+	setup_server();
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	struct wm_decoration deco;
+	memset(&deco, 0, sizeof(deco));
+	view.decoration = &deco;
+	test_server.focused_view = &view;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_SHADE, "Shade");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; just logs toggle shade */
+
+	test_server.focused_view = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_shade\n");
+}
+
+/* --- Execute menu item: shade (no decoration, no focused view) --- */
+
+static void
+test_execute_shade_no_view(void)
+{
+	setup_server();
+	test_server.focused_view = NULL;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_SHADE, "Shade");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; no focused_view */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_shade_no_view\n");
+}
+
+/* --- Execute menu item: maximize --- */
+
+static void
+test_execute_maximize(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_MAXIMIZE, "Maximize");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; currently a stub */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_maximize\n");
+}
+
+/* --- Execute menu item: iconify --- */
+
+static void
+test_execute_iconify(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_ICONIFY, "Iconify");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; currently a stub */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_iconify\n");
+}
+
+/* --- Execute menu item: close --- */
+
+static void
+test_execute_close(void)
+{
+	setup_server();
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	struct wlr_xdg_toplevel toplevel;
+	memset(&toplevel, 0, sizeof(toplevel));
+	view.xdg_toplevel = &toplevel;
+	test_server.focused_view = &view;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_CLOSE, "Close");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should call wlr_xdg_toplevel_send_close stub */
+
+	test_server.focused_view = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_close\n");
+}
+
+/* --- Execute menu item: close (no focused view) --- */
+
+static void
+test_execute_close_no_view(void)
+{
+	setup_server();
+	test_server.focused_view = NULL;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_CLOSE, "Close");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_close_no_view\n");
+}
+
+/* --- Execute menu item: kill --- */
+
+static void
+test_execute_kill(void)
+{
+	setup_server();
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	struct wlr_xdg_toplevel toplevel;
+	memset(&toplevel, 0, sizeof(toplevel));
+	struct wlr_xdg_surface xdg_surface;
+	memset(&xdg_surface, 0, sizeof(xdg_surface));
+	struct wl_resource resource;
+	memset(&resource, 0, sizeof(resource));
+	xdg_surface.resource = &resource;
+	toplevel.base = &xdg_surface;
+	view.xdg_toplevel = &toplevel;
+	test_server.focused_view = &view;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_KILL, "Kill");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should call wl_resource_get_client + wl_client_destroy stubs */
+
+	test_server.focused_view = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_kill\n");
+}
+
+/* --- Execute menu item: kill (no focused view) --- */
+
+static void
+test_execute_kill_no_view(void)
+{
+	setup_server();
+	test_server.focused_view = NULL;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_KILL, "Kill");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_kill_no_view\n");
+}
+
+/* --- Execute menu item: window entry (valid target) --- */
+
+static void
+test_execute_window_entry(void)
+{
+	setup_server();
+
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	wl_list_init(&view_tree.children);
+	wl_list_init(&view_tree.node.link);
+	view_tree.node.enabled = 1;
+
+	struct wlr_xdg_surface xdg_surface;
+	memset(&xdg_surface, 0, sizeof(xdg_surface));
+	struct wlr_surface surface;
+	memset(&surface, 0, sizeof(surface));
+	xdg_surface.surface = &surface;
+
+	struct wlr_xdg_toplevel toplevel;
+	memset(&toplevel, 0, sizeof(toplevel));
+	toplevel.base = &xdg_surface;
+
+	struct wm_view target;
+	memset(&target, 0, sizeof(target));
+	target.scene_tree = &view_tree;
+	target.xdg_toplevel = &toplevel;
+	target.title = strdup("Target");
+	wl_list_init(&target.link);
+	wl_list_insert(test_server.views.prev, &target.link);
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_WINDOW_ENTRY, "Target");
+	item->data = &target;
+	item->command = strdup("0");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should switch workspace, focus and raise target */
+
+	wl_list_remove(&target.link);
+	free(target.title);
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_window_entry\n");
+}
+
+/* --- Execute menu item: window entry (iconified target) --- */
+
+static void
+test_execute_window_entry_iconified(void)
+{
+	setup_server();
+
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	wl_list_init(&view_tree.children);
+	wl_list_init(&view_tree.node.link);
+	view_tree.node.enabled = 0; /* iconified */
+
+	struct wlr_xdg_surface xdg_surface;
+	memset(&xdg_surface, 0, sizeof(xdg_surface));
+	struct wlr_surface surface;
+	memset(&surface, 0, sizeof(surface));
+	xdg_surface.surface = &surface;
+
+	struct wlr_xdg_toplevel toplevel;
+	memset(&toplevel, 0, sizeof(toplevel));
+	toplevel.base = &xdg_surface;
+
+	struct wm_view target;
+	memset(&target, 0, sizeof(target));
+	target.scene_tree = &view_tree;
+	target.xdg_toplevel = &toplevel;
+	target.title = strdup("Iconified");
+	wl_list_init(&target.link);
+	wl_list_insert(test_server.views.prev, &target.link);
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_WINDOW_ENTRY, "Iconified");
+	item->data = &target;
+	item->command = strdup("0");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should de-iconify: enable node and call foreign_toplevel_set_minimized */
+	assert(view_tree.node.enabled == 1);
+
+	wl_list_remove(&target.link);
+	free(target.title);
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_window_entry_iconified\n");
+}
+
+/* --- Execute menu item: window entry (null target) --- */
+
+static void
+test_execute_window_entry_null(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_WINDOW_ENTRY, "None");
+	item->data = NULL;
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; null target early exit */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_window_entry_null\n");
+}
+
+/* --- Execute menu item: window entry (stale view no longer in list) --- */
+
+static void
+test_execute_window_entry_stale(void)
+{
+	setup_server();
+
+	struct wm_view stale;
+	memset(&stale, 0, sizeof(stale));
+	/* stale view NOT in server views list */
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_WINDOW_ENTRY, "Stale");
+	item->data = &stale;
+	item->command = strdup("0");
+	wl_list_insert(menu->items.prev, &item->link);
+
+	execute_menu_item(menu, item);
+	/* Should not crash; view not found in list */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: execute_window_entry_stale\n");
+}
+
+/* --- submenu_position: flip when overflowing right edge --- */
+
+static void
+test_submenu_position_flip(void)
+{
+	setup_server();
+
+	/* Set up an output so submenu_position detects boundary */
+	struct wm_output wm_out;
+	memset(&wm_out, 0, sizeof(wm_out));
+	wm_out.wlr_output = &g_stub_wlr_output_obj;
+	wm_out.usable_area.x = 0;
+	wm_out.usable_area.y = 0;
+	wm_out.usable_area.width = 500;
+	wm_out.usable_area.height = 400;
+	wl_list_init(&wm_out.link);
+	wl_list_insert(test_server.outputs.prev, &wm_out.link);
+
+	/* Make the output_at stub return our output */
+	g_stub_output_at_result = &g_stub_wlr_output_obj;
+	g_stub_output_box = (struct wlr_box){0, 0, 500, 400};
+
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 400, 50); /* x=400, close to right edge */
+
+	int sub_x, sub_y;
+	submenu_position(menu, 0, &sub_x, &sub_y);
+
+	/* Menu width ~128, at x=400. sub_x = 400 + 128 = 528 > 500, so should flip.
+	 * Flipped: sub_x = 400 - 128 = 272 */
+	assert(sub_x < 400); /* Should have flipped to left side */
+
+	/* Reset stubs */
+	g_stub_output_at_result = NULL;
+	g_stub_output_box = (struct wlr_box){0, 0, 0, 0};
+	wl_list_remove(&wm_out.link);
+	wm_menu_destroy(menu);
+	printf("  PASS: submenu_position_flip\n");
+}
+
+/* --- strcmp_qsort comparison function --- */
+
+static void
+test_strcmp_qsort(void)
+{
+	const char *arr[] = {"cherry", "apple", "banana"};
+	qsort(arr, 3, sizeof(arr[0]), strcmp_qsort);
+	assert(strcmp(arr[0], "apple") == 0);
+	assert(strcmp(arr[1], "banana") == 0);
+	assert(strcmp(arr[2], "cherry") == 0);
+	printf("  PASS: strcmp_qsort\n");
+}
+
+/* --- add_stylesdir_entries: scans directory --- */
+
+static void
+test_add_stylesdir_entries(void)
+{
+	setup_server();
+
+	/* Create a temp directory with some "style" files */
+	const char *tmpdir = "/tmp/fluxland_test_stylesdir";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
+	system(cmd);
+
+	/* Create some files */
+	snprintf(cmd, sizeof(cmd), "touch %s/dark %s/light", tmpdir, tmpdir);
+	system(cmd);
+
+	struct wm_menu *menu = menu_create(&test_server, "Styles");
+	add_stylesdir_entries(menu, tmpdir);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_STYLE);
+		assert(item->command != NULL);
+	}
+	assert(count == 2);
+
+	/* Clean up */
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	printf("  PASS: add_stylesdir_entries\n");
+}
+
+/* --- add_stylesdir_entries: nonexistent directory --- */
+
+static void
+test_add_stylesdir_nonexistent(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Styles");
+	add_stylesdir_entries(menu, "/tmp/fluxland_no_such_dir_12345");
+
+	/* No entries added */
+	assert(wl_list_empty(&menu->items));
+
+	wm_menu_destroy(menu);
+	printf("  PASS: add_stylesdir_nonexistent\n");
+}
+
+/* --- add_wallpaper_entries: scans for image files --- */
+
+static void
+test_add_wallpaper_entries(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_wallpapers";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
+	system(cmd);
+
+	/* Create some image and non-image files */
+	snprintf(cmd, sizeof(cmd),
+		"touch %s/beach.png %s/mountain.jpg %s/readme.txt %s/.hidden.png",
+		tmpdir, tmpdir, tmpdir, tmpdir);
+	system(cmd);
+
+	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
+	add_wallpaper_entries(menu, tmpdir);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_EXEC);
+		assert(item->command != NULL);
+		/* Commands should contain swaybg */
+		assert(strstr(item->command, "swaybg") != NULL);
+	}
+	/* Should find beach.png and mountain.jpg (not .txt, not .hidden.png) */
+	assert(count == 2);
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	printf("  PASS: add_wallpaper_entries\n");
+}
+
+/* --- add_wallpaper_entries: empty directory shows (empty) --- */
+
+static void
+test_add_wallpaper_entries_empty(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_wall_empty";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
+	system(cmd);
+
+	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
+	add_wallpaper_entries(menu, tmpdir);
+
+	/* Should have one NOP "(empty)" entry */
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_NOP);
+		assert(strcmp(item->label, "(empty)") == 0);
+	}
+	assert(count == 1);
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	printf("  PASS: add_wallpaper_entries_empty\n");
+}
+
+/* --- add_wallpaper_entries: nonexistent directory shows (empty) --- */
+
+static void
+test_add_wallpaper_entries_nonexistent(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
+	add_wallpaper_entries(menu, "/tmp/fluxland_no_such_wall_dir");
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_NOP);
+	}
+	assert(count == 1);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: add_wallpaper_entries_nonexistent\n");
+}
+
+/* --- add_wallpaper_entries: path with single quote rejected --- */
+
+static void
+test_add_wallpaper_entries_quote_path(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
+	/* Path containing single quote should be rejected */
+	add_wallpaper_entries(menu, "/tmp/fluxland_it's_bad");
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_NOP);
+		assert(strcmp(item->label, "(invalid path)") == 0);
+	}
+	assert(count == 1);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: add_wallpaper_entries_quote_path\n");
+}
+
+/* --- add_stylesmenu_entries: scans directory --- */
+
+static void
+test_add_stylesmenu_entries(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_stylesmenu";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
+	system(cmd);
+
+	snprintf(cmd, sizeof(cmd),
+		"touch %s/modern %s/classic %s/.hidden",
+		tmpdir, tmpdir, tmpdir);
+	system(cmd);
+
+	struct wm_menu *menu = menu_create(&test_server, "Styles");
+	add_stylesmenu_entries(menu, tmpdir);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_STYLE);
+		assert(item->command != NULL);
+	}
+	/* Should find modern and classic (not .hidden) */
+	assert(count == 2);
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	printf("  PASS: add_stylesmenu_entries\n");
+}
+
+/* --- add_stylesmenu_entries: nonexistent directory --- */
+
+static void
+test_add_stylesmenu_nonexistent(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Styles");
+	add_stylesmenu_entries(menu, "/tmp/fluxland_no_such_styles_dir");
+
+	/* No entries added when dir doesn't exist */
+	assert(wl_list_empty(&menu->items));
+
+	wm_menu_destroy(menu);
+	printf("  PASS: add_stylesmenu_nonexistent\n");
+}
+
+/* --- parse_menu_items_depth: encoding block --- */
+
+static void
+test_parse_encoding_block(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_encoding.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Test)\n");
+	fprintf(fp, "[encoding] {ISO-8859-1}\n");
+	fprintf(fp, "[exec] (Hello) {echo hi}\n");
+	fprintf(fp, "[endencoding]\n");
+	fprintf(fp, "[exec] (World) {echo world}\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+	}
+	assert(count == 2);
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_encoding_block\n");
+}
+
+/* --- parse_menu_items_depth: include (valid file under /tmp) --- */
+
+static void
+test_parse_include(void)
+{
+	setup_server();
+
+	/* Create the included file */
+	const char *inc_file = "/tmp/fluxland_test_menu_inc_part.txt";
+	FILE *fp = fopen(inc_file, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[exec] (Included) {echo included}\n");
+	fclose(fp);
+
+	/* Create the main menu file that includes it */
+	const char *tmpfile = "/tmp/fluxland_test_menu_include.txt";
+	fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Test)\n");
+	fprintf(fp, "[include] (%s)\n", inc_file);
+	fprintf(fp, "[exec] (Main) {echo main}\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+	}
+	assert(count == 2); /* included + main */
+
+	/* Verify included item */
+	item = menu_get_item(menu, 0);
+	assert(item->type == WM_MENU_EXEC);
+	assert(strcmp(item->label, "Included") == 0);
+
+	wm_menu_destroy(menu);
+	remove(inc_file);
+	remove(tmpfile);
+	printf("  PASS: parse_include\n");
+}
+
+/* --- parse_menu_items_depth: include with '..' rejected --- */
+
+static void
+test_parse_include_dotdot(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_dotdot.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Test)\n");
+	fprintf(fp, "[include] (/tmp/../etc/passwd)\n");
+	fprintf(fp, "[exec] (Only) {echo only}\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	/* Only the exec item, include was rejected */
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+	}
+	assert(count == 1);
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_include_dotdot\n");
+}
+
+/* --- parse_menu_items_depth: max depth limit --- */
+
+static void
+test_parse_max_depth(void)
+{
+	setup_server();
+
+	/* Create a file that includes itself recursively */
+	const char *tmpfile = "/tmp/fluxland_test_menu_depth.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[exec] (Item) {echo item}\n");
+	fprintf(fp, "[include] (%s)\n", tmpfile);
+	fclose(fp);
+
+	/* Load it at depth 0 - it will recurse until MENU_MAX_DEPTH */
+	struct wm_menu *menu = menu_create(&test_server, "Depth Test");
+	fp = fopen(tmpfile, "r");
+	assert(fp != NULL);
+	parse_menu_items_depth(menu, fp, &test_server, 0);
+	fclose(fp);
+
+	/* Should have some items but not infinite (capped by depth) */
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+	}
+	assert(count > 0);
+	assert(count < 1000); /* Shouldn't be infinite */
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_max_depth\n");
+}
+
+/* --- parse_menu_items_depth: stylesdir tag --- */
+
+static void
+test_parse_stylesdir_tag(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_parse_stylesdir";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s && touch %s/dark %s/light",
+		tmpdir, tmpdir, tmpdir, tmpdir);
+	system(cmd);
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_stylesdir.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[stylesdir] (%s)\n", tmpdir);
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_STYLE);
+	}
+	assert(count == 2);
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_stylesdir_tag\n");
+}
+
+/* --- parse_menu_items_depth: wallpapers tag --- */
+
+static void
+test_parse_wallpapers_tag(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_parse_wallpapers";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s && touch %s/sky.png",
+		tmpdir, tmpdir, tmpdir);
+	system(cmd);
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_wallpapers.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[wallpapers] (Backgrounds) {%s}\n", tmpdir);
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	/* Should have one submenu item */
+	struct wm_menu_item *item = menu_get_item(menu, 0);
+	assert(item != NULL);
+	assert(item->type == WM_MENU_SUBMENU);
+	assert(strcmp(item->label, "Backgrounds") == 0);
+	assert(item->submenu != NULL);
+
+	/* Submenu should have wallpaper entries */
+	int sub_count = 0;
+	struct wm_menu_item *sub;
+	wl_list_for_each(sub, &item->submenu->items, link) {
+		sub_count++;
+	}
+	assert(sub_count == 1); /* sky.png */
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_wallpapers_tag\n");
+}
+
+/* --- parse_menu_items_depth: stylesmenu tag --- */
+
+static void
+test_parse_stylesmenu_tag(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_parse_stylesmenu";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s && touch %s/retro %s/modern",
+		tmpdir, tmpdir, tmpdir, tmpdir);
+	system(cmd);
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_stylesmenu.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[stylesmenu] (My Styles) {%s}\n", tmpdir);
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	struct wm_menu_item *item = menu_get_item(menu, 0);
+	assert(item != NULL);
+	assert(item->type == WM_MENU_SUBMENU);
+	assert(strcmp(item->label, "My Styles") == 0);
+	assert(item->submenu != NULL);
+
+	/* Submenu should have style entries */
+	int sub_count = 0;
+	struct wm_menu_item *sub;
+	wl_list_for_each(sub, &item->submenu->items, link) {
+		sub_count++;
+		assert(sub->type == WM_MENU_STYLE);
+	}
+	assert(sub_count == 2);
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_stylesmenu_tag\n");
+}
+
+/* --- maybe_convert_label: actual ISO-8859-1 conversion --- */
+
+static void
+test_maybe_convert_label_latin1(void)
+{
+	/* Convert ISO-8859-1 byte 0xE9 (e-acute) to UTF-8 */
+	char *label = strdup("\xe9");
+	char *r = maybe_convert_label(label, "ISO-8859-1");
+	assert(r != NULL);
+	/* UTF-8 encoding of U+00E9 is 0xC3 0xA9 */
+	assert((unsigned char)r[0] == 0xC3);
+	assert((unsigned char)r[1] == 0xA9);
+	assert(r[2] == '\0');
+	free(r);
+	printf("  PASS: maybe_convert_label_latin1\n");
+}
+
+/* --- wlr_buffer_from_cairo: null surface --- */
+
+static void
+test_wlr_buffer_from_cairo_null(void)
+{
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(NULL);
+	assert(buf == NULL);
+	printf("  PASS: wlr_buffer_from_cairo_null\n");
+}
+
+/* --- wm_menu_show_custom --- */
+
+static void
+test_show_custom_menu(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_custom_menu.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Custom)\n");
+	fprintf(fp, "[exec] (Item1) {echo 1}\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	wm_menu_show_custom(&test_server, tmpfile, 10, 10);
+	assert(test_server.custom_menu != NULL);
+	assert(test_server.custom_menu->visible == true);
+
+	wm_menu_destroy(test_server.custom_menu);
+	test_server.custom_menu = NULL;
+	remove(tmpfile);
+	printf("  PASS: show_custom_menu\n");
+}
+
+/* --- wm_menu_show_custom: null/empty path --- */
+
+static void
+test_show_custom_null(void)
+{
+	setup_server();
+
+	wm_menu_show_custom(&test_server, NULL, 10, 10);
+	assert(test_server.custom_menu == NULL);
+
+	wm_menu_show_custom(&test_server, "", 10, 10);
+	assert(test_server.custom_menu == NULL);
+
+	wm_menu_show_custom(NULL, "/tmp/x", 10, 10);
+	/* Should not crash */
+
+	printf("  PASS: show_custom_null\n");
+}
+
+/* --- cancel_pending_submenu --- */
+
+static void
+test_cancel_pending_submenu(void)
+{
+	/* Test that cancel works without crashing */
+	cancel_pending_submenu();
+	/* Should not crash even when no timer is set */
+	printf("  PASS: cancel_pending_submenu\n");
+}
+
+/* --- parse long line skip --- */
+
+static void
+test_parse_long_line(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_longline.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	/* Write a line longer than 1024 chars (buffer size in parser) */
+	fprintf(fp, "[exec] (");
+	for (int i = 0; i < 1100; i++) {
+		fputc('A', fp);
+	}
+	fprintf(fp, ") {echo long}\n");
+	fprintf(fp, "[exec] (Normal) {echo normal}\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	/* The long line should be skipped, only Normal should be parsed */
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+	}
+	assert(count == 1);
+	item = menu_get_item(menu, 0);
+	assert(strcmp(item->label, "Normal") == 0);
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_long_line\n");
+}
+
+/* --- parse window menu tags (shade, maximize, etc.) --- */
+
+static void
+test_parse_window_menu_tags(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_wintags.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Window)\n");
+	fprintf(fp, "[shade] (Shade)\n");
+	fprintf(fp, "[maximize] (Maximize)\n");
+	fprintf(fp, "[iconify] (Iconify)\n");
+	fprintf(fp, "[close] (Close)\n");
+	fprintf(fp, "[kill] (Kill)\n");
+	fprintf(fp, "[raise] (Raise)\n");
+	fprintf(fp, "[lower] (Lower)\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	struct wm_menu_item *item;
+	item = menu_get_item(menu, 0);
+	assert(item->type == WM_MENU_SHADE);
+	item = menu_get_item(menu, 1);
+	assert(item->type == WM_MENU_MAXIMIZE);
+	item = menu_get_item(menu, 2);
+	assert(item->type == WM_MENU_ICONIFY);
+	item = menu_get_item(menu, 3);
+	assert(item->type == WM_MENU_CLOSE);
+	item = menu_get_item(menu, 4);
+	assert(item->type == WM_MENU_KILL);
+	item = menu_get_item(menu, 5);
+	assert(item->type == WM_MENU_RAISE);
+	item = menu_get_item(menu, 6);
+	assert(item->type == WM_MENU_LOWER);
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_window_menu_tags\n");
+}
+
+/* --- wm_menu_show_window: with and without custom menu file --- */
+
+static void
+test_show_window_menu(void)
+{
+	setup_server();
+
+	/* Create a window menu */
+	test_server.window_menu = wm_menu_create_window_menu(&test_server);
+	assert(test_server.window_menu != NULL);
+
+	wm_menu_show_window(&test_server, 10, 10);
+	assert(test_server.window_menu->visible == true);
+
+	wm_menu_hide_all(&test_server);
+	wm_menu_destroy(test_server.window_menu);
+	test_server.window_menu = NULL;
+	printf("  PASS: show_window_menu\n");
+}
+
+static void
+test_show_window_menu_no_menu(void)
+{
+	setup_server();
+	test_server.window_menu = NULL;
+
+	/* Should not crash */
+	wm_menu_show_window(&test_server, 10, 10);
+	/* Still NULL because no window_menu_file configured */
+	assert(test_server.window_menu == NULL);
+
+	printf("  PASS: show_window_menu_no_menu\n");
+}
+
+static void
+test_show_window_menu_custom_file(void)
+{
+	setup_server();
+
+	/* Create a custom window menu file */
+	const char *tmpfile = "/tmp/fluxland_test_win_menu_custom.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Custom Window)\n");
+	fprintf(fp, "[close] (Close)\n");
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	test_config.window_menu_file = strdup(tmpfile);
+
+	/* Should reload from custom file */
+	wm_menu_show_window(&test_server, 10, 10);
+	assert(test_server.window_menu != NULL);
+	assert(test_server.window_menu->visible == true);
+	assert(strcmp(test_server.window_menu->title, "Custom Window") == 0);
+
+	wm_menu_hide_all(&test_server);
+	wm_menu_destroy(test_server.window_menu);
+	test_server.window_menu = NULL;
+	free(test_config.window_menu_file);
+	test_config.window_menu_file = NULL;
+	remove(tmpfile);
+	printf("  PASS: show_window_menu_custom_file\n");
+}
+
+/* --- wm_menu_show_window_list --- */
+
+static void
+test_show_window_list_menu(void)
+{
+	setup_server();
+
+	struct wm_workspace ws0 = { .name = strdup("Main"), .index = 0 };
+	wl_list_init(&ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	wl_list_init(&view_tree.children);
+	wl_list_init(&view_tree.node.link);
+	view_tree.node.enabled = 1;
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = strdup("Test App");
+	view.workspace = &ws0;
+	view.scene_tree = &view_tree;
+	wl_list_init(&view.link);
+	wl_list_insert(test_server.views.prev, &view.link);
+
+	wm_menu_show_window_list(&test_server, 10, 10);
+	assert(test_server.window_list_menu != NULL);
+	assert(test_server.window_list_menu->visible == true);
+
+	wm_menu_hide_all(&test_server);
+	/* hide_all destroys window_list_menu */
+	test_server.window_list_menu = NULL;
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&view.link);
+	free(ws0.name);
+	free(view.title);
+	printf("  PASS: show_window_list_menu\n");
+}
+
+/* --- wm_menu_show_workspace_menu --- */
+
+static void
+test_show_workspace_switching_menu(void)
+{
+	setup_server();
+
+	struct wm_workspace ws0 = { .name = strdup("Main"), .index = 0 };
+	struct wm_workspace ws1 = { .name = strdup("Code"), .index = 1 };
+	wl_list_init(&ws0.link);
+	wl_list_init(&ws1.link);
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws1.link);
+
+	wm_menu_show_workspace_menu(&test_server, 10, 10);
+	assert(test_server.workspace_menu != NULL);
+	assert(test_server.workspace_menu->visible == true);
+
+	/* Should have 2 items */
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &test_server.workspace_menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_COMMAND);
+		assert(item->command != NULL);
+		/* Workspace switching commands should be "Workspace N" */
+		assert(strstr(item->command, "Workspace") != NULL);
+	}
+	assert(count == 2);
+
+	wm_menu_hide_all(&test_server);
+	test_server.workspace_menu = NULL;
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&ws1.link);
+	free(ws0.name);
+	free(ws1.name);
+	printf("  PASS: show_workspace_switching_menu\n");
+}
+
+/* --- wm_menu_hide_all: window_list_menu, workspace_menu, etc. --- */
+
+static void
+test_hide_all_dynamic_menus(void)
+{
+	setup_server();
+
+	/* Create dynamic menus that hide_all should destroy */
+	test_server.window_list_menu = menu_create(&test_server, "WL");
+	test_server.workspace_menu = menu_create(&test_server, "WS");
+	test_server.client_menu = menu_create(&test_server, "CL");
+	test_server.custom_menu = menu_create(&test_server, "CU");
+
+	wm_menu_hide_all(&test_server);
+
+	/* Dynamic menus should be destroyed (set to NULL) */
+	assert(test_server.window_list_menu == NULL);
+	assert(test_server.workspace_menu == NULL);
+	assert(test_server.client_menu == NULL);
+	assert(test_server.custom_menu == NULL);
+
+	printf("  PASS: hide_all_dynamic_menus\n");
+}
+
+/* --- wm_menu_handle_key dispatches to window_list_menu and window_menu --- */
+
+static void
+test_handle_key_dispatches_to_window_list(void)
+{
+	setup_server();
+	struct wm_menu *wl_menu = make_test_menu(3);
+	prepare_menu(wl_menu, 100, 100);
+	test_server.window_list_menu = wl_menu;
+
+	bool consumed = wm_menu_handle_key(&test_server, 0, XKB_KEY_Down, true);
+	assert(consumed == true);
+	assert(wl_menu->selected_index == 0);
+
+	test_server.window_list_menu = NULL;
+	wm_menu_destroy(wl_menu);
+	printf("  PASS: handle_key_dispatches_to_window_list\n");
+}
+
+static void
+test_handle_key_dispatches_to_window_menu(void)
+{
+	setup_server();
+	struct wm_menu *win_menu = make_test_menu(3);
+	prepare_menu(win_menu, 100, 100);
+	test_server.window_menu = win_menu;
+
+	bool consumed = wm_menu_handle_key(&test_server, 0, XKB_KEY_Down, true);
+	assert(consumed == true);
+	assert(win_menu->selected_index == 0);
+
+	test_server.window_menu = NULL;
+	wm_menu_destroy(win_menu);
+	printf("  PASS: handle_key_dispatches_to_window_menu\n");
+}
+
+/* --- wm_menu_handle_button dispatches to window_list_menu and window_menu --- */
+
+static void
+test_handle_button_dispatches_to_window_list(void)
+{
+	setup_server();
+	struct wm_menu *wl_menu = make_test_menu(3);
+	prepare_menu(wl_menu, 100, 100);
+	wl_menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+	test_server.window_list_menu = wl_menu;
+
+	/* Click on first item */
+	int bw = wl_menu->border_width;
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + wl_menu->title_height + 5;
+
+	bool consumed = wm_menu_handle_button(&test_server, lx, ly, 0x110, true);
+	assert(consumed == true);
+
+	test_server.window_list_menu = NULL;
+	wm_menu_destroy(wl_menu);
+	printf("  PASS: handle_button_dispatches_to_window_list\n");
+}
+
+static void
+test_handle_button_dispatches_to_window_menu(void)
+{
+	setup_server();
+	struct wm_menu *win_menu = make_test_menu(3);
+	prepare_menu(win_menu, 100, 100);
+	win_menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+	test_server.window_menu = win_menu;
+
+	/* Click on title area */
+	int bw = win_menu->border_width;
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + 5;
+
+	bool consumed = wm_menu_handle_button(&test_server, lx, ly, 0x110, true);
+	assert(consumed == true);
+
+	test_server.window_menu = NULL;
+	wm_menu_destroy(win_menu);
+	printf("  PASS: handle_button_dispatches_to_window_menu\n");
+}
+
+/* --- wm_menu_handle_motion dispatches to window_list_menu and window_menu --- */
+
+static void
+test_handle_motion_dispatches_to_window_list(void)
+{
+	setup_server();
+	struct wm_menu *wl_menu = make_test_menu(3);
+	prepare_menu(wl_menu, 100, 100);
+	test_server.window_list_menu = wl_menu;
+
+	int bw = wl_menu->border_width;
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + wl_menu->title_height + 5;
+
+	bool consumed = wm_menu_handle_motion(&test_server, lx, ly);
+	assert(consumed == true);
+	assert(wl_menu->selected_index == 0);
+
+	test_server.window_list_menu = NULL;
+	wm_menu_destroy(wl_menu);
+	printf("  PASS: handle_motion_dispatches_to_window_list\n");
+}
+
+static void
+test_handle_motion_dispatches_to_window_menu(void)
+{
+	setup_server();
+	struct wm_menu *win_menu = make_test_menu(3);
+	prepare_menu(win_menu, 100, 100);
+	test_server.window_menu = win_menu;
+
+	int bw = win_menu->border_width;
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + win_menu->title_height + 5;
+
+	bool consumed = wm_menu_handle_motion(&test_server, lx, ly);
+	assert(consumed == true);
+	assert(win_menu->selected_index == 0);
+
+	test_server.window_menu = NULL;
+	wm_menu_destroy(win_menu);
+	printf("  PASS: handle_motion_dispatches_to_window_menu\n");
+}
+
+/* --- vim-style l and h keys --- */
+
+static void
+test_key_l_enters_submenu(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+	menu->selected_index = 1; /* Submenu item */
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_l);
+	assert(consumed == true);
+
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(sub_item->submenu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_l_enters_submenu\n");
+}
+
+static void
+test_key_h_leaves_submenu(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+
+	/* Open submenu first */
+	menu->selected_index = 1;
+	wm_menu_handle_key_for(menu, XKB_KEY_Right);
+
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(sub_item->submenu->visible == true);
+
+	/* h should close it */
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_h);
+	assert(consumed == true);
+	assert(sub_item->submenu->visible == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_h_leaves_submenu\n");
+}
+
+/* --- Key KP_Enter activates item --- */
+
+static void
+test_key_kp_enter_activates(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+	menu->selected_index = 0;
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_KP_Enter);
+	assert(consumed == true);
+	assert(menu->visible == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_kp_enter_activates\n");
+}
+
+/* --- Key Return with no selection (selected_index = -1) --- */
+
+static void
+test_key_return_no_selection(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	menu->selected_index = -1;
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_Return);
+	assert(consumed == true);
+	/* Menu should stay visible since no item was selected */
+	assert(menu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_return_no_selection\n");
+}
+
+/* --- Type-ahead with digits and uppercase --- */
+
+static void
+test_type_ahead_digit(void)
+{
+	setup_server();
+	test_config.menu_search = WM_MENU_SEARCH_ITEMSTART;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Apple");
+	struct wm_menu_item *i1 = menu_item_create(WM_MENU_EXEC, "3D Viewer");
+	wl_list_insert(menu->items.prev, &i0->link);
+	wl_list_insert(menu->items.prev, &i1->link);
+	prepare_menu(menu, 0, 0);
+
+	/* Type '3' via key handler - should select "3D Viewer" */
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_0 + 3);
+	assert(consumed == true);
+	assert(menu->selected_index == 1);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: type_ahead_digit\n");
+}
+
+static void
+test_type_ahead_uppercase(void)
+{
+	setup_server();
+	test_config.menu_search = WM_MENU_SEARCH_ITEMSTART;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Alpha");
+	struct wm_menu_item *i1 = menu_item_create(WM_MENU_EXEC, "Beta");
+	wl_list_insert(menu->items.prev, &i0->link);
+	wl_list_insert(menu->items.prev, &i1->link);
+	prepare_menu(menu, 0, 0);
+
+	/* Type 'B' (uppercase) via key handler */
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_B);
+	assert(consumed == true);
+	assert(menu->selected_index == 1);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: type_ahead_uppercase\n");
+}
+
+static void
+test_type_ahead_space(void)
+{
+	setup_server();
+	test_config.menu_search = WM_MENU_SEARCH_SOMEWHERE;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Hello World");
+	struct wm_menu_item *i1 = menu_item_create(WM_MENU_EXEC, "FooBar");
+	wl_list_insert(menu->items.prev, &i0->link);
+	wl_list_insert(menu->items.prev, &i1->link);
+	prepare_menu(menu, 0, 0);
+
+	/* Type 'h' then space via key handler */
+	wm_menu_handle_key_for(menu, XKB_KEY_h);
+	/* Reset search_len to test space standalone */
+	menu->search_len = 0;
+	menu->search_buf[0] = '\0';
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_space);
+	assert(consumed == true);
+	/* Space should match somewhere in "Hello World" */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: type_ahead_space\n");
+}
+
+/* --- Type-ahead: unknown key returns false --- */
+
+static void
+test_type_ahead_unknown_key(void)
+{
+	setup_server();
+	test_config.menu_search = WM_MENU_SEARCH_ITEMSTART;
+
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 0, 0);
+
+	/* A key that's not a printable character or navigation key */
+	bool consumed = wm_menu_handle_key_for(menu, 0xffe1); /* Shift_L */
+	assert(consumed == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: type_ahead_unknown_key\n");
+}
+
+/* --- wm_menu_show: output clamping --- */
+
+static void
+test_menu_show_output_clamping(void)
+{
+	setup_server();
+
+	struct wm_output wm_out;
+	memset(&wm_out, 0, sizeof(wm_out));
+	wm_out.wlr_output = &g_stub_wlr_output_obj;
+	wm_out.usable_area.x = 0;
+	wm_out.usable_area.y = 0;
+	wm_out.usable_area.width = 200;
+	wm_out.usable_area.height = 200;
+	wl_list_init(&wm_out.link);
+	wl_list_insert(test_server.outputs.prev, &wm_out.link);
+
+	g_stub_output_at_result = &g_stub_wlr_output_obj;
+	g_stub_output_box = (struct wlr_box){0, 0, 200, 200};
+
+	struct wm_menu *menu = make_test_menu(3);
+
+	/* Show at position that would overflow right and bottom */
+	wm_menu_show(menu, 180, 180);
+	assert(menu->visible == true);
+	/* Menu should be clamped to fit within 200x200 output */
+	assert(menu->x + menu->width <= 200);
+	assert(menu->y + menu->height <= 200);
+
+	wm_menu_hide(menu);
+
+	/* Show at negative position -- should clamp to 0,0 */
+	wm_menu_show(menu, -50, -50);
+	assert(menu->visible == true);
+	assert(menu->x >= 0);
+	assert(menu->y >= 0);
+
+	wm_menu_hide(menu);
+
+	g_stub_output_at_result = NULL;
+	g_stub_output_box = (struct wlr_box){0, 0, 0, 0};
+	wl_list_remove(&wm_out.link);
+	wm_menu_destroy(menu);
+	printf("  PASS: menu_show_output_clamping\n");
+}
+
+/* --- submenu_position: flip to left side but clamp to out_left --- */
+
+static void
+test_submenu_position_flip_clamp(void)
+{
+	setup_server();
+
+	struct wm_output wm_out;
+	memset(&wm_out, 0, sizeof(wm_out));
+	wm_out.wlr_output = &g_stub_wlr_output_obj;
+	wm_out.usable_area.x = 0;
+	wm_out.usable_area.y = 0;
+	wm_out.usable_area.width = 200;
+	wm_out.usable_area.height = 400;
+	wl_list_init(&wm_out.link);
+	wl_list_insert(test_server.outputs.prev, &wm_out.link);
+
+	g_stub_output_at_result = &g_stub_wlr_output_obj;
+	g_stub_output_box = (struct wlr_box){0, 0, 200, 400};
+
+	struct wm_menu *menu = make_test_menu(3);
+	/* Place parent menu at x=50, very narrow output (200px).
+	 * Menu width ~128. sub_x = 50+128=178, 178+128=306 > 200 => flip.
+	 * Flipped: sub_x = 50-128 = -78 < 0 => clamp to 0 */
+	prepare_menu(menu, 50, 50);
+
+	int sub_x, sub_y;
+	submenu_position(menu, 0, &sub_x, &sub_y);
+
+	/* After flip + clamp, sub_x should be >= 0 */
+	assert(sub_x >= 0);
+
+	g_stub_output_at_result = NULL;
+	g_stub_output_box = (struct wlr_box){0, 0, 0, 0};
+	wl_list_remove(&wm_out.link);
+	wm_menu_destroy(menu);
+	printf("  PASS: submenu_position_flip_clamp\n");
+}
+
+/* --- submenu_delay_cb --- */
+
+static void
+test_submenu_delay_cb(void)
+{
+	setup_server();
+
+	/* Set up pending_submenu with a submenu item */
+	struct wm_menu *submenu = menu_create(&test_server, "Delayed Sub");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Child");
+	wl_list_insert(submenu->items.prev, &i0->link);
+
+	struct wm_menu_item mock_item;
+	memset(&mock_item, 0, sizeof(mock_item));
+	mock_item.submenu = submenu;
+
+	pending_submenu.item = &mock_item;
+	pending_submenu.sub_x = 50;
+	pending_submenu.sub_y = 50;
+
+	submenu_delay_cb(NULL);
+
+	assert(submenu->visible == true);
+	assert(pending_submenu.item == NULL);
+
+	wm_menu_destroy(submenu);
+	printf("  PASS: submenu_delay_cb\n");
+}
+
+/* --- submenu_delay_cb with null item --- */
+
+static void
+test_submenu_delay_cb_null(void)
+{
+	pending_submenu.item = NULL;
+	submenu_delay_cb(NULL);
+	/* Should not crash */
+	assert(pending_submenu.item == NULL);
+	printf("  PASS: submenu_delay_cb_null\n");
+}
+
+/* --- Motion: auto-open submenu with delay --- */
+
+static void
+test_motion_submenu_with_delay(void)
+{
+	setup_server();
+	test_config.menu_delay = 100; /* 100ms delay */
+
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+
+	int bw = menu->border_width;
+	/* Move over submenu item (index 1) */
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+
+	bool consumed = wm_menu_handle_motion_for(menu, lx, ly);
+	assert(consumed == true);
+	assert(menu->selected_index == 1);
+
+	/* With delay > 0, submenu should NOT be immediately visible.
+	 * It should be pending. */
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(pending_submenu.item == sub_item);
+
+	/* Reset */
+	cancel_pending_submenu();
+	test_config.menu_delay = 0;
+	wm_menu_destroy(menu);
+	printf("  PASS: motion_submenu_with_delay\n");
+}
+
+/* --- Motion: auto-open submenu without delay (immediate) --- */
+
+static void
+test_motion_submenu_immediate(void)
+{
+	setup_server();
+	test_config.menu_delay = 0;
+
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+
+	int bw = menu->border_width;
+	/* Move over submenu item (index 1) */
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+
+	bool consumed = wm_menu_handle_motion_for(menu, lx, ly);
+	assert(consumed == true);
+	assert(menu->selected_index == 1);
+
+	/* With delay = 0, submenu should be immediately visible */
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(sub_item->submenu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: motion_submenu_immediate\n");
+}
+
+/* --- Motion: moving from submenu item to non-submenu closes submenu --- */
+
+static void
+test_motion_closes_old_submenu(void)
+{
+	setup_server();
+	test_config.menu_delay = 0;
+
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+
+	int bw = menu->border_width;
+	/* First move over submenu item (index 1) to open it */
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+	wm_menu_handle_motion_for(menu, lx, ly);
+
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(sub_item->submenu->visible == true);
+
+	/* Now move to first item (index 0) - should close submenu */
+	ly = 100 + bw + menu->title_height + 5;
+	wm_menu_handle_motion_for(menu, lx, ly);
+
+	assert(menu->selected_index == 0);
+	assert(sub_item->submenu->visible == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: motion_closes_old_submenu\n");
+}
+
+/* --- Window list with iconified and focused views --- */
+
+static void
+test_create_window_list_with_states(void)
+{
+	setup_server();
+
+	struct wm_workspace ws0 = { .name = strdup("Main"), .index = 0 };
+	wl_list_init(&ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+
+	/* Normal view */
+	struct wlr_scene_tree tree1;
+	memset(&tree1, 0, sizeof(tree1));
+	wl_list_init(&tree1.children);
+	wl_list_init(&tree1.node.link);
+	tree1.node.enabled = 1;
+
+	struct wm_view view1;
+	memset(&view1, 0, sizeof(view1));
+	view1.title = strdup("Normal");
+	view1.workspace = &ws0;
+	view1.scene_tree = &tree1;
+	wl_list_init(&view1.link);
+	wl_list_insert(test_server.views.prev, &view1.link);
+
+	/* Iconified view */
+	struct wlr_scene_tree tree2;
+	memset(&tree2, 0, sizeof(tree2));
+	wl_list_init(&tree2.children);
+	wl_list_init(&tree2.node.link);
+	tree2.node.enabled = 0; /* iconified */
+
+	struct wm_view view2;
+	memset(&view2, 0, sizeof(view2));
+	view2.title = strdup("Minimized");
+	view2.workspace = &ws0;
+	view2.scene_tree = &tree2;
+	wl_list_init(&view2.link);
+	wl_list_insert(test_server.views.prev, &view2.link);
+
+	/* Focused view */
+	struct wlr_scene_tree tree3;
+	memset(&tree3, 0, sizeof(tree3));
+	wl_list_init(&tree3.children);
+	wl_list_init(&tree3.node.link);
+	tree3.node.enabled = 1;
+
+	struct wm_view view3;
+	memset(&view3, 0, sizeof(view3));
+	view3.title = strdup("Focused");
+	view3.workspace = &ws0;
+	view3.scene_tree = &tree3;
+	wl_list_init(&view3.link);
+	wl_list_insert(test_server.views.prev, &view3.link);
+	test_server.focused_view = &view3;
+
+	struct wm_menu *menu = wm_menu_create_window_list(&test_server);
+	assert(menu != NULL);
+
+	/* Should have ws header + 3 entries = 4 items */
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+	}
+	assert(count == 4);
+
+	/* Check that iconified view has bracket format [Minimized] */
+	bool found_iconified = false;
+	bool found_focused = false;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->type == WM_MENU_WINDOW_ENTRY) {
+			if (strstr(item->label, "[Minimized]") != NULL) {
+				found_iconified = true;
+			}
+			if (strstr(item->label, "* Focused") != NULL) {
+				found_focused = true;
+			}
+		}
+	}
+	assert(found_iconified == true);
+	assert(found_focused == true);
+
+	test_server.focused_view = NULL;
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&view1.link);
+	wl_list_remove(&view2.link);
+	wl_list_remove(&view3.link);
+	free(ws0.name);
+	free(view1.title);
+	free(view2.title);
+	free(view3.title);
+	wm_menu_destroy(menu);
+	printf("  PASS: create_window_list_with_states\n");
+}
+
+/* --- Window list: untitled view fallback --- */
+
+static void
+test_create_window_list_untitled(void)
+{
+	setup_server();
+
+	struct wm_workspace ws0 = { .name = strdup("Main"), .index = 0 };
+	wl_list_init(&ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+
+	struct wlr_scene_tree tree;
+	memset(&tree, 0, sizeof(tree));
+	wl_list_init(&tree.children);
+	wl_list_init(&tree.node.link);
+	tree.node.enabled = 1;
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = NULL; /* no title */
+	view.app_id = strdup("myapp");
+	view.workspace = &ws0;
+	view.scene_tree = &tree;
+	wl_list_init(&view.link);
+	wl_list_insert(test_server.views.prev, &view.link);
+
+	struct wm_menu *menu = wm_menu_create_window_list(&test_server);
+	assert(menu != NULL);
+
+	/* Check that it falls back to app_id */
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->type == WM_MENU_WINDOW_ENTRY) {
+			assert(strstr(item->label, "myapp") != NULL);
+		}
+	}
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&view.link);
+	free(ws0.name);
+	free(view.app_id);
+	wm_menu_destroy(menu);
+	printf("  PASS: create_window_list_untitled\n");
+}
+
+/* --- Escape from root menu (not in submenu) --- */
+
+static void
+test_key_escape_root(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+	menu->parent = NULL; /* root menu has no parent */
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_Escape);
+	assert(consumed == true);
+	assert(menu->visible == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_escape_root\n");
+}
+
+/* --- Escape from submenu (goes back to parent) --- */
+
+static void
+test_key_escape_submenu(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_menu_with_submenu();
+	prepare_menu(menu, 100, 100);
+
+	/* Open submenu */
+	menu->selected_index = 1;
+	wm_menu_handle_key_for(menu, XKB_KEY_Right);
+
+	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
+	assert(sub_item->submenu->visible == true);
+
+	/* Escape in the submenu should close only the submenu */
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_Escape);
+	assert(consumed == true);
+	assert(sub_item->submenu->visible == false);
+	assert(menu->visible == true); /* Parent should stay visible */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_escape_submenu\n");
+}
+
+/* --- pixel_buffer_end_data_ptr_access --- */
+
+static void
+test_pixel_buffer_end_access(void)
+{
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 10, 10);
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
+	assert(buf != NULL);
+
+	/* end_data_ptr_access is a no-op but should not crash */
+	pixel_buffer_end_data_ptr_access(buf);
+
+	pixel_buffer_destroy(buf);
+	printf("  PASS: pixel_buffer_end_access\n");
+}
+
+/* --- menu_compute_layout: submenu arrow width accounting --- */
+
+static void
+test_menu_layout_submenu_arrow_width(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+
+	/* Add a submenu item -- its width should account for arrow */
+	struct wm_menu_item *sub = menu_item_create(WM_MENU_SUBMENU, "Sub Menu Item");
+	sub->submenu = menu_create(&test_server, "SubTitle");
+	wl_list_insert(menu->items.prev, &sub->link);
+
+	/* Add a sendto item */
+	struct wm_menu_item *sendto = menu_item_create(WM_MENU_SENDTO, "Send To...");
+	wl_list_insert(menu->items.prev, &sendto->link);
+
+	/* Add a layer item */
+	struct wm_menu_item *layer = menu_item_create(WM_MENU_LAYER, "Layer");
+	wl_list_insert(menu->items.prev, &layer->link);
+
+	menu_compute_layout(menu, &test_style);
+	assert(menu->item_count == 3);
+	/* Width should be at least MENU_MIN_WIDTH */
+	assert(menu->width >= MENU_MIN_WIDTH);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: menu_layout_submenu_arrow_width\n");
+}
+
+/* --- menu_compute_layout: icon column width --- */
+
+static void
+test_menu_layout_icon_column(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Icons");
+
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "With Icon");
+	i0->icon_path = strdup("/path/to/icon.png");
+	i0->command = strdup("echo test");
+	wl_list_insert(menu->items.prev, &i0->link);
+
+	struct wm_menu_item *i1 = menu_item_create(WM_MENU_EXEC, "No Icon");
+	i1->command = strdup("echo test2");
+	wl_list_insert(menu->items.prev, &i1->link);
+
+	menu_compute_layout(menu, &test_style);
+	assert(menu->item_count == 2);
+	/* Width includes icon column for all items since one has an icon */
+	assert(menu->width >= MENU_MIN_WIDTH);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: menu_layout_icon_column\n");
+}
+
+/* --- parse_menu_items_depth: stylesdir with brace syntax --- */
+
+static void
+test_parse_stylesdir_brace(void)
+{
+	setup_server();
+
+	const char *tmpdir = "/tmp/fluxland_test_parse_stylesdir_brace";
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		"rm -rf %s && mkdir -p %s && touch %s/minimal",
+		tmpdir, tmpdir, tmpdir);
+	system(cmd);
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_stylesdir_brace.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[stylesdir] {%s}\n", tmpdir); /* brace syntax instead of paren */
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	int count = 0;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		count++;
+		assert(item->type == WM_MENU_STYLE);
+	}
+	assert(count == 1);
+
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
+	system(cmd);
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_stylesdir_brace\n");
+}
+
+/* --- parse_menu_items_depth: wallpapers with no label and no dir --- */
+
+static void
+test_parse_wallpapers_defaults(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_wall_default.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[wallpapers]\n"); /* No label, no dir */
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	/* Should have one submenu labeled "Wallpapers" (default) */
+	struct wm_menu_item *item = menu_get_item(menu, 0);
+	assert(item != NULL);
+	assert(item->type == WM_MENU_SUBMENU);
+	assert(strcmp(item->label, "Wallpapers") == 0);
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_wallpapers_defaults\n");
+}
+
+/* --- parse_menu_items_depth: stylesmenu with no dir --- */
+
+static void
+test_parse_stylesmenu_no_dir(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_stymenu_nodir.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[stylesmenu] (My Styles)\n"); /* No brace dir */
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	/* Should have one submenu but with no entries (no dir) */
+	struct wm_menu_item *item = menu_get_item(menu, 0);
+	assert(item != NULL);
+	assert(item->type == WM_MENU_SUBMENU);
+	assert(item->submenu != NULL);
+	/* Submenu should be empty since no dir was provided */
+	assert(wl_list_empty(&item->submenu->items));
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_stylesmenu_no_dir\n");
+}
+
+/* --- parse_menu_items_depth: simple tags with default labels --- */
+
+static void
+test_parse_simple_tags_default_labels(void)
+{
+	setup_server();
+
+	const char *tmpfile = "/tmp/fluxland_test_menu_default_labels.txt";
+	FILE *fp = fopen(tmpfile, "w");
+	assert(fp != NULL);
+	fprintf(fp, "[begin] (Root)\n");
+	fprintf(fp, "[config]\n");       /* No label => default "config" */
+	fprintf(fp, "[exit]\n");         /* No label => default "exit" */
+	fprintf(fp, "[restart]\n");      /* No label => default "Restart" */
+	fprintf(fp, "[end]\n");
+	fclose(fp);
+
+	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
+	assert(menu != NULL);
+
+	struct wm_menu_item *item;
+	item = menu_get_item(menu, 0);
+	assert(item->type == WM_MENU_CONFIG);
+	assert(strcmp(item->label, "config") == 0);
+
+	item = menu_get_item(menu, 1);
+	assert(item->type == WM_MENU_EXIT);
+	assert(strcmp(item->label, "exit") == 0);
+
+	item = menu_get_item(menu, 2);
+	assert(item->type == WM_MENU_RESTART);
+	assert(strcmp(item->label, "Restart") == 0);
+
+	wm_menu_destroy(menu);
+	remove(tmpfile);
+	printf("  PASS: parse_simple_tags_default_labels\n");
+}
+
+/* --- null safety for server-level handlers --- */
+
+static void
+test_handle_key_null_server(void)
+{
+	bool consumed = wm_menu_handle_key(NULL, 0, XKB_KEY_Down, true);
+	assert(consumed == false);
+	printf("  PASS: handle_key_null_server\n");
+}
+
+static void
+test_handle_motion_null_server(void)
+{
+	bool consumed = wm_menu_handle_motion(NULL, 0, 0);
+	assert(consumed == false);
+	printf("  PASS: handle_motion_null_server\n");
+}
+
+static void
+test_handle_button_null_server(void)
+{
+	bool consumed = wm_menu_handle_button(NULL, 0, 0, 0x110, true);
+	assert(consumed == false);
+	printf("  PASS: handle_button_null_server\n");
+}
+
+/* --- wm_menu_hide_all null safety --- */
+
+static void
+test_hide_all_null(void)
+{
+	wm_menu_hide_all(NULL);
+	/* Should not crash */
+	printf("  PASS: hide_all_null\n");
+}
+
+/* --- wm_menu_show null safety --- */
+
+static void
+test_show_null_menu(void)
+{
+	wm_menu_show(NULL, 0, 0);
+	/* Should not crash */
+	printf("  PASS: show_null_menu\n");
+}
+
+/* --- wm_menu_hide null/not-visible safety --- */
+
+static void
+test_hide_null_menu(void)
+{
+	wm_menu_hide(NULL);
+	/* Should not crash */
+
+	setup_server();
+	struct wm_menu *menu = make_test_menu(1);
+	menu->visible = false;
+	wm_menu_hide(menu);
+	/* Should return early for not-visible menu */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: hide_null_menu\n");
+}
+
+/* --- menu_item_at: null menu --- */
+
+static void
+test_menu_item_at_null(void)
+{
+	int idx = menu_item_at(NULL, 0, 0);
+	assert(idx == -1);
+	printf("  PASS: menu_item_at_null\n");
+}
+
+/* --- find_deepest_visible: null/not-visible --- */
+
+static void
+test_find_deepest_visible_null(void)
+{
+	struct wm_menu *result = find_deepest_visible(NULL);
+	assert(result == NULL);
+
+	setup_server();
+	struct wm_menu *menu = make_test_menu(1);
+	menu->visible = false;
+	result = find_deepest_visible(menu);
+	assert(result == NULL);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: find_deepest_visible_null\n");
+}
+
+/* --- Button: click on NOP item does not close menu --- */
+
+static void
+test_button_click_nop_stays_open(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *nop = menu_item_create(WM_MENU_NOP, "Info");
+	wl_list_insert(menu->items.prev, &nop->link);
+	prepare_menu(menu, 100, 100);
+
+	int bw = menu->border_width;
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + menu->title_height + 5;
+
+	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	assert(consumed == true);
+	/* Menu stays visible when clicking on NOP */
+	assert(menu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: button_click_nop_stays_open\n");
+}
+
+/* --- Button: click on separator stays open --- */
+
+static void
+test_button_click_separator_stays_open(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *sep = menu_item_create(WM_MENU_SEPARATOR, NULL);
+	wl_list_insert(menu->items.prev, &sep->link);
+	prepare_menu(menu, 100, 100);
+
+	int bw = menu->border_width;
+	double lx = 100 + bw + 5;
+	double ly = 100 + bw + menu->title_height + 2;
+
+	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	assert(consumed == true);
+	/* Menu should remain visible */
+	assert(menu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: button_click_separator_stays_open\n");
+}
+
+/* --- wm_menu_show_window_list: null server --- */
+
+static void
+test_show_window_list_null(void)
+{
+	wm_menu_show_window_list(NULL, 10, 10);
+	/* Should not crash */
+	printf("  PASS: show_window_list_null\n");
+}
+
+/* --- wm_menu_show_workspace_menu: null server --- */
+
+static void
+test_show_workspace_menu_null(void)
+{
+	wm_menu_show_workspace_menu(NULL, 10, 10);
+	/* Should not crash */
+	printf("  PASS: show_workspace_menu_null\n");
+}
+
+/* --- wm_menu_show_root: null server and null root_menu --- */
+
+static void
+test_show_root_null(void)
+{
+	wm_menu_show_root(NULL, 10, 10);
+	/* Should not crash */
+
+	setup_server();
+	test_server.root_menu = NULL;
+	wm_menu_show_root(&test_server, 10, 10);
+	/* Should not crash */
+
+	printf("  PASS: show_root_null\n");
+}
+
+/* --- wm_menu_show_window: null server --- */
+
+static void
+test_show_window_null(void)
+{
+	wm_menu_show_window(NULL, 10, 10);
+	/* Should not crash */
+	printf("  PASS: show_window_null\n");
+}
+
+/* --- client_menu: iconified view in client menu --- */
+
+static void
+test_client_menu_iconified(void)
+{
+	setup_server();
+
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	wl_list_init(&view_tree.children);
+	wl_list_init(&view_tree.node.link);
+	view_tree.node.enabled = 0; /* iconified */
+
+	struct wm_workspace ws0 = { .name = strdup("Main"), .index = 0 };
+	wl_list_init(&ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = strdup("Minimized App");
+	view.app_id = strdup("minimized");
+	view.workspace = &ws0;
+	view.scene_tree = &view_tree;
+	wl_list_init(&view.link);
+	wl_list_insert(test_server.views.prev, &view.link);
+
+	wm_menu_show_client_menu(&test_server, NULL, 10, 10);
+	assert(test_server.client_menu != NULL);
+
+	/* Check the entry label uses bracket format for iconified */
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &test_server.client_menu->items, link) {
+		assert(strstr(item->label, "[Minimized App]") != NULL);
+	}
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&view.link);
+	free(ws0.name);
+	free(view.title);
+	free(view.app_id);
+	wm_menu_destroy(test_server.client_menu);
+	test_server.client_menu = NULL;
+	printf("  PASS: client_menu_iconified\n");
+}
+
+/* --- client_menu: view with no title and no app_id --- */
+
+static void
+test_client_menu_untitled(void)
+{
+	setup_server();
+
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	wl_list_init(&view_tree.children);
+	wl_list_init(&view_tree.node.link);
+	view_tree.node.enabled = 1;
+
+	struct wm_workspace ws0 = { .name = strdup("Main"), .index = 0 };
+	wl_list_init(&ws0.link);
+	wl_list_insert(test_server.workspaces.prev, &ws0.link);
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = NULL;
+	view.app_id = NULL;
+	view.workspace = &ws0;
+	view.scene_tree = &view_tree;
+	wl_list_init(&view.link);
+	wl_list_insert(test_server.views.prev, &view.link);
+
+	wm_menu_show_client_menu(&test_server, NULL, 10, 10);
+	assert(test_server.client_menu != NULL);
+
+	/* Should fall back to "(untitled)" */
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &test_server.client_menu->items, link) {
+		assert(strstr(item->label, "(untitled)") != NULL);
+	}
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&view.link);
+	free(ws0.name);
+	wm_menu_destroy(test_server.client_menu);
+	test_server.client_menu = NULL;
+	printf("  PASS: client_menu_untitled\n");
+}
+
+/* --- wm_menu_handle_key: no visible menus --- */
+
+static void
+test_handle_key_no_visible(void)
+{
+	setup_server();
+	/* No menus set */
+	bool consumed = wm_menu_handle_key(&test_server, 0, XKB_KEY_Down, true);
+	assert(consumed == false);
+	printf("  PASS: handle_key_no_visible\n");
+}
+
+/* --- wm_menu_handle_button: not-visible menus --- */
+
+static void
+test_handle_button_not_visible(void)
+{
+	setup_server();
+	bool consumed = wm_menu_handle_button_for(NULL, 0, 0, 0x110, true);
+	assert(consumed == false);
+	printf("  PASS: handle_button_not_visible\n");
+}
+
+/* --- wm_menu_handle_motion: not-visible menu --- */
+
+static void
+test_handle_motion_not_visible(void)
+{
+	setup_server();
+	bool consumed = wm_menu_handle_motion_for(NULL, 0, 0);
+	assert(consumed == false);
+	printf("  PASS: handle_motion_not_visible\n");
+}
+
+/* --- Key Right on non-submenu item (no-op) --- */
+
+static void
+test_key_right_no_submenu(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	menu->selected_index = 0; /* Regular exec item, no submenu */
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_Right);
+	assert(consumed == true);
+	/* Should not crash, just return true */
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_right_no_submenu\n");
+}
+
+/* --- Key Left at root (no parent) --- */
+
+static void
+test_key_left_at_root(void)
+{
+	setup_server();
+	struct wm_menu *menu = make_test_menu(3);
+	prepare_menu(menu, 100, 100);
+	menu->parent = NULL;
+
+	bool consumed = wm_menu_handle_key_for(menu, XKB_KEY_Left);
+	assert(consumed == true);
+	/* Menu should still be visible */
+	assert(menu->visible == true);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: key_left_at_root\n");
+}
+
+/* --- render_menu_title: with different justify modes --- */
+
+static void
+test_render_menu_title_justify(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = make_test_menu(1);
+	menu_compute_layout(menu, &test_style);
+
+	/* Left justify (default) */
+	test_style.menu_title_justify = WM_JUSTIFY_LEFT;
+	cairo_surface_t *s = render_menu_title(menu, &test_style);
+	/* Surface is stub, but should not crash */
+	(void)s;
+
+	/* Center justify */
+	test_style.menu_title_justify = WM_JUSTIFY_CENTER;
+	s = render_menu_title(menu, &test_style);
+	(void)s;
+
+	/* Right justify */
+	test_style.menu_title_justify = WM_JUSTIFY_RIGHT;
+	s = render_menu_title(menu, &test_style);
+	(void)s;
+
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_title_justify\n");
+}
+
+/* --- render_menu_title: empty title --- */
+
+static void
+test_render_menu_title_empty(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, NULL);
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Item");
+	wl_list_insert(menu->items.prev, &i0->link);
+	menu_compute_layout(menu, &test_style);
+
+	cairo_surface_t *s = render_menu_title(menu, &test_style);
+	/* Should handle NULL title */
+	(void)s;
+
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_title_empty\n");
+}
+
+/* --- render_menu_items: with selected item --- */
+
+static void
+test_render_menu_items_selected(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = make_test_menu(3);
+	menu_compute_layout(menu, &test_style);
+	menu->selected_index = 1;
+
+	cairo_surface_t *s = render_menu_items(menu, &test_style);
+	/* Should handle selected item highlight rendering */
+	(void)s;
+
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_items_selected\n");
+}
+
+/* --- render_menu_items: with icon item --- */
+
+static void
+test_render_menu_items_with_icon(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Icons");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Icon Item");
+	i0->icon_path = strdup("/path/icon.png");
+	i0->command = strdup("test");
+	wl_list_insert(menu->items.prev, &i0->link);
+	menu_compute_layout(menu, &test_style);
+
+	cairo_surface_t *s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_items_with_icon\n");
+}
+
+/* --- render_menu_items: NOP item (disabled/greyed out) --- */
+
+static void
+test_render_menu_items_nop(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "NOP Test");
+	struct wm_menu_item *nop = menu_item_create(WM_MENU_NOP, "Disabled");
+	wl_list_insert(menu->items.prev, &nop->link);
+	menu_compute_layout(menu, &test_style);
+
+	cairo_surface_t *s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_items_nop\n");
+}
+
+/* --- render_menu_items: submenu bullet shapes --- */
+
+static void
+test_render_menu_items_bullet_shapes(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "Bullets");
+	struct wm_menu_item *sub = menu_item_create(WM_MENU_SUBMENU, "Sub");
+	sub->submenu = menu_create(&test_server, "Child");
+	wl_list_insert(menu->items.prev, &sub->link);
+	menu_compute_layout(menu, &test_style);
+
+	/* Triangle (default) */
+	test_style.menu_bullet = NULL;
+	cairo_surface_t *s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	/* Square */
+	test_style.menu_bullet = "square";
+	s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	/* Diamond */
+	test_style.menu_bullet = "diamond";
+	s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	/* Empty (skip drawing) */
+	test_style.menu_bullet = "empty";
+	s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	test_style.menu_bullet = NULL;
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_items_bullet_shapes\n");
+}
+
+/* --- render_menu_items: bullet position left --- */
+
+static void
+test_render_menu_items_bullet_left(void)
+{
+	setup_server();
+
+	struct wm_menu *menu = menu_create(&test_server, "BulletLeft");
+	struct wm_menu_item *sub = menu_item_create(WM_MENU_SUBMENU, "Sub");
+	sub->submenu = menu_create(&test_server, "Child");
+	wl_list_insert(menu->items.prev, &sub->link);
+	menu_compute_layout(menu, &test_style);
+
+	test_style.menu_bullet_position = WM_JUSTIFY_LEFT;
+	cairo_surface_t *s = render_menu_items(menu, &test_style);
+	(void)s;
+
+	test_style.menu_bullet_position = WM_JUSTIFY_RIGHT;
+	wm_menu_destroy(menu);
+	printf("  PASS: render_menu_items_bullet_left\n");
+}
+
+/* --- maybe_convert_label: unknown encoding --- */
+
+static void
+test_maybe_convert_label_unknown(void)
+{
+	char *label = strdup("test");
+	char *r = maybe_convert_label(label, "BOGUS-ENCODING-XYZ");
+	/* Should return label unchanged on error */
+	assert(r == label);
+	assert(strcmp(r, "test") == 0);
+	free(r);
+	printf("  PASS: maybe_convert_label_unknown\n");
+}
+
+/* --- menu_type_ahead: search buffer full --- */
+
+static void
+test_type_ahead_buffer_full(void)
+{
+	setup_server();
+	test_config.menu_search = WM_MENU_SEARCH_ITEMSTART;
+
+	struct wm_menu *menu = menu_create(&test_server, "Test");
+	struct wm_menu_item *i0 = menu_item_create(WM_MENU_EXEC, "Item");
+	wl_list_insert(menu->items.prev, &i0->link);
+	prepare_menu(menu, 0, 0);
+
+	/* Fill the search buffer to capacity */
+	for (int i = 0; i < 63; i++) {
+		menu->search_buf[i] = 'a';
+	}
+	menu->search_buf[63] = '\0';
+	menu->search_len = 63;
+
+	/* Trying to add more should return false */
+	bool consumed = menu_type_ahead(menu, 'z');
+	assert(consumed == false);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: type_ahead_buffer_full\n");
+}
+
+/* --- wm_menu_handle_key: key dispatch priority order --- */
+
+static void
+test_handle_key_priority_order(void)
+{
+	setup_server();
+
+	/* Set up all three menus visible; window_list_menu should get priority */
+	struct wm_menu *root = make_test_menu(3);
+	struct wm_menu *win = make_test_menu(3);
+	struct wm_menu *wl = make_test_menu(3);
+	prepare_menu(root, 100, 100);
+	prepare_menu(win, 100, 100);
+	prepare_menu(wl, 100, 100);
+
+	test_server.root_menu = root;
+	test_server.window_menu = win;
+	test_server.window_list_menu = wl;
+
+	bool consumed = wm_menu_handle_key(&test_server, 0, XKB_KEY_Down, true);
+	assert(consumed == true);
+	/* window_list_menu should have received the key */
+	assert(wl->selected_index == 0);
+	/* Others should be unchanged */
+	assert(win->selected_index == -1);
+	assert(root->selected_index == -1);
+
+	test_server.root_menu = NULL;
+	test_server.window_menu = NULL;
+	test_server.window_list_menu = NULL;
+	wm_menu_destroy(root);
+	wm_menu_destroy(win);
+	wm_menu_destroy(wl);
+	printf("  PASS: handle_key_priority_order\n");
+}
+
 /* ===================== Main ===================== */
 
 int
@@ -3087,6 +5838,60 @@ main(void)
 	test_parse_brace_nested();
 	test_parse_brace_no_match();
 	test_parse_angle_no_match();
+
+	/* Execute action types: remaining coverage */
+	test_execute_reconfig();
+	test_execute_restart();
+	test_execute_shade();
+	test_execute_shade_no_view();
+	test_execute_maximize();
+	test_execute_iconify();
+	test_execute_close();
+	test_execute_close_no_view();
+	test_execute_kill();
+	test_execute_kill_no_view();
+	test_execute_window_entry();
+	test_execute_window_entry_iconified();
+	test_execute_window_entry_null();
+	test_execute_window_entry_stale();
+
+	/* Submenu position flip */
+	test_submenu_position_flip();
+
+	/* Directory scanning helpers */
+	test_strcmp_qsort();
+	test_add_stylesdir_entries();
+	test_add_stylesdir_nonexistent();
+	test_add_wallpaper_entries();
+	test_add_wallpaper_entries_empty();
+	test_add_wallpaper_entries_nonexistent();
+	test_add_wallpaper_entries_quote_path();
+	test_add_stylesmenu_entries();
+	test_add_stylesmenu_nonexistent();
+
+	/* Parser: encoding, include, depth, stylesdir, wallpapers, stylesmenu */
+	test_parse_encoding_block();
+	test_parse_include();
+	test_parse_include_dotdot();
+	test_parse_max_depth();
+	test_parse_stylesdir_tag();
+	test_parse_wallpapers_tag();
+	test_parse_stylesmenu_tag();
+
+	/* Encoding conversion */
+	test_maybe_convert_label_latin1();
+
+	/* Buffer helpers */
+	test_wlr_buffer_from_cairo_null();
+
+	/* Custom menu */
+	test_show_custom_menu();
+	test_show_custom_null();
+
+	/* Misc helpers */
+	test_cancel_pending_submenu();
+	test_parse_long_line();
+	test_parse_window_menu_tags();
 
 	printf("All menu interaction tests passed.\n");
 	return 0;

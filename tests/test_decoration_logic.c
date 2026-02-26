@@ -584,7 +584,7 @@ wm_render_text(const char *text, const struct wm_font *font,
 	(void)justify; (void)scale;
 	if (out_w) *out_w = 50;
 	if (out_h) *out_h = 12;
-	return NULL;
+	return &g_stub_surface;
 }
 
 static cairo_surface_t *
@@ -2292,6 +2292,1035 @@ test_wlr_buffer_from_cairo_null(void)
 	printf("  PASS: wlr_buffer_from_cairo_null\n");
 }
 
+/* --- layout_and_render dimension calculation via update with NORMAL --- */
+
+static void
+test_update_normal_content_area(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* NORMAL: content_area.x = bw + ext_left = 1 + 0 = 1 */
+	/* content_area.y = bw + top_height + ext_top = 1 + 20 + 0 = 21 */
+	assert(deco->content_area.x == 1);
+	assert(deco->content_area.y == 21);
+	assert(deco->content_area.width == 800);
+	assert(deco->content_area.height == 600);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_normal_content_area\n");
+}
+
+/* --- layout_and_render with TAB preset --- */
+
+static void
+test_update_tab_preset_content_area(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Switch to TAB preset: has titlebar, no handle */
+	wm_decoration_set_preset(deco, WM_DECOR_TAB, &test_style);
+
+	/* TAB: has_titlebar=true, has_handle=false, has_borders=false */
+	/* content_area.x = bw = 1, content_area.y = bw + th = 21 */
+	assert(deco->content_area.x == 1);
+	assert(deco->content_area.y == 21);
+	assert(deco->content_area.width == 800);
+	assert(deco->content_area.height == 600);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_tab_preset_content_area\n");
+}
+
+/* --- layout_and_render with NONE preset --- */
+
+static void
+test_update_none_preset_disables_elements(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Switch to NONE: all disabled */
+	wm_decoration_set_preset(deco, WM_DECOR_NONE, &test_style);
+
+	/* Borders disabled */
+	assert(deco->border_top->node.enabled == 0);
+	assert(deco->border_bottom->node.enabled == 0);
+	assert(deco->border_left->node.enabled == 0);
+	assert(deco->border_right->node.enabled == 0);
+
+	/* Titlebar disabled */
+	assert(deco->titlebar_tree->node.enabled == 0);
+
+	/* Handle and grips disabled */
+	assert(deco->handle_buf->node.enabled == 0);
+	assert(deco->grip_left->node.enabled == 0);
+	assert(deco->grip_right->node.enabled == 0);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_none_preset_disables_elements\n");
+}
+
+/* --- layout_and_render with BORDER preset --- */
+
+static void
+test_update_border_preset_no_titlebar_no_handle(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	wm_decoration_set_preset(deco, WM_DECOR_BORDER, &test_style);
+
+	/* BORDER: has_borders=true, has_titlebar=false, has_handle=false */
+	/* Borders should be enabled */
+	assert(deco->border_top->node.enabled == 1);
+	assert(deco->border_bottom->node.enabled == 1);
+	assert(deco->border_left->node.enabled == 1);
+	assert(deco->border_right->node.enabled == 1);
+
+	/* Titlebar should be disabled */
+	assert(deco->titlebar_tree->node.enabled == 0);
+
+	/* Handle/grips should be disabled */
+	assert(deco->handle_buf->node.enabled == 0);
+	assert(deco->grip_left->node.enabled == 0);
+	assert(deco->grip_right->node.enabled == 0);
+
+	/* content_area: x = bw=1, y = bw + 0 = 1 (no titlebar) */
+	assert(deco->content_area.x == 1);
+	assert(deco->content_area.y == 1);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_border_preset_no_titlebar_no_handle\n");
+}
+
+/* --- layout_and_render with TINY preset --- */
+
+static void
+test_update_tiny_preset_has_titlebar_no_handle(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	wm_decoration_set_preset(deco, WM_DECOR_TINY, &test_style);
+
+	/* TINY: has_titlebar=true, has_handle=false, has_borders=false */
+	assert(deco->titlebar_tree->node.enabled == 1);
+	assert(deco->handle_buf->node.enabled == 0);
+	assert(deco->grip_left->node.enabled == 0);
+	assert(deco->grip_right->node.enabled == 0);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_tiny_preset_has_titlebar_no_handle\n");
+}
+
+/* --- layout_and_render NORMAL borders enabled with position check --- */
+
+static void
+test_update_normal_border_positions(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* NORMAL: borders enabled, check positions */
+	/* Top border at (0, 0), size outer_width x bw */
+	assert(deco->border_top->node.enabled == 1);
+	assert(deco->border_top->node.x == 0);
+	assert(deco->border_top->node.y == 0);
+
+	/* Left border at (0, 0) */
+	assert(deco->border_left->node.enabled == 1);
+	assert(deco->border_left->node.x == 0);
+	assert(deco->border_left->node.y == 0);
+
+	/* Right border at (outer_width - bw, 0) = (800+2-1, 0) = (801, 0) */
+	assert(deco->border_right->node.enabled == 1);
+	assert(deco->border_right->node.x == 801);
+	assert(deco->border_right->node.y == 0);
+
+	/* Bottom border at (0, total_h - bw) */
+	/* total_h = th(20) + ch(600) + hh(6) + 2*bw(2) = 628 */
+	assert(deco->border_bottom->node.enabled == 1);
+	assert(deco->border_bottom->node.x == 0);
+	assert(deco->border_bottom->node.y == 627);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_normal_border_positions\n");
+}
+
+/* --- layout_and_render border size checks --- */
+
+static void
+test_update_normal_border_sizes(void)
+{
+	setup();
+	setup_view();
+	test_style.window_border_width = 3;
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* outer_width = cw + 2*bw = 800 + 6 = 806 */
+	/* total_h = th(20) + ch(600) + hh(6) + 2*bw(6) = 632 */
+	/* Top border: 806 x 3 */
+	assert(deco->border_top->width == 806);
+	assert(deco->border_top->height == 3);
+
+	/* Bottom border: 806 x 3 */
+	assert(deco->border_bottom->width == 806);
+	assert(deco->border_bottom->height == 3);
+
+	/* Left border: 3 x 632 */
+	assert(deco->border_left->width == 3);
+	assert(deco->border_left->height == 632);
+
+	/* Right border: 3 x 632 */
+	assert(deco->border_right->width == 3);
+	assert(deco->border_right->height == 632);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_normal_border_sizes\n");
+}
+
+/* --- wm_decoration_create with all buttons on one side --- */
+
+static void
+test_create_all_buttons_left(void)
+{
+	setup();
+	setup_view();
+	test_config.titlebar_left = "Close Maximize Minimize Shade Stick";
+	test_config.titlebar_right = "";
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->buttons_left_count == 5);
+	assert(deco->buttons_right_count == 0);
+	assert(deco->buttons_right == NULL);
+
+	assert(deco->buttons_left[0].type == WM_BUTTON_CLOSE);
+	assert(deco->buttons_left[1].type == WM_BUTTON_MAXIMIZE);
+	assert(deco->buttons_left[2].type == WM_BUTTON_ICONIFY);
+	assert(deco->buttons_left[3].type == WM_BUTTON_SHADE);
+	assert(deco->buttons_left[4].type == WM_BUTTON_STICK);
+
+	wm_decoration_destroy(deco);
+	test_config.titlebar_left = NULL;
+	test_config.titlebar_right = NULL;
+	printf("  PASS: create_all_buttons_left\n");
+}
+
+/* --- wm_decoration_create with no config (defaults) --- */
+
+static void
+test_create_no_config(void)
+{
+	setup();
+	setup_view();
+	test_server.config = NULL;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	/* Default: left="Stick", right="Shade Minimize Maximize Close" */
+	assert(deco->buttons_left_count == 1);
+	assert(deco->buttons_left[0].type == WM_BUTTON_STICK);
+	assert(deco->buttons_right_count == 4);
+	assert(deco->buttons_right[0].type == WM_BUTTON_SHADE);
+	assert(deco->buttons_right[3].type == WM_BUTTON_CLOSE);
+
+	wm_decoration_destroy(deco);
+	test_server.config = &test_config;
+	printf("  PASS: create_no_config\n");
+}
+
+/* --- shade/unshade full cycle verifying geometry at each step --- */
+
+static void
+test_shade_unshade_full_cycle_geometry(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->content_width == 800);
+	assert(deco->content_height == 600);
+	assert(deco->shaded == false);
+
+	/* Shade: save geometry, disable handle/grips */
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(deco->shaded == true);
+	assert(deco->shaded_saved_geometry.width == 800);
+	assert(deco->shaded_saved_geometry.height == 600);
+	assert(deco->handle_buf->node.enabled == 0);
+	assert(deco->grip_left->node.enabled == 0);
+	assert(deco->grip_right->node.enabled == 0);
+
+	/* Unshade: restore geometry, update layout */
+	wm_decoration_set_shaded(deco, false, &test_style);
+	assert(deco->shaded == false);
+	assert(deco->content_width == 800);
+	assert(deco->content_height == 600);
+	/* Handle/grips should be re-enabled after update */
+	assert(deco->handle_buf->node.enabled == 1);
+	assert(deco->grip_left->node.enabled == 1);
+	assert(deco->grip_right->node.enabled == 1);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: shade_unshade_full_cycle_geometry\n");
+}
+
+/* --- shade/unshade double shade is no-op --- */
+
+static void
+test_shade_double_shade_noop(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(deco->shaded == true);
+	assert(deco->shaded_saved_geometry.width == 800);
+
+	/* Shading again is a no-op */
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(deco->shaded == true);
+	assert(deco->shaded_saved_geometry.width == 800);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: shade_double_shade_noop\n");
+}
+
+/* --- update with round corners enables border frame --- */
+
+static void
+test_update_round_corners_border_frame(void)
+{
+	setup();
+	setup_view();
+	test_style.window_round_corners = WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT;
+	test_style.window_bevel_width = 4;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* With round_corners set, border_frame should be enabled */
+	assert(deco->border_frame != NULL);
+	assert(deco->border_frame->node.enabled == 1);
+
+	/* Individual border rects should be disabled */
+	assert(deco->border_top->node.enabled == 0);
+	assert(deco->border_bottom->node.enabled == 0);
+	assert(deco->border_left->node.enabled == 0);
+	assert(deco->border_right->node.enabled == 0);
+
+	wm_decoration_destroy(deco);
+	test_style.window_round_corners = 0;
+	test_style.window_bevel_width = 0;
+	printf("  PASS: update_round_corners_border_frame\n");
+}
+
+/* --- update without round corners disables border frame --- */
+
+static void
+test_update_no_round_corners_rect_borders(void)
+{
+	setup();
+	setup_view();
+	test_style.window_round_corners = 0;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* No round corners: border_frame disabled, rect borders enabled */
+	assert(deco->border_frame->node.enabled == 0);
+	assert(deco->border_top->node.enabled == 1);
+	assert(deco->border_bottom->node.enabled == 1);
+	assert(deco->border_left->node.enabled == 1);
+	assert(deco->border_right->node.enabled == 1);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_no_round_corners_rect_borders\n");
+}
+
+/* --- update with external tab bar (top placement) --- */
+
+static void
+test_update_ext_tab_bar_top_content_area(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_width = 25;
+	test_config.tab_placement = WM_TAB_BAR_TOP;
+
+	/* Create a tab group with 2 views */
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* With ext tab bar top (size=25):
+	 * content_area.y = bw(1) + th(20) + ext_top(25) = 46 */
+	assert(deco->tab_bar_size == 25);
+	assert(deco->content_area.y == 46);
+	assert(deco->content_area.x == 1);
+
+	/* Tab bar buf should be enabled */
+	assert(deco->tab_bar_buf->node.enabled == 1);
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 0;
+	test_config.tab_placement = 0;
+	printf("  PASS: update_ext_tab_bar_top_content_area\n");
+}
+
+/* --- update with external tab bar (left placement) --- */
+
+static void
+test_update_ext_tab_bar_left_content_area(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_width = 30;
+	test_config.tab_placement = WM_TAB_BAR_LEFT;
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* With ext tab bar left (size=30):
+	 * content_area.x = bw(1) + ext_left(30) = 31 */
+	assert(deco->tab_bar_size == 30);
+	assert(deco->content_area.x == 31);
+	assert(deco->content_area.y == 21); /* bw + th + 0 (no ext_top) */
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 0;
+	test_config.tab_placement = 0;
+	printf("  PASS: update_ext_tab_bar_left_content_area\n");
+}
+
+/* --- focus border enabled when focused and width > 0 --- */
+
+static void
+test_update_focus_border_enabled(void)
+{
+	setup();
+	setup_view();
+	test_style.window_focus_border_width = 3;
+	test_style.window_focus_border_color = (struct wm_color){255, 0, 0, 255};
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->focused == true);
+
+	/* Focus border should be enabled (focused + width > 0 + has_titlebar) */
+	assert(deco->focus_border_buf != NULL);
+	assert(deco->focus_border_buf->node.enabled == 1);
+
+	/* Position should be at (-fbw, -fbw) = (-3, -3) */
+	assert(deco->focus_border_buf->node.x == -3);
+	assert(deco->focus_border_buf->node.y == -3);
+
+	wm_decoration_destroy(deco);
+	test_style.window_focus_border_width = 0;
+	printf("  PASS: update_focus_border_enabled\n");
+}
+
+/* --- focus border disabled when unfocused --- */
+
+static void
+test_update_focus_border_disabled_unfocused(void)
+{
+	setup();
+	setup_view();
+	test_style.window_focus_border_width = 3;
+	test_style.window_focus_border_color = (struct wm_color){255, 0, 0, 255};
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->focused == true);
+	assert(deco->focus_border_buf->node.enabled == 1);
+
+	/* Unfocus the decoration */
+	wm_decoration_set_focused(deco, false, &test_style);
+	assert(deco->focused == false);
+
+	/* Focus border should now be disabled */
+	assert(deco->focus_border_buf->node.enabled == 0);
+
+	wm_decoration_destroy(deco);
+	test_style.window_focus_border_width = 0;
+	printf("  PASS: update_focus_border_disabled_unfocused\n");
+}
+
+/* --- focus border disabled when width is 0 --- */
+
+static void
+test_update_focus_border_disabled_zero_width(void)
+{
+	setup();
+	setup_view();
+	test_style.window_focus_border_width = 0;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->focused == true);
+
+	/* Focus border should be disabled (width == 0) */
+	assert(deco->focus_border_buf->node.enabled == 0);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_focus_border_disabled_zero_width\n");
+}
+
+/* --- update with different style re-renders with new dimensions --- */
+
+static void
+test_update_style_change_dimensions(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->titlebar_height == 20);
+	assert(deco->handle_height == 6);
+	assert(deco->border_width == 1);
+
+	/* Change style */
+	struct wm_style new_style = test_style;
+	new_style.window_title_height = 40;
+	new_style.window_handle_width = 12;
+	new_style.window_border_width = 5;
+
+	wm_decoration_update(deco, &new_style);
+	assert(deco->titlebar_height == 40);
+	assert(deco->handle_height == 12);
+	assert(deco->border_width == 5);
+
+	/* Content area should reflect new dimensions */
+	/* content_area.x = bw(5), content_area.y = bw(5) + th(40) = 45 */
+	assert(deco->content_area.x == 5);
+	assert(deco->content_area.y == 45);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_style_change_dimensions\n");
+}
+
+/* --- handle and grip positions in NORMAL layout --- */
+
+static void
+test_update_normal_handle_grip_positions(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Handle y = bw(1) + th(20) + ext_top(0) + ch(600) + ext_bottom(0) = 621 */
+	/* Handle x = bw(1) + gw(20) = 21 */
+	assert(deco->handle_buf->node.enabled == 1);
+	assert(deco->handle_buf->node.y == 621);
+	assert(deco->handle_buf->node.x == 21);
+
+	/* Left grip: x = bw(1), y = 621 */
+	assert(deco->grip_left->node.enabled == 1);
+	assert(deco->grip_left->node.x == 1);
+	assert(deco->grip_left->node.y == 621);
+
+	/* Right grip: x = bw(1) + inner_width(800) - gw(20) = 781, y = 621 */
+	assert(deco->grip_right->node.enabled == 1);
+	assert(deco->grip_right->node.x == 781);
+	assert(deco->grip_right->node.y == 621);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_normal_handle_grip_positions\n");
+}
+
+/* --- titlebar tree position --- */
+
+static void
+test_update_titlebar_tree_position(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Titlebar tree at (bw, bw) = (1, 1) */
+	assert(deco->titlebar_tree->node.x == 1);
+	assert(deco->titlebar_tree->node.y == 1);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_titlebar_tree_position\n");
+}
+
+/* --- render_button direct tests --- */
+
+static void
+test_render_button_fallback_bg(void)
+{
+	struct wm_texture bg_tex = {0};
+	struct wm_color pic_color = {255, 255, 255, 255};
+
+	/* wm_render_texture returns NULL, so render_button uses fallback path */
+	struct wlr_buffer *buf = render_button(&bg_tex, &pic_color,
+		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_button_fallback_bg\n");
+}
+
+static void
+test_render_button_small_glyph(void)
+{
+	struct wm_texture bg_tex = {0};
+	struct wm_color pic_color = {255, 0, 0, 255};
+
+	/* size=6: glyph_size = 6-4 = 2, which is < 4, so glyph_size = size */
+	struct wlr_buffer *buf = render_button(&bg_tex, &pic_color,
+		WM_BUTTON_MAXIMIZE, 6);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_button_small_glyph\n");
+}
+
+/* --- render_label direct tests --- */
+
+static void
+test_render_label_center_justify(void)
+{
+	struct wm_texture bg = {0};
+	struct wm_font font = {.size = 12};
+	struct wm_color color = {255, 255, 255, 255};
+
+	struct wlr_buffer *buf = render_label(&bg, "Test Title", &font,
+		&color, WM_JUSTIFY_CENTER, 200, 20);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_label_center_justify\n");
+}
+
+static void
+test_render_label_right_justify(void)
+{
+	struct wm_texture bg = {0};
+	struct wm_font font = {.size = 12};
+	struct wm_color color = {255, 255, 255, 255};
+
+	struct wlr_buffer *buf = render_label(&bg, "Test Title", &font,
+		&color, WM_JUSTIFY_RIGHT, 200, 20);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_label_right_justify\n");
+}
+
+static void
+test_render_label_null_title(void)
+{
+	struct wm_texture bg = {0};
+	struct wm_font font = {.size = 12};
+	struct wm_color color = {255, 255, 255, 255};
+
+	/* NULL title should skip text rendering */
+	struct wlr_buffer *buf = render_label(&bg, NULL, &font,
+		&color, WM_JUSTIFY_LEFT, 200, 20);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_label_null_title\n");
+}
+
+static void
+test_render_label_empty_title(void)
+{
+	struct wm_texture bg = {0};
+	struct wm_font font = {.size = 12};
+	struct wm_color color = {255, 255, 255, 255};
+
+	/* Empty string: title && *title is false */
+	struct wlr_buffer *buf = render_label(&bg, "", &font,
+		&color, WM_JUSTIFY_LEFT, 200, 20);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_label_empty_title\n");
+}
+
+/* --- render_rounded_border_frame direct tests --- */
+
+static void
+test_render_rounded_border_frame_basic(void)
+{
+	struct wm_color color = {128, 128, 128, 255};
+
+	struct wlr_buffer *buf = render_rounded_border_frame(
+		100, 100, 2, 8.0,
+		WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT, &color);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_rounded_border_frame_basic\n");
+}
+
+static void
+test_render_rounded_border_frame_invalid(void)
+{
+	struct wm_color color = {128, 128, 128, 255};
+
+	/* Zero width */
+	assert(render_rounded_border_frame(0, 100, 2, 8.0, 0xF, &color) == NULL);
+	/* Zero height */
+	assert(render_rounded_border_frame(100, 0, 2, 8.0, 0xF, &color) == NULL);
+	/* Zero border width */
+	assert(render_rounded_border_frame(100, 100, 0, 8.0, 0xF, &color) == NULL);
+	/* Negative width */
+	assert(render_rounded_border_frame(-1, 100, 2, 8.0, 0xF, &color) == NULL);
+	printf("  PASS: render_rounded_border_frame_invalid\n");
+}
+
+/* --- set_shaded with scene tree children --- */
+
+static void
+test_set_shaded_with_scene_children(void)
+{
+	setup();
+	setup_view();
+
+	/* Add a child scene tree to simulate the client surface */
+	struct wlr_scene_tree child_tree;
+	memset(&child_tree, 0, sizeof(child_tree));
+	child_tree.node.type = WLR_SCENE_NODE_TREE;
+	child_tree.node.enabled = 1;
+	wl_list_init(&child_tree.children);
+	wl_list_init(&child_tree.node.link);
+	wl_list_insert(&test_scene_tree.children, &child_tree.node.link);
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Shade: non-decoration children should be disabled */
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(child_tree.node.enabled == 0);
+
+	/* Unshade: children should be re-enabled */
+	wm_decoration_set_shaded(deco, false, &test_style);
+	assert(child_tree.node.enabled == 1);
+
+	wl_list_remove(&child_tree.node.link);
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_shaded_with_scene_children\n");
+}
+
+/* --- ext tab bar bottom placement --- */
+
+static void
+test_update_ext_tab_bar_bottom(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_width = 25;
+	test_config.tab_placement = WM_TAB_BAR_BOTTOM;
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	assert(deco->tab_bar_size == 25);
+	assert(deco->tab_bar_placement == WM_TAB_BAR_BOTTOM);
+	assert(deco->tab_bar_buf->node.enabled == 1);
+
+	/* Bottom tab bar: content_area.y unchanged, but extents add tab bar */
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+	assert(bottom == 1 + 6 + 25); /* bw + hh + tab_bar */
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 0;
+	test_config.tab_placement = 0;
+	printf("  PASS: update_ext_tab_bar_bottom\n");
+}
+
+/* --- ext tab bar right placement --- */
+
+static void
+test_update_ext_tab_bar_right(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_width = 30;
+	test_config.tab_placement = WM_TAB_BAR_RIGHT;
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	assert(deco->tab_bar_size == 30);
+	assert(deco->tab_bar_placement == WM_TAB_BAR_RIGHT);
+	assert(deco->tab_bar_buf->node.enabled == 1);
+
+	/* Content area x unchanged, right extent has tab bar */
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+	assert(right == 1 + 30); /* bw + tab_bar */
+	assert(left == 1); /* just bw */
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 0;
+	test_config.tab_placement = 0;
+	printf("  PASS: update_ext_tab_bar_right\n");
+}
+
+/* --- in-titlebar composite tab label rendering --- */
+
+static void
+test_update_intitlebar_tabs_composite(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = true;
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Second Tab";
+	wl_list_init(&view2.tab_link);
+	struct wm_view view3 = {0};
+	view3.server = &test_server;
+	view3.title = "Third Tab";
+	wl_list_init(&view3.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 3;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view3.tab_link);
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* In-titlebar tabs: tab_bar_size should be 0 (no external bar) */
+	assert(deco->tab_bar_size == 0);
+	/* Titlebar should be enabled with composite label */
+	assert(deco->titlebar_tree->node.enabled == 1);
+	/* Label buf should have content */
+	assert(deco->label_buf != NULL);
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	printf("  PASS: update_intitlebar_tabs_composite\n");
+}
+
+/* --- xdg decoration init (error path) --- */
+
+static void
+test_xdg_decoration_init_error(void)
+{
+	setup();
+	/* wlr_xdg_decoration_manager_v1_create stub returns NULL */
+	wm_xdg_decoration_init(&test_server);
+	assert(test_server.xdg_decoration_mgr == NULL);
+	printf("  PASS: xdg_decoration_init_error\n");
+}
+
+/* --- xdg decoration request_mode handler --- */
+
+static void
+test_xdg_decoration_request_mode_handler(void)
+{
+	struct wlr_xdg_toplevel_decoration_v1 wlr_deco;
+	memset(&wlr_deco, 0, sizeof(wlr_deco));
+
+	struct wm_xdg_decoration *deco = calloc(1, sizeof(*deco));
+	assert(deco != NULL);
+	deco->wlr_decoration = &wlr_deco;
+	deco->server = &test_server;
+	wl_list_init(&deco->destroy.link);
+	wl_list_init(&deco->request_mode.link);
+
+	/* Call request_mode handler — should set server-side mode (stub no-op) */
+	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
+
+	free(deco);
+	printf("  PASS: xdg_decoration_request_mode_handler\n");
+}
+
+/* --- xdg decoration destroy handler --- */
+
+static void
+test_xdg_decoration_destroy_handler(void)
+{
+	struct wlr_xdg_toplevel_decoration_v1 wlr_deco;
+	memset(&wlr_deco, 0, sizeof(wlr_deco));
+
+	struct wm_xdg_decoration *deco = calloc(1, sizeof(*deco));
+	assert(deco != NULL);
+	deco->wlr_decoration = &wlr_deco;
+	deco->server = &test_server;
+	/* Must init links so wl_list_remove doesn't crash */
+	wl_list_init(&deco->destroy.link);
+	wl_list_init(&deco->request_mode.link);
+
+	/* Destroy handler frees deco */
+	handle_xdg_decoration_destroy(&deco->destroy, NULL);
+	/* deco is now freed — do not access */
+	printf("  PASS: xdg_decoration_destroy_handler\n");
+}
+
+/* --- ext tab bar auto size from font --- */
+
+static void
+test_update_ext_tab_bar_auto_size(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_width = 0; /* auto-size from font */
+	test_config.tab_placement = WM_TAB_BAR_TOP;
+	test_style.window_label_focus_font.size = 14;
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Auto-size: font.size(14) + 8 = 22 */
+	assert(deco->tab_bar_size == 22);
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 0;
+	test_config.tab_placement = 0;
+	printf("  PASS: update_ext_tab_bar_auto_size\n");
+}
+
 /* ===================== Main ===================== */
 
 int
@@ -2439,6 +3468,69 @@ main(void)
 	/* pixel_buffer */
 	test_pixel_buffer_write_rejected();
 	test_wlr_buffer_from_cairo_null();
+
+	/* layout_and_render dimension paths via update */
+	test_update_normal_content_area();
+	test_update_tab_preset_content_area();
+	test_update_none_preset_disables_elements();
+	test_update_border_preset_no_titlebar_no_handle();
+	test_update_tiny_preset_has_titlebar_no_handle();
+	test_update_normal_border_positions();
+	test_update_normal_border_sizes();
+
+	/* create with custom button configs */
+	test_create_all_buttons_left();
+	test_create_no_config();
+
+	/* shade/unshade full cycle */
+	test_shade_unshade_full_cycle_geometry();
+	test_shade_double_shade_noop();
+
+	/* round corners and tab bar */
+	test_update_round_corners_border_frame();
+	test_update_no_round_corners_rect_borders();
+	test_update_ext_tab_bar_top_content_area();
+	test_update_ext_tab_bar_left_content_area();
+
+	/* focus border rendering paths */
+	test_update_focus_border_enabled();
+	test_update_focus_border_disabled_unfocused();
+	test_update_focus_border_disabled_zero_width();
+
+	/* style change + positions */
+	test_update_style_change_dimensions();
+	test_update_normal_handle_grip_positions();
+	test_update_titlebar_tree_position();
+
+	/* render_button / render_label direct */
+	test_render_button_fallback_bg();
+	test_render_button_small_glyph();
+	test_render_label_center_justify();
+	test_render_label_right_justify();
+	test_render_label_null_title();
+	test_render_label_empty_title();
+
+	/* render_rounded_border_frame direct */
+	test_render_rounded_border_frame_basic();
+	test_render_rounded_border_frame_invalid();
+
+	/* shade with scene children */
+	test_set_shaded_with_scene_children();
+
+	/* ext tab bar bottom/right placements */
+	test_update_ext_tab_bar_bottom();
+	test_update_ext_tab_bar_right();
+
+	/* in-titlebar composite tab rendering */
+	test_update_intitlebar_tabs_composite();
+
+	/* ext tab bar auto-size from font */
+	test_update_ext_tab_bar_auto_size();
+
+	/* xdg decoration protocol */
+	test_xdg_decoration_init_error();
+	test_xdg_decoration_request_mode_handler();
+	test_xdg_decoration_destroy_handler();
 
 	printf("All decoration logic tests passed.\n");
 	return 0;

@@ -710,6 +710,14 @@ struct wm_menu;
 static int g_focus_view_count;
 static struct wm_view *g_last_focused_view;
 
+/* Configurable return value for wlr_output_layout_output_at stub */
+static struct wlr_output *g_output_at_return = NULL;
+
+/* Tracking for wm_tab_group_activate calls */
+static int g_tab_activate_count;
+static struct wm_tab_group *g_tab_activate_group;
+static struct wm_view *g_tab_activate_view;
+
 /* --- Scene tree pool --- */
 
 #define MAX_SCENE_TREES 32
@@ -884,7 +892,7 @@ wlr_output_layout_output_at(struct wlr_output_layout *layout,
 	double x, double y)
 {
 	(void)layout; (void)x; (void)y;
-	return NULL;
+	return g_output_at_return;
 }
 
 static void
@@ -962,7 +970,11 @@ static void wm_tab_group_add(struct wm_tab_group *g,
 	struct wm_view *v) { (void)g; (void)v; }
 static void wm_tab_group_remove(struct wm_view *v) { (void)v; }
 static void wm_tab_group_activate(struct wm_tab_group *g,
-	struct wm_view *v) { (void)g; (void)v; }
+	struct wm_view *v) {
+	g_tab_activate_count++;
+	g_tab_activate_group = g;
+	g_tab_activate_view = v;
+}
 
 static void wm_text_input_focus_change(struct wm_server *s,
 	struct wlr_surface *surf) { (void)s; (void)surf; }
@@ -1019,12 +1031,25 @@ static struct wlr_surface test_surfaces[MAX_TEST_VIEWS];
 
 static struct wm_workspace test_workspace;
 
+/* Mock outputs for multi-monitor tests */
+#define MAX_TEST_OUTPUTS 4
+static struct wm_output test_outputs[MAX_TEST_OUTPUTS];
+static struct wlr_output test_wlr_outputs[MAX_TEST_OUTPUTS];
+
+/* Mock decoration for toggle_decoration tests */
+static struct wm_decoration test_decoration;
+static struct wlr_scene_tree test_deco_tree;
+
 static void
 reset_globals(void)
 {
 	g_focus_view_count = 0;
 	g_last_focused_view = NULL;
 	g_scene_tree_next = 0;
+	g_output_at_return = NULL;
+	g_tab_activate_count = 0;
+	g_tab_activate_group = NULL;
+	g_tab_activate_view = NULL;
 }
 
 static void
@@ -1093,6 +1118,41 @@ setup_mock_view(int idx, struct wm_workspace *ws)
 	wl_list_init(&test_views[idx].tab_link);
 
 	wl_list_insert(test_server.views.prev, &test_views[idx].link);
+}
+
+static void
+setup_mock_output(int idx, int x, int y, int w, int h)
+{
+	assert(idx < MAX_TEST_OUTPUTS);
+	memset(&test_outputs[idx], 0, sizeof(test_outputs[idx]));
+	memset(&test_wlr_outputs[idx], 0, sizeof(test_wlr_outputs[idx]));
+
+	test_outputs[idx].server = &test_server;
+	test_outputs[idx].wlr_output = &test_wlr_outputs[idx];
+	test_outputs[idx].usable_area.x = x;
+	test_outputs[idx].usable_area.y = y;
+	test_outputs[idx].usable_area.width = w;
+	test_outputs[idx].usable_area.height = h;
+
+	wl_list_insert(test_server.outputs.prev, &test_outputs[idx].link);
+}
+
+static void
+setup_mock_decoration(struct wm_view *view)
+{
+	memset(&test_decoration, 0, sizeof(test_decoration));
+	memset(&test_deco_tree, 0, sizeof(test_deco_tree));
+	wl_list_init(&test_deco_tree.children);
+	test_decoration.tree = &test_deco_tree;
+	view->decoration = &test_decoration;
+
+	/* Add deco tree node as a child of the view's scene tree,
+	 * so toggle_decoration's wl_list_for_each can iterate */
+	wl_list_insert(&view->scene_tree->children,
+		&test_deco_tree.node.link);
+
+	/* Add a second "client surface" child node so the loop
+	 * finds a non-decoration child */
 }
 
 /* ===== json_escape tests ===== */
@@ -2277,6 +2337,759 @@ test_view_resize_by_clamp_minimum(void)
 	printf("  PASS: view_resize_by_clamp_minimum\n");
 }
 
+/* ===== wm_view_begin_interactive tests ===== */
+
+static void
+test_begin_interactive_move_mode(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_cursor.x = 150.0;
+	test_cursor.y = 250.0;
+
+	/* pointer_state.focused_surface is NULL (as if pointer is on decoration),
+	 * which should allow the interactive to proceed */
+	test_seat.pointer_state.focused_surface = NULL;
+
+	wm_view_begin_interactive(&test_views[0], WM_CURSOR_MOVE, 0);
+
+	assert(test_server.grabbed_view == &test_views[0]);
+	assert(test_server.cursor_mode == WM_CURSOR_MOVE);
+	/* grab_x = cursor_x - view_x = 150 - 100 = 50 */
+	assert(test_server.grab_x == 50.0);
+	/* grab_y = cursor_y - view_y = 250 - 200 = 50 */
+	assert(test_server.grab_y == 50.0);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: begin_interactive_move_mode\n");
+}
+
+static void
+test_begin_interactive_resize_mode(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_cursor.x = 900.0;
+	test_cursor.y = 800.0;
+
+	test_seat.pointer_state.focused_surface = NULL;
+
+	wm_view_begin_interactive(&test_views[0], WM_CURSOR_RESIZE,
+		WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM);
+
+	assert(test_server.grabbed_view == &test_views[0]);
+	assert(test_server.cursor_mode == WM_CURSOR_RESIZE);
+	assert(test_server.resize_edges ==
+		(WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM));
+	/* grab_geobox should be set from wlr_xdg_surface_get_geometry
+	 * (stub returns 0,0,800,600) plus view offset */
+	assert(test_server.grab_geobox.x == 100);
+	assert(test_server.grab_geobox.y == 200);
+	assert(test_server.grab_geobox.width == 800);
+	assert(test_server.grab_geobox.height == 600);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: begin_interactive_resize_mode\n");
+}
+
+static void
+test_begin_interactive_wrong_surface(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Set pointer focus to v1's surface, but try to move v0.
+	 * Since focused surface != v0's surface, it should be rejected. */
+	test_seat.pointer_state.focused_surface = &test_surfaces[1];
+
+	wm_view_begin_interactive(&test_views[0], WM_CURSOR_MOVE, 0);
+
+	/* Should NOT have set grabbed_view because surfaces don't match */
+	assert(test_server.grabbed_view == NULL);
+	assert(test_server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: begin_interactive_wrong_surface\n");
+}
+
+static void
+test_begin_interactive_correct_surface(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 50;
+	test_views[0].y = 60;
+	test_cursor.x = 100.0;
+	test_cursor.y = 110.0;
+
+	/* Set pointer focus to the view's own surface */
+	test_seat.pointer_state.focused_surface = &test_surfaces[0];
+
+	wm_view_begin_interactive(&test_views[0], WM_CURSOR_MOVE, 0);
+
+	assert(test_server.grabbed_view == &test_views[0]);
+	assert(test_server.cursor_mode == WM_CURSOR_MOVE);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: begin_interactive_correct_surface\n");
+}
+
+static void
+test_begin_interactive_resize_edges_left_top(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_cursor.x = 100.0;
+	test_cursor.y = 200.0;
+	test_seat.pointer_state.focused_surface = NULL;
+
+	wm_view_begin_interactive(&test_views[0], WM_CURSOR_RESIZE,
+		WLR_EDGE_LEFT | WLR_EDGE_TOP);
+
+	assert(test_server.cursor_mode == WM_CURSOR_RESIZE);
+	assert(test_server.resize_edges ==
+		(WLR_EDGE_LEFT | WLR_EDGE_TOP));
+	/* border_x = (100 + 0) + (LEFT => 0) = 100
+	 * border_y = (200 + 0) + (TOP => 0) = 200
+	 * grab_x = 100 - 100 = 0, grab_y = 200 - 200 = 0 */
+	assert(test_server.grab_x == 0.0);
+	assert(test_server.grab_y == 0.0);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: begin_interactive_resize_edges_left_top\n");
+}
+
+/* ===== wm_view_toggle_decoration extended tests ===== */
+
+static void
+test_view_toggle_decoration_off(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_decoration(&test_views[0]);
+	test_views[0].show_decoration = true;
+
+	wm_view_toggle_decoration(&test_views[0]);
+
+	/* After toggle, decorations should be hidden */
+	assert(test_views[0].show_decoration == false);
+	assert(test_deco_tree.node.enabled == false);
+
+	/* Clean up */
+	wl_list_remove(&test_deco_tree.node.link);
+	test_views[0].decoration = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_toggle_decoration_off\n");
+}
+
+static void
+test_view_toggle_decoration_on(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_decoration(&test_views[0]);
+	test_views[0].show_decoration = false;
+	test_deco_tree.node.enabled = false;
+
+	wm_view_toggle_decoration(&test_views[0]);
+
+	/* After toggle, decorations should be visible */
+	assert(test_views[0].show_decoration == true);
+	assert(test_deco_tree.node.enabled == true);
+
+	wl_list_remove(&test_deco_tree.node.link);
+	test_views[0].decoration = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_toggle_decoration_on\n");
+}
+
+static void
+test_view_toggle_decoration_double_toggle(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_decoration(&test_views[0]);
+	test_views[0].show_decoration = true;
+
+	/* Toggle off */
+	wm_view_toggle_decoration(&test_views[0]);
+	assert(test_views[0].show_decoration == false);
+
+	/* Toggle back on */
+	wm_view_toggle_decoration(&test_views[0]);
+	assert(test_views[0].show_decoration == true);
+	assert(test_deco_tree.node.enabled == true);
+
+	wl_list_remove(&test_deco_tree.node.link);
+	test_views[0].decoration = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_toggle_decoration_double_toggle\n");
+}
+
+static void
+test_view_toggle_decoration_null_view(void)
+{
+	/* Should not crash */
+	wm_view_toggle_decoration(NULL);
+	printf("  PASS: view_toggle_decoration_null_view\n");
+}
+
+/* ===== wm_view_set_head tests ===== */
+
+static void
+test_view_set_head_valid(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 100;
+
+	/* Set up two outputs */
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+
+	/* Move view to head index 1 (second output at 1920,0) */
+	wm_view_set_head(&test_views[0], 1);
+
+	/* View should be centered on the second output's usable area.
+	 * Area: 1920,0 1920x1080. View geo: 800x600.
+	 * Center: x = 1920 + (1920-800)/2 = 1920+560 = 2480
+	 *         y = 0 + (1080-600)/2 = 240 */
+	assert(test_views[0].x == 2480);
+	assert(test_views[0].y == 240);
+
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_head_valid\n");
+}
+
+static void
+test_view_set_head_first_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 2000;
+	test_views[0].y = 500;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+
+	/* Move to head 0 */
+	wm_view_set_head(&test_views[0], 0);
+
+	/* View centered on first output */
+	assert(test_views[0].x == 560);
+	assert(test_views[0].y == 240);
+
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_head_first_output\n");
+}
+
+static void
+test_view_set_head_invalid_index(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	/* Head index 5 doesn't exist (only 1 output) */
+	wm_view_set_head(&test_views[0], 5);
+
+	/* Position should be unchanged */
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_head_invalid_index\n");
+}
+
+static void
+test_view_set_head_null_view(void)
+{
+	/* Should not crash */
+	wm_view_set_head(NULL, 0);
+	printf("  PASS: view_set_head_null_view\n");
+}
+
+static void
+test_view_set_head_no_outputs(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+
+	/* No outputs in list */
+	wm_view_set_head(&test_views[0], 0);
+
+	/* Position unchanged */
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_head_no_outputs\n");
+}
+
+/* ===== wm_view_send_to_next_head tests ===== */
+
+static void
+test_view_send_to_next_head_null(void)
+{
+	wm_view_send_to_next_head(NULL);
+	printf("  PASS: view_send_to_next_head_null\n");
+}
+
+static void
+test_view_send_to_next_head_two_outputs(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 100;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+
+	/* Make output_at return the first output's wlr_output */
+	g_output_at_return = &test_wlr_outputs[0];
+
+	wm_view_send_to_next_head(&test_views[0]);
+
+	/* Should have moved to the second output (centered) */
+	assert(test_views[0].x == 2480);
+	assert(test_views[0].y == 240);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_next_head_two_outputs\n");
+}
+
+static void
+test_view_send_to_next_head_wraps(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 2480;
+	test_views[0].y = 240;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+
+	/* View is on second output (index 1); next should wrap to first */
+	g_output_at_return = &test_wlr_outputs[1];
+
+	wm_view_send_to_next_head(&test_views[0]);
+
+	/* Should wrap to first output */
+	assert(test_views[0].x == 560);
+	assert(test_views[0].y == 240);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_next_head_wraps\n");
+}
+
+static void
+test_view_send_to_next_head_no_outputs(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+
+	/* No outputs, and output_at returns NULL */
+	g_output_at_return = NULL;
+
+	wm_view_send_to_next_head(&test_views[0]);
+
+	/* No crash, position unchanged (no outputs to move to) */
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_next_head_no_outputs\n");
+}
+
+/* ===== wm_view_send_to_prev_head tests ===== */
+
+static void
+test_view_send_to_prev_head_null(void)
+{
+	wm_view_send_to_prev_head(NULL);
+	printf("  PASS: view_send_to_prev_head_null\n");
+}
+
+static void
+test_view_send_to_prev_head_two_outputs(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 2480;
+	test_views[0].y = 240;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+
+	/* View is on second output; prev should go to first */
+	g_output_at_return = &test_wlr_outputs[1];
+
+	wm_view_send_to_prev_head(&test_views[0]);
+
+	/* Should have moved to first output (centered) */
+	assert(test_views[0].x == 560);
+	assert(test_views[0].y == 240);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_prev_head_two_outputs\n");
+}
+
+static void
+test_view_send_to_prev_head_wraps(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 560;
+	test_views[0].y = 240;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+
+	/* View is on first output; prev wraps. Due to early-break in the loop,
+	 * last_out points to the matched output. The view gets centered on it.
+	 * center x = 0 + (1920 - 800)/2 = 560 */
+	g_output_at_return = &test_wlr_outputs[0];
+
+	wm_view_send_to_prev_head(&test_views[0]);
+
+	/* Wraps to last_out (which is output0 due to break before full iteration).
+	 * Centering: x = 0 + (1920-800)/2 = 560, y = (1080-600)/2 = 240 */
+	assert(test_views[0].x == 560);
+	assert(test_views[0].y == 240);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_prev_head_wraps\n");
+}
+
+/* ===== wm_view_activate_tab extended tests ===== */
+
+static void
+test_view_activate_tab_with_group(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Set up a tab group with two views */
+	struct wm_tab_group tg;
+	memset(&tg, 0, sizeof(tg));
+	tg.count = 2;
+	tg.server = &test_server;
+	wl_list_init(&tg.views);
+	wl_list_insert(tg.views.prev, &test_views[0].tab_link);
+	wl_list_insert(tg.views.prev, &test_views[1].tab_link);
+	test_views[0].tab_group = &tg;
+	test_views[1].tab_group = &tg;
+	tg.active_view = &test_views[0];
+
+	g_tab_activate_count = 0;
+
+	/* Activate tab index 1 (second tab = v1) */
+	wm_view_activate_tab(&test_views[0], 1);
+
+	assert(g_tab_activate_count == 1);
+	assert(g_tab_activate_group == &tg);
+	assert(g_tab_activate_view == &test_views[1]);
+
+	/* Restore tab_link lists */
+	wl_list_remove(&test_views[0].tab_link);
+	wl_list_remove(&test_views[1].tab_link);
+	wl_list_init(&test_views[0].tab_link);
+	wl_list_init(&test_views[1].tab_link);
+	test_views[0].tab_group = NULL;
+	test_views[1].tab_group = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_activate_tab_with_group\n");
+}
+
+static void
+test_view_activate_tab_first_index(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	struct wm_tab_group tg;
+	memset(&tg, 0, sizeof(tg));
+	tg.count = 2;
+	tg.server = &test_server;
+	wl_list_init(&tg.views);
+	wl_list_insert(tg.views.prev, &test_views[0].tab_link);
+	wl_list_insert(tg.views.prev, &test_views[1].tab_link);
+	test_views[0].tab_group = &tg;
+	test_views[1].tab_group = &tg;
+	tg.active_view = &test_views[1];
+
+	g_tab_activate_count = 0;
+
+	/* Activate tab index 0 (first tab = v0) */
+	wm_view_activate_tab(&test_views[1], 0);
+
+	assert(g_tab_activate_count == 1);
+	assert(g_tab_activate_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].tab_link);
+	wl_list_remove(&test_views[1].tab_link);
+	wl_list_init(&test_views[0].tab_link);
+	wl_list_init(&test_views[1].tab_link);
+	test_views[0].tab_group = NULL;
+	test_views[1].tab_group = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_activate_tab_first_index\n");
+}
+
+/* ===== wm_view_lhalf / wm_view_rhalf with output ===== */
+
+static void
+test_view_lhalf_with_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].lhalf = false;
+	test_views[0].rhalf = false;
+	test_views[0].maximized = false;
+
+	/* Make output_at return our output so get_view_output_area succeeds */
+	g_output_at_return = &test_wlr_outputs[0];
+
+	wm_view_lhalf(&test_views[0]);
+
+	/* Should be tiled to left half: x=0, y=0, width=960, height=1080 */
+	assert(test_views[0].lhalf == true);
+	assert(test_views[0].rhalf == false);
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+	assert(test_toplevels[0].width == 960);
+	assert(test_toplevels[0].height == 1080);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_lhalf_with_output\n");
+}
+
+static void
+test_view_rhalf_with_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].lhalf = false;
+	test_views[0].rhalf = false;
+	test_views[0].maximized = false;
+
+	g_output_at_return = &test_wlr_outputs[0];
+
+	wm_view_rhalf(&test_views[0]);
+
+	/* Should be tiled to right half: x=960, y=0, width=960, height=1080 */
+	assert(test_views[0].rhalf == true);
+	assert(test_views[0].lhalf == false);
+	assert(test_views[0].x == 960);
+	assert(test_views[0].y == 0);
+	assert(test_toplevels[0].width == 960);
+	assert(test_toplevels[0].height == 1080);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_rhalf_with_output\n");
+}
+
+static void
+test_view_lhalf_toggle_with_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].lhalf = false;
+	test_views[0].rhalf = false;
+	test_views[0].maximized = false;
+
+	g_output_at_return = &test_wlr_outputs[0];
+
+	/* Tile left */
+	wm_view_lhalf(&test_views[0]);
+	assert(test_views[0].lhalf == true);
+	assert(test_views[0].x == 0);
+
+	/* Toggle off */
+	wm_view_lhalf(&test_views[0]);
+	assert(test_views[0].lhalf == false);
+	/* Should restore saved geometry */
+	assert(test_views[0].x == 200);
+	assert(test_views[0].y == 150);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_lhalf_toggle_with_output\n");
+}
+
+static void
+test_view_rhalf_toggle_with_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].lhalf = false;
+	test_views[0].rhalf = false;
+	test_views[0].maximized = false;
+
+	g_output_at_return = &test_wlr_outputs[0];
+
+	/* Tile right */
+	wm_view_rhalf(&test_views[0]);
+	assert(test_views[0].rhalf == true);
+	assert(test_views[0].x == 960);
+
+	/* Toggle off */
+	wm_view_rhalf(&test_views[0]);
+	assert(test_views[0].rhalf == false);
+	assert(test_views[0].x == 200);
+	assert(test_views[0].y == 150);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_rhalf_toggle_with_output\n");
+}
+
+static void
+test_view_lhalf_to_rhalf(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].lhalf = false;
+	test_views[0].rhalf = false;
+	test_views[0].maximized = false;
+
+	g_output_at_return = &test_wlr_outputs[0];
+
+	/* Tile left first */
+	wm_view_lhalf(&test_views[0]);
+	assert(test_views[0].lhalf == true);
+	assert(test_views[0].x == 0);
+
+	/* Now tile right (should switch from lhalf to rhalf) */
+	wm_view_rhalf(&test_views[0]);
+	assert(test_views[0].rhalf == true);
+	assert(test_views[0].lhalf == false);
+	assert(test_views[0].x == 960);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_lhalf_to_rhalf\n");
+}
+
+/* ===== wm_view_send_to_next_head with three outputs ===== */
+
+static void
+test_view_send_to_next_head_three_outputs(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 100;
+
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+	setup_mock_output(2, 3840, 0, 1920, 1080);
+
+	/* View is on first output, send to next should go to second */
+	g_output_at_return = &test_wlr_outputs[0];
+	wm_view_send_to_next_head(&test_views[0]);
+	assert(test_views[0].x == 2480);
+
+	/* Now on second output, send to next should go to third */
+	g_output_at_return = &test_wlr_outputs[1];
+	wm_view_send_to_next_head(&test_views[0]);
+	assert(test_views[0].x == 4400);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_outputs[2].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_next_head_three_outputs\n");
+}
+
+/* ===== wm_view_send_to_prev_head no-outputs edge case ===== */
+
+static void
+test_view_send_to_prev_head_no_outputs(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+
+	g_output_at_return = NULL;
+
+	wm_view_send_to_prev_head(&test_views[0]);
+
+	/* No crash, position unchanged */
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_send_to_prev_head_no_outputs\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -2384,6 +3197,48 @@ main(void)
 	test_view_activate_tab_no_group();
 	test_view_activate_tab_negative_index();
 	test_view_activate_tab_index_out_of_range();
+	test_view_activate_tab_with_group();
+	test_view_activate_tab_first_index();
+
+	/* begin_interactive */
+	test_begin_interactive_move_mode();
+	test_begin_interactive_resize_mode();
+	test_begin_interactive_wrong_surface();
+	test_begin_interactive_correct_surface();
+	test_begin_interactive_resize_edges_left_top();
+
+	/* toggle decoration extended */
+	test_view_toggle_decoration_off();
+	test_view_toggle_decoration_on();
+	test_view_toggle_decoration_double_toggle();
+	test_view_toggle_decoration_null_view();
+
+	/* set_head */
+	test_view_set_head_valid();
+	test_view_set_head_first_output();
+	test_view_set_head_invalid_index();
+	test_view_set_head_null_view();
+	test_view_set_head_no_outputs();
+
+	/* send_to_next_head */
+	test_view_send_to_next_head_null();
+	test_view_send_to_next_head_two_outputs();
+	test_view_send_to_next_head_wraps();
+	test_view_send_to_next_head_no_outputs();
+	test_view_send_to_next_head_three_outputs();
+
+	/* send_to_prev_head */
+	test_view_send_to_prev_head_null();
+	test_view_send_to_prev_head_two_outputs();
+	test_view_send_to_prev_head_wraps();
+	test_view_send_to_prev_head_no_outputs();
+
+	/* lhalf / rhalf with output */
+	test_view_lhalf_with_output();
+	test_view_rhalf_with_output();
+	test_view_lhalf_toggle_with_output();
+	test_view_rhalf_toggle_with_output();
+	test_view_lhalf_to_rhalf();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

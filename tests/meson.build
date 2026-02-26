@@ -285,6 +285,28 @@ test_main = executable(
 )
 test('main', test_main, env: test_main_env, depends: fluxland_exe, timeout: 30)
 
+# --- test_output: output utility function tests ---
+# output.c is #included directly in the test to allow stubbing wlroots deps.
+test_output_exe = executable(
+  'test_output',
+  files('test_output.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('output', test_output_exe)
+
+# --- test_output_mgmt: output management tests ---
+# output_management.c is #included directly in the test to allow stubbing wlroots deps.
+test_output_mgmt = executable(
+  'test_output_mgmt',
+  files('test_output_mgmt.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('output_mgmt', test_output_mgmt)
+
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
 if wayland_client.found()

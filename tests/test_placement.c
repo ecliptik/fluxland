@@ -1220,6 +1220,741 @@ test_snap_edges_null_config(void)
 	printf("  PASS: test_snap_edges_null_config\n");
 }
 
+/* --- New tests: multi-window snap edges --- */
+
+/*
+ * Test: wm_snap_edges snaps Y axis to other window edges
+ */
+static void
+test_snap_edges_to_window_y(void)
+{
+	setup();
+
+	/* View at (200, 100) with 400x300 geometry */
+	add_view_to_server(0);
+	test_views[0].x = 200;
+	test_views[0].y = 100;
+
+	init_view(1);
+	test_views[1].workspace = &test_workspace;
+
+	/* Place new view so its top edge is near the bottom edge of view 0.
+	 * Bottom edge of view 0 = 100 + 300 = 400.
+	 * Moving view's y = 403 (within threshold 10). */
+	int new_x = 800; /* far from X snap targets */
+	int new_y = 403;
+
+	wm_snap_edges(&test_server, &test_views[1], &new_x, &new_y);
+
+	/* Should snap Y to 400 (top edge snaps to bottom edge of view 0) */
+	assert(new_y == 400);
+	printf("  PASS: test_snap_edges_to_window_y\n");
+}
+
+/*
+ * Test: wm_snap_edges snaps right edge of moving view to left edge of other
+ */
+static void
+test_snap_edges_right_to_left(void)
+{
+	setup();
+
+	/* View at (500, 200) */
+	add_view_to_server(0);
+	test_views[0].x = 500;
+	test_views[0].y = 200;
+
+	init_view(1);
+	test_views[1].workspace = &test_workspace;
+
+	/* Right edge snap: vbox.x - w = 500 - 400 = 100.
+	 * Place at x=103 (within threshold) */
+	int new_x = 103;
+	int new_y = 600; /* far from Y snaps */
+
+	wm_snap_edges(&test_server, &test_views[1], &new_x, &new_y);
+
+	/* Should snap to 100 (right edge aligns with left edge of view 0) */
+	assert(new_x == 100);
+	printf("  PASS: test_snap_edges_right_to_left\n");
+}
+
+/* --- New tests: row/col smart with combined directions --- */
+
+/*
+ * Test: place_row_smart RTL + BTT combined
+ */
+static void
+test_row_smart_rtl_btt(void)
+{
+	setup();
+	test_config.row_right_to_left = true;
+	test_config.col_bottom_to_top = true;
+
+	init_view(0);
+	test_views[0].workspace = &test_workspace;
+
+	struct wlr_box area = { 0, 0, 1920, 1080 };
+	place_row_smart(&test_server, &test_views[0], &area);
+
+	/* RTL+BTT: starts scanning from bottom-right corner */
+	/* x_start = 1920 - 400 = 1520, y_start = 1080 - 300 = 780 */
+	assert(test_views[0].x == 1520);
+	assert(test_views[0].y == 780);
+	printf("  PASS: test_row_smart_rtl_btt\n");
+}
+
+/*
+ * Test: place_col_smart RTL + BTT combined
+ */
+static void
+test_col_smart_rtl_btt(void)
+{
+	setup();
+	test_config.row_right_to_left = true;
+	test_config.col_bottom_to_top = true;
+
+	init_view(0);
+	test_views[0].workspace = &test_workspace;
+
+	struct wlr_box area = { 0, 0, 1920, 1080 };
+	place_col_smart(&test_server, &test_views[0], &area);
+
+	/* RTL+BTT col-major: x_start = 1520, y_start = 780 */
+	assert(test_views[0].x == 1520);
+	assert(test_views[0].y == 780);
+	printf("  PASS: test_col_smart_rtl_btt\n");
+}
+
+/*
+ * Test: place_row_smart fallback to cascade when all cells occupied
+ */
+static void
+test_row_smart_fallback_cascade(void)
+{
+	setup();
+
+	/* Use a tiny area so every cell is occupied */
+	struct wlr_box area = { 0, 0, 400, 300 };
+
+	/* Fill the entire area with a window at (0,0) same size as area */
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	init_view(1);
+	test_views[1].workspace = &test_workspace;
+
+	/* Window is exactly 400x300, area is 400x300 — no gap at all */
+	place_row_smart(&test_server, &test_views[1], &area);
+
+	/* Should fall back to cascade offset */
+	assert(test_views[1].x == area.x + CASCADE_STEP_X);
+	assert(test_views[1].y == area.y + CASCADE_STEP_Y);
+	printf("  PASS: test_row_smart_fallback_cascade\n");
+}
+
+/*
+ * Test: place_col_smart fallback to cascade when all cells occupied
+ */
+static void
+test_col_smart_fallback_cascade(void)
+{
+	setup();
+
+	struct wlr_box area = { 0, 0, 400, 300 };
+
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	init_view(1);
+	test_views[1].workspace = &test_workspace;
+
+	place_col_smart(&test_server, &test_views[1], &area);
+
+	assert(test_views[1].x == area.x + CASCADE_STEP_X);
+	assert(test_views[1].y == area.y + CASCADE_STEP_Y);
+	printf("  PASS: test_col_smart_fallback_cascade\n");
+}
+
+/* --- New tests: row_min_overlap with existing windows --- */
+
+/*
+ * Test: place_row_min_overlap picks position with minimum overlap
+ */
+static void
+test_row_min_overlap_with_windows(void)
+{
+	setup();
+
+	/* Place a window at origin */
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	init_view(1);
+	test_views[1].workspace = &test_workspace;
+
+	struct wlr_box area = { 0, 0, 1920, 1080 };
+	place_row_min_overlap(&test_server, &test_views[1], &area);
+
+	/* With a large area and only one window, should find zero-overlap */
+	int ov = overlap_area(&test_server, &test_views[1],
+		test_views[1].x, test_views[1].y, 400, 300);
+	assert(ov == 0);
+	printf("  PASS: test_row_min_overlap_with_windows\n");
+}
+
+/*
+ * Test: place_row_min_overlap best_score path when no zero-overlap exists
+ */
+static void
+test_row_min_overlap_best_score(void)
+{
+	setup();
+
+	/* Fill with many windows in a small area so no zero-overlap exists */
+	struct wlr_box area = { 0, 0, 500, 400 };
+
+	/* Window at (0,0) */
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	/* Window at (100,0) */
+	add_view_to_server(1);
+	test_views[1].x = 100;
+	test_views[1].y = 0;
+
+	init_view(2);
+	test_views[2].workspace = &test_workspace;
+
+	place_row_min_overlap(&test_server, &test_views[2], &area);
+
+	/* Should place somewhere (may not be zero overlap, but should be minimal) */
+	assert(test_views[2].x >= area.x);
+	assert(test_views[2].y >= area.y);
+	printf("  PASS: test_row_min_overlap_best_score\n");
+}
+
+/* --- New tests: wm_placement_apply dispatch paths --- */
+
+/*
+ * Test: wm_placement_apply dispatches COL_SMART
+ */
+static void
+test_placement_apply_dispatch_col_smart(void)
+{
+	setup();
+	test_config.placement_policy = WM_PLACEMENT_COL_SMART;
+
+	init_view(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	wm_placement_apply(&test_server, &test_views[0]);
+
+	/* Should place at (0,0) on empty workspace (col_smart LTR/TTB) */
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+	printf("  PASS: test_placement_apply_dispatch_col_smart\n");
+}
+
+/*
+ * Test: wm_placement_apply dispatches ROW_MIN_OVERLAP
+ */
+static void
+test_placement_apply_dispatch_row_min_overlap(void)
+{
+	setup();
+	test_config.placement_policy = WM_PLACEMENT_ROW_MIN_OVERLAP;
+
+	init_view(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	wm_placement_apply(&test_server, &test_views[0]);
+
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+	printf("  PASS: test_placement_apply_dispatch_row_min_overlap\n");
+}
+
+/*
+ * Test: wm_placement_apply dispatches COL_MIN_OVERLAP
+ */
+static void
+test_placement_apply_dispatch_col_min_overlap(void)
+{
+	setup();
+	test_config.placement_policy = WM_PLACEMENT_COL_MIN_OVERLAP;
+
+	init_view(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	wm_placement_apply(&test_server, &test_views[0]);
+
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+	printf("  PASS: test_placement_apply_dispatch_col_min_overlap\n");
+}
+
+/* --- New tests: arrangement functions --- */
+
+/*
+ * Test: collect_visible_views skips fullscreen and minimized views
+ */
+static void
+test_collect_visible_views(void)
+{
+	setup();
+
+	/* Normal visible view */
+	add_view_to_server(0);
+
+	/* Fullscreen view — should be skipped */
+	add_view_to_server(1);
+	test_views[1].fullscreen = true;
+
+	/* Minimized view (scene node disabled) — should be skipped */
+	add_view_to_server(2);
+	test_trees[2].node.enabled = 0;
+
+	/* Different workspace, not sticky — should be skipped */
+	struct wm_workspace other_ws = { .index = 5 };
+	add_view_to_server(3);
+	test_views[3].workspace = &other_ws;
+
+	struct wm_view *out[8];
+	int n = collect_visible_views(&test_server, out, 8);
+
+	assert(n == 1);
+	assert(out[0] == &test_views[0]);
+	printf("  PASS: test_collect_visible_views\n");
+}
+
+/*
+ * Test: wm_arrange_windows_grid with multiple views
+ */
+static void
+test_arrange_grid(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+	add_view_to_server(2);
+	add_view_to_server(3);
+
+	reset_globals();
+	wm_arrange_windows_grid(&test_server);
+
+	/* 4 views: ceil(sqrt(4))=2 cols, ceil(4/2)=2 rows */
+	/* Cell size = 1920/2=960 x 1080/2=540 */
+	/* Views should be arranged in a 2x2 grid */
+	assert(g_set_size_count == 4);
+	assert(g_set_position_count == 4);
+	printf("  PASS: test_arrange_grid\n");
+}
+
+/*
+ * Test: wm_arrange_windows_vert with multiple views
+ */
+static void
+test_arrange_vert(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+
+	reset_globals();
+	wm_arrange_windows_vert(&test_server);
+
+	/* 2 views: each column = 1920/2 = 960 wide */
+	assert(g_set_size_count == 2);
+	assert(g_set_position_count == 2);
+	printf("  PASS: test_arrange_vert\n");
+}
+
+/*
+ * Test: wm_arrange_windows_horiz with multiple views
+ */
+static void
+test_arrange_horiz(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+
+	reset_globals();
+	wm_arrange_windows_horiz(&test_server);
+
+	/* 2 views: each row = 1080/2 = 540 high */
+	assert(g_set_size_count == 2);
+	assert(g_set_position_count == 2);
+	printf("  PASS: test_arrange_horiz\n");
+}
+
+/*
+ * Test: wm_arrange_windows_stack_right with master-stack layout
+ */
+static void
+test_arrange_stack_right(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+	add_view_to_server(2);
+
+	reset_globals();
+	wm_arrange_windows_stack_right(&test_server);
+
+	/* 3 views: master 50% left, 2 stack windows on right */
+	assert(g_set_size_count == 3);
+	assert(g_set_position_count == 3);
+	printf("  PASS: test_arrange_stack_right\n");
+}
+
+/*
+ * Test: wm_arrange_windows_stack_left with master-stack layout
+ */
+static void
+test_arrange_stack_left(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+
+	reset_globals();
+	wm_arrange_windows_stack_left(&test_server);
+
+	assert(g_set_size_count == 2);
+	assert(g_set_position_count == 2);
+	printf("  PASS: test_arrange_stack_left\n");
+}
+
+/*
+ * Test: wm_arrange_windows_stack_bottom with master-stack layout
+ */
+static void
+test_arrange_stack_bottom(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+
+	reset_globals();
+	wm_arrange_windows_stack_bottom(&test_server);
+
+	assert(g_set_size_count == 2);
+	assert(g_set_position_count == 2);
+	printf("  PASS: test_arrange_stack_bottom\n");
+}
+
+/*
+ * Test: wm_arrange_windows_stack_top with master-stack layout
+ */
+static void
+test_arrange_stack_top(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+
+	reset_globals();
+	wm_arrange_windows_stack_top(&test_server);
+
+	assert(g_set_size_count == 2);
+	assert(g_set_position_count == 2);
+	printf("  PASS: test_arrange_stack_top\n");
+}
+
+/*
+ * Test: wm_arrange_windows_cascade arrangement
+ */
+static void
+test_arrange_cascade(void)
+{
+	setup();
+
+	add_view_to_server(0);
+	add_view_to_server(1);
+
+	reset_globals();
+	wm_arrange_windows_cascade(&test_server);
+
+	assert(g_set_size_count == 2);
+	assert(g_set_position_count == 2);
+	printf("  PASS: test_arrange_cascade\n");
+}
+
+/*
+ * Test: arrangement functions handle empty view list
+ */
+static void
+test_arrange_empty(void)
+{
+	setup();
+
+	reset_globals();
+	wm_arrange_windows_grid(&test_server);
+	wm_arrange_windows_vert(&test_server);
+	wm_arrange_windows_horiz(&test_server);
+	wm_arrange_windows_cascade(&test_server);
+	wm_arrange_windows_stack_right(&test_server);
+	wm_arrange_windows_stack_left(&test_server);
+	wm_arrange_windows_stack_bottom(&test_server);
+	wm_arrange_windows_stack_top(&test_server);
+
+	/* None should have arranged any views */
+	assert(g_set_size_count == 0);
+	assert(g_set_position_count == 0);
+	printf("  PASS: test_arrange_empty\n");
+}
+
+/*
+ * Test: stack_right with single view fills entire area
+ */
+static void
+test_arrange_stack_right_single(void)
+{
+	setup();
+
+	add_view_to_server(0);
+
+	reset_globals();
+	wm_arrange_windows_stack_right(&test_server);
+
+	/* Single view should fill entire area */
+	assert(g_set_size_count == 1);
+	assert(test_toplevels[0].width == 1920);
+	assert(test_toplevels[0].height == 1080);
+	printf("  PASS: test_arrange_stack_right_single\n");
+}
+
+/*
+ * Test: snap X to one window and Y to a different window simultaneously
+ */
+static void
+test_snap_edges_xy_different_windows(void)
+{
+	setup();
+
+	/* Window 0 at (500, 0): right edge at 900 */
+	add_view_to_server(0);
+	test_views[0].x = 500;
+	test_views[0].y = 0;
+
+	/* Window 1 at (0, 600): bottom edge at 900 */
+	add_view_to_server(1);
+	test_views[1].x = 0;
+	test_views[1].y = 600;
+
+	init_view(2);
+	test_views[2].workspace = &test_workspace;
+
+	/* x near right edge of view 0 (900), y near bottom edge of view 1 (900) */
+	int new_x = 903;
+	int new_y = 903;
+
+	wm_snap_edges(&test_server, &test_views[2], &new_x, &new_y);
+
+	assert(new_x == 900);
+	assert(new_y == 900);
+	printf("  PASS: test_snap_edges_xy_different_windows\n");
+}
+
+/*
+ * Test: snap with very tight threshold (1px) -- exact boundary does not snap
+ */
+static void
+test_snap_edges_tight_threshold(void)
+{
+	setup();
+	test_config.edge_snap_threshold = 1;
+	init_view(0);
+
+	/* Exactly 1 pixel away from left edge - should NOT snap (< not <=) */
+	int new_x = 1;
+	int new_y = 500;
+
+	wm_snap_edges(&test_server, &test_views[0], &new_x, &new_y);
+
+	assert(new_x == 1);
+	assert(new_y == 500);
+	printf("  PASS: test_snap_edges_tight_threshold\n");
+}
+
+/*
+ * Test: snap with second window closer than first -- earlier match wins
+ */
+static void
+test_snap_edges_closest_window_wins(void)
+{
+	setup();
+
+	/* Window 0 at (0, 0): right edge at 400 */
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	/* Window 1 at (800, 0): left edge at 800 */
+	add_view_to_server(1);
+	test_views[1].x = 800;
+	test_views[1].y = 0;
+
+	init_view(2);
+	test_views[2].workspace = &test_workspace;
+
+	/* x = 405 is near right edge of view 0 (400, within threshold 10)
+	 * This should snap to 400 because the output edges are tested first
+	 * and won't match, then view 0's right edge matches first */
+	int new_x = 405;
+	int new_y = 600;
+
+	wm_snap_edges(&test_server, &test_views[2], &new_x, &new_y);
+
+	assert(new_x == 400);
+	printf("  PASS: test_snap_edges_closest_window_wins\n");
+}
+
+/*
+ * Test: place_row_smart BTT only (no RTL)
+ */
+static void
+test_row_smart_btt_only(void)
+{
+	setup();
+	test_config.col_bottom_to_top = true;
+	test_config.row_right_to_left = false;
+
+	init_view(0);
+	test_views[0].workspace = &test_workspace;
+
+	struct wlr_box area = { 0, 0, 1920, 1080 };
+	place_row_smart(&test_server, &test_views[0], &area);
+
+	/* BTT only: y starts from bottom (1080-300=780), x from left (0) */
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 780);
+	printf("  PASS: test_row_smart_btt_only\n");
+}
+
+/*
+ * Test: place_col_smart RTL only (no BTT)
+ */
+static void
+test_col_smart_rtl_only(void)
+{
+	setup();
+	test_config.row_right_to_left = true;
+	test_config.col_bottom_to_top = false;
+
+	init_view(0);
+	test_views[0].workspace = &test_workspace;
+
+	struct wlr_box area = { 0, 0, 1920, 1080 };
+	place_col_smart(&test_server, &test_views[0], &area);
+
+	/* RTL only: x starts from right (1920-400=1520), y from top (0) */
+	assert(test_views[0].x == 1520);
+	assert(test_views[0].y == 0);
+	printf("  PASS: test_col_smart_rtl_only\n");
+}
+
+/*
+ * Test: place_col_min_overlap with multiple existing windows
+ */
+static void
+test_col_min_overlap_with_windows(void)
+{
+	setup();
+
+	/* Place two existing views */
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	add_view_to_server(1);
+	test_views[1].x = 400;
+	test_views[1].y = 0;
+
+	init_view(2);
+	test_views[2].workspace = &test_workspace;
+
+	struct wlr_box area = { 0, 0, 1920, 1080 };
+	place_col_min_overlap(&test_server, &test_views[2], &area);
+
+	/* With enough space, should find zero overlap */
+	int ov = overlap_area(&test_server, &test_views[2],
+		test_views[2].x, test_views[2].y, 400, 300);
+	assert(ov == 0);
+	printf("  PASS: test_col_min_overlap_with_windows\n");
+}
+
+/*
+ * Test: wm_placement_apply with COL_SMART and existing window
+ */
+static void
+test_placement_apply_col_smart_with_window(void)
+{
+	setup();
+	test_config.placement_policy = WM_PLACEMENT_COL_SMART;
+
+	/* Place an existing view at origin */
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	init_view(1);
+	test_views[1].x = 0;
+	test_views[1].y = 0;
+	test_views[1].workspace = &test_workspace;
+
+	wm_placement_apply(&test_server, &test_views[1]);
+
+	/* Should not overlap with view 0 */
+	bool collision = overlaps_any(&test_server, &test_views[1],
+		test_views[1].x, test_views[1].y, 400, 300);
+	assert(!collision);
+	printf("  PASS: test_placement_apply_col_smart_with_window\n");
+}
+
+/*
+ * Test: wm_placement_apply with ROW_MIN_OVERLAP and existing window
+ */
+static void
+test_placement_apply_row_min_overlap_with_window(void)
+{
+	setup();
+	test_config.placement_policy = WM_PLACEMENT_ROW_MIN_OVERLAP;
+
+	add_view_to_server(0);
+	test_views[0].x = 0;
+	test_views[0].y = 0;
+
+	init_view(1);
+	test_views[1].x = 0;
+	test_views[1].y = 0;
+	test_views[1].workspace = &test_workspace;
+
+	wm_placement_apply(&test_server, &test_views[1]);
+
+	/* Should find zero-overlap position in large area */
+	int ov = overlap_area(&test_server, &test_views[1],
+		test_views[1].x, test_views[1].y, 400, 300);
+	assert(ov == 0);
+	printf("  PASS: test_placement_apply_row_min_overlap_with_window\n");
+}
+
 int
 main(void)
 {
@@ -1255,8 +1990,10 @@ main(void)
 	test_row_smart_empty_workspace();
 	test_row_smart_finds_gap();
 	test_row_smart_rtl();
+	test_row_smart_btt_only();
 	test_col_smart_finds_gap();
 	test_col_smart_btt();
+	test_col_smart_rtl_only();
 	test_row_min_overlap_empty();
 	test_col_min_overlap_avoids_existing();
 
@@ -1267,12 +2004,52 @@ main(void)
 	test_snap_edges_to_window();
 	test_snap_edges_null_config();
 
+	/* Multi-window snap edges */
+	test_snap_edges_to_window_y();
+	test_snap_edges_right_to_left();
+	test_snap_edges_xy_different_windows();
+	test_snap_edges_tight_threshold();
+	test_snap_edges_closest_window_wins();
+
+	/* RTL/BTT combined directions */
+	test_row_smart_rtl_btt();
+	test_col_smart_rtl_btt();
+
+	/* Smart placement fallback to cascade */
+	test_row_smart_fallback_cascade();
+	test_col_smart_fallback_cascade();
+
+	/* Min overlap with windows */
+	test_row_min_overlap_with_windows();
+	test_row_min_overlap_best_score();
+	test_col_min_overlap_with_windows();
+
 	/* Dispatch / main entry */
 	test_placement_apply_skip_positioned();
 	test_placement_apply_dispatch_cascade();
 	test_placement_apply_dispatch_under_mouse();
+	test_placement_apply_dispatch_col_smart();
+	test_placement_apply_dispatch_row_min_overlap();
+	test_placement_apply_dispatch_col_min_overlap();
+	test_placement_apply_col_smart_with_window();
+	test_placement_apply_row_min_overlap_with_window();
 	test_placement_apply_no_output();
 	test_placement_apply_null_config();
+
+	/* collect_visible_views */
+	test_collect_visible_views();
+
+	/* Arrangement functions */
+	test_arrange_grid();
+	test_arrange_vert();
+	test_arrange_horiz();
+	test_arrange_cascade();
+	test_arrange_stack_right();
+	test_arrange_stack_left();
+	test_arrange_stack_bottom();
+	test_arrange_stack_top();
+	test_arrange_stack_right_single();
+	test_arrange_empty();
 
 	printf("All placement tests passed.\n");
 	return 0;

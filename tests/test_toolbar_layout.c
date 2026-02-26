@@ -444,6 +444,8 @@ static int g_render_texture_count;
 static int g_measure_text_width_count;
 static int g_ws_switch_next_count;
 static int g_ws_switch_prev_count;
+static int g_timer_update_count;
+static int g_timer_update_last_ms;
 
 /* --- Stub wlroots functions --- */
 
@@ -536,7 +538,9 @@ wl_event_loop_add_timer(struct wl_event_loop *loop,
 static int
 wl_event_source_timer_update(struct wl_event_source *src, int ms)
 {
-	(void)src; (void)ms;
+	(void)src;
+	g_timer_update_count++;
+	g_timer_update_last_ms = ms;
 	return 0;
 }
 
@@ -632,6 +636,8 @@ reset_globals(void)
 	g_measure_text_width_count = 0;
 	g_ws_switch_next_count = 0;
 	g_ws_switch_prev_count = 0;
+	g_timer_update_count = 0;
+	g_timer_update_last_ms = -1;
 }
 
 static void
@@ -1400,6 +1406,544 @@ test_toolbar_null_safety(void)
 	printf("  PASS: toolbar_null_safety\n");
 }
 
+/* --- wm_toolbar_notify_pointer_motion: auto-hide show path --- */
+
+static void
+test_pointer_motion_show_bottom(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->auto_hide == true);
+	assert(toolbar->shown == false);
+	assert(toolbar->on_top == false);
+
+	/* Pointer at bottom edge (trigger zone): y >= output_height - 1 = 1079 */
+	reset_globals();
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 1079);
+
+	/* Toolbar should now be shown */
+	assert(toolbar->shown == true);
+	assert(toolbar->scene_tree->node.enabled == 1);
+
+	/* Hide timer should be cancelled (set to 0) */
+	/* The show path cancels with timer_update(0) */
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: pointer_motion_show_bottom\n");
+}
+
+/* --- wm_toolbar_notify_pointer_motion: auto-hide show on top --- */
+
+static void
+test_pointer_motion_show_top(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_placement = WM_TOOLBAR_TOP_CENTER;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->auto_hide == true);
+	assert(toolbar->shown == false);
+	assert(toolbar->on_top == true);
+
+	/* Pointer at top edge (trigger zone): y <= 1 */
+	reset_globals();
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 0);
+
+	assert(toolbar->shown == true);
+	assert(toolbar->scene_tree->node.enabled == 1);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: pointer_motion_show_top\n");
+}
+
+/* --- wm_toolbar_notify_pointer_motion: auto-hide start hide timer --- */
+
+static void
+test_pointer_motion_start_hide_timer(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_auto_hide_delay_ms = 750;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	/* First, show the toolbar */
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 1079);
+	assert(toolbar->shown == true);
+
+	/* Move pointer away from both trigger zone and toolbar area */
+	reset_globals();
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 500);
+
+	/* Hide timer should have been armed with the configured delay */
+	assert(g_timer_update_last_ms == 750);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: pointer_motion_start_hide_timer\n");
+}
+
+/* --- wm_toolbar_notify_pointer_motion: cancel hide when inside --- */
+
+static void
+test_pointer_motion_cancel_hide_inside(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	/* Show the toolbar first */
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 1079);
+	assert(toolbar->shown == true);
+
+	/* Move pointer inside the toolbar area */
+	/* toolbar is at y=1056, height=24, so 1056..1080 is inside */
+	reset_globals();
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 1060);
+
+	/* Hide timer should be cancelled (set to 0) */
+	assert(g_timer_update_last_ms == 0);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: pointer_motion_cancel_hide_inside\n");
+}
+
+/* --- wm_toolbar_notify_pointer_motion: no-op when not auto_hide --- */
+
+static void
+test_pointer_motion_noop_no_autohide(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = false;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->auto_hide == false);
+
+	reset_globals();
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 1079);
+
+	/* Nothing should happen - function returns early */
+	assert(g_timer_update_count == 0);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: pointer_motion_noop_no_autohide\n");
+}
+
+/* --- wm_toolbar_notify_pointer_motion: no-op when not visible --- */
+
+static void
+test_pointer_motion_noop_not_visible(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_visible = false;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->visible == false);
+
+	reset_globals();
+	wm_toolbar_notify_pointer_motion(toolbar, 500, 1079);
+
+	/* Function should early-return since not visible */
+	assert(g_timer_update_count == 0);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: pointer_motion_noop_not_visible\n");
+}
+
+/* --- hide_timer_cb: hides toolbar when pointer is outside --- */
+
+static void
+test_hide_timer_cb_hides(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	/* Show the toolbar first */
+	toolbar->shown = true;
+	wlr_scene_node_set_enabled(&toolbar->scene_tree->node, true);
+
+	/* Place cursor outside toolbar */
+	test_cursor.x = 500;
+	test_cursor.y = 500;
+
+	reset_globals();
+	int ret = hide_timer_cb(toolbar);
+	assert(ret == 0);
+
+	/* Toolbar should now be hidden */
+	assert(toolbar->shown == false);
+	assert(toolbar->scene_tree->node.enabled == 0);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: hide_timer_cb_hides\n");
+}
+
+/* --- hide_timer_cb: re-arms when pointer is inside toolbar --- */
+
+static void
+test_hide_timer_cb_rearms_inside(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = true;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	/* Show the toolbar first */
+	toolbar->shown = true;
+	wlr_scene_node_set_enabled(&toolbar->scene_tree->node, true);
+
+	/* Place cursor inside toolbar area */
+	/* toolbar: x=0, y=1056, width=1920, height=24 */
+	test_cursor.x = 500;
+	test_cursor.y = (double)toolbar->y + 10;
+
+	reset_globals();
+	int ret = hide_timer_cb(toolbar);
+	assert(ret == 0);
+
+	/* Toolbar should still be shown */
+	assert(toolbar->shown == true);
+
+	/* Timer should have been re-armed with 500ms */
+	assert(g_timer_update_last_ms == 500);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: hide_timer_cb_rearms_inside\n");
+}
+
+/* --- hide_timer_cb: no-op when auto_hide is false --- */
+
+static void
+test_hide_timer_cb_noop_no_autohide(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_auto_hide = false;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->shown = true;
+
+	reset_globals();
+	int ret = hide_timer_cb(toolbar);
+	assert(ret == 0);
+
+	/* Should be a no-op, toolbar still shown */
+	assert(toolbar->shown == true);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: hide_timer_cb_noop_no_autohide\n");
+}
+
+/* --- clock_timer_cb: re-renders when visible --- */
+
+static void
+test_clock_timer_cb_visible(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar clock";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->visible == true);
+	assert(toolbar->clock_tool != NULL);
+
+	/* Clear clock cache so render_clock will produce a buffer */
+	toolbar->cached_clock[0] = '\0';
+
+	reset_globals();
+	int ret = clock_timer_cb(toolbar);
+	assert(ret == 0);
+
+	/* Timer should be re-armed with 1000ms */
+	assert(g_timer_update_last_ms == 1000);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: clock_timer_cb_visible\n");
+}
+
+/* --- clock_timer_cb: re-arms when hidden --- */
+
+static void
+test_clock_timer_cb_hidden(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_visible = false;
+	test_config.toolbar_tools = "iconbar clock";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->visible == false);
+
+	reset_globals();
+	int ret = clock_timer_cb(toolbar);
+	assert(ret == 0);
+
+	/* Timer should still re-arm even when hidden */
+	assert(g_timer_update_last_ms == 1000);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: clock_timer_cb_hidden\n");
+}
+
+/* --- clock_timer_cb: no clock tool configured --- */
+
+static void
+test_clock_timer_cb_no_clock_tool(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar"; /* no clock */
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->clock_tool == NULL);
+
+	reset_globals();
+	int ret = clock_timer_cb(toolbar);
+	assert(ret == 0);
+
+	/* Timer re-armed even without clock tool */
+	assert(g_timer_update_last_ms == 1000);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: clock_timer_cb_no_clock_tool\n");
+}
+
+/* --- wm_toolbar_toggle_above: null safety --- */
+
+static void
+test_toggle_above_null_safety(void)
+{
+	/* Should not crash */
+	wm_toolbar_toggle_above(NULL);
+	printf("  PASS: toggle_above_null_safety\n");
+}
+
+/* --- wm_toolbar_toggle_above: changes position via config switch --- */
+
+static void
+test_toggle_above_config_top(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_placement = WM_TOOLBAR_TOP_CENTER;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->on_top == true);
+	assert(toolbar->y == 0);
+
+	/*
+	 * toggle_above flips on_top then calls relayout. relayout re-reads
+	 * config placement, so the effective on_top depends on config. To
+	 * properly test the toggle, switch config placement before calling.
+	 */
+	test_config.toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+	wm_toolbar_toggle_above(toolbar);
+	/* relayout re-reads config => now bottom center */
+	assert(toolbar->on_top == false);
+	assert(toolbar->y == 1080 - toolbar->height);
+
+	/* Switch back */
+	test_config.toolbar_placement = WM_TOOLBAR_TOP_CENTER;
+	wm_toolbar_toggle_above(toolbar);
+	assert(toolbar->on_top == true);
+	assert(toolbar->y == 0);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toggle_above_config_top\n");
+}
+
+/* --- wm_toolbar_toggle_above: bottom to relayout stays bottom --- */
+
+static void
+test_toggle_above_relayout_behavior(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->on_top == false);
+	int original_y = toolbar->y;
+
+	/*
+	 * toggle_above sets on_top=true, but then relayout re-reads
+	 * config (still BOTTOM_CENTER) so on_top goes back to false.
+	 * This tests the actual relayout override behavior.
+	 */
+	wm_toolbar_toggle_above(toolbar);
+	/* Relayout overrides on_top from config placement (BOTTOM_CENTER) */
+	assert(toolbar->on_top == false);
+	assert(toolbar->y == original_y);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toggle_above_relayout_behavior\n");
+}
+
 int
 main(void)
 {
@@ -1443,6 +1987,29 @@ main(void)
 	test_toolbar_create_auto_hide();
 	test_toolbar_toggle_visible();
 	test_toolbar_null_safety();
+
+	/* pointer_motion auto-hide show/hide/cancel */
+	test_pointer_motion_show_bottom();
+	test_pointer_motion_show_top();
+	test_pointer_motion_start_hide_timer();
+	test_pointer_motion_cancel_hide_inside();
+	test_pointer_motion_noop_no_autohide();
+	test_pointer_motion_noop_not_visible();
+
+	/* hide_timer_cb */
+	test_hide_timer_cb_hides();
+	test_hide_timer_cb_rearms_inside();
+	test_hide_timer_cb_noop_no_autohide();
+
+	/* clock_timer_cb */
+	test_clock_timer_cb_visible();
+	test_clock_timer_cb_hidden();
+	test_clock_timer_cb_no_clock_tool();
+
+	/* toggle_above */
+	test_toggle_above_null_safety();
+	test_toggle_above_config_top();
+	test_toggle_above_relayout_behavior();
 
 	printf("All toolbar_layout tests passed.\n");
 	return 0;
