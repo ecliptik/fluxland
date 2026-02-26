@@ -48,6 +48,7 @@
 #define WM_TOOLBAR_H
 #define WM_WORKSPACE_H
 #define WM_KEYBOARD_H
+#define WM_KEYBOARD_ACTIONS_H
 
 /* Block real xkbcommon header */
 #define _XKBCOMMON_H_
@@ -1128,6 +1129,18 @@ void wm_keyboard_setup(struct wm_server *server,
 /* --- Include keyboard source directly (uses our stubs) --- */
 
 #include "util.h"
+
+/* Forward declarations for functions shared between keyboard.c and
+ * keyboard_actions.c (needed because we include both source files
+ * directly and the header guard is blocked). */
+bool wm_execute_action(struct wm_server *server,
+	enum wm_action action, const char *argument);
+bool wm_execute_keybind_action(struct wm_server *server,
+	struct wm_keybind *bind);
+void wm_chain_reset(struct wm_server *server);
+struct wl_list *wm_get_active_bindings(struct wm_server *server);
+
+#include "keyboard_actions.c"
 #include "keyboard.c"
 
 /* --- Mock listener callbacks --- */
@@ -1764,7 +1777,7 @@ test_evaluate_condition_every(void)
 
 /* Test chain_reset: clears state */
 static void
-test_chain_reset(void)
+test_wm_chain_reset(void)
 {
 	setup();
 	test_server.chain_state.in_chain = true;
@@ -1774,7 +1787,7 @@ test_chain_reset(void)
 	struct wl_event_source timer = {0};
 	test_server.chain_state.timeout = &timer;
 
-	chain_reset(&test_server);
+	wm_chain_reset(&test_server);
 
 	assert(test_server.chain_state.in_chain == false);
 	assert(test_server.chain_state.current_level == NULL);
@@ -1828,7 +1841,7 @@ test_chain_start_timeout_restart(void)
 
 /* Test get_active_bindings: returns mode bindings */
 static void
-test_get_active_bindings(void)
+test_wm_get_active_bindings(void)
 {
 	setup();
 
@@ -1839,18 +1852,18 @@ test_get_active_bindings(void)
 	wl_list_insert(&test_server.keymodes, &mode.link);
 
 	/* No current_keymode → defaults to "default" */
-	struct wl_list *result = get_active_bindings(&test_server);
+	struct wl_list *result = wm_get_active_bindings(&test_server);
 	assert(result == &mode.bindings);
 
 	/* Explicit keymode */
 	test_server.current_keymode = strdup("default");
-	result = get_active_bindings(&test_server);
+	result = wm_get_active_bindings(&test_server);
 	assert(result == &mode.bindings);
 
 	/* Non-existent mode returns NULL */
 	free(test_server.current_keymode);
 	test_server.current_keymode = strdup("vim");
-	result = get_active_bindings(&test_server);
+	result = wm_get_active_bindings(&test_server);
 	assert(result == NULL);
 
 	free(test_server.current_keymode);
@@ -1860,7 +1873,7 @@ test_get_active_bindings(void)
 }
 
 /* ====================================================================
- * Group D: execute_action() dispatch tests
+ * Group D: wm_execute_action() dispatch tests
  * ==================================================================== */
 
 /* Test FocusNext action */
@@ -1868,7 +1881,7 @@ static void
 test_action_focus_next(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_FOCUS_NEXT, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_FOCUS_NEXT, NULL) == true);
 	assert(stub_focus_next_count == 1);
 	printf("  PASS: test_action_focus_next\n");
 }
@@ -1878,7 +1891,7 @@ static void
 test_action_focus_prev(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_FOCUS_PREV, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_FOCUS_PREV, NULL) == true);
 	assert(stub_focus_prev_count == 1);
 	printf("  PASS: test_action_focus_prev\n");
 }
@@ -1888,7 +1901,7 @@ static void
 test_action_close(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_CLOSE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_CLOSE, NULL) == true);
 	assert(stub_close_called == 1);
 	printf("  PASS: test_action_close\n");
 }
@@ -1898,7 +1911,7 @@ static void
 test_action_close_no_view(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_CLOSE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_CLOSE, NULL) == true);
 	assert(stub_close_called == 0);
 	printf("  PASS: test_action_close_no_view\n");
 }
@@ -1908,7 +1921,7 @@ static void
 test_action_exit(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_EXIT, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_EXIT, NULL) == true);
 	assert(stub_terminate_called == 1);
 	printf("  PASS: test_action_exit\n");
 }
@@ -1918,7 +1931,7 @@ static void
 test_action_maximize(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_MAXIMIZE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_MAXIMIZE, NULL) == true);
 	assert(stub_maximize_listener_count == 1);
 	printf("  PASS: test_action_maximize\n");
 }
@@ -1928,7 +1941,7 @@ static void
 test_action_fullscreen(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_FULLSCREEN, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_FULLSCREEN, NULL) == true);
 	assert(stub_fullscreen_listener_count == 1);
 	printf("  PASS: test_action_fullscreen\n");
 }
@@ -1938,7 +1951,7 @@ static void
 test_action_minimize(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_MINIMIZE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_MINIMIZE, NULL) == true);
 	assert(stub_minimize_listener_count == 1);
 	printf("  PASS: test_action_minimize\n");
 }
@@ -1948,7 +1961,7 @@ static void
 test_action_raise(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_RAISE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_RAISE, NULL) == true);
 	assert(stub_raise_count == 1);
 	printf("  PASS: test_action_raise\n");
 }
@@ -1958,7 +1971,7 @@ static void
 test_action_lower(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_LOWER, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_LOWER, NULL) == true);
 	assert(stub_lower_count == 1);
 	printf("  PASS: test_action_lower\n");
 }
@@ -1969,7 +1982,7 @@ test_action_stick(void)
 {
 	setup_with_view();
 	test_view.sticky = false;
-	assert(execute_action(&test_server, WM_ACTION_STICK, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_STICK, NULL) == true);
 	assert(stub_set_sticky_count == 1);
 	assert(stub_set_sticky_value == true);
 	printf("  PASS: test_action_stick\n");
@@ -1980,7 +1993,7 @@ static void
 test_action_next_workspace(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_NEXT_WORKSPACE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_NEXT_WORKSPACE, NULL) == true);
 	assert(stub_ws_switch_next_count == 1);
 	printf("  PASS: test_action_next_workspace\n");
 }
@@ -1990,7 +2003,7 @@ static void
 test_action_prev_workspace(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_PREV_WORKSPACE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_PREV_WORKSPACE, NULL) == true);
 	assert(stub_ws_switch_prev_count == 1);
 	printf("  PASS: test_action_prev_workspace\n");
 }
@@ -2000,7 +2013,7 @@ static void
 test_action_workspace_number(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_WORKSPACE, "3") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_WORKSPACE, "3") == true);
 	assert(stub_ws_switch_count == 1);
 	printf("  PASS: test_action_workspace_number\n");
 }
@@ -2010,7 +2023,7 @@ static void
 test_action_toggle_decor(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_TOGGLE_DECOR, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_TOGGLE_DECOR, NULL) == true);
 	assert(stub_toggle_decoration_count == 1);
 	printf("  PASS: test_action_toggle_decor\n");
 }
@@ -2020,7 +2033,7 @@ static void
 test_action_maximize_vert(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_MAXIMIZE_VERT, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_MAXIMIZE_VERT, NULL) == true);
 	assert(stub_maximize_vert_count == 1);
 	printf("  PASS: test_action_maximize_vert\n");
 }
@@ -2030,7 +2043,7 @@ static void
 test_action_maximize_horiz(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_MAXIMIZE_HORIZ, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_MAXIMIZE_HORIZ, NULL) == true);
 	assert(stub_maximize_horiz_count == 1);
 	printf("  PASS: test_action_maximize_horiz\n");
 }
@@ -2040,9 +2053,9 @@ static void
 test_action_lhalf_rhalf(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_LHALF, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_LHALF, NULL) == true);
 	assert(stub_lhalf_count == 1);
-	assert(execute_action(&test_server, WM_ACTION_RHALF, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_RHALF, NULL) == true);
 	assert(stub_rhalf_count == 1);
 	printf("  PASS: test_action_lhalf_rhalf\n");
 }
@@ -2052,7 +2065,7 @@ static void
 test_action_arrange_windows(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_ARRANGE_WINDOWS, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_ARRANGE_WINDOWS, NULL) == true);
 	assert(stub_arrange_grid_count == 1);
 	printf("  PASS: test_action_arrange_windows\n");
 }
@@ -2062,10 +2075,10 @@ static void
 test_action_arrange_stack(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_LEFT, NULL);
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_RIGHT, NULL);
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_TOP, NULL);
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_BOTTOM, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_LEFT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_RIGHT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_TOP, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_BOTTOM, NULL);
 	assert(stub_arrange_stack_left_count == 1);
 	assert(stub_arrange_stack_right_count == 1);
 	assert(stub_arrange_stack_top_count == 1);
@@ -2080,7 +2093,7 @@ test_action_set_alpha_absolute(void)
 	setup_with_view();
 	test_view.focus_alpha = 255;
 
-	assert(execute_action(&test_server, WM_ACTION_SET_ALPHA, "128") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_ALPHA, "128") == true);
 	assert(stub_set_opacity_count == 1);
 	assert(test_view.focus_alpha == 128);
 	assert(test_view.unfocus_alpha == 128);
@@ -2094,7 +2107,7 @@ test_action_set_alpha_relative(void)
 	setup_with_view();
 	test_view.focus_alpha = 200;
 
-	assert(execute_action(&test_server, WM_ACTION_SET_ALPHA, "-50") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_ALPHA, "-50") == true);
 	assert(test_view.focus_alpha == 150);
 	printf("  PASS: test_action_set_alpha_relative\n");
 }
@@ -2106,11 +2119,11 @@ test_action_set_alpha_clamp(void)
 	setup_with_view();
 	test_view.focus_alpha = 10;
 
-	execute_action(&test_server, WM_ACTION_SET_ALPHA, "-100");
+	wm_execute_action(&test_server, WM_ACTION_SET_ALPHA, "-100");
 	assert(test_view.focus_alpha == 0); /* clamped to 0 */
 
 	test_view.focus_alpha = 250;
-	execute_action(&test_server, WM_ACTION_SET_ALPHA, "+100");
+	wm_execute_action(&test_server, WM_ACTION_SET_ALPHA, "+100");
 	assert(test_view.focus_alpha == 255); /* clamped to 255 */
 	printf("  PASS: test_action_set_alpha_clamp\n");
 }
@@ -2120,7 +2133,7 @@ static void
 test_action_set_layer(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_SET_LAYER, "Above") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_LAYER, "Above") == true);
 	assert(stub_set_layer_count == 1);
 	printf("  PASS: test_action_set_layer\n");
 }
@@ -2134,7 +2147,7 @@ test_action_show_desktop(void)
 	test_view.workspace = &test_workspace;
 	wl_list_insert(&test_server.views, &test_view.link);
 
-	assert(execute_action(&test_server, WM_ACTION_SHOW_DESKTOP, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SHOW_DESKTOP, NULL) == true);
 	assert(stub_minimize_listener_count == 1);
 
 	wl_list_remove(&test_view.link);
@@ -2146,7 +2159,7 @@ static void
 test_action_hide_menus(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_HIDE_MENUS, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_HIDE_MENUS, NULL) == true);
 	assert(stub_menu_hide_all_count == 1);
 	printf("  PASS: test_action_hide_menus\n");
 }
@@ -2156,7 +2169,7 @@ static void
 test_action_root_menu(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_ROOT_MENU, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_ROOT_MENU, NULL) == true);
 	assert(stub_menu_show_root_count == 1);
 	printf("  PASS: test_action_root_menu\n");
 }
@@ -2167,7 +2180,7 @@ test_action_set_env_blocked(void)
 {
 	setup();
 	/* This should be silently rejected */
-	assert(execute_action(&test_server, WM_ACTION_SET_ENV, "LD_PRELOAD=evil.so") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_ENV, "LD_PRELOAD=evil.so") == true);
 	/* LD_PRELOAD should NOT have been set to evil.so */
 	const char *val = getenv("LD_PRELOAD");
 	assert(val == NULL || strcmp(val, "evil.so") != 0);
@@ -2182,7 +2195,7 @@ test_action_set_env_normal_eq(void)
 	/* Unset first to be sure */
 	unsetenv("TEST_KEYBOARD_VAR");
 
-	assert(execute_action(&test_server, WM_ACTION_SET_ENV, "TEST_KEYBOARD_VAR=hello") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_ENV, "TEST_KEYBOARD_VAR=hello") == true);
 	const char *val = getenv("TEST_KEYBOARD_VAR");
 	assert(val != NULL);
 	assert(strcmp(val, "hello") == 0);
@@ -2198,7 +2211,7 @@ test_action_set_env_normal_space(void)
 	setup();
 	unsetenv("TEST_KEYBOARD_VAR2");
 
-	assert(execute_action(&test_server, WM_ACTION_SET_ENV, "TEST_KEYBOARD_VAR2 world") == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_ENV, "TEST_KEYBOARD_VAR2 world") == true);
 	const char *val = getenv("TEST_KEYBOARD_VAR2");
 	assert(val != NULL);
 	assert(strcmp(val, "world") == 0);
@@ -2212,7 +2225,7 @@ static void
 test_action_nop(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_NOP, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_NOP, NULL) == true);
 	printf("  PASS: test_action_nop\n");
 }
 
@@ -2221,8 +2234,8 @@ static void
 test_action_macro_toggle_direct(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_MACRO_CMD, NULL) == false);
-	assert(execute_action(&test_server, WM_ACTION_TOGGLE_CMD, NULL) == false);
+	assert(wm_execute_action(&test_server, WM_ACTION_MACRO_CMD, NULL) == false);
+	assert(wm_execute_action(&test_server, WM_ACTION_TOGGLE_CMD, NULL) == false);
 	printf("  PASS: test_action_macro_toggle_direct\n");
 }
 
@@ -2233,7 +2246,7 @@ test_action_shade(void)
 	setup_with_view();
 	test_decoration.shaded = false;
 
-	assert(execute_action(&test_server, WM_ACTION_SHADE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SHADE, NULL) == true);
 	assert(stub_decoration_set_shaded_count == 1);
 	assert(stub_decoration_shaded_value == true); /* toggle from false */
 	printf("  PASS: test_action_shade\n");
@@ -2244,11 +2257,11 @@ static void
 test_action_shade_on_off(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_SHADE_ON, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SHADE_ON, NULL) == true);
 	assert(stub_decoration_set_shaded_count == 1);
 	assert(stub_decoration_shaded_value == true);
 
-	assert(execute_action(&test_server, WM_ACTION_SHADE_OFF, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_SHADE_OFF, NULL) == true);
 	assert(stub_decoration_set_shaded_count == 2);
 	assert(stub_decoration_shaded_value == false);
 	printf("  PASS: test_action_shade_on_off\n");
@@ -2259,7 +2272,7 @@ static void
 test_action_reconfigure(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_RECONFIGURE, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_RECONFIGURE, NULL) == true);
 	assert(stub_reconfigure_count == 1);
 	printf("  PASS: test_action_reconfigure\n");
 }
@@ -2272,17 +2285,17 @@ test_action_move_directional(void)
 	test_view.x = 100;
 	test_view.y = 100;
 
-	execute_action(&test_server, WM_ACTION_MOVE_LEFT, "10");
+	wm_execute_action(&test_server, WM_ACTION_MOVE_LEFT, "10");
 	assert(test_view.x == 90);
 	assert(stub_set_pos_called == 1);
 
-	execute_action(&test_server, WM_ACTION_MOVE_RIGHT, "20");
+	wm_execute_action(&test_server, WM_ACTION_MOVE_RIGHT, "20");
 	assert(test_view.x == 110);
 
-	execute_action(&test_server, WM_ACTION_MOVE_UP, "5");
+	wm_execute_action(&test_server, WM_ACTION_MOVE_UP, "5");
 	assert(test_view.y == 95);
 
-	execute_action(&test_server, WM_ACTION_MOVE_DOWN, "15");
+	wm_execute_action(&test_server, WM_ACTION_MOVE_DOWN, "15");
 	assert(test_view.y == 110);
 	printf("  PASS: test_action_move_directional\n");
 }
@@ -2292,7 +2305,7 @@ static void
 test_action_move_to(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_MOVE_TO, "50 75");
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TO, "50 75");
 	assert(test_view.x == 50);
 	assert(test_view.y == 75);
 	printf("  PASS: test_action_move_to\n");
@@ -2303,7 +2316,7 @@ static void
 test_action_resize_to(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_RESIZE_TO, "800 600");
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_TO, "800 600");
 	assert(stub_set_size_w == 800);
 	assert(stub_set_size_h == 600);
 	printf("  PASS: test_action_resize_to\n");
@@ -2314,10 +2327,10 @@ static void
 test_action_focus_directions(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_FOCUS_LEFT, NULL);
-	execute_action(&test_server, WM_ACTION_FOCUS_RIGHT, NULL);
-	execute_action(&test_server, WM_ACTION_FOCUS_UP, NULL);
-	execute_action(&test_server, WM_ACTION_FOCUS_DOWN, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_LEFT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_RIGHT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_UP, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_DOWN, NULL);
 	assert(stub_focus_direction_count == 4);
 	printf("  PASS: test_action_focus_directions\n");
 }
@@ -2327,15 +2340,15 @@ static void
 test_action_tab_group(void)
 {
 	setup_with_tabbed_view();
-	execute_action(&test_server, WM_ACTION_NEXT_TAB, NULL);
+	wm_execute_action(&test_server, WM_ACTION_NEXT_TAB, NULL);
 	assert(stub_tab_group_next_count == 1);
-	execute_action(&test_server, WM_ACTION_PREV_TAB, NULL);
+	wm_execute_action(&test_server, WM_ACTION_PREV_TAB, NULL);
 	assert(stub_tab_group_prev_count == 1);
-	execute_action(&test_server, WM_ACTION_DETACH_CLIENT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_DETACH_CLIENT, NULL);
 	assert(stub_tab_group_remove_count == 1);
-	execute_action(&test_server, WM_ACTION_MOVE_TAB_LEFT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TAB_LEFT, NULL);
 	assert(stub_tab_group_move_left_count == 1);
-	execute_action(&test_server, WM_ACTION_MOVE_TAB_RIGHT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TAB_RIGHT, NULL);
 	assert(stub_tab_group_move_right_count == 1);
 	printf("  PASS: test_action_tab_group\n");
 }
@@ -2345,13 +2358,13 @@ static void
 test_action_focus_nav(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_FOCUS_TOOLBAR, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_TOOLBAR, NULL);
 	assert(stub_focus_nav_enter_toolbar_count == 1);
-	execute_action(&test_server, WM_ACTION_FOCUS_NEXT_ELEMENT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_NEXT_ELEMENT, NULL);
 	assert(stub_focus_nav_next_element_count == 1);
-	execute_action(&test_server, WM_ACTION_FOCUS_PREV_ELEMENT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_PREV_ELEMENT, NULL);
 	assert(stub_focus_nav_prev_element_count == 1);
-	execute_action(&test_server, WM_ACTION_FOCUS_ACTIVATE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS_ACTIVATE, NULL);
 	assert(stub_focus_nav_activate_count == 1);
 	printf("  PASS: test_action_focus_nav\n");
 }
@@ -2361,16 +2374,16 @@ static void
 test_action_deiconify(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_DEICONIFY, NULL);
+	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, NULL);
 	assert(stub_deiconify_last_count == 1);
 
-	execute_action(&test_server, WM_ACTION_DEICONIFY, "All");
+	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, "All");
 	assert(stub_deiconify_all_count == 1);
 
-	execute_action(&test_server, WM_ACTION_DEICONIFY, "AllWorkspace");
+	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, "AllWorkspace");
 	assert(stub_deiconify_all_ws_count == 1);
 
-	execute_action(&test_server, WM_ACTION_DEICONIFY, "LastWorkspace");
+	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, "LastWorkspace");
 	assert(stub_deiconify_last_count == 2);
 	printf("  PASS: test_action_deiconify\n");
 }
@@ -2380,13 +2393,13 @@ static void
 test_action_toolbar_slit_toggles(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_TOGGLE_TOOLBAR_ABOVE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TOGGLE_TOOLBAR_ABOVE, NULL);
 	assert(stub_toolbar_toggle_above_count == 1);
-	execute_action(&test_server, WM_ACTION_TOGGLE_TOOLBAR_VISIBLE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TOGGLE_TOOLBAR_VISIBLE, NULL);
 	assert(stub_toolbar_toggle_visible_count == 1);
-	execute_action(&test_server, WM_ACTION_TOGGLE_SLIT_ABOVE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TOGGLE_SLIT_ABOVE, NULL);
 	assert(stub_slit_toggle_above_count == 1);
-	execute_action(&test_server, WM_ACTION_TOGGLE_SLIT_HIDDEN, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TOGGLE_SLIT_HIDDEN, NULL);
 	assert(stub_slit_toggle_hidden_count == 1);
 	printf("  PASS: test_action_toolbar_slit_toggles\n");
 }
@@ -2398,7 +2411,7 @@ test_action_key_mode(void)
 	setup();
 	test_server.current_keymode = strdup("default");
 
-	execute_action(&test_server, WM_ACTION_KEY_MODE, "vim");
+	wm_execute_action(&test_server, WM_ACTION_KEY_MODE, "vim");
 	assert(test_server.current_keymode != NULL);
 	assert(strcmp(test_server.current_keymode, "vim") == 0);
 
@@ -2413,9 +2426,9 @@ test_action_toggle_show_position(void)
 {
 	setup();
 	test_server.show_position = false;
-	execute_action(&test_server, WM_ACTION_TOGGLE_SHOW_POSITION, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TOGGLE_SHOW_POSITION, NULL);
 	assert(test_server.show_position == true);
-	execute_action(&test_server, WM_ACTION_TOGGLE_SHOW_POSITION, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TOGGLE_SHOW_POSITION, NULL);
 	assert(test_server.show_position == false);
 	printf("  PASS: test_action_toggle_show_position\n");
 }
@@ -2425,11 +2438,11 @@ static void
 test_action_set_decor(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "NONE");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "NONE");
 	assert(stub_decoration_set_preset_count == 1);
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "BORDER");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "BORDER");
 	assert(stub_decoration_set_preset_count == 2);
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "TAB");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "TAB");
 	assert(stub_decoration_set_preset_count == 3);
 	printf("  PASS: test_action_set_decor\n");
 }
@@ -2439,10 +2452,10 @@ static void
 test_action_conditional_direct(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_IF, NULL) == false);
-	assert(execute_action(&test_server, WM_ACTION_FOREACH, NULL) == false);
-	assert(execute_action(&test_server, WM_ACTION_MAP, NULL) == false);
-	assert(execute_action(&test_server, WM_ACTION_DELAY, NULL) == false);
+	assert(wm_execute_action(&test_server, WM_ACTION_IF, NULL) == false);
+	assert(wm_execute_action(&test_server, WM_ACTION_FOREACH, NULL) == false);
+	assert(wm_execute_action(&test_server, WM_ACTION_MAP, NULL) == false);
+	assert(wm_execute_action(&test_server, WM_ACTION_DELAY, NULL) == false);
 	printf("  PASS: test_action_conditional_direct\n");
 }
 
@@ -2451,21 +2464,21 @@ static void
 test_action_workspace_ops(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_SEND_TO_WORKSPACE, "2");
+	wm_execute_action(&test_server, WM_ACTION_SEND_TO_WORKSPACE, "2");
 	assert(stub_send_to_ws_count == 1);
-	execute_action(&test_server, WM_ACTION_TAKE_TO_WORKSPACE, "3");
+	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_WORKSPACE, "3");
 	assert(stub_take_to_ws_count == 1);
-	execute_action(&test_server, WM_ACTION_SEND_TO_NEXT_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_SEND_TO_NEXT_WORKSPACE, NULL);
 	assert(stub_send_next_ws_count == 1);
-	execute_action(&test_server, WM_ACTION_SEND_TO_PREV_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_SEND_TO_PREV_WORKSPACE, NULL);
 	assert(stub_send_prev_ws_count == 1);
-	execute_action(&test_server, WM_ACTION_TAKE_TO_NEXT_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_NEXT_WORKSPACE, NULL);
 	assert(stub_take_next_ws_count == 1);
-	execute_action(&test_server, WM_ACTION_TAKE_TO_PREV_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_PREV_WORKSPACE, NULL);
 	assert(stub_take_prev_ws_count == 1);
-	execute_action(&test_server, WM_ACTION_ADD_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ADD_WORKSPACE, NULL);
 	assert(stub_ws_add_count == 1);
-	execute_action(&test_server, WM_ACTION_REMOVE_LAST_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_REMOVE_LAST_WORKSPACE, NULL);
 	assert(stub_ws_remove_last_count == 1);
 	printf("  PASS: test_action_workspace_ops\n");
 }
@@ -2475,7 +2488,7 @@ static void
 test_action_close_all(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_CLOSE_ALL_WINDOWS, NULL);
+	wm_execute_action(&test_server, WM_ACTION_CLOSE_ALL_WINDOWS, NULL);
 	assert(stub_close_all_count == 1);
 	printf("  PASS: test_action_close_all\n");
 }
@@ -2485,9 +2498,9 @@ static void
 test_action_raise_lower_layer(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_RAISE_LAYER, NULL);
+	wm_execute_action(&test_server, WM_ACTION_RAISE_LAYER, NULL);
 	assert(stub_raise_layer_count == 1);
-	execute_action(&test_server, WM_ACTION_LOWER_LAYER, NULL);
+	wm_execute_action(&test_server, WM_ACTION_LOWER_LAYER, NULL);
 	assert(stub_lower_layer_count == 1);
 	printf("  PASS: test_action_raise_lower_layer\n");
 }
@@ -2497,13 +2510,13 @@ static void
 test_action_layouts(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_NEXT_LAYOUT, NULL) == true);
-	assert(execute_action(&test_server, WM_ACTION_PREV_LAYOUT, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_NEXT_LAYOUT, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_PREV_LAYOUT, NULL) == true);
 	printf("  PASS: test_action_layouts\n");
 }
 
 /* ====================================================================
- * Group E: execute_keybind_action() dispatch tests (MacroCmd, etc)
+ * Group E: wm_execute_keybind_action() dispatch tests (MacroCmd, etc)
  * ==================================================================== */
 
 /* Test MacroCmd: executes all subcmds in sequence */
@@ -2526,7 +2539,7 @@ test_keybind_action_macro(void)
 	bind.action = WM_ACTION_MACRO_CMD;
 	bind.subcmds = &cmd1;
 
-	assert(execute_keybind_action(&test_server, &bind) == true);
+	assert(wm_execute_keybind_action(&test_server, &bind) == true);
 	assert(stub_focus_next_count == 1);
 	assert(stub_focus_prev_count == 1);
 	printf("  PASS: test_keybind_action_macro\n");
@@ -2555,13 +2568,13 @@ test_keybind_action_toggle(void)
 	bind.toggle_index = 0;
 
 	/* First call: cmd1 (FOCUS_NEXT) */
-	execute_keybind_action(&test_server, &bind);
+	wm_execute_keybind_action(&test_server, &bind);
 	assert(stub_focus_next_count == 1);
 	assert(stub_focus_prev_count == 0);
 	assert(bind.toggle_index == 1);
 
 	/* Second call: cmd2 (FOCUS_PREV) */
-	execute_keybind_action(&test_server, &bind);
+	wm_execute_keybind_action(&test_server, &bind);
 	assert(stub_focus_prev_count == 1);
 	assert(bind.toggle_index == 0); /* wraps around */
 
@@ -2597,7 +2610,7 @@ test_keybind_action_if_true(void)
 	bind.subcmds = &then_cmd;
 	bind.else_cmd = &else_cmd;
 
-	execute_keybind_action(&test_server, &bind);
+	wm_execute_keybind_action(&test_server, &bind);
 	assert(stub_focus_next_count == 1);
 	assert(stub_focus_prev_count == 0);
 	printf("  PASS: test_keybind_action_if_true\n");
@@ -2632,7 +2645,7 @@ test_keybind_action_if_false(void)
 	bind.subcmds = &then_cmd;
 	bind.else_cmd = &else_cmd;
 
-	execute_keybind_action(&test_server, &bind);
+	wm_execute_keybind_action(&test_server, &bind);
 	assert(stub_focus_next_count == 0);
 	assert(stub_focus_prev_count == 1);
 	printf("  PASS: test_keybind_action_if_false\n");
@@ -2662,7 +2675,7 @@ test_keybind_action_foreach(void)
 	bind.condition = &cond;
 	bind.subcmds = &cmd;
 
-	execute_keybind_action(&test_server, &bind);
+	wm_execute_keybind_action(&test_server, &bind);
 	assert(stub_raise_count == 1);
 
 	/* Verify focused_view is restored */
@@ -3267,7 +3280,7 @@ test_apply_config_failure(void)
 }
 
 /* ====================================================================
- * Group L: execute_keybind_action() Map/Delay tests
+ * Group L: wm_execute_keybind_action() Map/Delay tests
  * ==================================================================== */
 
 /* Test: Map iterates views and applies action */
@@ -3288,7 +3301,7 @@ test_keybind_action_map(void)
 	bind.action = WM_ACTION_MAP;
 	bind.subcmds = &cmd;
 
-	execute_keybind_action(&test_server, &bind);
+	wm_execute_keybind_action(&test_server, &bind);
 
 	assert(stub_raise_count == 1);
 	assert(test_server.focused_view == &test_view);
@@ -3309,7 +3322,7 @@ test_keybind_action_map_no_subcmds(void)
 	bind.action = WM_ACTION_MAP;
 	bind.subcmds = NULL;
 
-	bool result = execute_keybind_action(&test_server, &bind);
+	bool result = wm_execute_keybind_action(&test_server, &bind);
 	assert(result == true);
 	assert(stub_raise_count == 0);
 
@@ -3333,7 +3346,7 @@ test_keybind_action_delay(void)
 	bind.subcmds = &cmd;
 	bind.delay_us = 5000;
 
-	bool result = execute_keybind_action(&test_server, &bind);
+	bool result = wm_execute_keybind_action(&test_server, &bind);
 	assert(result == true);
 	assert(g_stub_source_count == 1);
 	assert(g_stub_sources[0].next_ms == 5);
@@ -3367,7 +3380,7 @@ test_delay_timer_cb_fires(void)
 }
 
 /* ====================================================================
- * Group M: Additional execute_action() coverage
+ * Group M: Additional wm_execute_action() coverage
  * ==================================================================== */
 
 /* Test KILL action (sends SIGKILL via wl_client credentials) */
@@ -3375,7 +3388,7 @@ static void
 test_action_kill(void)
 {
 	setup_with_view();
-	assert(execute_action(&test_server, WM_ACTION_KILL, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_KILL, NULL) == true);
 	/* KILL path: get_client returns NULL in stub, so kill() not reached,
 	 * but the action still returns true */
 	printf("  PASS: test_action_kill\n");
@@ -3386,7 +3399,7 @@ static void
 test_action_kill_no_view(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_KILL, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_KILL, NULL) == true);
 	assert(stub_close_called == 0);
 	printf("  PASS: test_action_kill_no_view\n");
 }
@@ -3396,7 +3409,7 @@ static void
 test_action_window_menu(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_WINDOW_MENU, NULL);
+	wm_execute_action(&test_server, WM_ACTION_WINDOW_MENU, NULL);
 	assert(stub_menu_show_window_count == 1);
 	printf("  PASS: test_action_window_menu\n");
 }
@@ -3406,7 +3419,7 @@ static void
 test_action_window_list(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_WINDOW_LIST, NULL);
+	wm_execute_action(&test_server, WM_ACTION_WINDOW_LIST, NULL);
 	assert(stub_menu_show_window_list_count == 1);
 	printf("  PASS: test_action_window_list\n");
 }
@@ -3416,7 +3429,7 @@ static void
 test_action_workspace_menu(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_WORKSPACE_MENU, NULL);
+	wm_execute_action(&test_server, WM_ACTION_WORKSPACE_MENU, NULL);
 	assert(stub_menu_show_workspace_count == 1);
 	printf("  PASS: test_action_workspace_menu\n");
 }
@@ -3426,7 +3439,7 @@ static void
 test_action_client_menu(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_CLIENT_MENU, "pattern");
+	wm_execute_action(&test_server, WM_ACTION_CLIENT_MENU, "pattern");
 	assert(stub_menu_show_client_count == 1);
 	printf("  PASS: test_action_client_menu\n");
 }
@@ -3436,7 +3449,7 @@ static void
 test_action_custom_menu(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_CUSTOM_MENU, "/path/to/menu");
+	wm_execute_action(&test_server, WM_ACTION_CUSTOM_MENU, "/path/to/menu");
 	assert(stub_menu_show_custom_count == 1);
 	printf("  PASS: test_action_custom_menu\n");
 }
@@ -3448,7 +3461,7 @@ test_action_set_style(void)
 	setup_with_view();
 	wl_list_insert(&test_server.views, &test_view.link);
 
-	execute_action(&test_server, WM_ACTION_SET_STYLE, "/path/to/style");
+	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "/path/to/style");
 	assert(stub_style_load_count == 1);
 	assert(stub_toolbar_relayout_count == 1);
 	assert(stub_decoration_update_count == 1);
@@ -3465,7 +3478,7 @@ static void
 test_action_set_style_no_arg(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_SET_STYLE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, NULL);
 	assert(stub_style_load_count == 0);
 	printf("  PASS: test_action_set_style_no_arg\n");
 }
@@ -3478,7 +3491,7 @@ test_action_reload_style(void)
 	wl_list_insert(&test_server.views, &test_view.link);
 	test_config.style_file = strdup("/some/style");
 
-	execute_action(&test_server, WM_ACTION_RELOAD_STYLE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_RELOAD_STYLE, NULL);
 	assert(stub_style_load_count == 1);
 	assert(stub_toolbar_relayout_count == 1);
 	assert(stub_decoration_update_count == 1);
@@ -3500,7 +3513,7 @@ test_action_bind_key(void)
 	wl_list_init(&mode.bindings);
 	wl_list_insert(&test_server.keymodes, &mode.link);
 
-	execute_action(&test_server, WM_ACTION_BIND_KEY, "Mod4 t :Exec xterm");
+	wm_execute_action(&test_server, WM_ACTION_BIND_KEY, "Mod4 t :Exec xterm");
 	assert(stub_keybind_add_count == 1);
 
 	wl_list_remove(&mode.link);
@@ -3512,7 +3525,7 @@ static void
 test_action_bind_key_null(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_BIND_KEY, NULL);
+	wm_execute_action(&test_server, WM_ACTION_BIND_KEY, NULL);
 	assert(stub_keybind_add_count == 0);
 	printf("  PASS: test_action_bind_key_null\n");
 }
@@ -3522,7 +3535,7 @@ static void
 test_action_resize_horiz(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_RESIZE_HORIZ, "10");
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_HORIZ, "10");
 	assert(stub_resize_by_count == 1);
 	printf("  PASS: test_action_resize_horiz\n");
 }
@@ -3532,7 +3545,7 @@ static void
 test_action_resize_vert(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_RESIZE_VERT, "20");
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_VERT, "20");
 	assert(stub_resize_by_count == 1);
 	printf("  PASS: test_action_resize_vert\n");
 }
@@ -3542,7 +3555,7 @@ static void
 test_action_cascade_windows(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_CASCADE_WINDOWS, NULL);
+	wm_execute_action(&test_server, WM_ACTION_CASCADE_WINDOWS, NULL);
 	assert(stub_arrange_cascade_count == 1);
 	printf("  PASS: test_action_cascade_windows\n");
 }
@@ -3552,7 +3565,7 @@ static void
 test_action_arrange_vert(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_ARRANGE_VERT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_VERT, NULL);
 	assert(stub_arrange_vert_count == 1);
 	printf("  PASS: test_action_arrange_vert\n");
 }
@@ -3562,7 +3575,7 @@ static void
 test_action_arrange_horiz(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_ARRANGE_HORIZ, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_HORIZ, NULL);
 	assert(stub_arrange_horiz_count == 1);
 	printf("  PASS: test_action_arrange_horiz\n");
 }
@@ -3572,7 +3585,7 @@ static void
 test_action_focus(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_FOCUS, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS, NULL);
 	assert(stub_focus_view_count == 1);
 	printf("  PASS: test_action_focus\n");
 }
@@ -3582,7 +3595,7 @@ static void
 test_action_focus_no_view(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_FOCUS, NULL);
+	wm_execute_action(&test_server, WM_ACTION_FOCUS, NULL);
 	assert(stub_focus_view_count == 0);
 	printf("  PASS: test_action_focus_no_view\n");
 }
@@ -3592,7 +3605,7 @@ static void
 test_action_start_moving(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_START_MOVING, NULL);
+	wm_execute_action(&test_server, WM_ACTION_START_MOVING, NULL);
 	assert(stub_begin_interactive_count == 1);
 	printf("  PASS: test_action_start_moving\n");
 }
@@ -3602,7 +3615,7 @@ static void
 test_action_start_resizing(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_START_RESIZING, NULL);
+	wm_execute_action(&test_server, WM_ACTION_START_RESIZING, NULL);
 	assert(stub_begin_interactive_count == 1);
 	printf("  PASS: test_action_start_resizing\n");
 }
@@ -3612,7 +3625,7 @@ static void
 test_action_start_tabbing(void)
 {
 	setup();
-	assert(execute_action(&test_server, WM_ACTION_START_TABBING, NULL) == true);
+	assert(wm_execute_action(&test_server, WM_ACTION_START_TABBING, NULL) == true);
 	printf("  PASS: test_action_start_tabbing\n");
 }
 
@@ -3621,7 +3634,7 @@ static void
 test_action_activate_tab(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_ACTIVATE_TAB, "2");
+	wm_execute_action(&test_server, WM_ACTION_ACTIVATE_TAB, "2");
 	assert(stub_activate_tab_count == 1);
 	printf("  PASS: test_action_activate_tab\n");
 }
@@ -3631,7 +3644,7 @@ static void
 test_action_activate_tab_no_arg(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_ACTIVATE_TAB, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ACTIVATE_TAB, NULL);
 	assert(stub_activate_tab_count == 0);
 	printf("  PASS: test_action_activate_tab_no_arg\n");
 }
@@ -3641,7 +3654,7 @@ static void
 test_action_set_workspace_name(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_SET_WORKSPACE_NAME, "MyDesk");
+	wm_execute_action(&test_server, WM_ACTION_SET_WORKSPACE_NAME, "MyDesk");
 	assert(stub_ws_set_name_count == 1);
 	printf("  PASS: test_action_set_workspace_name\n");
 }
@@ -3651,7 +3664,7 @@ static void
 test_action_set_workspace_name_no_arg(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_SET_WORKSPACE_NAME, NULL);
+	wm_execute_action(&test_server, WM_ACTION_SET_WORKSPACE_NAME, NULL);
 	assert(stub_ws_set_name_count == 0);
 	printf("  PASS: test_action_set_workspace_name_no_arg\n");
 }
@@ -3661,9 +3674,9 @@ static void
 test_action_right_left_workspace(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_RIGHT_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_RIGHT_WORKSPACE, NULL);
 	assert(stub_ws_switch_right_count == 1);
-	execute_action(&test_server, WM_ACTION_LEFT_WORKSPACE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_LEFT_WORKSPACE, NULL);
 	assert(stub_ws_switch_left_count == 1);
 	printf("  PASS: test_action_right_left_workspace\n");
 }
@@ -3673,7 +3686,7 @@ static void
 test_action_set_head(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_SET_HEAD, "1");
+	wm_execute_action(&test_server, WM_ACTION_SET_HEAD, "1");
 	assert(stub_set_head_count == 1);
 	printf("  PASS: test_action_set_head\n");
 }
@@ -3683,9 +3696,9 @@ static void
 test_action_send_to_head(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_SEND_TO_NEXT_HEAD, NULL);
+	wm_execute_action(&test_server, WM_ACTION_SEND_TO_NEXT_HEAD, NULL);
 	assert(stub_send_next_head_count == 1);
-	execute_action(&test_server, WM_ACTION_SEND_TO_PREV_HEAD, NULL);
+	wm_execute_action(&test_server, WM_ACTION_SEND_TO_PREV_HEAD, NULL);
 	assert(stub_send_prev_head_count == 1);
 	printf("  PASS: test_action_send_to_head\n");
 }
@@ -3696,7 +3709,7 @@ test_action_remember(void)
 {
 	setup_with_view();
 	test_config.apps_file = "/tmp/apps";
-	execute_action(&test_server, WM_ACTION_REMEMBER, NULL);
+	wm_execute_action(&test_server, WM_ACTION_REMEMBER, NULL);
 	assert(stub_remember_window_count == 1);
 	test_config.apps_file = NULL;
 	printf("  PASS: test_action_remember\n");
@@ -3708,7 +3721,7 @@ test_action_remember_no_file(void)
 {
 	setup_with_view();
 	test_config.apps_file = NULL;
-	execute_action(&test_server, WM_ACTION_REMEMBER, NULL);
+	wm_execute_action(&test_server, WM_ACTION_REMEMBER, NULL);
 	assert(stub_remember_window_count == 0);
 	printf("  PASS: test_action_remember_no_file\n");
 }
@@ -3718,13 +3731,13 @@ static void
 test_action_arrange_stack_variants(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_LEFT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_LEFT, NULL);
 	assert(stub_arrange_stack_left_count == 1);
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_RIGHT, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_RIGHT, NULL);
 	assert(stub_arrange_stack_right_count == 1);
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_TOP, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_TOP, NULL);
 	assert(stub_arrange_stack_top_count == 1);
-	execute_action(&test_server, WM_ACTION_ARRANGE_STACK_BOTTOM, NULL);
+	wm_execute_action(&test_server, WM_ACTION_ARRANGE_STACK_BOTTOM, NULL);
 	assert(stub_arrange_stack_bottom_count == 1);
 	printf("  PASS: test_action_arrange_stack_variants\n");
 }
@@ -3734,14 +3747,14 @@ static void
 test_action_set_decor_more(void)
 {
 	setup_with_view();
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "0");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "0");
 	assert(stub_decoration_set_preset_count == 1);
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "TINY");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "TINY");
 	assert(stub_decoration_set_preset_count == 2);
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "TOOL");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "TOOL");
 	assert(stub_decoration_set_preset_count == 3);
 	/* Default: unrecognized string still calls set_preset with NORMAL */
-	execute_action(&test_server, WM_ACTION_SET_DECOR, "UNKNOWN");
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "UNKNOWN");
 	assert(stub_decoration_set_preset_count == 4);
 	printf("  PASS: test_action_set_decor_more\n");
 }
@@ -3761,7 +3774,7 @@ test_action_goto_window(void)
 	test_view.sticky = false;
 	wl_list_insert(&test_server.views, &test_view.link);
 
-	execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
 	assert(stub_focus_view_count == 1);
 
 	wl_list_remove(&test_view.link);
@@ -3773,7 +3786,7 @@ static void
 test_action_goto_window_no_arg(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_GOTO_WINDOW, NULL);
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, NULL);
 	assert(stub_focus_view_count == 0);
 	printf("  PASS: test_action_goto_window_no_arg\n");
 }
@@ -3783,9 +3796,9 @@ static void
 test_action_goto_window_invalid(void)
 {
 	setup();
-	execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "0");
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "0");
 	assert(stub_focus_view_count == 0);
-	execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "-1");
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "-1");
 	assert(stub_focus_view_count == 0);
 	printf("  PASS: test_action_goto_window_invalid\n");
 }
@@ -3808,7 +3821,7 @@ test_action_unclutter(void)
 	test_output.usable_area = (struct wlr_box){10, 20, 800, 600};
 	wl_list_insert(&test_server.outputs, &test_output.link);
 
-	execute_action(&test_server, WM_ACTION_UNCLUTTER, NULL);
+	wm_execute_action(&test_server, WM_ACTION_UNCLUTTER, NULL);
 	assert(test_view.x == 10); /* area.x + offset(0) */
 	assert(test_view.y == 20); /* area.y + offset(0) */
 	assert(stub_set_pos_called >= 1);
@@ -3992,7 +4005,7 @@ test_keybind_action_foreach_with_subcmds(void)
 	bind.condition = &cond;
 	bind.subcmds = &cmd;
 
-	bool result = execute_keybind_action(&test_server, &bind);
+	bool result = wm_execute_keybind_action(&test_server, &bind);
 	assert(result == true);
 	assert(stub_raise_count >= 1);
 
@@ -4040,13 +4053,13 @@ main(void)
 	test_evaluate_condition_every();
 
 	printf("\n  Group C: Chain state machine\n");
-	test_chain_reset();
+	test_wm_chain_reset();
 	test_chain_timeout_cb();
 	test_chain_start_timeout();
 	test_chain_start_timeout_restart();
-	test_get_active_bindings();
+	test_wm_get_active_bindings();
 
-	printf("\n  Group D: execute_action() dispatch\n");
+	printf("\n  Group D: wm_execute_action() dispatch\n");
 	test_action_focus_next();
 	test_action_focus_prev();
 	test_action_close();
@@ -4099,7 +4112,7 @@ main(void)
 	test_action_raise_lower_layer();
 	test_action_layouts();
 
-	printf("\n  Group E: execute_keybind_action() dispatch\n");
+	printf("\n  Group E: wm_execute_keybind_action() dispatch\n");
 	test_keybind_action_macro();
 	test_keybind_action_toggle();
 	test_keybind_action_if_true();
@@ -4144,13 +4157,13 @@ main(void)
 	test_apply_config_success();
 	test_apply_config_failure();
 
-	printf("\n  Group L: execute_keybind_action() Map/Delay\n");
+	printf("\n  Group L: wm_execute_keybind_action() Map/Delay\n");
 	test_keybind_action_map();
 	test_keybind_action_map_no_subcmds();
 	test_keybind_action_delay();
 	test_delay_timer_cb_fires();
 
-	printf("\n  Group M: Additional execute_action() coverage\n");
+	printf("\n  Group M: Additional wm_execute_action() coverage\n");
 	test_action_kill();
 	test_action_kill_no_view();
 	test_action_window_menu();
