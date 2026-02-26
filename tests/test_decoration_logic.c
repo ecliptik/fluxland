@@ -22,7 +22,7 @@
 
 /* --- Block real headers via their include guards --- */
 #define CAIRO_H
-#define _DRM_FOURCC_H_
+#define DRM_FOURCC_H
 #define WAYLAND_SERVER_CORE_H
 #define WAYLAND_SERVER_H
 #define WAYLAND_UTIL_H
@@ -1375,6 +1375,394 @@ test_tab_at_null(void)
 	printf("  PASS: tab_at_null\n");
 }
 
+static void
+test_tab_at_multiple_intitlebar(void)
+{
+	setup();
+	test_config.tabs_intitlebar = true;
+
+	/* Create decoration first (setup_view is called inside) */
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 600, 400);
+	deco->tab_bar_size = 0; /* in-titlebar tabs */
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+	struct wm_view view3 = {0};
+	view3.server = &test_server;
+	view3.title = "Tab 3";
+	wl_list_init(&view3.tab_link);
+
+	/* Set up tab group after make_test_decoration (which calls setup_view) */
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 3;
+	tg.active_view = &test_view;
+	/* Insert in reverse for correct order: test_view, view2, view3 */
+	wl_list_insert(&tg.views, &view3.tab_link);
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	/* No buttons => label_width = content_width = 600
+	 * tab_width = 600/3 = 200
+	 * Titlebar y range: [bw=1, bw+th=21)
+	 * label_x = bw = 1
+	 * Tab 0: lx [0, 200)   => x=[1, 201)
+	 * Tab 1: lx [200, 400) => x=[201, 401)
+	 * Tab 2: lx [400, 600) => x=[401, 601)
+	 */
+	int idx = wm_decoration_tab_at(deco, 100, 10);
+	assert(idx == 0);
+
+	idx = wm_decoration_tab_at(deco, 300, 10);
+	assert(idx == 1);
+
+	idx = wm_decoration_tab_at(deco, 500, 10);
+	assert(idx == 2);
+
+	test_view.tab_group = NULL;
+	free_test_decoration(deco);
+	printf("  PASS: tab_at_multiple_intitlebar\n");
+}
+
+static void
+test_tab_at_no_titlebar_preset(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_BORDER, 800, 600);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	/* BORDER preset has no titlebar */
+	int idx = wm_decoration_tab_at(deco, 100, 10);
+	assert(idx == -1);
+
+	test_view.tab_group = NULL;
+	free_test_decoration(deco);
+	printf("  PASS: tab_at_no_titlebar_preset\n");
+}
+
+/* --- tab_at (external tab bar) --- */
+
+static void
+test_tab_at_external_horizontal(void)
+{
+	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_padding = 2;
+
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 400, 300);
+	deco->tab_bar_size = 20;
+	deco->tab_bar_placement = WM_TAB_BAR_TOP;
+	deco->tab_bar_box = (struct wlr_box){1, 21, 400, 20};
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	/* Horizontal: 2 tabs, padding=2, total_pad=2, seg_w=(400-2)/2=199
+	 * Tab 0: x relative to box.x in [0, 199+2=201)
+	 * Tab 1: x relative to box.x in [201, 400) */
+	int idx = wm_decoration_tab_at(deco, 100, 30);
+	assert(idx == 0);
+
+	idx = wm_decoration_tab_at(deco, 350, 30);
+	assert(idx == 1);
+
+	test_view.tab_group = NULL;
+	free_test_decoration(deco);
+	printf("  PASS: tab_at_external_horizontal\n");
+}
+
+static void
+test_tab_at_external_vertical(void)
+{
+	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_padding = 0;
+
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 400, 300);
+	deco->tab_bar_size = 30;
+	deco->tab_bar_placement = WM_TAB_BAR_LEFT;
+	deco->tab_bar_box = (struct wlr_box){1, 21, 30, 300};
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	wl_list_init(&view2.tab_link);
+	struct wm_view view3 = {0};
+	view3.server = &test_server;
+	wl_list_init(&view3.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 3;
+	tg.active_view = &test_view;
+	wl_list_insert(&tg.views, &view3.tab_link);
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	/* Vertical: 3 tabs, padding=0, seg_h=300/3=100
+	 * Tab 0: ly [0, 100)
+	 * Tab 1: ly [100, 200)
+	 * Tab 2: ly [200, 300) */
+	int idx = wm_decoration_tab_at(deco, 15, 21 + 50);
+	assert(idx == 0);
+
+	idx = wm_decoration_tab_at(deco, 15, 21 + 150);
+	assert(idx == 1);
+
+	idx = wm_decoration_tab_at(deco, 15, 21 + 250);
+	assert(idx == 2);
+
+	test_view.tab_group = NULL;
+	free_test_decoration(deco);
+	printf("  PASS: tab_at_external_vertical\n");
+}
+
+/* --- get_extents with external tab bar --- */
+
+static void
+test_get_extents_ext_tab_bar_top(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->tab_bar_size = 25;
+	deco->tab_bar_placement = WM_TAB_BAR_TOP;
+
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+
+	/* NORMAL + top tab bar: top = bw(1) + th(20) + tab(25) = 46 */
+	assert(top == 46);
+	assert(bottom == 7);
+	assert(left == 1);
+	assert(right == 1);
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_ext_tab_bar_top\n");
+}
+
+static void
+test_get_extents_ext_tab_bar_left(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->tab_bar_size = 30;
+	deco->tab_bar_placement = WM_TAB_BAR_LEFT;
+
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+
+	assert(top == 21);
+	assert(bottom == 7);
+	assert(left == 31); /* bw(1) + tab(30) */
+	assert(right == 1);
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_ext_tab_bar_left\n");
+}
+
+static void
+test_get_extents_ext_tab_bar_right(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->tab_bar_size = 30;
+	deco->tab_bar_placement = WM_TAB_BAR_RIGHT;
+
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+
+	assert(left == 1);
+	assert(right == 31); /* bw(1) + tab(30) */
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_ext_tab_bar_right\n");
+}
+
+static void
+test_get_extents_ext_tab_bar_bottom(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->tab_bar_size = 25;
+	deco->tab_bar_placement = WM_TAB_BAR_BOTTOM;
+
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+
+	assert(top == 21);
+	assert(bottom == 32); /* bw(1) + hh(6) + tab(25) */
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_ext_tab_bar_bottom\n");
+}
+
+static void
+test_get_extents_null_params(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	/* Should not crash with NULL output pointers */
+	wm_decoration_get_extents(deco, NULL, NULL, NULL, NULL);
+
+	int top;
+	wm_decoration_get_extents(deco, &top, NULL, NULL, NULL);
+	assert(top == 21);
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_null_params\n");
+}
+
+/* --- configure_buttons_replace --- */
+
+static void
+test_configure_buttons_replace(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	wm_decoration_configure_buttons(deco, "Close", "Maximize");
+	assert(deco->buttons_left_count == 1);
+	assert(deco->buttons_right_count == 1);
+
+	/* Replace with different layout */
+	wm_decoration_configure_buttons(deco, "Stick Shade", "Close");
+	assert(deco->buttons_left_count == 2);
+	assert(deco->buttons_right_count == 1);
+	assert(deco->buttons_left[0].type == WM_BUTTON_STICK);
+	assert(deco->buttons_left[1].type == WM_BUTTON_SHADE);
+
+	free_test_decoration(deco);
+	printf("  PASS: configure_buttons_replace\n");
+}
+
+static void
+test_configure_buttons_empty(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	wm_decoration_configure_buttons(deco, "", "");
+	assert(deco->buttons_left_count == 0);
+	assert(deco->buttons_left == NULL);
+	assert(deco->buttons_right_count == 0);
+	assert(deco->buttons_right == NULL);
+
+	free_test_decoration(deco);
+	printf("  PASS: configure_buttons_empty\n");
+}
+
+/* --- region_at with button --- */
+
+static void
+test_region_at_button(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	free(deco->buttons_left);
+	deco->buttons_left = calloc(1, sizeof(struct wm_decor_button));
+	deco->buttons_left_count = 1;
+	deco->buttons_left[0].type = WM_BUTTON_CLOSE;
+	deco->buttons_left[0].box = (struct wlr_box){5, 5, 12, 12};
+
+	/* Hit inside button */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 10, 10);
+	assert(region == WM_DECOR_REGION_BUTTON);
+
+	free_test_decoration(deco);
+	printf("  PASS: region_at_button\n");
+}
+
+/* --- region_at with NONE preset --- */
+
+static void
+test_region_at_none_preset(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NONE, 800, 600);
+
+	/* NONE: no titlebar, no handle.
+	 * outer_h = 0 + 600 + 0 + 2*1 = 602, outer_w = 802
+	 * Interior should be CLIENT */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 300);
+	assert(region == WM_DECOR_REGION_CLIENT);
+
+	/* Border still present */
+	region = wm_decoration_region_at(deco, 400, 0);
+	assert(region == WM_DECOR_REGION_BORDER_TOP);
+
+	free_test_decoration(deco);
+	printf("  PASS: region_at_none_preset\n");
+}
+
+/* --- style helpers: additional --- */
+
+static void
+test_style_titlebar_height_fallback(void)
+{
+	setup();
+	test_style.window_title_height = 0;
+	test_style.window_label_focus_font.size = 0;
+
+	/* Fallback: 12 + 8 = 20 */
+	int h = style_titlebar_height(&test_style);
+	assert(h == 20);
+	printf("  PASS: style_titlebar_height_fallback\n");
+}
+
+static void
+test_style_handle_height_explicit(void)
+{
+	setup();
+	test_style.window_handle_width = 10;
+
+	int h = style_handle_height(&test_style);
+	assert(h == 10);
+	printf("  PASS: style_handle_height_explicit\n");
+}
+
+static void
+test_style_border_width_zero(void)
+{
+	setup();
+	test_style.window_border_width = 0;
+
+	/* 0 is >= 0, so returns 0 */
+	int w = style_border_width(&test_style);
+	assert(w == 0);
+	printf("  PASS: style_border_width_zero\n");
+}
+
+static void
+test_style_border_width_explicit(void)
+{
+	setup();
+	test_style.window_border_width = 3;
+
+	int w = style_border_width(&test_style);
+	assert(w == 3);
+	printf("  PASS: style_border_width_explicit\n");
+}
+
 /* ===================== Main ===================== */
 
 int
@@ -1448,6 +1836,33 @@ main(void)
 	test_tab_at_no_group();
 	test_tab_at_outside_titlebar();
 	test_tab_at_null();
+	test_tab_at_multiple_intitlebar();
+	test_tab_at_no_titlebar_preset();
+
+	/* tab_at (external tab bar) */
+	test_tab_at_external_horizontal();
+	test_tab_at_external_vertical();
+
+	/* get_extents (external tab bar) */
+	test_get_extents_ext_tab_bar_top();
+	test_get_extents_ext_tab_bar_left();
+	test_get_extents_ext_tab_bar_right();
+	test_get_extents_ext_tab_bar_bottom();
+	test_get_extents_null_params();
+
+	/* configure_buttons additional */
+	test_configure_buttons_replace();
+	test_configure_buttons_empty();
+
+	/* region_at additional */
+	test_region_at_button();
+	test_region_at_none_preset();
+
+	/* Style helpers additional */
+	test_style_titlebar_height_fallback();
+	test_style_handle_height_explicit();
+	test_style_border_width_zero();
+	test_style_border_width_explicit();
 
 	printf("All decoration logic tests passed.\n");
 	return 0;
