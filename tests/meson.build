@@ -43,12 +43,13 @@ test_rules = executable(
 )
 test('rules', test_rules)
 
-# --- test_placement: placement grid math tests ---
+# --- test_placement: placement logic and edge-snapping tests ---
+# placement.c is #included directly in the test to allow stubbing wlroots deps.
 test_placement = executable(
   'test_placement',
   files('test_placement.c'),
   include_directories: test_inc,
-  dependencies: [math],
+  dependencies: [wlroots, math],
   install: false,
 )
 test('placement', test_placement)
@@ -180,6 +181,39 @@ test_slit = executable(
   install: false,
 )
 test('slit', test_slit)
+
+# --- test_keyboard: keyboard action dispatch and condition evaluation tests ---
+# keyboard.c is #included directly in the test to allow stubbing wlroots/wayland deps.
+test_keyboard = executable(
+  'test_keyboard',
+  files('test_keyboard.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('keyboard', test_keyboard)
+
+# --- test_xwayland_logic: XWayland classification, slit docking, and geometry tests ---
+# xwayland.c is #included directly in the test to allow stubbing wlroots/XWayland deps.
+test_xwayland_logic = executable(
+  'test_xwayland_logic',
+  files('test_xwayland_logic.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('xwayland_logic', test_xwayland_logic)
+
+# --- test_cursor_snap: cursor snap zone detection and geometry tests ---
+# cursor.c is #included directly in the test to allow stubbing wlroots/cairo deps.
+test_cursor_snap = executable(
+  'test_cursor_snap',
+  files('test_cursor_snap.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, pangocairo, libdrm, math],
+  install: false,
+)
+test('cursor_snap', test_cursor_snap)
 
 # --- test_menu_interaction: menu interaction logic tests ---
 # menu.c is #included directly in the test to allow stubbing wlroots/cairo/pango deps.

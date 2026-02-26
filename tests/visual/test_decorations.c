@@ -692,6 +692,611 @@ test_image_compare_size_mismatch(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Test: diagonal gradient                                             */
+/* ------------------------------------------------------------------ */
+
+static void
+test_diagonal_gradient(void)
+{
+	TEST_START("diagonal_gradient");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_DIAGONAL,
+		.bevel = WM_BEVEL_NONE,
+		.interlaced = false,
+		.color = 0xFF2e3440,
+		.color_to = 0xFF88c0d0,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 200, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/diagonal_gradient.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/diagonal_gradient_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: crossdiagonal gradient                                        */
+/* ------------------------------------------------------------------ */
+
+static void
+test_crossdiagonal_gradient(void)
+{
+	TEST_START("crossdiagonal_gradient");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_CROSSDIAGONAL,
+		.bevel = WM_BEVEL_NONE,
+		.interlaced = false,
+		.color = 0xFFbf616a,
+		.color_to = 0xFF5e81ac,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 200, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path),
+		 "%s/crossdiagonal_gradient.png", ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/crossdiagonal_gradient_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: pipecross gradient                                            */
+/* ------------------------------------------------------------------ */
+
+static void
+test_pipecross_gradient(void)
+{
+	TEST_START("pipecross_gradient");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_PIPECROSS,
+		.bevel = WM_BEVEL_NONE,
+		.interlaced = false,
+		.color = 0xFFd08770,
+		.color_to = 0xFF2e3440,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 200, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/pipecross_gradient.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/pipecross_gradient_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: rectangle gradient                                            */
+/* ------------------------------------------------------------------ */
+
+static void
+test_rectangle_gradient(void)
+{
+	TEST_START("rectangle_gradient");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_RECTANGLE,
+		.bevel = WM_BEVEL_NONE,
+		.interlaced = false,
+		.color = 0xFFa3be8c,
+		.color_to = 0xFF2e3440,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 200, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/rectangle_gradient.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/rectangle_gradient_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: pyramid gradient                                              */
+/* ------------------------------------------------------------------ */
+
+static void
+test_pyramid_gradient(void)
+{
+	TEST_START("pyramid_gradient");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_PYRAMID,
+		.bevel = WM_BEVEL_NONE,
+		.interlaced = false,
+		.color = 0xFFb48ead,
+		.color_to = 0xFF2e3440,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 200, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/pyramid_gradient.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/pyramid_gradient_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: elliptic gradient                                             */
+/* ------------------------------------------------------------------ */
+
+static void
+test_elliptic_gradient(void)
+{
+	TEST_START("elliptic_gradient");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_ELLIPTIC,
+		.bevel = WM_BEVEL_NONE,
+		.interlaced = false,
+		.color = 0xFFeceff4,
+		.color_to = 0xFF4c566a,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 200, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/elliptic_gradient.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/elliptic_gradient_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: text with left justification                                  */
+/* ------------------------------------------------------------------ */
+
+static void
+test_text_left_justify(void)
+{
+	TEST_START("text_left_justify");
+
+	struct wm_font font = {
+		.family = "sans",
+		.size = 11,
+		.bold = false,
+		.italic = false,
+		.shadow_x = 0,
+		.shadow_y = 0,
+		.shadow_color = { .r = 0, .g = 0, .b = 0, .a = 0xFF },
+		.halo = false,
+		.halo_color = { .r = 0, .g = 0, .b = 0, .a = 0xFF },
+	};
+
+	struct wm_color color = {
+		.r = 0xEC, .g = 0xEF, .b = 0xF4, .a = 0xFF
+	};
+
+	int tw = 0, th = 0;
+	cairo_surface_t *text_surface = wm_render_text(
+		"Left Aligned", &font, &color, 300, &tw, &th,
+		WM_JUSTIFY_LEFT, 1.0f);
+
+	if (!text_surface) {
+		TEST_FAIL("wm_render_text returned NULL");
+		return;
+	}
+
+	int width = 300;
+	int height = th > 0 ? th + 4 : 24;
+	cairo_surface_t *composite = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, width, height);
+	cairo_t *cr = cairo_create(composite);
+
+	cairo_set_source_rgba(cr, 0.23, 0.26, 0.32, 1.0);
+	cairo_paint(cr);
+
+	cairo_set_source_surface(cr, text_surface, 0,
+				 (height - th) / 2);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/text_left_justify.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/text_left_justify_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		composite, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(text_surface);
+	cairo_surface_destroy(composite);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: text with right justification                                 */
+/* ------------------------------------------------------------------ */
+
+static void
+test_text_right_justify(void)
+{
+	TEST_START("text_right_justify");
+
+	struct wm_font font = {
+		.family = "sans",
+		.size = 11,
+		.bold = false,
+		.italic = false,
+		.shadow_x = 0,
+		.shadow_y = 0,
+		.shadow_color = { .r = 0, .g = 0, .b = 0, .a = 0xFF },
+		.halo = false,
+		.halo_color = { .r = 0, .g = 0, .b = 0, .a = 0xFF },
+	};
+
+	struct wm_color color = {
+		.r = 0xEC, .g = 0xEF, .b = 0xF4, .a = 0xFF
+	};
+
+	int tw = 0, th = 0;
+	cairo_surface_t *text_surface = wm_render_text(
+		"Right Aligned", &font, &color, 300, &tw, &th,
+		WM_JUSTIFY_RIGHT, 1.0f);
+
+	if (!text_surface) {
+		TEST_FAIL("wm_render_text returned NULL");
+		return;
+	}
+
+	int width = 300;
+	int height = th > 0 ? th + 4 : 24;
+	cairo_surface_t *composite = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, width, height);
+	cairo_t *cr = cairo_create(composite);
+
+	cairo_set_source_rgba(cr, 0.23, 0.26, 0.32, 1.0);
+	cairo_paint(cr);
+
+	cairo_set_source_surface(cr, text_surface, 0,
+				 (height - th) / 2);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/text_right_justify.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/text_right_justify_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		composite, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(text_surface);
+	cairo_surface_destroy(composite);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: bevel2 texture style                                          */
+/* ------------------------------------------------------------------ */
+
+static void
+test_bevel2_texture(void)
+{
+	TEST_START("bevel2_texture");
+
+	struct wm_texture tex = {
+		.appearance = WM_TEX_RAISED,
+		.fill = WM_TEX_GRADIENT,
+		.gradient = WM_GRAD_VERTICAL,
+		.bevel = WM_BEVEL2,
+		.interlaced = false,
+		.color = 0xFF4c566a,
+		.color_to = 0xFF2e3440,
+		.pixmap_path = NULL,
+	};
+
+	cairo_surface_t *surface = wm_render_texture(&tex, 200, 30, 1.0f);
+	if (!surface) {
+		TEST_FAIL("wm_render_texture returned NULL");
+		return;
+	}
+
+	char ref_path[1024];
+	char diff_path[1024];
+	snprintf(ref_path, sizeof(ref_path), "%s/bevel2_texture.png",
+		 ref_dir);
+	snprintf(diff_path, sizeof(diff_path),
+		 "%s/bevel2_texture_diff.png", diff_dir);
+
+	struct image_compare_result result = image_compare_with_reference(
+		surface, ref_path, diff_path, DEFAULT_TOLERANCE,
+		DEFAULT_THRESHOLD);
+
+	if (result.match) {
+		TEST_PASS();
+	} else {
+		char msg[256];
+		snprintf(msg, sizeof(msg),
+			 "%.2f%% pixels differ (max channel diff: %d)",
+			 result.diff_percent, result.max_channel_diff);
+		TEST_FAIL(msg);
+	}
+
+	cairo_surface_destroy(surface);
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: null/invalid texture inputs                                   */
+/* ------------------------------------------------------------------ */
+
+static void
+test_null_texture_inputs(void)
+{
+	TEST_START("null_texture_inputs");
+
+	/* NULL texture should return NULL */
+	cairo_surface_t *s1 = wm_render_texture(NULL, 200, 30, 1.0f);
+	if (s1 != NULL) {
+		TEST_FAIL("expected NULL for NULL texture");
+		cairo_surface_destroy(s1);
+		return;
+	}
+
+	/* Zero dimensions should return NULL */
+	struct wm_texture tex = {
+		.appearance = WM_TEX_FLAT,
+		.fill = WM_TEX_SOLID,
+		.color = 0xFF000000,
+	};
+	cairo_surface_t *s2 = wm_render_texture(&tex, 0, 30, 1.0f);
+	if (s2 != NULL) {
+		TEST_FAIL("expected NULL for zero width");
+		cairo_surface_destroy(s2);
+		return;
+	}
+
+	cairo_surface_t *s3 = wm_render_texture(&tex, 200, 0, 1.0f);
+	if (s3 != NULL) {
+		TEST_FAIL("expected NULL for zero height");
+		cairo_surface_destroy(s3);
+		return;
+	}
+
+	/* ParentRelative should return NULL */
+	struct wm_texture pr_tex = {
+		.fill = WM_TEX_PARENT_RELATIVE,
+	};
+	cairo_surface_t *s4 = wm_render_texture(&pr_tex, 200, 30, 1.0f);
+	if (s4 != NULL) {
+		TEST_FAIL("expected NULL for ParentRelative");
+		cairo_surface_destroy(s4);
+		return;
+	}
+
+	/* NULL text should return NULL */
+	cairo_surface_t *s5 = wm_render_text(NULL, NULL, NULL, 200,
+					      NULL, NULL, WM_JUSTIFY_LEFT,
+					      1.0f);
+	if (s5 != NULL) {
+		TEST_FAIL("expected NULL for NULL text args");
+		cairo_surface_destroy(s5);
+		return;
+	}
+
+	/* NULL button color should return NULL */
+	cairo_surface_t *s6 = wm_render_button_glyph(WM_BUTTON_CLOSE,
+						       NULL, 16, 1.0f);
+	if (s6 != NULL) {
+		TEST_FAIL("expected NULL for NULL button color");
+		cairo_surface_destroy(s6);
+		return;
+	}
+
+	TEST_PASS();
+}
+
+/* ------------------------------------------------------------------ */
+/* Test: text measurement width                                        */
+/* ------------------------------------------------------------------ */
+
+static void
+test_measure_text_width(void)
+{
+	TEST_START("measure_text_width");
+
+	struct wm_font font = {
+		.family = "sans",
+		.size = 11,
+		.bold = false,
+		.italic = false,
+		.shadow_x = 0,
+		.shadow_y = 0,
+		.shadow_color = { .r = 0, .g = 0, .b = 0, .a = 0xFF },
+		.halo = false,
+		.halo_color = { .r = 0, .g = 0, .b = 0, .a = 0xFF },
+	};
+
+	int w1 = wm_measure_text_width("Hello", &font, 1.0f);
+	int w2 = wm_measure_text_width("Hello World Long Title", &font,
+					1.0f);
+
+	/* Longer text should be wider */
+	if (w1 > 0 && w2 > w1) {
+		TEST_PASS();
+	} else {
+		char msg[128];
+		snprintf(msg, sizeof(msg),
+			 "widths: short=%d long=%d (expected long > short > 0)",
+			 w1, w2);
+		TEST_FAIL(msg);
+	}
+}
+
+/* ------------------------------------------------------------------ */
 /* Main                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -711,11 +1316,24 @@ main(void)
 	test_solid_texture();
 	test_gradient_texture();
 	test_horizontal_gradient();
+	test_diagonal_gradient();
+	test_crossdiagonal_gradient();
+	test_pipecross_gradient();
+	test_rectangle_gradient();
+	test_pyramid_gradient();
+	test_elliptic_gradient();
 	test_sunken_texture();
 	test_interlaced_texture();
+	test_bevel2_texture();
 	test_button_glyphs();
 	test_text_rendering();
+	test_text_left_justify();
+	test_text_right_justify();
 	test_titlebar_composition();
+
+	/* API edge cases */
+	test_null_texture_inputs();
+	test_measure_text_width();
 
 	printf("  Results: %d/%d passed", tests_passed, tests_run);
 	if (tests_failed > 0)
