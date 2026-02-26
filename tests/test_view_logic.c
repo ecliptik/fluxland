@@ -3090,6 +3090,594 @@ test_view_send_to_prev_head_no_outputs(void)
 	printf("  PASS: view_send_to_prev_head_no_outputs\n");
 }
 
+/* ===== handle_xdg_toplevel_request_fullscreen tests ===== */
+
+static void
+setup_fullscreen_view(int idx, struct wm_workspace *ws)
+{
+	setup_mock_view(idx, ws);
+}
+
+static void
+test_fullscreen_enter(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].fullscreen == true);
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+	assert(test_toplevels[0].width == 1920);
+	assert(test_toplevels[0].height == 1080);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_enter\n");
+}
+
+static void
+test_fullscreen_restore(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	struct wlr_scene_tree ws_tree;
+	memset(&ws_tree, 0, sizeof(ws_tree));
+	wl_list_init(&ws_tree.children);
+	test_workspace.tree = &ws_tree;
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+	assert(test_views[0].fullscreen == true);
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].fullscreen == false);
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+	assert(test_toplevels[0].width == 800);
+	assert(test_toplevels[0].height == 600);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_restore\n");
+}
+
+static void
+test_fullscreen_sticky_restore(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	struct wlr_scene_tree sticky_tree;
+	memset(&sticky_tree, 0, sizeof(sticky_tree));
+	wl_list_init(&sticky_tree.children);
+	test_server.sticky_tree = &sticky_tree;
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+	test_views[0].sticky = true;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+	assert(test_views[0].fullscreen == true);
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+	assert(test_views[0].fullscreen == false);
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_sticky_restore\n");
+}
+
+static void
+test_fullscreen_no_decoration(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+	test_views[0].decoration = NULL;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].fullscreen == true);
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_no_decoration\n");
+}
+
+static void
+test_fullscreen_no_output(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+	g_output_at_return = NULL;
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].fullscreen == true);
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_no_output\n");
+}
+
+static void
+test_fullscreen_saves_geometry(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	test_views[0].x = 150;
+	test_views[0].y = 250;
+	test_views[0].fullscreen = false;
+	test_views[0].maximized = false;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].saved_geometry.x == 150);
+	assert(test_views[0].saved_geometry.y == 250);
+	assert(test_views[0].saved_geometry.width == 800);
+	assert(test_views[0].saved_geometry.height == 600);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_saves_geometry\n");
+}
+
+static void
+test_fullscreen_enter_with_decoration(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_decoration(&test_views[0]);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	struct wlr_scene_node xdg_child;
+	memset(&xdg_child, 0, sizeof(xdg_child));
+	wl_list_insert(test_views[0].scene_tree->children.prev,
+		&xdg_child.link);
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].fullscreen == true);
+	assert(test_deco_tree.node.enabled == false);
+	assert(xdg_child.x == 0);
+	assert(xdg_child.y == 0);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&xdg_child.link);
+	wl_list_remove(&test_deco_tree.node.link);
+	test_views[0].decoration = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_enter_with_decoration\n");
+}
+
+static void
+test_fullscreen_restore_with_decoration(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_decoration(&test_views[0]);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+
+	struct wlr_scene_tree ws_tree;
+	memset(&ws_tree, 0, sizeof(ws_tree));
+	wl_list_init(&ws_tree.children);
+	test_workspace.tree = &ws_tree;
+
+	struct wlr_scene_node xdg_child;
+	memset(&xdg_child, 0, sizeof(xdg_child));
+	wl_list_insert(test_views[0].scene_tree->children.prev,
+		&xdg_child.link);
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].fullscreen = false;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+	assert(test_deco_tree.node.enabled == false);
+
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[0].request_fullscreen, NULL);
+
+	assert(test_views[0].fullscreen == false);
+	assert(test_deco_tree.node.enabled == true);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&xdg_child.link);
+	wl_list_remove(&test_deco_tree.node.link);
+	test_views[0].decoration = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_restore_with_decoration\n");
+}
+
+/* ===== handle_xdg_toplevel_request_maximize tests ===== */
+
+static void
+test_maximize_enter(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized = false;
+	test_config.full_maximization = true;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_maximize(
+		&test_views[0].request_maximize, NULL);
+
+	assert(test_views[0].maximized == true);
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 0);
+	assert(test_toplevels[0].width == 1920);
+	assert(test_toplevels[0].height == 1080);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: maximize_enter\n");
+}
+
+static void
+test_maximize_enter_usable_area(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 30, 1920, 1050);
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized = false;
+	test_config.full_maximization = false;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_maximize(
+		&test_views[0].request_maximize, NULL);
+
+	assert(test_views[0].maximized == true);
+	assert(test_views[0].x == 0);
+	assert(test_views[0].y == 30);
+	assert(test_toplevels[0].width == 1920);
+	assert(test_toplevels[0].height == 1050);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: maximize_enter_usable_area\n");
+}
+
+static void
+test_maximize_restore(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized = false;
+	test_config.full_maximization = true;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	handle_xdg_toplevel_request_maximize(
+		&test_views[0].request_maximize, NULL);
+	assert(test_views[0].maximized == true);
+
+	handle_xdg_toplevel_request_maximize(
+		&test_views[0].request_maximize, NULL);
+
+	assert(test_views[0].maximized == false);
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+	assert(test_toplevels[0].width == 800);
+	assert(test_toplevels[0].height == 600);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: maximize_restore\n");
+}
+
+static void
+test_maximize_no_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized = false;
+	g_output_at_return = NULL;
+
+	handle_xdg_toplevel_request_maximize(
+		&test_views[0].request_maximize, NULL);
+
+	assert(test_views[0].maximized == true);
+	assert(test_views[0].x == 100);
+	assert(test_views[0].y == 200);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: maximize_no_output\n");
+}
+
+/* ===== handle_xdg_toplevel_request_minimize tests ===== */
+
+static void
+test_minimize_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = true;
+	test_config.animate_minimize = false;
+
+	handle_xdg_toplevel_request_minimize(
+		&test_views[0].request_minimize, NULL);
+
+	assert(test_views[0].scene_tree->node.enabled == false);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: minimize_basic\n");
+}
+
+static void
+test_minimize_with_animation(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = true;
+	test_config.animate_minimize = true;
+	test_config.animation_duration_ms = 200;
+
+	handle_xdg_toplevel_request_minimize(
+		&test_views[0].request_minimize, NULL);
+
+	/* No crash = pass (animation stub is a no-op) */
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: minimize_with_animation\n");
+}
+
+static void
+test_minimize_focus_transfers(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = true;
+	test_views[1].scene_tree->node.enabled = true;
+	test_config.animate_minimize = false;
+
+	test_server.focused_view = &test_views[0];
+
+	handle_xdg_toplevel_request_minimize(
+		&test_views[0].request_minimize, NULL);
+
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: minimize_focus_transfers\n");
+}
+
+static void
+test_minimize_last_view_clears_focus(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = true;
+	test_config.animate_minimize = false;
+	test_server.focused_view = &test_views[0];
+
+	handle_xdg_toplevel_request_minimize(
+		&test_views[0].request_minimize, NULL);
+
+	assert(test_views[0].scene_tree->node.enabled == false);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: minimize_last_view_clears_focus\n");
+}
+
+/* ===== handle_xdg_toplevel_set_title / set_app_id tests ===== */
+
+static void
+test_set_title_updates_toolbar(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_toplevels[0].title = "New Title";
+	test_views[0].title = strdup("Old Title");
+
+	handle_xdg_toplevel_set_title(
+		&test_views[0].set_title, NULL);
+
+	assert(test_views[0].title != NULL);
+	assert(strcmp(test_views[0].title, "New Title") == 0);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: set_title_updates_toolbar\n");
+}
+
+static void
+test_set_title_null(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_toplevels[0].title = NULL;
+	test_views[0].title = strdup("Old Title");
+
+	handle_xdg_toplevel_set_title(
+		&test_views[0].set_title, NULL);
+
+	assert(test_views[0].title == NULL);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: set_title_null\n");
+}
+
+static void
+test_set_app_id_stored(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_toplevels[0].app_id = "org.example.app";
+	test_views[0].app_id = strdup("old.app");
+
+	handle_xdg_toplevel_set_app_id(
+		&test_views[0].set_app_id, NULL);
+
+	assert(test_views[0].app_id != NULL);
+	assert(strcmp(test_views[0].app_id, "org.example.app") == 0);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: set_app_id_stored\n");
+}
+
+/* ===== deiconify_view tests ===== */
+
+static void
+test_deiconify_view_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = false;
+	test_config.animate_minimize = false;
+
+	deiconify_view(&test_views[0]);
+
+	assert(test_views[0].scene_tree->node.enabled == true);
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: deiconify_view_basic\n");
+}
+
+static void
+test_deiconify_view_with_animation(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = false;
+	test_config.animate_minimize = true;
+	test_config.animation_duration_ms = 300;
+
+	deiconify_view(&test_views[0]);
+
+	assert(test_views[0].scene_tree->node.enabled == true);
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: deiconify_view_with_animation\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -3239,6 +3827,37 @@ main(void)
 	test_view_lhalf_toggle_with_output();
 	test_view_rhalf_toggle_with_output();
 	test_view_lhalf_to_rhalf();
+
+	/* fullscreen */
+	test_fullscreen_enter();
+	test_fullscreen_restore();
+	test_fullscreen_sticky_restore();
+	test_fullscreen_no_decoration();
+	test_fullscreen_no_output();
+	test_fullscreen_saves_geometry();
+	test_fullscreen_enter_with_decoration();
+	test_fullscreen_restore_with_decoration();
+
+	/* maximize */
+	test_maximize_enter();
+	test_maximize_enter_usable_area();
+	test_maximize_restore();
+	test_maximize_no_output();
+
+	/* minimize */
+	test_minimize_basic();
+	test_minimize_with_animation();
+	test_minimize_focus_transfers();
+	test_minimize_last_view_clears_focus();
+
+	/* set_title / set_app_id */
+	test_set_title_updates_toolbar();
+	test_set_title_null();
+	test_set_app_id_stored();
+
+	/* deiconify_view */
+	test_deiconify_view_basic();
+	test_deiconify_view_with_animation();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

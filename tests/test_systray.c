@@ -1119,6 +1119,208 @@ test_handle_click_skips_no_icon(void)
 	printf("  PASS: test_handle_click_skips_no_icon\n");
 }
 
+/*
+ * Test 13: create_placeholder_icon returns a non-NULL surface with correct
+ * dimensions.
+ */
+static void
+test_create_placeholder_icon(void)
+{
+	reset_globals();
+
+	int size = 24;
+	cairo_surface_t *surface = create_placeholder_icon(size);
+	assert(surface != NULL);
+	assert(cairo_image_surface_get_width(surface) == size);
+	assert(cairo_image_surface_get_height(surface) == size);
+	assert(surface->status == CAIRO_STATUS_SUCCESS);
+
+	/* Verify a cairo context was created and destroyed (draw ops) */
+	assert(g_cairo_surface_create_count == 1);
+	assert(g_cairo_destroy_count == 1);
+
+	cairo_surface_destroy(surface);
+
+	/* Also test with the default systray icon size */
+	reset_globals();
+	surface = create_placeholder_icon(WM_SYSTRAY_ICON_SIZE);
+	assert(surface != NULL);
+	assert(cairo_image_surface_get_width(surface) == WM_SYSTRAY_ICON_SIZE);
+	assert(cairo_image_surface_get_height(surface) == WM_SYSTRAY_ICON_SIZE);
+
+	cairo_surface_destroy(surface);
+	printf("  PASS: test_create_placeholder_icon\n");
+}
+
+/*
+ * Test 14: scale_icon with NULL input returns NULL.
+ */
+static void
+test_scale_icon_null_input(void)
+{
+	reset_globals();
+
+	cairo_surface_t *result = scale_icon(NULL, 24);
+	assert(result == NULL);
+
+	printf("  PASS: test_scale_icon_null_input\n");
+}
+
+/*
+ * Test 15: scale_icon when source is already the target size returns
+ * the same surface (no scaling needed).
+ */
+static void
+test_scale_icon_same_size(void)
+{
+	reset_globals();
+
+	int size = 18;
+	cairo_surface_t *src = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, size, size);
+	assert(src != NULL);
+
+	cairo_surface_t *result = scale_icon(src, size);
+	/* When src_w == target_size && src_h == target_size, returns src */
+	assert(result == src);
+
+	cairo_surface_destroy(result);
+	printf("  PASS: test_scale_icon_same_size\n");
+}
+
+/*
+ * Test 16: scale_icon scales a larger surface down to the target size.
+ * The output surface should have target_size dimensions.
+ */
+static void
+test_scale_icon_needs_scaling(void)
+{
+	reset_globals();
+
+	/* Source is 48x48, target is 18 */
+	cairo_surface_t *src = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 48, 48);
+	assert(src != NULL);
+
+	cairo_surface_t *result = scale_icon(src, 18);
+	assert(result != NULL);
+	/* Result should not be the same pointer as src (new surface) */
+	assert(result != src);
+	assert(cairo_image_surface_get_width(result) == 18);
+	assert(cairo_image_surface_get_height(result) == 18);
+
+	/* src was destroyed by scale_icon (line 246), so only destroy result */
+	cairo_surface_destroy(result);
+
+	/* Also test scaling up: 8x8 to 24 */
+	reset_globals();
+	src = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 8, 8);
+	result = scale_icon(src, 24);
+	assert(result != NULL);
+	assert(cairo_image_surface_get_width(result) == 24);
+	assert(cairo_image_surface_get_height(result) == 24);
+
+	cairo_surface_destroy(result);
+	printf("  PASS: test_scale_icon_needs_scaling\n");
+}
+
+/*
+ * Test 17: scale_icon with zero-dimension source returns NULL.
+ */
+static void
+test_scale_icon_zero_dimensions(void)
+{
+	reset_globals();
+
+	/* Create a surface with zero dimensions by manipulating directly */
+	cairo_surface_t *src = calloc(1, sizeof(*src));
+	src->width = 0;
+	src->height = 0;
+	src->stride = 0;
+	src->data = NULL;
+	src->refcount = 1;
+	src->status = CAIRO_STATUS_SUCCESS;
+
+	cairo_surface_t *result = scale_icon(src, 18);
+	assert(result == NULL);
+
+	/* src was not destroyed by scale_icon in this path, clean up */
+	free(src);
+
+	/* Also test with negative-like zero: width=0, height=10 */
+	src = calloc(1, sizeof(*src));
+	src->width = 0;
+	src->height = 10;
+	src->stride = 0;
+	src->data = NULL;
+	src->refcount = 1;
+	src->status = CAIRO_STATUS_SUCCESS;
+
+	result = scale_icon(src, 18);
+	assert(result == NULL);
+	free(src);
+
+	printf("  PASS: test_scale_icon_zero_dimensions\n");
+}
+
+/*
+ * Test 18: systray_item_update_scene takes the placeholder path when
+ * no icon_name and no pixmap data.
+ */
+static void
+test_item_update_scene_placeholder(void)
+{
+	struct wm_systray *systray = make_test_systray();
+	reset_globals();
+
+	struct wm_systray_item *item = add_test_item(systray, ":1.90", false);
+	/* Ensure no icon_name and no icon_pixmap */
+	assert(item->icon_name == NULL);
+	assert(item->icon_pixmap == NULL);
+	assert(item->icon_buf == NULL);
+
+	systray_item_update_scene(item);
+
+	/* Should have created a placeholder icon, scaled it, converted to
+	 * buffer, and created a scene buffer. */
+	assert(g_scene_buffer_create_count == 1);
+	assert(g_scene_buffer_set_buffer_count == 1);
+
+	/* The item should now have an icon_buf */
+	assert(item->icon_buf != NULL);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_item_update_scene_placeholder\n");
+}
+
+/*
+ * Test 19: load_icon_by_name with NULL icon name returns NULL.
+ */
+static void
+test_load_icon_null_name(void)
+{
+	reset_globals();
+
+	cairo_surface_t *result = load_icon_by_name(NULL, 18);
+	assert(result == NULL);
+
+	printf("  PASS: test_load_icon_null_name\n");
+}
+
+/*
+ * Test 20: load_icon_by_name with empty string returns NULL.
+ */
+static void
+test_load_icon_empty_name(void)
+{
+	reset_globals();
+
+	cairo_surface_t *result = load_icon_by_name("", 18);
+	assert(result == NULL);
+
+	printf("  PASS: test_load_icon_empty_name\n");
+}
+
 int
 main(void)
 {
@@ -1136,6 +1338,14 @@ main(void)
 	test_item_destroy();
 	test_layout_small_height();
 	test_handle_click_skips_no_icon();
+	test_create_placeholder_icon();
+	test_scale_icon_null_input();
+	test_scale_icon_same_size();
+	test_scale_icon_needs_scaling();
+	test_scale_icon_zero_dimensions();
+	test_item_update_scene_placeholder();
+	test_load_icon_null_name();
+	test_load_icon_empty_name();
 
 	printf("All systray tests passed.\n");
 	return 0;

@@ -781,6 +781,187 @@ test_build_config_multiple_outputs(void)
 	printf("  PASS: test_build_config_multiple_outputs\n");
 }
 
+/* Test 14: handle_apply routes to handle_output_configuration with test_only=false */
+static void
+test_handle_apply(void)
+{
+	reset_globals();
+
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.outputs);
+
+	struct wlr_backend backend;
+	memset(&backend, 0, sizeof(backend));
+	server.backend = &backend;
+
+	/* Set up output_mgmt so wl_container_of works */
+	server.output_mgmt.server = &server;
+
+	/* Provide a valid state for build_state */
+	struct wlr_backend_output_state states[1];
+	memset(states, 0, sizeof(states));
+	g_build_state_result = states;
+	g_build_state_len = 1;
+	g_backend_test_result = true;
+	g_backend_commit_result = true;
+
+	/* Create a config with no heads (empty output list) */
+	struct wlr_output_configuration_v1 *config =
+		wlr_output_configuration_v1_create();
+	assert(config != NULL);
+
+	/* Call handle_apply via the listener notify function */
+	server.output_mgmt.apply.notify = handle_apply;
+	server.output_mgmt.apply.notify(&server.output_mgmt.apply, config);
+
+	/* Should have called backend_test and backend_commit (not test_only) */
+	assert(g_backend_test_count == 1);
+	assert(g_backend_commit_count == 1);
+	assert(g_config_send_succeeded_count == 1);
+
+	printf("  PASS: test_handle_apply\n");
+}
+
+/* Test 15: handle_test routes to handle_output_configuration with test_only=true */
+static void
+test_handle_test(void)
+{
+	reset_globals();
+
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.outputs);
+
+	struct wlr_backend backend;
+	memset(&backend, 0, sizeof(backend));
+	server.backend = &backend;
+
+	server.output_mgmt.server = &server;
+
+	struct wlr_backend_output_state states[1];
+	memset(states, 0, sizeof(states));
+	g_build_state_result = states;
+	g_build_state_len = 1;
+	g_backend_test_result = true;
+
+	struct wlr_output_configuration_v1 *config =
+		wlr_output_configuration_v1_create();
+	assert(config != NULL);
+
+	/* Call handle_test via the listener notify function */
+	server.output_mgmt.test.notify = handle_test;
+	server.output_mgmt.test.notify(&server.output_mgmt.test, config);
+
+	/* Should have called backend_test but NOT backend_commit (test_only) */
+	assert(g_backend_test_count == 1);
+	assert(g_backend_commit_count == 0);
+	assert(g_config_send_succeeded_count == 1);
+
+	printf("  PASS: test_handle_test\n");
+}
+
+/* Test 16: handle_layout_change calls wm_output_management_update */
+static void
+test_handle_layout_change(void)
+{
+	reset_globals();
+
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.outputs);
+
+	struct wlr_output_manager_v1 manager;
+	memset(&manager, 0, sizeof(manager));
+	server.output_mgmt.manager = &manager;
+	server.output_mgmt.server = &server;
+
+	struct wlr_output_layout layout;
+	memset(&layout, 0, sizeof(layout));
+	server.output_layout = &layout;
+
+	/* Call handle_layout_change via the listener notify function */
+	server.output_mgmt.layout_change.notify = handle_layout_change;
+	server.output_mgmt.layout_change.notify(
+		&server.output_mgmt.layout_change, NULL);
+
+	/* Should have called wm_output_management_update which creates a
+	 * config and sets it on the manager */
+	assert(g_config_create_count == 1);
+	assert(g_manager_set_config_count == 1);
+
+	printf("  PASS: test_handle_layout_change\n");
+}
+
+/* Test 17: handle_output_configuration commit success path with layout_add
+ * and layer_shell_arrange */
+static void
+test_handle_config_commit_success_with_output(void)
+{
+	reset_globals();
+
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.outputs);
+
+	struct wlr_backend backend;
+	memset(&backend, 0, sizeof(backend));
+	server.backend = &backend;
+
+	struct wlr_output_layout layout;
+	memset(&layout, 0, sizeof(layout));
+	server.output_layout = &layout;
+
+	/* Create a real output in the server's output list */
+	struct wlr_output wlr1;
+	memset(&wlr1, 0, sizeof(wlr1));
+	wlr1.width = 1920;
+	wlr1.height = 1080;
+
+	struct wm_output out1;
+	memset(&out1, 0, sizeof(out1));
+	out1.wlr_output = &wlr1;
+	out1.server = &server;
+	wl_list_insert(&server.outputs, &out1.link);
+
+	/* Create a config with a head that references wlr1 */
+	struct wlr_output_configuration_v1 *config =
+		wlr_output_configuration_v1_create();
+	assert(config != NULL);
+
+	/* Manually add a head pointing to wlr1 with enabled=true */
+	struct wlr_output_configuration_head_v1 *head =
+		wlr_output_configuration_head_v1_create(config, &wlr1);
+	assert(head != NULL);
+	head->state.enabled = true;
+	head->state.x = 100;
+	head->state.y = 200;
+
+	/* Provide valid state for build_state */
+	struct wlr_backend_output_state states[1];
+	memset(states, 0, sizeof(states));
+	g_build_state_result = states;
+	g_build_state_len = 1;
+	g_backend_test_result = true;
+	g_backend_commit_result = true;
+
+	handle_output_configuration(&server, config, false);
+
+	/* Verify the full commit success path */
+	assert(g_backend_test_count == 1);
+	assert(g_backend_commit_count == 1);
+	assert(g_layout_add_count == 1);
+	assert(g_layer_shell_arrange_count == 1);
+	assert(g_config_send_succeeded_count == 1);
+	assert(g_config_destroy_count == 1);
+
+	/* Verify usable_area was updated */
+	assert(out1.usable_area.width == 1920);
+	assert(out1.usable_area.height == 1080);
+
+	printf("  PASS: test_handle_config_commit_success_with_output\n");
+}
+
 int
 main(void)
 {
@@ -799,6 +980,10 @@ main(void)
 	test_finish_null_manager();
 	test_finish_basic();
 	test_build_config_multiple_outputs();
+	test_handle_apply();
+	test_handle_test();
+	test_handle_layout_change();
+	test_handle_config_commit_success_with_output();
 
 	printf("All output_mgmt tests passed.\n");
 	return 0;

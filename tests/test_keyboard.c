@@ -378,11 +378,20 @@ wlr_keyboard_get_modifiers(struct wlr_keyboard *kb)
 	return stub_modifiers_value;
 }
 
+/* --- Tracking counters for seat stubs --- */
+static int stub_seat_set_keyboard_count;
+static int stub_seat_notify_key_count;
+static uint32_t stub_seat_notify_key_time;
+static uint32_t stub_seat_notify_key_keycode;
+static uint32_t stub_seat_notify_key_state;
+static int stub_seat_notify_modifiers_count;
+
 static void
 wlr_seat_set_keyboard(struct wlr_seat *seat, struct wlr_keyboard *kb)
 {
 	(void)seat;
 	(void)kb;
+	stub_seat_set_keyboard_count++;
 }
 
 static void
@@ -390,9 +399,10 @@ wlr_seat_keyboard_notify_key(struct wlr_seat *seat, uint32_t time,
 	uint32_t key, uint32_t state)
 {
 	(void)seat;
-	(void)time;
-	(void)key;
-	(void)state;
+	stub_seat_notify_key_count++;
+	stub_seat_notify_key_time = time;
+	stub_seat_notify_key_keycode = key;
+	stub_seat_notify_key_state = state;
 }
 
 static void
@@ -401,6 +411,7 @@ wlr_seat_keyboard_notify_modifiers(struct wlr_seat *seat,
 {
 	(void)seat;
 	(void)modifiers;
+	stub_seat_notify_modifiers_count++;
 }
 
 static xkb_keysym_t stub_keysyms[4];
@@ -415,11 +426,14 @@ xkb_state_key_get_syms(struct xkb_state *state, xkb_keycode_t key,
 	return stub_nsyms;
 }
 
+static xkb_layout_index_t stub_num_layouts_value = 1;
+static xkb_layout_index_t stub_active_layout_index;
+
 static xkb_layout_index_t
 xkb_keymap_num_layouts(struct xkb_keymap *keymap)
 {
 	(void)keymap;
-	return 1;
+	return stub_num_layouts_value;
 }
 
 static int
@@ -427,9 +441,8 @@ xkb_state_layout_index_is_active(struct xkb_state *state,
 	xkb_layout_index_t idx, enum xkb_state_component type)
 {
 	(void)state;
-	(void)idx;
 	(void)type;
-	return 1;
+	return (idx == stub_active_layout_index) ? 1 : 0;
 }
 
 /* xkb context/keymap stubs needed by wm_keyboard_setup/apply_config */
@@ -443,12 +456,15 @@ xkb_context_new(int flags)
 
 static void xkb_context_unref(struct xkb_context *ctx) { (void)ctx; }
 
+static bool stub_keymap_new_fail;
 static struct xkb_keymap stub_xkb_keymap;
 static struct xkb_keymap *
 xkb_keymap_new_from_names(struct xkb_context *ctx,
 	const struct xkb_rule_names *names, int flags)
 {
 	(void)ctx; (void)names; (void)flags;
+	if (stub_keymap_new_fail)
+		return NULL;
 	return &stub_xkb_keymap;
 }
 
@@ -463,10 +479,12 @@ wlr_keyboard_from_input_device(struct wlr_input_device *dev)
 	return &dummy_kb;
 }
 
+static int stub_kb_set_keymap_count;
 static void
 wlr_keyboard_set_keymap(struct wlr_keyboard *kb, struct xkb_keymap *km)
 {
 	(void)kb; (void)km;
+	stub_kb_set_keymap_count++;
 }
 
 static void
@@ -475,11 +493,15 @@ wlr_keyboard_set_repeat_info(struct wlr_keyboard *kb, int rate, int delay)
 	(void)kb; (void)rate; (void)delay;
 }
 
+static int stub_kb_notify_modifiers_count;
+static uint32_t stub_kb_notify_modifiers_group;
 static void
 wlr_keyboard_notify_modifiers(struct wlr_keyboard *kb,
 	uint32_t dep, uint32_t lat, uint32_t lock, uint32_t group)
 {
-	(void)kb; (void)dep; (void)lat; (void)lock; (void)group;
+	(void)kb; (void)dep; (void)lat; (void)lock;
+	stub_kb_notify_modifiers_count++;
+	stub_kb_notify_modifiers_group = group;
 }
 
 /* wl_signal_add stub */
@@ -1245,6 +1267,18 @@ reset_all_counters(void)
 	g_stub_source_count = 0;
 	memset(g_stub_sources, 0, sizeof(g_stub_sources));
 	memset(stub_keysyms, 0, sizeof(stub_keysyms));
+	stub_seat_set_keyboard_count = 0;
+	stub_seat_notify_key_count = 0;
+	stub_seat_notify_key_time = 0;
+	stub_seat_notify_key_keycode = 0;
+	stub_seat_notify_key_state = 0;
+	stub_seat_notify_modifiers_count = 0;
+	stub_kb_notify_modifiers_count = 0;
+	stub_kb_notify_modifiers_group = 0;
+	stub_kb_set_keymap_count = 0;
+	stub_num_layouts_value = 1;
+	stub_active_layout_index = 0;
+	stub_keymap_new_fail = false;
 }
 
 static void
@@ -2793,6 +2827,546 @@ test_compositor_no_match_in_chain(void)
 }
 
 /* ====================================================================
+ * Group G: handle_key() tests
+ * ==================================================================== */
+
+static struct wm_keyboard test_kb;
+static struct wlr_keyboard test_wlr_kb;
+static struct wlr_seat test_seat;
+static struct xkb_state test_xkb_state;
+
+static void
+setup_keyboard(void)
+{
+	setup();
+
+	memset(&test_kb, 0, sizeof(test_kb));
+	memset(&test_wlr_kb, 0, sizeof(test_wlr_kb));
+	memset(&test_seat, 0, sizeof(test_seat));
+	memset(&test_xkb_state, 0, sizeof(test_xkb_state));
+
+	test_kb.server = &test_server;
+	test_kb.wlr_keyboard = &test_wlr_kb;
+	test_wlr_kb.xkb_state = &test_xkb_state;
+	test_wlr_kb.keymap = &stub_xkb_keymap;
+	test_server.seat = &test_seat;
+
+	/* Set up a default keymode so handle_compositor_keybinding works */
+	static struct wm_keymode default_mode;
+	default_mode.name = "default";
+	wl_list_init(&default_mode.bindings);
+	wl_list_init(&test_server.keymodes);
+	wl_list_insert(&test_server.keymodes, &default_mode.link);
+
+	wl_list_init(&test_kb.modifiers.link);
+	wl_list_init(&test_kb.key.link);
+	wl_list_init(&test_kb.destroy.link);
+	wl_list_init(&test_kb.link);
+}
+
+/* Test: session locked, VT switch still works */
+static void
+test_handle_key_session_locked_vt_switch(void)
+{
+	setup_keyboard();
+	stub_session_locked = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_XF86Switch_VT_1 + 2; /* VT 3 */
+	stub_modifiers_value = WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 62,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_vt_switch_called == 1);
+	assert(stub_vt_number == 3);
+	assert(stub_seat_notify_key_count == 0);
+	printf("  PASS: test_handle_key_session_locked_vt_switch\n");
+}
+
+/* Test: session locked, other keys forwarded to lock surface */
+static void
+test_handle_key_session_locked_forward(void)
+{
+	setup_keyboard();
+	stub_session_locked = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 200,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_vt_switch_called == 0);
+	assert(stub_seat_set_keyboard_count == 1);
+	assert(stub_seat_notify_key_count == 1);
+	assert(stub_seat_notify_key_keycode == 38);
+	printf("  PASS: test_handle_key_session_locked_forward\n");
+}
+
+/* Test: shortcuts inhibited, VT switch works */
+static void
+test_handle_key_inhibited_vt_switch(void)
+{
+	setup_keyboard();
+	stub_kb_inhibited = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_XF86Switch_VT_1 + 4; /* VT 5 */
+	stub_modifiers_value = WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 66,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_vt_switch_called == 1);
+	assert(stub_vt_number == 5);
+	assert(stub_seat_notify_key_count == 0);
+	printf("  PASS: test_handle_key_inhibited_vt_switch\n");
+}
+
+/* Test: shortcuts inhibited, emergency exit (Mod4+Shift+E) works */
+static void
+test_handle_key_inhibited_emergency_exit(void)
+{
+	setup_keyboard();
+	stub_kb_inhibited = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_e;
+	stub_modifiers_value = WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 26,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_terminate_called == 1);
+	assert(stub_seat_notify_key_count == 0);
+	printf("  PASS: test_handle_key_inhibited_emergency_exit\n");
+}
+
+/* Test: shortcuts inhibited, other keys forwarded to client */
+static void
+test_handle_key_inhibited_forward(void)
+{
+	setup_keyboard();
+	stub_kb_inhibited = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 300,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_vt_switch_called == 0);
+	assert(stub_terminate_called == 0);
+	assert(stub_seat_notify_key_count == 1);
+	assert(stub_seat_notify_key_keycode == 38);
+	printf("  PASS: test_handle_key_inhibited_forward\n");
+}
+
+/* Test: menu consumes the key */
+static void
+test_handle_key_menu_consumed(void)
+{
+	setup_keyboard();
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+	stub_menu_handle_key_result = 1;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_seat_notify_key_count == 0);
+	printf("  PASS: test_handle_key_menu_consumed\n");
+}
+
+/* Test: binding match found and executed */
+static void
+test_handle_key_binding_match(void)
+{
+	setup_keyboard();
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_EXIT;
+	stub_keybind_find_result = &bind;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_terminate_called == 1);
+	assert(stub_seat_notify_key_count == 0);
+	printf("  PASS: test_handle_key_binding_match\n");
+}
+
+/* Test: no binding match, forward to client */
+static void
+test_handle_key_no_binding_forward(void)
+{
+	setup_keyboard();
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+	stub_keybind_find_result = NULL;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 400,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_seat_notify_key_count == 1);
+	assert(stub_seat_notify_key_keycode == 38);
+	printf("  PASS: test_handle_key_no_binding_forward\n");
+}
+
+/* Test: release events forwarded to client */
+static void
+test_handle_key_release_forward(void)
+{
+	setup_keyboard();
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 500,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_RELEASED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_seat_notify_key_count == 1);
+	assert(stub_seat_notify_key_state == WL_KEYBOARD_KEY_STATE_RELEASED);
+	printf("  PASS: test_handle_key_release_forward\n");
+}
+
+/* Test: idle notify on keypress */
+static void
+test_handle_key_idle_notify(void)
+{
+	setup_keyboard();
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+
+	handle_key(&test_kb.key, &event);
+
+	assert(stub_idle_notify_count == 1);
+	printf("  PASS: test_handle_key_idle_notify\n");
+}
+
+/* ====================================================================
+ * Group H: handle_modifiers() tests
+ * ==================================================================== */
+
+/* Test: forward modifier state to seat */
+static void
+test_handle_modifiers_forward(void)
+{
+	setup_keyboard();
+
+	handle_modifiers(&test_kb.modifiers, NULL);
+
+	assert(stub_seat_set_keyboard_count == 1);
+	assert(stub_seat_notify_modifiers_count == 1);
+	printf("  PASS: test_handle_modifiers_forward\n");
+}
+
+/* ====================================================================
+ * Group I: handle_keyboard_destroy() tests
+ * ==================================================================== */
+
+/* Test: remove keyboard from list, free resources */
+static void
+test_handle_keyboard_destroy_cleanup(void)
+{
+	setup_keyboard();
+
+	struct wm_keyboard *kb = calloc(1, sizeof(*kb));
+	assert(kb != NULL);
+	kb->server = &test_server;
+	kb->wlr_keyboard = &test_wlr_kb;
+
+	wl_list_init(&kb->modifiers.link);
+	wl_list_init(&kb->key.link);
+	wl_list_init(&kb->destroy.link);
+
+	wl_list_insert(&test_server.keyboards, &kb->link);
+	assert(!wl_list_empty(&test_server.keyboards));
+
+	kb->destroy.notify = handle_keyboard_destroy;
+
+	handle_keyboard_destroy(&kb->destroy, NULL);
+
+	assert(wl_list_empty(&test_server.keyboards));
+
+	printf("  PASS: test_handle_keyboard_destroy_cleanup\n");
+}
+
+/* ====================================================================
+ * Group J: wm_keyboard_next/prev_layout() tests
+ * ==================================================================== */
+
+/* Test: next_layout wraps around to 0 */
+static void
+test_next_layout_wrap(void)
+{
+	setup_keyboard();
+
+	wl_list_insert(&test_server.keyboards, &test_kb.link);
+	stub_num_layouts_value = 3;
+	stub_active_layout_index = 2;
+
+	wm_keyboard_next_layout(&test_server);
+
+	assert(stub_kb_notify_modifiers_count == 1);
+	assert(stub_kb_notify_modifiers_group == 0);
+
+	wl_list_remove(&test_kb.link);
+	printf("  PASS: test_next_layout_wrap\n");
+}
+
+/* Test: next_layout normal increment */
+static void
+test_next_layout_increment(void)
+{
+	setup_keyboard();
+
+	wl_list_insert(&test_server.keyboards, &test_kb.link);
+	stub_num_layouts_value = 3;
+	stub_active_layout_index = 0;
+
+	wm_keyboard_next_layout(&test_server);
+
+	assert(stub_kb_notify_modifiers_count == 1);
+	assert(stub_kb_notify_modifiers_group == 1);
+
+	wl_list_remove(&test_kb.link);
+	printf("  PASS: test_next_layout_increment\n");
+}
+
+/* Test: prev_layout wraps around to max */
+static void
+test_prev_layout_wrap(void)
+{
+	setup_keyboard();
+
+	wl_list_insert(&test_server.keyboards, &test_kb.link);
+	stub_num_layouts_value = 3;
+	stub_active_layout_index = 0;
+
+	wm_keyboard_prev_layout(&test_server);
+
+	assert(stub_kb_notify_modifiers_count == 1);
+	assert(stub_kb_notify_modifiers_group == 2);
+
+	wl_list_remove(&test_kb.link);
+	printf("  PASS: test_prev_layout_wrap\n");
+}
+
+/* Test: prev_layout normal decrement */
+static void
+test_prev_layout_decrement(void)
+{
+	setup_keyboard();
+
+	wl_list_insert(&test_server.keyboards, &test_kb.link);
+	stub_num_layouts_value = 3;
+	stub_active_layout_index = 2;
+
+	wm_keyboard_prev_layout(&test_server);
+
+	assert(stub_kb_notify_modifiers_count == 1);
+	assert(stub_kb_notify_modifiers_group == 1);
+
+	wl_list_remove(&test_kb.link);
+	printf("  PASS: test_prev_layout_decrement\n");
+}
+
+/* ====================================================================
+ * Group K: wm_keyboard_apply_config() tests
+ * ==================================================================== */
+
+/* Test: success path creates keymap and applies to device */
+static void
+test_apply_config_success(void)
+{
+	setup_keyboard();
+
+	wl_list_insert(&test_server.keyboards, &test_kb.link);
+	stub_keymap_new_fail = false;
+
+	wm_keyboard_apply_config(&test_server);
+
+	assert(stub_kb_set_keymap_count == 1);
+
+	wl_list_remove(&test_kb.link);
+	printf("  PASS: test_apply_config_success\n");
+}
+
+/* Test: failure path when keymap creation fails */
+static void
+test_apply_config_failure(void)
+{
+	setup_keyboard();
+
+	wl_list_insert(&test_server.keyboards, &test_kb.link);
+	stub_keymap_new_fail = true;
+
+	wm_keyboard_apply_config(&test_server);
+
+	assert(stub_kb_set_keymap_count == 0);
+
+	wl_list_remove(&test_kb.link);
+	printf("  PASS: test_apply_config_failure\n");
+}
+
+/* ====================================================================
+ * Group L: execute_keybind_action() Map/Delay tests
+ * ==================================================================== */
+
+/* Test: Map iterates views and applies action */
+static void
+test_keybind_action_map(void)
+{
+	setup_with_view();
+	test_view.title = "Firefox";
+	wl_list_insert(&test_server.views, &test_view.link);
+
+	struct wm_subcmd cmd = {
+		.action = WM_ACTION_RAISE,
+		.argument = NULL,
+		.next = NULL,
+	};
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_MAP;
+	bind.subcmds = &cmd;
+
+	execute_keybind_action(&test_server, &bind);
+
+	assert(stub_raise_count == 1);
+	assert(test_server.focused_view == &test_view);
+
+	wl_list_remove(&test_view.link);
+	printf("  PASS: test_keybind_action_map\n");
+}
+
+/* Test: Map with no subcmds does nothing */
+static void
+test_keybind_action_map_no_subcmds(void)
+{
+	setup_with_view();
+	wl_list_insert(&test_server.views, &test_view.link);
+
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_MAP;
+	bind.subcmds = NULL;
+
+	bool result = execute_keybind_action(&test_server, &bind);
+	assert(result == true);
+	assert(stub_raise_count == 0);
+
+	wl_list_remove(&test_view.link);
+	printf("  PASS: test_keybind_action_map_no_subcmds\n");
+}
+
+/* Test: Delay creates a timer */
+static void
+test_keybind_action_delay(void)
+{
+	setup();
+	struct wm_subcmd cmd = {
+		.action = WM_ACTION_FOCUS_NEXT,
+		.argument = strdup("test_arg"),
+		.next = NULL,
+	};
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_DELAY;
+	bind.subcmds = &cmd;
+	bind.delay_us = 5000;
+
+	bool result = execute_keybind_action(&test_server, &bind);
+	assert(result == true);
+	assert(g_stub_source_count == 1);
+	assert(g_stub_sources[0].next_ms == 5);
+
+	assert(stub_focus_next_count == 0);
+
+	free(cmd.argument);
+	printf("  PASS: test_keybind_action_delay\n");
+}
+
+/* Test: delay_timer_cb fires the delayed action */
+static void
+test_delay_timer_cb_fires(void)
+{
+	setup();
+
+	struct delay_cb_data *cb = calloc(1, sizeof(*cb));
+	assert(cb != NULL);
+	cb->server = &test_server;
+	cb->action = WM_ACTION_FOCUS_NEXT;
+	cb->argument = strdup("test");
+	struct wl_event_source dummy_timer = {0};
+	cb->timer = &dummy_timer;
+
+	int ret = delay_timer_cb(cb);
+	assert(ret == 0);
+	assert(stub_focus_next_count == 1);
+	assert(dummy_timer.removed == true);
+
+	printf("  PASS: test_delay_timer_cb_fires\n");
+}
+
+/* ====================================================================
  * main()
  * ==================================================================== */
 
@@ -2907,6 +3481,40 @@ main(void)
 	test_compositor_leaf_node();
 	test_compositor_no_match();
 	test_compositor_no_match_in_chain();
+
+	printf("\n  Group G: handle_key()\n");
+	test_handle_key_session_locked_vt_switch();
+	test_handle_key_session_locked_forward();
+	test_handle_key_inhibited_vt_switch();
+	test_handle_key_inhibited_emergency_exit();
+	test_handle_key_inhibited_forward();
+	test_handle_key_menu_consumed();
+	test_handle_key_binding_match();
+	test_handle_key_no_binding_forward();
+	test_handle_key_release_forward();
+	test_handle_key_idle_notify();
+
+	printf("\n  Group H: handle_modifiers()\n");
+	test_handle_modifiers_forward();
+
+	printf("\n  Group I: handle_keyboard_destroy()\n");
+	test_handle_keyboard_destroy_cleanup();
+
+	printf("\n  Group J: wm_keyboard_next/prev_layout()\n");
+	test_next_layout_wrap();
+	test_next_layout_increment();
+	test_prev_layout_wrap();
+	test_prev_layout_decrement();
+
+	printf("\n  Group K: wm_keyboard_apply_config()\n");
+	test_apply_config_success();
+	test_apply_config_failure();
+
+	printf("\n  Group L: execute_keybind_action() Map/Delay\n");
+	test_keybind_action_map();
+	test_keybind_action_map_no_subcmds();
+	test_keybind_action_delay();
+	test_delay_timer_cb_fires();
 
 	printf("\nAll keyboard tests passed!\n");
 	return 0;
