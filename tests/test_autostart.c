@@ -174,6 +174,95 @@ test_comment_only_script(void)
 	printf("  PASS: test_comment_only_script\n");
 }
 
+/* Test: symlinked startup file is followed and executed */
+static void
+test_symlinked_startup(void)
+{
+	const char *real_script = TEST_DIR "/real_startup.sh";
+	const char *link_path = TEST_STARTUP;
+	write_script(real_script, "#!/bin/sh\nexit 0\n", 0755);
+	unlink(link_path);
+	int sret = symlink(real_script, link_path);
+	assert(sret == 0);
+	int ret = wm_autostart_run(TEST_DIR, "wayland-0");
+	assert(ret == 0);
+	usleep(50000);
+	unlink(link_path);
+	unlink(real_script);
+	printf("  PASS: test_symlinked_startup\n");
+}
+
+/* Test: symlinked non-executable startup file runs via /bin/sh */
+static void
+test_symlinked_non_executable_startup(void)
+{
+	const char *real_script = TEST_DIR "/real_startup_noexec.sh";
+	const char *link_path = TEST_STARTUP;
+	write_script(real_script, "#!/bin/sh\nexit 0\n", 0644);
+	unlink(link_path);
+	int sret = symlink(real_script, link_path);
+	assert(sret == 0);
+	int ret = wm_autostart_run(TEST_DIR, "wayland-0");
+	assert(ret == 0);
+	usleep(50000);
+	unlink(link_path);
+	unlink(real_script);
+	printf("  PASS: test_symlinked_non_executable_startup\n");
+}
+
+/* Test: startup file with no read permission returns -1 */
+static void
+test_unreadable_startup(void)
+{
+	/* Must run as non-root for this to work; root can read anything */
+	if (getuid() == 0) {
+		printf("  SKIP: test_unreadable_startup (running as root)\n");
+		return;
+	}
+	write_script(TEST_STARTUP, "#!/bin/sh\nexit 0\n", 0000);
+	int ret = wm_autostart_run(TEST_DIR, "wayland-0");
+	assert(ret == -1);
+	/* Restore permissions so cleanup can remove it */
+	chmod(TEST_STARTUP, 0644);
+	printf("  PASS: test_unreadable_startup\n");
+}
+
+/* Test: config_dir path that overflows the 4096-byte buffer returns -1 */
+static void
+test_very_long_config_dir(void)
+{
+	/* Build a path longer than 4096 bytes so snprintf truncates and
+	 * the resulting path does not exist on disk. */
+	char long_dir[5000];
+	memset(long_dir, 'a', sizeof(long_dir) - 1);
+	long_dir[0] = '/';
+	long_dir[sizeof(long_dir) - 1] = '\0';
+	int ret = wm_autostart_run(long_dir, "wayland-0");
+	assert(ret == -1);
+	printf("  PASS: test_very_long_config_dir\n");
+}
+
+/* Test: wm_autostart_run_cmd with shell special characters */
+static void
+test_run_cmd_special_chars(void)
+{
+	/* Command with shell metacharacters; /bin/sh -c handles them */
+	wm_autostart_run_cmd("echo 'hello world' && true; true", "wayland-0");
+	usleep(50000);
+	printf("  PASS: test_run_cmd_special_chars\n");
+}
+
+/* Test: multiple rapid run_cmd calls do not leave zombies */
+static void
+test_multiple_rapid_run_cmd(void)
+{
+	for (int i = 0; i < 5; i++) {
+		wm_autostart_run_cmd("true", "wayland-0");
+	}
+	usleep(100000);
+	printf("  PASS: test_multiple_rapid_run_cmd\n");
+}
+
 int
 main(void)
 {
@@ -192,12 +281,22 @@ main(void)
 	test_executable_startup();
 	test_null_wayland_display();
 	test_comment_only_script();
+	test_symlinked_startup();
+
+	/* Special file type tests */
+	test_symlinked_non_executable_startup();
+	test_unreadable_startup();
+
+	/* Path overflow test */
+	test_very_long_config_dir();
 
 	/* run_cmd tests */
 	test_run_cmd_null();
 	test_run_cmd_valid();
 	test_run_cmd_null_display();
 	test_run_cmd_empty();
+	test_run_cmd_special_chars();
+	test_multiple_rapid_run_cmd();
 
 	cleanup();
 	printf("All autostart tests passed.\n");

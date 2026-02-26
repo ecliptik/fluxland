@@ -220,7 +220,7 @@ endif
 
 # --- Build executable ---
 
-executable(
+fluxland_exe = executable(
   meson.project_name(),
   wm_sources,
   include_directories: [wm_inc],

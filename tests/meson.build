@@ -248,6 +248,43 @@ test_foreign_toplevel = executable(
 )
 test('foreign_toplevel', test_foreign_toplevel)
 
+# --- test_ipc_server: IPC server transport layer tests ---
+# ipc.c is #included directly in the test to allow stubbing wlroots/wayland deps.
+test_ipc_server = executable(
+  'test_ipc_server',
+  files('test_ipc_server.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('ipc_server', test_ipc_server)
+
+# --- test_systray: system tray layout, hit-testing, and icon management tests ---
+# systray.c is #included directly in the test to allow stubbing wlroots/cairo deps.
+# Requires libsystemd (or libelogind) for sd-bus type definitions and vtable macros.
+if have_systray
+  test_systray = executable(
+    'test_systray',
+    files('test_systray.c'),
+    include_directories: test_inc,
+    dependencies: [wlroots, pangocairo, libdrm, sdbus_dep],
+    c_args: ['-Wno-unused-parameter'],
+    install: false,
+  )
+  test('systray', test_systray)
+endif
+
+# --- test_main: main.c entry point integration tests ---
+# Invokes the fluxland binary with various CLI flags and checks output/exit codes.
+test_main_env = environment()
+test_main_env.set('FLUXLAND_BIN', fluxland_exe.full_path())
+test_main = executable(
+  'test_main',
+  files('test_main.c'),
+  install: false,
+)
+test('main', test_main, env: test_main_env, depends: fluxland_exe, timeout: 30)
+
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
 if wayland_client.found()
