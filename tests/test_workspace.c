@@ -839,6 +839,624 @@ test_workspace_default_names(void)
 	printf("  PASS: workspace_default_names\n");
 }
 
+/* ===== wm_view_move_to_workspace tests ===== */
+
+static void
+test_view_move_to_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	setup_mock_view(0, ws0);
+
+	reset_globals();
+	wm_view_move_to_workspace(&test_views[0], ws2);
+
+	assert(test_views[0].workspace == ws2);
+	assert(g_toolbar_iconbar_update_count == 1);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_move_to_workspace\n");
+}
+
+static void
+test_view_move_to_same_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+
+	reset_globals();
+	wm_view_move_to_workspace(&test_views[0], ws0);
+
+	/* Should be a no-op when moving to the same workspace */
+	assert(test_views[0].workspace == ws0);
+	assert(g_toolbar_iconbar_update_count == 0);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_move_to_same_workspace\n");
+}
+
+/* ===== wm_view_send_to_workspace tests ===== */
+
+static void
+test_view_send_to_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_send_to_workspace(&test_server, 2);
+
+	/* View should have moved to workspace 2 */
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_views[0].workspace == ws2);
+	/* Since we're still on ws0 and the view moved away, unfocus is called */
+	assert(g_unfocus_count == 1);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_to_workspace\n");
+}
+
+static void
+test_view_send_to_workspace_no_focused_view(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	test_server.focused_view = NULL;
+
+	reset_globals();
+	wm_view_send_to_workspace(&test_server, 2);
+
+	/* Should be a no-op */
+	assert(g_toolbar_iconbar_update_count == 0);
+
+	cleanup_test_server();
+	printf("  PASS: view_send_to_workspace_no_focused_view\n");
+}
+
+static void
+test_view_send_to_same_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	/* Send to workspace 0, same as current */
+	wm_view_send_to_workspace(&test_server, 0);
+
+	/* Should be a no-op */
+	assert(test_views[0].workspace == ws0);
+	assert(g_toolbar_iconbar_update_count == 0);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_to_same_workspace\n");
+}
+
+static void
+test_view_send_to_invalid_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_send_to_workspace(&test_server, 99);
+
+	/* Should be a no-op */
+	assert(test_views[0].workspace == ws0);
+	assert(g_toolbar_iconbar_update_count == 0);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_to_invalid_workspace\n");
+}
+
+static void
+test_view_send_to_workspace_unsticks(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_views[0].sticky = true;
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_send_to_workspace(&test_server, 2);
+
+	/* Sticky flag should have been cleared */
+	assert(!test_views[0].sticky);
+	/* View should have been moved to workspace 2 */
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_views[0].workspace == ws2);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_to_workspace_unsticks\n");
+}
+
+static void
+test_view_send_focuses_next_view(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	setup_mock_view(1, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_send_to_workspace(&test_server, 2);
+
+	/* View 1 should be focused since it's still on ws0 */
+	assert(g_focus_view_count >= 1);
+	assert(g_last_focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_focuses_next_view\n");
+}
+
+/* ===== wm_view_take_to_workspace tests ===== */
+
+static void
+test_view_take_to_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_take_to_workspace(&test_server, 2);
+
+	/* View should have been moved to workspace 2 AND we should switch there */
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_views[0].workspace == ws2);
+	assert(test_server.current_workspace == ws2);
+	/* View should be re-focused after the switch */
+	assert(g_last_focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_take_to_workspace\n");
+}
+
+static void
+test_view_take_to_workspace_no_focused(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	test_server.focused_view = NULL;
+
+	reset_globals();
+	wm_view_take_to_workspace(&test_server, 2);
+
+	/* Should be a no-op, stay on workspace 0 */
+	assert(test_server.current_workspace->index == 0);
+
+	cleanup_test_server();
+	printf("  PASS: view_take_to_workspace_no_focused\n");
+}
+
+static void
+test_view_take_to_workspace_unsticks(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_views[0].sticky = true;
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_take_to_workspace(&test_server, 2);
+
+	/* Sticky should be cleared */
+	assert(!test_views[0].sticky);
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_views[0].workspace == ws2);
+	assert(test_server.current_workspace == ws2);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_take_to_workspace_unsticks\n");
+}
+
+/* ===== wm_view_send_to_next/prev_workspace tests ===== */
+
+static void
+test_view_send_to_next_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_send_to_next_workspace(&test_server);
+
+	/* View should have moved to workspace 1 */
+	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
+	assert(test_views[0].workspace == ws1);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_to_next_workspace\n");
+}
+
+static void
+test_view_send_to_prev_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Start on workspace 2 */
+	wm_workspace_switch(&test_server, 2);
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	setup_mock_view(0, ws2);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_send_to_prev_workspace(&test_server);
+
+	/* View should have moved to workspace 1 */
+	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
+	assert(test_views[0].workspace == ws1);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_to_prev_workspace\n");
+}
+
+/* ===== wm_view_take_to_next/prev_workspace tests ===== */
+
+static void
+test_view_take_to_next_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_take_to_next_workspace(&test_server);
+
+	/* View on ws1, and we switched there */
+	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
+	assert(test_views[0].workspace == ws1);
+	assert(test_server.current_workspace == ws1);
+	assert(g_last_focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_take_to_next_workspace\n");
+}
+
+static void
+test_view_take_to_prev_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Start on workspace 2 */
+	wm_workspace_switch(&test_server, 2);
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	setup_mock_view(0, ws2);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_take_to_prev_workspace(&test_server);
+
+	/* View on ws1, and we switched there */
+	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
+	assert(test_views[0].workspace == ws1);
+	assert(test_server.current_workspace == ws1);
+	assert(g_last_focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_take_to_prev_workspace\n");
+}
+
+/* ===== wm_view_set_sticky tests ===== */
+
+static void
+test_view_set_sticky_on(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+
+	assert(!test_views[0].sticky);
+	wm_view_set_sticky(&test_views[0], true);
+	assert(test_views[0].sticky);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_set_sticky_on\n");
+}
+
+static void
+test_view_set_sticky_off(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_views[0].sticky = true;
+
+	wm_view_set_sticky(&test_views[0], false);
+	assert(!test_views[0].sticky);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_set_sticky_off\n");
+}
+
+static void
+test_view_set_sticky_noop(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+
+	/* Already not sticky, setting to false should be no-op */
+	assert(!test_views[0].sticky);
+	wm_view_set_sticky(&test_views[0], false);
+	assert(!test_views[0].sticky);
+
+	/* Set sticky, then set again should be no-op */
+	wm_view_set_sticky(&test_views[0], true);
+	assert(test_views[0].sticky);
+	wm_view_set_sticky(&test_views[0], true);
+	assert(test_views[0].sticky);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_set_sticky_noop\n");
+}
+
+/* ===== wm_workspace_switch same workspace no-op ===== */
+
+static void
+test_workspace_switch_same_noop(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	reset_globals();
+	/* Switch to workspace 0 while already on workspace 0 */
+	wm_workspace_switch(&test_server, 0);
+
+	/* Should be a no-op: no toolbar update, no IPC broadcast */
+	assert(g_toolbar_ws_update_count == 0);
+	assert(g_ipc_broadcast_count == 0);
+	assert(test_server.current_workspace->index == 0);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_same_noop\n");
+}
+
+/* ===== wm_workspace_switch focuses sticky view ===== */
+
+static void
+test_workspace_switch_focuses_sticky(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Put a sticky view (not assigned to ws2) */
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_views[0].sticky = true;
+
+	reset_globals();
+	/* Switch to workspace 2 which has no views, but sticky view is available */
+	wm_workspace_switch(&test_server, 2);
+
+	assert(test_server.current_workspace->index == 2);
+	/* Sticky view should be focused */
+	assert(g_focus_view_count == 1);
+	assert(g_last_focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_focuses_sticky\n");
+}
+
+/* ===== workspace switch to invalid index ===== */
+
+static void
+test_workspace_switch_invalid_index(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	reset_globals();
+	wm_workspace_switch(&test_server, 99);
+
+	/* Should be a no-op */
+	assert(test_server.current_workspace->index == 0);
+	assert(g_toolbar_ws_update_count == 0);
+	assert(g_ipc_broadcast_count == 0);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_invalid_index\n");
+}
+
+/* ===== workspace_remove_last with views ===== */
+
+static void
+test_workspace_remove_last_moves_views(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Put a view on the last workspace (index 3) */
+	struct wm_workspace *ws3 = wm_workspace_get(&test_server, 3);
+	setup_mock_view(0, ws3);
+
+	reset_globals();
+	wm_workspace_remove_last(&test_server);
+
+	/* View should have been moved to workspace 2 */
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_views[0].workspace == ws2);
+	assert(test_server.workspace_count == 3);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: workspace_remove_last_moves_views\n");
+}
+
+static void
+test_workspace_remove_last_when_current(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Switch to the last workspace */
+	wm_workspace_switch(&test_server, 3);
+	assert(test_server.current_workspace->index == 3);
+
+	reset_globals();
+	wm_workspace_remove_last(&test_server);
+
+	/* Should have switched to workspace 2 (previous) */
+	assert(test_server.current_workspace->index == 2);
+	assert(test_server.workspace_count == 3);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_remove_last_when_current\n");
+}
+
+/* ===== custom workspace names from config ===== */
+
+static char *custom_names[] = { "Mail", "Web", "Code" };
+
+static void
+test_workspace_custom_names(void)
+{
+	reset_globals();
+	memset(&test_server, 0, sizeof(test_server));
+	memset(&test_config, 0, sizeof(test_config));
+	memset(&test_toolbar, 0, sizeof(test_toolbar));
+	memset(&test_normal_tree, 0, sizeof(test_normal_tree));
+
+	test_config.workspace_mode = WM_WORKSPACE_GLOBAL;
+	test_config.workspace_name_count = 3;
+	test_config.workspace_names = custom_names;
+
+	test_server.config = &test_config;
+	test_server.toolbar = &test_toolbar;
+	test_server.output_layout = &test_output_layout;
+	test_server.view_layer_normal = &test_normal_tree;
+	test_server.focused_view = NULL;
+	wl_list_init(&test_server.views);
+	wl_list_init(&test_server.outputs);
+
+	wm_workspaces_init(&test_server, 4);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	struct wm_workspace *ws3 = wm_workspace_get(&test_server, 3);
+
+	assert(strcmp(ws0->name, "Mail") == 0);
+	assert(strcmp(ws1->name, "Web") == 0);
+	assert(strcmp(ws2->name, "Code") == 0);
+	/* ws3 has no custom name, gets default */
+	assert(strcmp(ws3->name, "Workspace 4") == 0);
+
+	wm_workspaces_finish(&test_server);
+	printf("  PASS: workspace_custom_names\n");
+}
+
+/* ===== json_escape_buf truncation test ===== */
+
+static void
+test_json_escape_buf_truncation(void)
+{
+	char buf[8];
+	json_escape_buf(buf, sizeof(buf), "abcdefghijklmnop");
+	/* Should be truncated but null-terminated */
+	assert(strlen(buf) < sizeof(buf));
+	assert(buf[sizeof(buf) - 1] == '\0' || strlen(buf) < sizeof(buf));
+	printf("  PASS: json_escape_buf_truncation\n");
+}
+
+/* ===== per-output mode init enables all trees ===== */
+
+static void
+test_workspace_per_output_init_all_enabled(void)
+{
+	init_test_server(3, WM_WORKSPACE_PER_OUTPUT);
+
+	/* In per-output mode, all workspace trees should be enabled */
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &test_server.workspaces, link) {
+		assert(ws->tree->node.enabled == 1);
+	}
+
+	cleanup_test_server();
+	printf("  PASS: workspace_per_output_init_all_enabled\n");
+}
+
+/* ===== wm_workspace_switch_left normal (non-boundary) ===== */
+
+static void
+test_workspace_switch_left_normal(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Start on workspace 2 */
+	wm_workspace_switch(&test_server, 2);
+	assert(test_server.current_workspace->index == 2);
+
+	/* switch_left from 2 -> 1 */
+	wm_workspace_switch_left(&test_server);
+	assert(test_server.current_workspace->index == 1);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_left_normal\n");
+}
+
+/* ===== wm_workspace_switch_prev sequential ===== */
+
+static void
+test_workspace_switch_prev_sequential(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	/* Start on workspace 3 */
+	wm_workspace_switch(&test_server, 3);
+	assert(test_server.current_workspace->index == 3);
+
+	/* Sequential prev from 3 */
+	wm_workspace_switch_prev(&test_server);
+	assert(test_server.current_workspace->index == 2);
+	wm_workspace_switch_prev(&test_server);
+	assert(test_server.current_workspace->index == 1);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_prev_sequential\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -854,6 +1472,7 @@ main(void)
 	test_json_escape_buf_null();
 	test_json_escape_buf_empty();
 	test_json_escape_buf_mixed();
+	test_json_escape_buf_truncation();
 
 	/* workspace_get */
 	test_workspace_get_valid();
@@ -871,23 +1490,62 @@ main(void)
 	test_workspace_switch_next_wrap();
 	test_workspace_switch_prev_wrap();
 	test_workspace_switch_next_sequential();
+	test_workspace_switch_prev_sequential();
 
 	/* switch right/left (clamping) */
 	test_workspace_switch_right_clamp();
 	test_workspace_switch_left_clamp();
 	test_workspace_switch_right_normal();
+	test_workspace_switch_left_normal();
 
 	/* add/remove */
 	test_workspace_add();
 	test_workspace_remove_last();
 	test_workspace_remove_last_refuses_single();
+	test_workspace_remove_last_moves_views();
+	test_workspace_remove_last_when_current();
 
 	/* switch with views */
 	test_workspace_switch_focuses_view();
 	test_workspace_switch_empty_unfocuses();
+	test_workspace_switch_same_noop();
+	test_workspace_switch_invalid_index();
+	test_workspace_switch_focuses_sticky();
+
+	/* view move to workspace */
+	test_view_move_to_workspace();
+	test_view_move_to_same_workspace();
+
+	/* view send to workspace */
+	test_view_send_to_workspace();
+	test_view_send_to_workspace_no_focused_view();
+	test_view_send_to_same_workspace();
+	test_view_send_to_invalid_workspace();
+	test_view_send_to_workspace_unsticks();
+	test_view_send_focuses_next_view();
+
+	/* view take to workspace */
+	test_view_take_to_workspace();
+	test_view_take_to_workspace_no_focused();
+	test_view_take_to_workspace_unsticks();
+
+	/* view send/take to next/prev workspace */
+	test_view_send_to_next_workspace();
+	test_view_send_to_prev_workspace();
+	test_view_take_to_next_workspace();
+	test_view_take_to_prev_workspace();
+
+	/* sticky */
+	test_view_set_sticky_on();
+	test_view_set_sticky_off();
+	test_view_set_sticky_noop();
 
 	/* naming */
 	test_workspace_default_names();
+	test_workspace_custom_names();
+
+	/* per-output mode */
+	test_workspace_per_output_init_all_enabled();
 
 	printf("All workspace tests passed.\n");
 	return 0;

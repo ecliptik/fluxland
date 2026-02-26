@@ -1474,6 +1474,809 @@ test_view_resize_by_null(void)
 	printf("  PASS: view_resize_by_null\n");
 }
 
+/* ===== wm_view_set_opacity tests ===== */
+
+static void
+test_view_set_opacity_null(void)
+{
+	/* Should not crash on NULL view */
+	wm_view_set_opacity(NULL, 128);
+	printf("  PASS: view_set_opacity_null\n");
+}
+
+static void
+test_view_set_opacity_clamp(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	/* These should not crash; values are clamped internally */
+	wm_view_set_opacity(&test_views[0], -50);
+	wm_view_set_opacity(&test_views[0], 300);
+	wm_view_set_opacity(&test_views[0], 0);
+	wm_view_set_opacity(&test_views[0], 255);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_opacity_clamp\n");
+}
+
+static void
+test_view_set_opacity_no_scene_tree(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	struct wlr_scene_tree *saved = test_views[0].scene_tree;
+	test_views[0].scene_tree = NULL;
+
+	/* Should be a no-op */
+	wm_view_set_opacity(&test_views[0], 128);
+
+	test_views[0].scene_tree = saved;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_opacity_no_scene_tree\n");
+}
+
+/* ===== wm_view_maximize_vert tests ===== */
+
+static void
+test_view_maximize_vert_null(void)
+{
+	wm_view_maximize_vert(NULL);
+	printf("  PASS: view_maximize_vert_null\n");
+}
+
+static void
+test_view_maximize_vert_toggle(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized_vert = false;
+
+	/* Maximize vertically — our stub wlr_output_layout_output_at
+	 * returns NULL, so the function takes the early-return path.
+	 * But maximized_vert flag should still be set. */
+	wm_view_maximize_vert(&test_views[0]);
+	/* Since output_at returns NULL, the vert maximize sets the flag
+	 * but doesn't change geometry (no output found) */
+	assert(test_views[0].maximized_vert == true);
+
+	/* Toggle back: restore */
+	wm_view_maximize_vert(&test_views[0]);
+	assert(test_views[0].maximized_vert == false);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_maximize_vert_toggle\n");
+}
+
+/* ===== wm_view_maximize_horiz tests ===== */
+
+static void
+test_view_maximize_horiz_null(void)
+{
+	wm_view_maximize_horiz(NULL);
+	printf("  PASS: view_maximize_horiz_null\n");
+}
+
+static void
+test_view_maximize_horiz_toggle(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized_horiz = false;
+
+	/* Maximize horizontally */
+	wm_view_maximize_horiz(&test_views[0]);
+	assert(test_views[0].maximized_horiz == true);
+
+	/* Toggle back: restore */
+	wm_view_maximize_horiz(&test_views[0]);
+	assert(test_views[0].maximized_horiz == false);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_maximize_horiz_toggle\n");
+}
+
+/* ===== wm_view_lhalf / wm_view_rhalf tests ===== */
+
+static void
+test_view_lhalf_null(void)
+{
+	wm_view_lhalf(NULL);
+	printf("  PASS: view_lhalf_null\n");
+}
+
+static void
+test_view_lhalf_toggle(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].lhalf = false;
+	test_views[0].rhalf = false;
+	test_views[0].maximized = false;
+
+	/* lhalf: output_at returns NULL, so get_view_output_area fails.
+	 * The function returns early without setting lhalf. */
+	wm_view_lhalf(&test_views[0]);
+	assert(test_views[0].lhalf == false);
+
+	/* Manually set lhalf to test the toggle-off path */
+	test_views[0].lhalf = true;
+	test_views[0].saved_geometry.x = 200;
+	test_views[0].saved_geometry.y = 150;
+	test_views[0].saved_geometry.width = 400;
+	test_views[0].saved_geometry.height = 300;
+
+	wm_view_lhalf(&test_views[0]);
+	assert(test_views[0].lhalf == false);
+	assert(test_views[0].x == 200);
+	assert(test_views[0].y == 150);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_lhalf_toggle\n");
+}
+
+static void
+test_view_rhalf_null(void)
+{
+	wm_view_rhalf(NULL);
+	printf("  PASS: view_rhalf_null\n");
+}
+
+static void
+test_view_rhalf_toggle(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 200;
+	test_views[0].y = 150;
+	test_views[0].rhalf = false;
+	test_views[0].lhalf = false;
+	test_views[0].maximized = false;
+
+	/* rhalf: output_at returns NULL, so get_view_output_area fails */
+	wm_view_rhalf(&test_views[0]);
+	assert(test_views[0].rhalf == false);
+
+	/* Manually set rhalf to test the toggle-off path */
+	test_views[0].rhalf = true;
+	test_views[0].saved_geometry.x = 200;
+	test_views[0].saved_geometry.y = 150;
+	test_views[0].saved_geometry.width = 400;
+	test_views[0].saved_geometry.height = 300;
+
+	wm_view_rhalf(&test_views[0]);
+	assert(test_views[0].rhalf == false);
+	assert(test_views[0].x == 200);
+	assert(test_views[0].y == 150);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_rhalf_toggle\n");
+}
+
+/* ===== wm_view_cycle_next / wm_view_cycle_prev tests ===== */
+
+static void
+test_view_cycle_next_empty(void)
+{
+	init_test_server();
+	/* Empty list, should not crash */
+	wm_view_cycle_next(&test_server);
+	assert(test_server.focused_view == NULL);
+	printf("  PASS: view_cycle_next_empty\n");
+}
+
+static void
+test_view_cycle_next_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	setup_mock_view(2, &test_workspace);
+
+	/* Focus v0 first */
+	test_server.focused_view = &test_views[0];
+
+	/* cycle_next: should focus the view after v0 in the list */
+	wm_view_cycle_next(&test_server);
+	/* The candidate after v0 is v1 */
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: view_cycle_next_basic\n");
+}
+
+static void
+test_view_cycle_next_skips_other_workspace(void)
+{
+	init_test_server();
+	struct wm_workspace other_ws;
+	memset(&other_ws, 0, sizeof(other_ws));
+	other_ws.index = 1;
+	other_ws.name = "Other";
+
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &other_ws);   /* different workspace */
+	setup_mock_view(2, &test_workspace);
+
+	test_server.focused_view = &test_views[0];
+
+	/* cycle_next should skip v1 (different workspace) and pick v2 */
+	wm_view_cycle_next(&test_server);
+	assert(test_server.focused_view == &test_views[2]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: view_cycle_next_skips_other_workspace\n");
+}
+
+static void
+test_view_cycle_next_wraps_around(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Focus the last view on the workspace; cycle_next wraps to first */
+	test_server.focused_view = &test_views[1];
+
+	wm_view_cycle_next(&test_server);
+	/* Should wrap around to v0 */
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_cycle_next_wraps_around\n");
+}
+
+static void
+test_view_cycle_prev_empty(void)
+{
+	init_test_server();
+	wm_view_cycle_prev(&test_server);
+	assert(test_server.focused_view == NULL);
+	printf("  PASS: view_cycle_prev_empty\n");
+}
+
+static void
+test_view_cycle_prev_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	setup_mock_view(2, &test_workspace);
+
+	/* Focus v1 (middle). cycle_prev picks the view before it (v0). */
+	test_server.focused_view = &test_views[1];
+
+	wm_view_cycle_prev(&test_server);
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: view_cycle_prev_basic\n");
+}
+
+static void
+test_view_cycle_next_deiconifies(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	test_server.focused_view = &test_views[0];
+
+	/* Iconify v1 (disable its scene node) */
+	test_scene_trees[1].node.enabled = false;
+
+	wm_view_cycle_next(&test_server);
+
+	/* Should have deiconified v1 and focused it */
+	assert(test_views[1].scene_tree->node.enabled == true);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_cycle_next_deiconifies\n");
+}
+
+static void
+test_view_cycle_next_single_noop(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_server.focused_view = &test_views[0];
+
+	wm_view_cycle_next(&test_server);
+	/* Only one view; candidate == focused, so no-op */
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_cycle_next_single_noop\n");
+}
+
+/* ===== wm_view_deiconify_last tests ===== */
+
+static void
+test_view_deiconify_last_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Minimize v0 */
+	test_scene_trees[0].node.enabled = false;
+
+	wm_view_deiconify_last(&test_server);
+
+	/* v0 should be re-enabled and focused */
+	assert(test_views[0].scene_tree->node.enabled == true);
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_deiconify_last_basic\n");
+}
+
+static void
+test_view_deiconify_last_none_minimized(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* All enabled, nothing to deiconify */
+	struct wm_view *before = test_server.focused_view;
+	wm_view_deiconify_last(&test_server);
+	/* Should be a no-op */
+	assert(test_server.focused_view == before);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_deiconify_last_none_minimized\n");
+}
+
+/* ===== wm_view_deiconify_all tests ===== */
+
+static void
+test_view_deiconify_all_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	setup_mock_view(2, &test_workspace);
+
+	/* Minimize all */
+	test_scene_trees[0].node.enabled = false;
+	test_scene_trees[1].node.enabled = false;
+	test_scene_trees[2].node.enabled = false;
+
+	wm_view_deiconify_all(&test_server);
+
+	/* All should be re-enabled */
+	assert(test_views[0].scene_tree->node.enabled == true);
+	assert(test_views[1].scene_tree->node.enabled == true);
+	assert(test_views[2].scene_tree->node.enabled == true);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: view_deiconify_all_basic\n");
+}
+
+/* ===== wm_view_deiconify_all_workspace tests ===== */
+
+static void
+test_view_deiconify_all_workspace_basic(void)
+{
+	init_test_server();
+	struct wm_workspace other_ws;
+	memset(&other_ws, 0, sizeof(other_ws));
+	other_ws.index = 1;
+	other_ws.name = "Other";
+
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &other_ws);   /* different workspace */
+	setup_mock_view(2, &test_workspace);
+
+	/* Minimize all */
+	test_scene_trees[0].node.enabled = false;
+	test_scene_trees[1].node.enabled = false;
+	test_scene_trees[2].node.enabled = false;
+
+	wm_view_deiconify_all_workspace(&test_server);
+
+	/* Only v0 and v2 (current workspace) should be re-enabled */
+	assert(test_views[0].scene_tree->node.enabled == true);
+	assert(test_views[1].scene_tree->node.enabled == false);
+	assert(test_views[2].scene_tree->node.enabled == true);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: view_deiconify_all_workspace_basic\n");
+}
+
+/* ===== wm_view_close_all tests ===== */
+
+static void
+test_view_close_all_basic(void)
+{
+	init_test_server();
+	struct wm_workspace other_ws;
+	memset(&other_ws, 0, sizeof(other_ws));
+	other_ws.index = 1;
+	other_ws.name = "Other";
+
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &other_ws);   /* different workspace */
+	setup_mock_view(2, &test_workspace);
+
+	/* wm_view_close_all sends close to views on the active workspace.
+	 * We can't easily track the sends with stubs, but we verify
+	 * no crash and that the function iterates correctly. */
+	wm_view_close_all(&test_server);
+
+	/* No crash = pass */
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: view_close_all_basic\n");
+}
+
+static void
+test_view_close_all_empty(void)
+{
+	init_test_server();
+	/* No views in list, should not crash */
+	wm_view_close_all(&test_server);
+	printf("  PASS: view_close_all_empty\n");
+}
+
+/* ===== wm_view_focus_direction tests ===== */
+
+static void
+test_view_focus_direction_no_focused(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	/* No focused view, should be a no-op */
+	test_server.focused_view = NULL;
+	wm_view_focus_direction(&test_server, 1, 0);
+	assert(test_server.focused_view == NULL);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_focus_direction_no_focused\n");
+}
+
+static void
+test_view_focus_direction_right(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* v0 at x=100, v1 at x=150 (both visible, same workspace) */
+	test_views[0].x = 100;
+	test_views[0].y = 100;
+	test_views[1].x = 500;
+	test_views[1].y = 100;
+
+	test_server.focused_view = &test_views[0];
+
+	/* Focus right: v1 is to the right */
+	wm_view_focus_direction(&test_server, 1, 0);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_focus_direction_right\n");
+}
+
+static void
+test_view_focus_direction_no_match(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* v0 at x=500, v1 at x=100 (v1 is to the LEFT) */
+	test_views[0].x = 500;
+	test_views[0].y = 100;
+	test_views[1].x = 100;
+	test_views[1].y = 100;
+
+	test_server.focused_view = &test_views[0];
+
+	/* Focus right: no view to the right, should stay */
+	wm_view_focus_direction(&test_server, 1, 0);
+	/* focused_view should remain v0 (no candidate found) */
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_focus_direction_no_match\n");
+}
+
+static void
+test_view_focus_direction_skips_minimized(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	test_views[0].x = 100;
+	test_views[0].y = 100;
+	test_views[1].x = 500;
+	test_views[1].y = 100;
+
+	/* Minimize v1 */
+	test_scene_trees[1].node.enabled = false;
+
+	test_server.focused_view = &test_views[0];
+
+	/* Focus right: v1 is minimized, should not pick it */
+	wm_view_focus_direction(&test_server, 1, 0);
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_focus_direction_skips_minimized\n");
+}
+
+/* ===== wm_view_activate_tab tests ===== */
+
+static void
+test_view_activate_tab_null(void)
+{
+	/* Should not crash */
+	wm_view_activate_tab(NULL, 0);
+	printf("  PASS: view_activate_tab_null\n");
+}
+
+static void
+test_view_activate_tab_no_group(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].tab_group = NULL;
+
+	/* No tab group, should be a no-op */
+	wm_view_activate_tab(&test_views[0], 0);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_activate_tab_no_group\n");
+}
+
+static void
+test_view_activate_tab_negative_index(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	struct wm_tab_group tg;
+	tg.count = 2;
+	wl_list_init(&tg.views);
+	test_views[0].tab_group = &tg;
+
+	/* Negative index, should be a no-op */
+	wm_view_activate_tab(&test_views[0], -1);
+
+	test_views[0].tab_group = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_activate_tab_negative_index\n");
+}
+
+static void
+test_view_activate_tab_index_out_of_range(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	struct wm_tab_group tg;
+	tg.count = 1;
+	wl_list_init(&tg.views);
+	test_views[0].tab_group = &tg;
+
+	/* Index >= count, should be a no-op */
+	wm_view_activate_tab(&test_views[0], 5);
+
+	test_views[0].tab_group = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_activate_tab_index_out_of_range\n");
+}
+
+/* ===== wm_focus_view / wm_unfocus_current tests ===== */
+
+static void
+test_focus_view_null(void)
+{
+	/* Should not crash */
+	wm_focus_view(NULL, NULL);
+	printf("  PASS: focus_view_null\n");
+}
+
+static void
+test_unfocus_current_basic(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_server.focused_view = &test_views[0];
+	wm_unfocus_current(&test_server);
+	assert(test_server.focused_view == NULL);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: unfocus_current_basic\n");
+}
+
+static void
+test_unfocus_current_already_unfocused(void)
+{
+	init_test_server();
+	test_server.focused_view = NULL;
+	wm_unfocus_current(&test_server);
+	assert(test_server.focused_view == NULL);
+	printf("  PASS: unfocus_current_already_unfocused\n");
+}
+
+/* ===== json_escape edge case: escape chars near buffer boundary ===== */
+
+static void
+test_json_escape_escape_at_boundary(void)
+{
+	/* Buffer size 5: needs room for escape sequence (\\") = 2 chars + NUL
+	 * The loop condition is j + 6 < dst_size, so with dst_size=5,
+	 * the loop won't even enter (0 + 6 < 5 is false).
+	 * This tests the boundary condition. */
+	char buf[5];
+	json_escape(buf, sizeof(buf), "abc");
+	/* j+6 < 5 => false, so nothing is written */
+	assert(buf[0] == '\0');
+	printf("  PASS: json_escape_escape_at_boundary\n");
+}
+
+static void
+test_json_escape_mixed_specials(void)
+{
+	char buf[128];
+	json_escape(buf, sizeof(buf), "tab\there\"back\\slash\nnewline");
+	/* \t and \n are control chars (< 0x20), they get skipped */
+	/* " becomes \" and \ becomes \\ */
+	assert(strcmp(buf, "tabhere\\\"back\\\\slashnewline") == 0);
+	printf("  PASS: json_escape_mixed_specials\n");
+}
+
+/* ===== wm_view_set_layer with sticky and workspace tree paths ===== */
+
+static void
+test_view_set_layer_sticky_normal(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	struct wlr_scene_tree sticky_tree;
+	memset(&sticky_tree, 0, sizeof(sticky_tree));
+	wl_list_init(&sticky_tree.children);
+	test_server.sticky_tree = &sticky_tree;
+
+	test_views[0].layer = WM_LAYER_ABOVE;
+	test_views[0].sticky = true;
+
+	/* Setting to NORMAL for a sticky view should pick sticky_tree */
+	wm_view_set_layer(&test_views[0], WM_LAYER_NORMAL);
+	assert(test_views[0].layer == WM_LAYER_NORMAL);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_layer_sticky_normal\n");
+}
+
+static void
+test_view_set_layer_workspace_normal(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	struct wlr_scene_tree ws_tree;
+	memset(&ws_tree, 0, sizeof(ws_tree));
+	wl_list_init(&ws_tree.children);
+	test_workspace.tree = &ws_tree;
+
+	test_views[0].layer = WM_LAYER_ABOVE;
+	test_views[0].sticky = false;
+
+	/* Setting to NORMAL for non-sticky view with workspace */
+	wm_view_set_layer(&test_views[0], WM_LAYER_NORMAL);
+	assert(test_views[0].layer == WM_LAYER_NORMAL);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_layer_workspace_normal\n");
+}
+
+/* ===== wm_focus_prev_view with two views ===== */
+
+static void
+test_focus_prev_view_two_views(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* List: head -> v0 -> v1 */
+	/* focus_prev: current=v0, second=v1; focus v1 */
+	wm_focus_prev_view(&test_server);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_prev_view_two_views\n");
+}
+
+static void
+test_focus_prev_view_empty(void)
+{
+	init_test_server();
+	/* No views */
+	wm_focus_prev_view(&test_server);
+	assert(test_server.focused_view == NULL);
+	printf("  PASS: focus_prev_view_empty\n");
+}
+
+/* ===== wm_view_cycle_prev with sticky view ===== */
+
+static void
+test_view_cycle_next_sticky(void)
+{
+	init_test_server();
+	struct wm_workspace other_ws;
+	memset(&other_ws, 0, sizeof(other_ws));
+	other_ws.index = 1;
+	other_ws.name = "Other";
+
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &other_ws);  /* different workspace */
+	test_views[1].sticky = true;    /* but sticky! */
+
+	test_server.focused_view = &test_views[0];
+
+	/* cycle_next should include v1 because it's sticky */
+	wm_view_cycle_next(&test_server);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_cycle_next_sticky\n");
+}
+
+/* ===== wm_view_resize_by minimum size clamp ===== */
+
+static void
+test_view_resize_by_clamp_minimum(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	/* Try to shrink below minimum (10x10) — should be a no-op */
+	wm_view_resize_by(&test_views[0], -795, -595);
+	/* new_w = 800-795 = 5, new_h = 600-595 = 5, both <= 10 */
+	/* Size should NOT have changed (the set_size is not called) */
+	/* Our stub sets toplevel width/height, so they should still be 800x600 */
+	assert(test_toplevels[0].width == 800);
+	assert(test_toplevels[0].height == 600);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_resize_by_clamp_minimum\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -1489,6 +2292,8 @@ main(void)
 	test_json_escape_null();
 	test_json_escape_empty();
 	test_json_escape_long_truncates();
+	test_json_escape_escape_at_boundary();
+	test_json_escape_mixed_specials();
 
 	/* layer_from_name */
 	test_layer_from_name_desktop();
@@ -1502,6 +2307,13 @@ main(void)
 	test_focus_prev_view_basic();
 	test_focus_next_view_single_noop();
 	test_focus_next_view_empty_noop();
+	test_focus_prev_view_two_views();
+	test_focus_prev_view_empty();
+
+	/* focus view / unfocus */
+	test_focus_view_null();
+	test_unfocus_current_basic();
+	test_unfocus_current_already_unfocused();
 
 	/* geometry */
 	test_view_get_geometry();
@@ -1512,6 +2324,8 @@ main(void)
 	test_view_raise_layer();
 	test_view_lower_layer();
 	test_view_set_layer();
+	test_view_set_layer_sticky_normal();
+	test_view_set_layer_workspace_normal();
 
 	/* decoration toggle */
 	test_view_toggle_decoration_no_deco();
@@ -1519,6 +2333,57 @@ main(void)
 	/* resize */
 	test_view_resize_by();
 	test_view_resize_by_null();
+	test_view_resize_by_clamp_minimum();
+
+	/* opacity */
+	test_view_set_opacity_null();
+	test_view_set_opacity_clamp();
+	test_view_set_opacity_no_scene_tree();
+
+	/* maximize vert/horiz */
+	test_view_maximize_vert_null();
+	test_view_maximize_vert_toggle();
+	test_view_maximize_horiz_null();
+	test_view_maximize_horiz_toggle();
+
+	/* lhalf / rhalf */
+	test_view_lhalf_null();
+	test_view_lhalf_toggle();
+	test_view_rhalf_null();
+	test_view_rhalf_toggle();
+
+	/* cycle next/prev */
+	test_view_cycle_next_empty();
+	test_view_cycle_next_basic();
+	test_view_cycle_next_skips_other_workspace();
+	test_view_cycle_next_wraps_around();
+	test_view_cycle_next_deiconifies();
+	test_view_cycle_next_single_noop();
+	test_view_cycle_next_sticky();
+	test_view_cycle_prev_empty();
+	test_view_cycle_prev_basic();
+
+	/* deiconify */
+	test_view_deiconify_last_basic();
+	test_view_deiconify_last_none_minimized();
+	test_view_deiconify_all_basic();
+	test_view_deiconify_all_workspace_basic();
+
+	/* close all */
+	test_view_close_all_basic();
+	test_view_close_all_empty();
+
+	/* directional focus */
+	test_view_focus_direction_no_focused();
+	test_view_focus_direction_right();
+	test_view_focus_direction_no_match();
+	test_view_focus_direction_skips_minimized();
+
+	/* tab activation */
+	test_view_activate_tab_null();
+	test_view_activate_tab_no_group();
+	test_view_activate_tab_negative_index();
+	test_view_activate_tab_index_out_of_range();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

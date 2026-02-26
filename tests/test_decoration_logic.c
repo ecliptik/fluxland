@@ -1763,6 +1763,535 @@ test_style_border_width_explicit(void)
 	printf("  PASS: style_border_width_explicit\n");
 }
 
+/* --- decoration_create / destroy full path --- */
+
+static void
+test_decoration_create_and_destroy(void)
+{
+	setup();
+	setup_view();
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->view == &test_view);
+	assert(deco->server == &test_server);
+	assert(deco->focused == true);
+	assert(deco->shaded == false);
+	assert(deco->preset == WM_DECOR_NORMAL);
+	assert(deco->titlebar_height == 20);
+	assert(deco->handle_height == 6);
+	assert(deco->border_width == 1);
+	assert(deco->content_width == 800);
+	assert(deco->content_height == 600);
+	assert(deco->tree != NULL);
+	assert(deco->titlebar_tree != NULL);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: decoration_create_and_destroy\n");
+}
+
+static void
+test_decoration_destroy_null(void)
+{
+	/* Should not crash */
+	wm_decoration_destroy(NULL);
+	printf("  PASS: decoration_destroy_null\n");
+}
+
+/* --- decoration_update --- */
+
+static void
+test_decoration_update_null_decoration(void)
+{
+	setup();
+	/* Should not crash */
+	wm_decoration_update(NULL, &test_style);
+	printf("  PASS: decoration_update_null_decoration\n");
+}
+
+static void
+test_decoration_update_null_style(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Should not crash */
+	wm_decoration_update(deco, NULL);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: decoration_update_null_style\n");
+}
+
+static void
+test_decoration_update_recalculates_dimensions(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->titlebar_height == 20);
+
+	/* Change style and update */
+	test_style.window_title_height = 30;
+	test_style.window_handle_width = 10;
+	test_style.window_border_width = 2;
+	wm_decoration_update(deco, &test_style);
+
+	assert(deco->titlebar_height == 30);
+	assert(deco->handle_height == 10);
+	assert(deco->border_width == 2);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: decoration_update_recalculates_dimensions\n");
+}
+
+/* --- decoration_set_focused --- */
+
+static void
+test_set_focused_changes_state(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->focused == true);
+
+	wm_decoration_set_focused(deco, false, &test_style);
+	assert(deco->focused == false);
+
+	wm_decoration_set_focused(deco, true, &test_style);
+	assert(deco->focused == true);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_focused_changes_state\n");
+}
+
+static void
+test_set_focused_noop_same_state(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->focused == true);
+
+	/* Setting to same state should be a no-op (no crash, no change) */
+	wm_decoration_set_focused(deco, true, &test_style);
+	assert(deco->focused == true);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_focused_noop_same_state\n");
+}
+
+static void
+test_set_focused_null(void)
+{
+	setup();
+	/* Should not crash */
+	wm_decoration_set_focused(NULL, true, &test_style);
+	printf("  PASS: set_focused_null\n");
+}
+
+/* --- decoration_set_shaded --- */
+
+static void
+test_set_shaded_saves_geometry(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->shaded == false);
+	assert(deco->content_width == 800);
+	assert(deco->content_height == 600);
+
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(deco->shaded == true);
+	/* Geometry should be saved */
+	assert(deco->shaded_saved_geometry.width == 800);
+	assert(deco->shaded_saved_geometry.height == 600);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_shaded_saves_geometry\n");
+}
+
+static void
+test_set_shaded_unshade_restores(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(deco->shaded == true);
+
+	/* Unshade should restore geometry */
+	wm_decoration_set_shaded(deco, false, &test_style);
+	assert(deco->shaded == false);
+	assert(deco->content_width == 800);
+	assert(deco->content_height == 600);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_shaded_unshade_restores\n");
+}
+
+static void
+test_set_shaded_noop_same_state(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Shading when already not shaded is a no-op */
+	wm_decoration_set_shaded(deco, false, &test_style);
+	assert(deco->shaded == false);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_shaded_noop_same_state\n");
+}
+
+static void
+test_set_shaded_null(void)
+{
+	/* Should not crash */
+	wm_decoration_set_shaded(NULL, true, &test_style);
+	printf("  PASS: set_shaded_null\n");
+}
+
+/* --- decoration_set_preset --- */
+
+static void
+test_set_preset_transitions(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->preset == WM_DECOR_NORMAL);
+
+	/* Transition to NONE */
+	wm_decoration_set_preset(deco, WM_DECOR_NONE, &test_style);
+	assert(deco->preset == WM_DECOR_NONE);
+
+	/* Transition to BORDER */
+	wm_decoration_set_preset(deco, WM_DECOR_BORDER, &test_style);
+	assert(deco->preset == WM_DECOR_BORDER);
+
+	/* Transition to TAB */
+	wm_decoration_set_preset(deco, WM_DECOR_TAB, &test_style);
+	assert(deco->preset == WM_DECOR_TAB);
+
+	/* Transition to TINY */
+	wm_decoration_set_preset(deco, WM_DECOR_TINY, &test_style);
+	assert(deco->preset == WM_DECOR_TINY);
+
+	/* Transition to TOOL */
+	wm_decoration_set_preset(deco, WM_DECOR_TOOL, &test_style);
+	assert(deco->preset == WM_DECOR_TOOL);
+
+	/* Back to NORMAL */
+	wm_decoration_set_preset(deco, WM_DECOR_NORMAL, &test_style);
+	assert(deco->preset == WM_DECOR_NORMAL);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_preset_transitions\n");
+}
+
+static void
+test_set_preset_noop_same(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->preset == WM_DECOR_NORMAL);
+
+	/* Same preset is a no-op */
+	wm_decoration_set_preset(deco, WM_DECOR_NORMAL, &test_style);
+	assert(deco->preset == WM_DECOR_NORMAL);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_preset_noop_same\n");
+}
+
+static void
+test_set_preset_null(void)
+{
+	setup();
+	/* Should not crash */
+	wm_decoration_set_preset(NULL, WM_DECOR_NONE, &test_style);
+	printf("  PASS: set_preset_null\n");
+}
+
+/* --- region_at with TOOL preset --- */
+
+static void
+test_region_at_tool_has_titlebar(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_TOOL, 800, 600);
+
+	/* TOOL has titlebar but no handle */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 10);
+	assert(region == WM_DECOR_REGION_TITLEBAR);
+
+	/* outer_h for TOOL: bw(1) + th(20) + ch(600) + bw(1) = 622 */
+	/* y=623 is outside */
+	region = wm_decoration_region_at(deco, 400, 623);
+	assert(region == WM_DECOR_REGION_NONE);
+
+	free_test_decoration(deco);
+	printf("  PASS: region_at_tool_has_titlebar\n");
+}
+
+/* --- region_at with external tab bar region --- */
+
+static void
+test_region_at_external_tab_bar(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->tab_bar_size = 25;
+	deco->tab_bar_placement = WM_TAB_BAR_TOP;
+	deco->tab_bar_box = (struct wlr_box){1, 21, 800, 25};
+
+	/* Click in the external tab bar area => should be TITLEBAR */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 30);
+	assert(region == WM_DECOR_REGION_TITLEBAR);
+
+	free_test_decoration(deco);
+	printf("  PASS: region_at_external_tab_bar\n");
+}
+
+/* --- button_at edge boundary --- */
+
+static void
+test_button_at_edge_boundary(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	free(deco->buttons_left);
+	deco->buttons_left = calloc(1, sizeof(struct wm_decor_button));
+	deco->buttons_left_count = 1;
+	deco->buttons_left[0].type = WM_BUTTON_CLOSE;
+	deco->buttons_left[0].box = (struct wlr_box){10, 5, 12, 12};
+
+	/* Exact left edge of button - should hit */
+	struct wm_decor_button *btn = wm_decoration_button_at(deco, 10, 10);
+	assert(btn != NULL);
+
+	/* Exact top edge - should hit */
+	btn = wm_decoration_button_at(deco, 15, 5);
+	assert(btn != NULL);
+
+	/* One pixel past right edge (10+12=22) - should miss */
+	btn = wm_decoration_button_at(deco, 22, 10);
+	assert(btn == NULL);
+
+	/* One pixel past bottom edge (5+12=17) - should miss */
+	btn = wm_decoration_button_at(deco, 15, 17);
+	assert(btn == NULL);
+
+	/* One pixel before left edge - should miss */
+	btn = wm_decoration_button_at(deco, 9, 10);
+	assert(btn == NULL);
+
+	free_test_decoration(deco);
+	printf("  PASS: button_at_edge_boundary\n");
+}
+
+/* --- button_at with multiple left and right buttons --- */
+
+static void
+test_button_at_multiple_buttons(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	free(deco->buttons_left);
+	deco->buttons_left = calloc(2, sizeof(struct wm_decor_button));
+	deco->buttons_left_count = 2;
+	deco->buttons_left[0].type = WM_BUTTON_STICK;
+	deco->buttons_left[0].box = (struct wlr_box){5, 5, 12, 12};
+	deco->buttons_left[1].type = WM_BUTTON_SHADE;
+	deco->buttons_left[1].box = (struct wlr_box){21, 5, 12, 12};
+
+	free(deco->buttons_right);
+	deco->buttons_right = calloc(2, sizeof(struct wm_decor_button));
+	deco->buttons_right_count = 2;
+	deco->buttons_right[0].type = WM_BUTTON_MAXIMIZE;
+	deco->buttons_right[0].box = (struct wlr_box){760, 5, 12, 12};
+	deco->buttons_right[1].type = WM_BUTTON_CLOSE;
+	deco->buttons_right[1].box = (struct wlr_box){776, 5, 12, 12};
+
+	/* Hit second left button */
+	struct wm_decor_button *btn = wm_decoration_button_at(deco, 25, 10);
+	assert(btn != NULL);
+	assert(btn->type == WM_BUTTON_SHADE);
+
+	/* Hit first right button */
+	btn = wm_decoration_button_at(deco, 765, 10);
+	assert(btn != NULL);
+	assert(btn->type == WM_BUTTON_MAXIMIZE);
+
+	/* Hit second right button */
+	btn = wm_decoration_button_at(deco, 780, 10);
+	assert(btn != NULL);
+	assert(btn->type == WM_BUTTON_CLOSE);
+
+	free_test_decoration(deco);
+	printf("  PASS: button_at_multiple_buttons\n");
+}
+
+/* --- get_extents with zero border width --- */
+
+static void
+test_get_extents_zero_border(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->border_width = 0;
+
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+
+	/* NORMAL with bw=0: top = 0 + th(20) = 20, bottom = 0 + hh(6) = 6 */
+	assert(top == 20);
+	assert(bottom == 6);
+	assert(left == 0);
+	assert(right == 0);
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_zero_border\n");
+}
+
+/* --- get_extents with large border width --- */
+
+static void
+test_get_extents_large_border(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->border_width = 10;
+
+	int top, bottom, left, right;
+	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
+
+	/* NORMAL with bw=10: top = 10+20=30, bottom = 10+6=16 */
+	assert(top == 30);
+	assert(bottom == 16);
+	assert(left == 10);
+	assert(right == 10);
+
+	free_test_decoration(deco);
+	printf("  PASS: get_extents_large_border\n");
+}
+
+/* --- region_at with zero border width --- */
+
+static void
+test_region_at_zero_border(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	deco->border_width = 0;
+	deco->content_area.x = 0;
+	deco->content_area.y = 20;
+
+	/* With bw=0, there are no border regions; y=0 is titlebar */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 0);
+	assert(region == WM_DECOR_REGION_TITLEBAR);
+
+	/* Client area */
+	region = wm_decoration_region_at(deco, 400, 300);
+	assert(region == WM_DECOR_REGION_CLIENT);
+
+	free_test_decoration(deco);
+	printf("  PASS: region_at_zero_border\n");
+}
+
+/* --- decoration_create with custom config buttons --- */
+
+static void
+test_decoration_create_custom_buttons(void)
+{
+	setup();
+	setup_view();
+	test_config.titlebar_left = "Close Shade";
+	test_config.titlebar_right = "Minimize";
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->buttons_left_count == 2);
+	assert(deco->buttons_left[0].type == WM_BUTTON_CLOSE);
+	assert(deco->buttons_left[1].type == WM_BUTTON_SHADE);
+	assert(deco->buttons_right_count == 1);
+	assert(deco->buttons_right[0].type == WM_BUTTON_ICONIFY);
+
+	wm_decoration_destroy(deco);
+	/* Reset config */
+	test_config.titlebar_left = NULL;
+	test_config.titlebar_right = NULL;
+	printf("  PASS: decoration_create_custom_buttons\n");
+}
+
+/* --- pixel_buffer_begin_data_ptr_access --- */
+
+static void
+test_pixel_buffer_write_rejected(void)
+{
+	setup();
+	/* Test that wlr_buffer_from_cairo produces a buffer that rejects writes */
+	cairo_surface_t *surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 10, 10);
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
+	assert(buf != NULL);
+
+	/* The pixel_buffer should reject write access */
+	void *data;
+	uint32_t format;
+	size_t stride;
+	bool ok = pixel_buffer_begin_data_ptr_access(buf,
+		WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride);
+	assert(ok == false);
+
+	/* Read access should succeed */
+	ok = pixel_buffer_begin_data_ptr_access(buf, 0, &data, &format, &stride);
+	assert(ok == true);
+	assert(format == DRM_FORMAT_ARGB8888);
+	assert(data != NULL);
+
+	pixel_buffer_end_data_ptr_access(buf);
+	pixel_buffer_destroy(buf);
+	printf("  PASS: pixel_buffer_write_rejected\n");
+}
+
+/* --- wlr_buffer_from_cairo null --- */
+
+static void
+test_wlr_buffer_from_cairo_null(void)
+{
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(NULL);
+	assert(buf == NULL);
+	printf("  PASS: wlr_buffer_from_cairo_null\n");
+}
+
 /* ===================== Main ===================== */
 
 int
@@ -1863,6 +2392,53 @@ main(void)
 	test_style_handle_height_explicit();
 	test_style_border_width_zero();
 	test_style_border_width_explicit();
+
+	/* create / destroy */
+	test_decoration_create_and_destroy();
+	test_decoration_destroy_null();
+
+	/* update */
+	test_decoration_update_null_decoration();
+	test_decoration_update_null_style();
+	test_decoration_update_recalculates_dimensions();
+
+	/* set_focused */
+	test_set_focused_changes_state();
+	test_set_focused_noop_same_state();
+	test_set_focused_null();
+
+	/* set_shaded */
+	test_set_shaded_saves_geometry();
+	test_set_shaded_unshade_restores();
+	test_set_shaded_noop_same_state();
+	test_set_shaded_null();
+
+	/* set_preset */
+	test_set_preset_transitions();
+	test_set_preset_noop_same();
+	test_set_preset_null();
+
+	/* region_at: TOOL preset and external tab bar */
+	test_region_at_tool_has_titlebar();
+	test_region_at_external_tab_bar();
+
+	/* button_at: edge boundary and multiple buttons */
+	test_button_at_edge_boundary();
+	test_button_at_multiple_buttons();
+
+	/* get_extents: edge cases */
+	test_get_extents_zero_border();
+	test_get_extents_large_border();
+
+	/* region_at: zero border */
+	test_region_at_zero_border();
+
+	/* create with custom config buttons */
+	test_decoration_create_custom_buttons();
+
+	/* pixel_buffer */
+	test_pixel_buffer_write_rejected();
+	test_wlr_buffer_from_cairo_null();
 
 	printf("All decoration logic tests passed.\n");
 	return 0;

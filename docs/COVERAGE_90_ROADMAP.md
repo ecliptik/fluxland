@@ -1,252 +1,180 @@
 # Fluxland Test Coverage Roadmap: 35% → 90%
 
-## Executive Summary
+## Current Status (Updated 2026-02-26)
 
-**Current state:** 35.0% line coverage (5,387 / 15,401 executable lines) across 45 source modules
-**Target:** 90% line coverage (13,860 lines)
-**Gap:** 8,473 additional lines to cover
-**Feasibility:** Achievable with a phased approach — 71.5% of the gap is in EASY/MEDIUM modules testable with existing patterns
+**Current state:** 57.7% line coverage (8,908 / 15,442 executable lines) across 46 source modules
+**Target:** 90% line coverage
+**Realistic ceiling:** ~75-80% (unit + integration), ~84% theoretical max
+**Test files:** 33 (up from 15 at baseline)
+**All tests passing:** 33/33
 
-### Key Numbers
-- **15 test files** exist today (11 original + 4 added in QA sprint)
-- **~25 new test files** needed to reach 90%
-- **~400 new test cases** estimated
-- **1 shared mock framework** required (tests/mocks/)
-- **1 source refactor** recommended (keyboard.c action dispatch)
+### Phases Completed
 
----
+| Phase | Description | Result | Coverage |
+|-------|-------------|--------|----------|
+| Baseline | 15 test files | — | 35.0% |
+| 1 | Quick Wins — extend tests + tabgroup/focus_nav | +3 files, ~122 tests | 40.5% |
+| 2 | Mock Framework + Unit Tests | +8 files, ~150 tests | 48.6% |
+| 3 | Protocol Integration Tests | +5 files, ~41 tests | 51.0% |
+| 4 | Hard Modules (keyboard, cursor, xwayland, placement, render) | +3 files, ~132 tests | 56.7% |
+| 5 | Polish (IPC server, systray, main CLI, autostart) | +3 files, ~49 tests | 57.7% |
+| 5b | Coverage push (rules, view, menu, decoration, workspace) | In progress | ~65% est |
 
-## Infrastructure Required
-
-### 1. Shared Mock Framework (`tests/mocks/`)
-
-The `#include "source.c"` pattern from test_animation.c doesn't scale beyond simple modules.
-Create a shared mock directory:
-
-```
-tests/mocks/
-├── wayland_mocks.h      — wl_list, wl_listener, wl_event_source, wl_signal stubs
-├── wlroots_mocks.h      — ~25 stub types + ~60 no-op function declarations
-├── xkb_mocks.h          — xkbcommon type/function stubs
-├── server_mock.h        — Minimal wm_server struct (only fields tests access)
-├── view_mock.h          — Minimal wm_view, wm_workspace, wm_decoration
-└── fluxland_stubs.c     — Default no-op implementations of wm_* cross-module functions
-```
-
-**Key types to stub (~25):** wlr_scene, wlr_scene_tree, wlr_scene_node, wlr_scene_buffer,
-wlr_keyboard, wlr_cursor, wlr_seat, wlr_xdg_toplevel, wlr_xdg_surface, wlr_surface,
-wlr_output, wlr_output_layout, wlr_buffer, wlr_session, wlr_backend, wlr_renderer
-
-**Critical discovery:** wlroots is dynamically linked (`libwlroots-0.18.so`), so tests can
-override any wlr_* function by defining a stub in the test .c file — the linker prefers
-object-file symbols over shared library symbols. This eliminates the need for complex
-mock injection.
-
-### 2. Integration Harness Improvements
-
-The existing harness (tests/integration/harness.c) needs:
-- **Protocol header generation** for layer-shell, foreign-toplevel, session-lock, idle-inhibit
-  (wayland-scanner already used for xdg-shell — duplicate the pattern)
-- **Multi-client support** (second `wl_display_connect()` for foreign-toplevel tests)
-- **Roundtrip timeout** to prevent test hangs
-
-### 3. Keyboard.c Refactoring (Optional but High-ROI)
-
-Extract from keyboard.c's monolithic `execute_action()` (934-line switch):
-- `keyboard_actions.c/h` — action dispatch via vtable (70 function pointers)
-- `condition_eval.c/h` — `evaluate_condition()`, `match_property()`, `bool_match()`
-- `chain_state.c/h` — chain timeout state machine
-
-This makes 70 switch cases testable with a mock vtable instead of 65+ individual stubs.
-Without refactoring, keyboard.c can still reach ~50% via the shared mock framework.
+### Key Decisions Made
+- **No shared mock framework needed:** The `#include "source.c"` pattern with header guards
+  scaled successfully to all modules including the hardest ones (keyboard.c at 2908 lines)
+- **No keyboard.c refactoring needed:** Achieved 50.1% coverage with extensive stubs instead
+  of the originally proposed vtable refactoring
+- **Protocol headers generated:** wayland-scanner client headers for layer-shell, session-lock,
+  idle-inhibit, idle-notify via Meson custom_target()
+- **Integration tests work:** Headless compositor fork + Wayland client pattern covers protocol code
 
 ---
 
-## Implementation Phases
+## What Remains (Future Sessions)
 
-### Phase 1: Quick Wins — Extend Existing Tests (est. +8% → 43%)
-*Modules testable TODAY with zero new infrastructure*
+### Phase 6: Deep Coverage Push (est. → 70-75%)
 
-| Module | Current | Target | Approach | New Tests |
-|--------|---------|--------|----------|-----------|
-| keybind.c | 43.7% | 90% | Extend test_keybind.c: mouse bindings, invalid input, keybind_find NULL | ~15 |
-| rules.c | 52.9% | 90% | Extend test_rules.c: invalid regex, match logic, missing [end] | ~12 |
-| config.c | 78.8% | 92% | Extend test_config.c: malformed lines, duplicate keys, slit/toolbar variants | ~10 |
-| style.c | 78.9% | 92% | Extend test_style.c: invalid formats, edge values, menu textures | ~8 |
-| validate.c | 81.7% | 92% | Extend test_validate.c: texture/font validation, multiple errors | ~6 |
-| rcparser.c | 71.8% | 92% | Extend test_config.c: boundary parsing, UTF-8 | ~4 |
-| ipc_commands.c | 24.4% | 48% | Extend test_ipc.c (Group A+B): 30+ simple action dispatch + mock view | ~40 |
-| tabgroup.c | 0% | 85% | NEW test_tabgroup.c: pure state machine, all 8 public functions | ~15 |
-| focus_nav.c | 5.0% | 77% | NEW test_focus_nav.c: state machine transitions, all 7 functions | ~12 |
+These modules have testable code paths remaining but need careful stub work:
 
-**Subtotal: ~122 new tests, +1,235 lines covered**
+| Module | Current | Target | Approach | Effort |
+|--------|---------|--------|----------|--------|
+| toolbar.c | 72.6% | 85% | Extend test_toolbar_layout.c: more layout edge cases, iconbar update | MEDIUM |
+| ipc.c | 60.4% | 80% | Extend test_ipc_server.c: socket accept, full lifecycle | MEDIUM |
+| server.c | 59.3% | 75% | Extend integration tests: reconfigure, destroy paths | MEDIUM |
+| output.c | 65.2% | 80% | NEW test_output.c: output add/remove, mode selection | MEDIUM |
+| output_management.c | 39.8% | 60% | NEW test_output_mgmt.c: config apply/test paths | MEDIUM |
+| slit.c | 58.7% | 70% | Extend test_slit.c: more layout edge cases | EASY |
+| placement.c | 53.3% | 70% | Extend test_placement.c: more strategy edge cases | EASY |
 
-### Phase 2: Shared Mock Framework + Unit Tests (est. +20% → 63%)
-*Requires tests/mocks/ infrastructure*
+**Estimated gain: +7-10 percentage points**
 
-| Module | Current | Target | Approach | New Tests |
-|--------|---------|--------|----------|-----------|
-| ipc_commands.c | 48% | 85% | Add 7 wlroots stubs + mock structs (Groups C+D+E) | ~50 |
-| menu.c | 19.8% | 46% | NEW test_menu_interaction.c: key nav, hit testing, type-ahead, window menu creation | ~25 |
-| decoration.c | 40.9% | 65% | NEW test_decoration_logic.c: button_at, region_at, tab_at, get_extents, button layout | ~18 |
-| workspace.c | 17.5% | 60% | NEW test_workspace.c: index arithmetic, json_escape, get/get_active | ~15 |
-| view.c | 32.8% | 55% | NEW test_view_logic.c: focus cycling, json_escape, layer_from_name, geometry | ~15 |
-| toolbar.c | 62.1% | 75% | NEW test_toolbar_layout.c: parse_tool_name, compute_layout, iconbar filtering | ~12 |
-| slit.c | 21.9% | 40% | NEW test_slit.c: compute_position, layout_clients, slitlist I/O | ~10 |
-| server.c | 59.3% | 75% | Extend integration tests: server init validation | ~5 |
+### Phase 7: Keyboard Refactoring (est. → 75-80%)
 
-**Subtotal: ~150 new tests, +3,087 lines covered**
+The highest single-module ROI remaining:
 
-### Phase 3: Integration Tests for Protocols (est. +8% → 71%)
-*Requires harness protocol header generation*
+- **Refactor keyboard.c** into:
+  - `keyboard_actions.c/h` — action dispatch via vtable (70 function pointers)
+  - `condition_eval.c/h` — `evaluate_condition()`, `match_property()`, `bool_match()`
+  - `chain_state.c/h` — chain timeout state machine
+- This would make the remaining ~50% of keyboard.c (event handlers, key processing)
+  testable via the vtable pattern instead of 65+ individual stubs
+- **Estimated gain: keyboard.c 50% → 80%, overall +3%**
 
-| Module | Current | Target | Approach | New Tests |
-|--------|---------|--------|----------|-----------|
-| layer_shell.c | 17.5% | 65% | NEW test_layer_shell.c: create surface on each layer, exclusive zones, keyboard interactivity | ~12 |
-| foreign_toplevel.c | 54.6% | 80% | NEW test_foreign_toplevel.c: subscribe events, activate/max/min/fullscreen/close requests | ~10 |
-| session_lock.c | 14.3% | 65% | NEW test_session_lock.c: lock lifecycle, lock surface configure, double-lock rejection | ~8 |
-| idle.c | 32.3% | 70% | NEW test_idle.c: inhibitor create/destroy, state management | ~6 |
-| output_management.c | 39.8% | 60% | NEW test_output_mgmt.c: subscribe config, test/apply paths | ~5 |
+### Phase 8: Advanced Integration Tests (est. → 80-84%)
 
-**Subtotal: ~41 new tests, +715 lines covered**
+Deeper integration test coverage for protocol handlers:
 
-### Phase 4: Hard Modules — Refactoring + Deep Mocks (est. +12% → 83%)
-*Requires keyboard.c refactoring or extensive mock framework*
+| Module | Current | Approach |
+|--------|---------|----------|
+| cursor.c | 16.5% | Multi-client move/resize integration tests |
+| xwayland.c | 14.5% | XWayland surface lifecycle integration (requires XWayland in test) |
+| output_management.c | 39.8% | Full config apply/test cycle via protocol |
+| protocols.c | 38.2% | Exercise more protocol _create() paths via real clients |
 
-| Module | Current | Target | Approach | New Tests |
-|--------|---------|--------|----------|-----------|
-| keyboard.c | 0% | 55% | Refactor execute_action → vtable; test conditions, chains, security, 70 action cases | ~40 |
-| cursor.c | 6.1% | 30% | NEW test_cursor_snap.c: snap zone detection/geometry (pure math), mouse context | ~12 |
-| xwayland.c | 3.8% | 25% | NEW test_xwayland_logic.c: classify_window, should_dock_in_slit (with mock structs) | ~8 |
-| render.c | 68.6% | 85% | Extend test_decorations.c: more gradient types, text justify, HiDPI | ~8 |
-| placement.c | 14.0% | 70% | REWRITE test_placement.c: test actual placement.c functions, not reimplemented math | ~10 |
-
-**Subtotal: ~78 new tests, +1,920 lines covered**
-
-### Phase 5: Remaining Coverage + Polish (est. +7% → 90%)
-*Mop-up to reach 90% target*
-
-| Module | Current | Target | Approach | New Tests |
-|--------|---------|--------|----------|-----------|
-| ipc.c | 32.0% | 80% | NEW test_ipc_server.c: socket handling, buffer ops, event broadcast | ~12 |
-| autostart.c | 53.7% | 90% | Extend test_autostart.c: more edge cases | ~5 |
-| systray.c | 18.7% | 30% | NEW test_systray.c: layout math, get_width, handle_click (if WM_HAS_SYSTRAY) | ~6 |
-| main.c | 36.6% | 60% | Integration smoke: --version, --check-config, --list-commands exit codes | ~4 |
-| input.c | 22.0% | 22% | SKIP — pure wlroots glue, coverage comes from integration tests | 0 |
-| text_input.c | 12.6% | 15% | DEFER — needs dual-client IME relay mock | 0 |
-| menu.c visual | 46% | 55% | Extend test_decorations.c: menu title/item rendering | ~5 |
-
-**Subtotal: ~32 new tests, +516 lines covered**
+**Estimated gain: +5-8 percentage points**
 
 ---
 
-## What's Unreachable (Won't Hit 90%)
+## What's Unreachable (Stays Low)
 
-These modules or code paths realistically **cannot** reach 90% coverage:
+These modules or code paths realistically **cannot** reach high coverage:
 
 | Module/Path | Reason | Realistic Max |
 |-------------|--------|---------------|
 | cursor.c event handlers | Deeply coupled to wlr_cursor, scene graph, touch/gesture protocols | 30% |
-| input.c | 100% wlroots event handler glue | 22% (integration only) |
-| text_input.c | Needs simultaneous text-input-v3 + input-method-v2 clients | 15% |
-| tablet.c | Requires tablet hardware simulation | 5% |
+| input.c (22.0%) | 100% wlroots event handler glue | 22% (integration only) |
+| text_input.c (12.6%) | Needs simultaneous text-input-v3 + input-method-v2 clients | 15% |
+| tablet.c (4.5%) | Requires tablet hardware simulation | 5% |
 | drm_lease.c / drm_syncobj.c | Require DRM backend (not headless) | Current |
-| gamma_control.c | Output commit fails on pixman renderer | Current |
-| exec_command() (in keyboard.c, ipc_commands.c) | Real fork/exec | Untestable |
+| gamma_control.c (21.9%) | Output commit fails on pixman renderer | Current |
+| exec_command() paths | Real fork/exec in keyboard.c, ipc_commands.c, menu.c | Untestable |
 | main.c server_run() | Full event loop | Integration only |
 | screencopy.c / presentation.c / viewporter.c / fractional_scale.c | Pure boilerplate wlroots _create() calls | Current |
 
-**Impact**: These ~2,500 lines cap the theoretical maximum at ~84% if only unit-tested.
-Integration tests (Phase 3) recover ~5-6% by exercising protocol handlers through the headless compositor.
-The combined approach (unit + integration + visual) should reach **88-91%** depending on how well the headless backend exercises protocol code paths.
+**Impact**: These ~2,500 lines cap the theoretical maximum at ~84% with unit + integration tests.
 
 ---
 
-## Per-Module Coverage Summary
+## Per-Module Coverage Summary (Current)
 
-| Module | Lines | Current % | Phase | Target % | Tests Needed |
-|--------|-------|-----------|-------|----------|-------------|
-| animation.c | 71 | 85.9% | — | 90% | ~2 edge cases |
-| mousebind.c | 296 | 87.8% | — | 92% | ~3 edge cases |
-| config.c | 628 | 78.8% | 1 | 92% | ~10 |
-| style.c | 582 | 78.9% | 1 | 92% | ~8 |
-| validate.c | 409 | 81.7% | 1 | 92% | ~6 |
-| rcparser.c | 110 | 71.8% | 1 | 92% | ~4 |
-| keybind.c | 561 | 43.7% | 1 | 90% | ~15 |
-| rules.c | 486 | 52.9% | 1 | 90% | ~12 |
-| tabgroup.c | 153 | 0% | 1 | 85% | ~15 |
-| focus_nav.c | 139 | 5.0% | 1 | 77% | ~12 |
-| ipc_commands.c | 984 | 24.4% | 1+2 | 85% | ~90 |
-| menu.c | 1554 | 19.8% | 2+5 | 55% | ~30 |
-| decoration.c | 953 | 40.9% | 2 | 65% | ~18 |
-| workspace.c | 274 | 17.5% | 2 | 60% | ~15 |
-| view.c | 937 | 32.8% | 2 | 55% | ~15 |
-| toolbar.c | 850 | 62.1% | 2 | 75% | ~12 |
-| slit.c | 506 | 21.9% | 2 | 40% | ~10 |
-| server.c | 285 | 59.3% | 2 | 75% | ~5 |
-| layer_shell.c | 206 | 17.5% | 3 | 65% | ~12 |
-| foreign_toplevel.c | 119 | 54.6% | 3 | 80% | ~10 |
-| session_lock.c | 168 | 14.3% | 3 | 65% | ~8 |
-| idle.c | 65 | 32.3% | 3 | 70% | ~6 |
-| output_management.c | 108 | 39.8% | 3 | 60% | ~5 |
-| keyboard.c | 1064 | 0% | 4 | 55% | ~40 |
-| cursor.c | 944 | 6.1% | 4 | 30% | ~12 |
-| xwayland.c | 391 | 3.8% | 4 | 25% | ~8 |
-| render.c | 421 | 68.6% | 4 | 85% | ~8 |
-| placement.c | 394 | 14.0% | 4 | 70% | ~10 |
-| ipc.c | 222 | 32.0% | 5 | 80% | ~12 |
-| autostart.c | 54 | 53.7% | 5 | 90% | ~5 |
-| systray.c | 364 | 18.7% | 5 | 30% | ~6 |
-| main.c | 71 | 36.6% | 5 | 60% | ~4 |
-| input.c | 100 | 22.0% | — | 22% | SKIP |
-| text_input.c | 214 | 12.6% | — | 15% | DEFER |
-| tablet.c | 223 | 4.5% | — | 5% | SKIP |
-| output.c | 115 | 65.2% | 2 | 80% | ~5 |
-| protocols.c | 249 | 38.2% | — | 40% | Integration only |
-| Tiny wrappers (7) | 99 | ~55% | — | ~55% | SKIP |
-
----
-
-## Effort Summary by Phase
-
-| Phase | Description | New Test Files | New Test Cases | Lines Covered | Coverage |
-|-------|-------------|---------------|---------------|---------------|----------|
-| Current | Baseline | 15 | ~180 | 5,387 | 35.0% |
-| 1 | Quick Wins | +3 | +122 | +1,235 | **43%** |
-| 2 | Mock Framework + Unit Tests | +8 | +150 | +3,087 | **63%** |
-| 3 | Protocol Integration Tests | +5 | +41 | +715 | **71%** |
-| 4 | Hard Modules (Refactor) | +5 | +78 | +1,920 | **83%** |
-| 5 | Polish + Mop-up | +4 | +32 | +516 | **~90%** |
-| **Total** | | **+25 files** | **+423 tests** | **+7,473** | **~90%** |
+| Module | Lines | Current % | Status |
+|--------|-------|-----------|--------|
+| foreign_toplevel.c | 119 | 96.6% | DONE |
+| tabgroup.c | 153 | 89.5% | DONE |
+| mousebind.c | 296 | 87.8% | DONE |
+| validate.c | 409 | 87.3% | DONE |
+| animation.c | 71 | 85.9% | DONE |
+| config.c | 628 | 84.6% | DONE |
+| style.c | 582 | 83.7% | DONE |
+| layer_shell.c | 206 | 83.0% | DONE |
+| keybind.c | 561 | 82.9% | DONE |
+| ipc_commands.c | 984 | 82.6% | DONE |
+| focus_nav.c | 139 | 82.0% | DONE |
+| render.c | 421 | 80.8% | DONE |
+| rcparser.c | 110 | 80.0% | DONE |
+| session_lock.c | 168 | 73.8% | DONE |
+| toolbar.c | 850 | 72.6% | Phase 6 |
+| idle.c | 65 | 70.8% | DONE |
+| main.c | 71 | 64.8% | DONE |
+| output.c | 115 | 65.2% | Phase 6 |
+| rules.c | 486 | 62.3% | Phase 5b (in progress) |
+| ipc.c | 222 | 60.4% | Phase 6 |
+| server.c | 285 | 59.3% | Phase 6 |
+| slit.c | 506 | 58.7% | Phase 6 |
+| decoration.c | 953 | 57.4% | Phase 5b (in progress) |
+| autostart.c | 54 | 53.7% | DONE |
+| placement.c | 394 | 53.3% | Phase 6 |
+| workspace.c | 274 | 51.1% | Phase 5b (in progress) |
+| keyboard.c | 1064 | 50.1% | Phase 7 (refactor) |
+| menu.c | 1554 | 44.7% | Phase 5b (in progress) |
+| view.c | 937 | 40.8% | Phase 5b (in progress) |
+| output_management.c | 108 | 39.8% | Phase 6 |
+| protocols.c | 249 | 38.2% | Phase 8 |
+| systray.c | 364 | 33.8% | DONE |
+| gamma_control.c | 32 | 21.9% | SKIP |
+| input.c | 100 | 22.0% | SKIP |
+| cursor.c | 953 | 16.5% | Phase 8 |
+| xwayland.c | 392 | 14.5% | Phase 8 |
+| text_input.c | 214 | 12.6% | SKIP |
+| tablet.c | 223 | 4.5% | SKIP |
+| drm_lease.c | 26 | 42.3% | SKIP |
+| drm_syncobj.c | 13 | 61.5% | SKIP |
+| fractional_scale.c | 7 | 71.4% | SKIP |
+| presentation.c | 6 | 66.7% | SKIP |
+| screencopy.c | 11 | 63.6% | SKIP |
+| transient_seat.c | 25 | 48.0% | SKIP |
+| viewporter.c | 11 | 63.6% | SKIP |
+| style.h | 8 | 100% | DONE |
+| util.h | 23 | 82.6% | DONE |
 
 ---
 
-## Critical Path
+## Test Infrastructure Summary
 
+### Test Pattern
+All tests use the `#include "source.c"` pattern:
+- Header guards block real wlroots/wayland/system headers
+- Stub types defined locally in each test file
+- Stub functions with call counters for dispatch verification
+- wlroots linker symbol override (dynamically linked `libwlroots-0.18.so`)
+- No shared mock framework needed — each test is self-contained
+
+### Integration Test Harness
+- `tests/integration/harness.c/h` — forks compositor with `WLR_BACKENDS=headless WLR_RENDERER=pixman`
+- Protocol headers generated via wayland-scanner custom_target() in Meson
+- Covers: xdg-shell, layer-shell, session-lock, idle-inhibit, idle-notify
+
+### Visual Regression Tests
+- `tests/visual/image_compare.c/h` — Cairo-based pixel comparison
+- `tests/visual/test_decorations.c` — gradient types, text rendering, bevel styles
+
+### Coverage Measurement
+```bash
+meson setup buildcov -Db_coverage=true
+ninja -C buildcov
+meson test -C buildcov --print-errorlogs
+lcov --capture --directory buildcov --output-file buildcov/coverage.info \
+  --exclude '*/tests/*' --exclude '/usr/*' --ignore-errors unused
+lcov --list buildcov/coverage.info --ignore-errors unused
 ```
-Phase 1 (no dependencies)
-    ├── Extend 6 existing test files
-    ├── Create test_tabgroup.c
-    └── Create test_focus_nav.c
-
-Phase 2 (depends on: tests/mocks/ creation)
-    ├── Create shared mock framework
-    ├── 8 new test files using mocks
-    └── Extend test_ipc.c with wlroots stubs
-
-Phase 3 (depends on: harness protocol headers)
-    ├── Generate client protocol headers
-    ├── Extend harness for protocol binding
-    └── 5 protocol integration test files
-
-Phase 4 (depends on: keyboard.c refactoring OR Phase 2 mocks)
-    ├── Refactor keyboard.c (optional, +15% vs mocks alone)
-    ├── 5 test files for hard modules
-    └── Rewrite test_placement.c
-
-Phase 5 (depends on: Phase 2 mocks)
-    └── 4 remaining test files + extensions
-```
-
-Phases 1 and the mock framework creation can start immediately in parallel.
-Total estimated effort: **~25 new test files, ~423 new test cases**.

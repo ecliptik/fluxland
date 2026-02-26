@@ -991,6 +991,927 @@ test_missing_end_group(void)
 	printf("  PASS: test_missing_end_group\n");
 }
 
+/* ---- NEW TESTS ---- */
+
+/* Test: "name" property is an alias for "class" (app_id) */
+static void
+test_name_property(void)
+{
+	write_file(TEST_APPS,
+		"[app] (name=foot)\n"
+		"  [Workspace] {1}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->pattern_count == 1);
+	assert(strcmp(wr->patterns[0].property, "name") == 0);
+	assert(strcmp(wr->patterns[0].regex_str, "foot") == 0);
+
+	/* Verify the regex matches */
+	int rc = regexec(&wr->patterns[0].compiled, "foot", 0, NULL, 0);
+	assert(rc == 0);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_name_property\n");
+}
+
+/* Test: "role" property parses correctly (returns "" for views) */
+static void
+test_role_property(void)
+{
+	write_file(TEST_APPS,
+		"[app] (role=dialog)\n"
+		"  [Sticky] {yes}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->pattern_count == 1);
+	assert(strcmp(wr->patterns[0].property, "role") == 0);
+	assert(strcmp(wr->patterns[0].regex_str, "dialog") == 0);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_role_property\n");
+}
+
+/* Test: "transient" property parses correctly */
+static void
+test_transient_property(void)
+{
+	write_file(TEST_APPS,
+		"[app] (transient=yes)\n"
+		"  [Deco] {BORDER}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->pattern_count == 1);
+	assert(strcmp(wr->patterns[0].property, "transient") == 0);
+	assert(strcmp(wr->patterns[0].regex_str, "yes") == 0);
+	assert(wr->has_deco && wr->deco == WM_DECOR_BORDER);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_transient_property\n");
+}
+
+/* Test: wm_rules_apply sets position, alpha, focus_protection, etc.
+ * on a minimal view (NULL server/xdg_toplevel to avoid wlroots calls) */
+static void
+test_apply_basic(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=myapp)\n"
+		"  [Position] {50 75}\n"
+		"  [Alpha] {200 150}\n"
+		"  [Sticky] {yes}\n"
+		"  [FocusProtection] {Gain}\n"
+		"  [IgnoreSizeHints] {true}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* Create a minimal fake view that matches */
+	struct wm_view view = {0};
+	view.app_id = "myapp";
+	view.title = "My Application";
+	/* server=NULL, xdg_toplevel=NULL, decoration=NULL, scene_tree=NULL
+	 * so wlroots-dependent branches are skipped */
+
+	wm_rules_apply(&rules, &view);
+
+	/* Position should be set directly (no anchor calculation without server) */
+	assert(view.x == 50);
+	assert(view.y == 75);
+
+	/* Alpha should be applied */
+	assert(view.focus_alpha == 200);
+	assert(view.unfocus_alpha == 150);
+
+	/* Focus protection should be applied */
+	assert(view.focus_protection & WM_FOCUS_PROT_GAIN);
+
+	/* Ignore size hints should be applied */
+	assert(view.ignore_size_hints == true);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_basic\n");
+}
+
+/* Test: wm_rules_apply first-match-wins behavior */
+static void
+test_apply_first_match_wins(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=term)\n"
+		"  [Alpha] {100 80}\n"
+		"[end]\n"
+		"[app] (class=term)\n"
+		"  [Alpha] {255 255}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_view view = {0};
+	view.app_id = "term";
+	view.title = "";
+
+	wm_rules_apply(&rules, &view);
+
+	/* First rule wins: alpha should be 100/80, not 255/255 */
+	assert(view.focus_alpha == 100);
+	assert(view.unfocus_alpha == 80);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_first_match_wins\n");
+}
+
+/* Test: wm_rules_apply does nothing when no rule matches */
+static void
+test_apply_no_match(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=Firefox)\n"
+		"  [Alpha] {100 80}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_view view = {0};
+	view.app_id = "Chromium";
+	view.title = "";
+	view.focus_alpha = 255;
+	view.unfocus_alpha = 255;
+
+	wm_rules_apply(&rules, &view);
+
+	/* Nothing should have changed */
+	assert(view.focus_alpha == 255);
+	assert(view.unfocus_alpha == 255);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_no_match\n");
+}
+
+/* Test: wm_rules_apply with negated pattern */
+static void
+test_apply_negate(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class!=Firefox)\n"
+		"  [Alpha] {100 80}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* "term" != Firefox, so the negated pattern matches */
+	struct wm_view view1 = {0};
+	view1.app_id = "term";
+	view1.title = "";
+	view1.focus_alpha = 255;
+	wm_rules_apply(&rules, &view1);
+	assert(view1.focus_alpha == 100);
+
+	/* Reload for second test since apply modifies nothing structural */
+	wm_rules_finish(&rules);
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* "Firefox" matches the regex, so negation means NOT matching -> no rule applied */
+	struct wm_view view2 = {0};
+	view2.app_id = "Firefox";
+	view2.title = "";
+	view2.focus_alpha = 255;
+	wm_rules_apply(&rules, &view2);
+	assert(view2.focus_alpha == 255);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_negate\n");
+}
+
+/* Test: wm_rules_apply with multiple AND-combined patterns */
+static void
+test_apply_multi_pattern_and(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=Gimp) (title=Toolbox)\n"
+		"  [Alpha] {180 160}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* Both patterns match */
+	struct wm_view view1 = {0};
+	view1.app_id = "Gimp";
+	view1.title = "Toolbox";
+	view1.focus_alpha = 255;
+	wm_rules_apply(&rules, &view1);
+	assert(view1.focus_alpha == 180);
+
+	wm_rules_finish(&rules);
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* Only class matches, title does not -> no match */
+	struct wm_view view2 = {0};
+	view2.app_id = "Gimp";
+	view2.title = "Canvas";
+	view2.focus_alpha = 255;
+	wm_rules_apply(&rules, &view2);
+	assert(view2.focus_alpha == 255);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_multi_pattern_and\n");
+}
+
+/* Test: wm_rules_apply with title matching */
+static void
+test_apply_title_match(void)
+{
+	write_file(TEST_APPS,
+		"[app] (title=.*\\.pdf$)\n"
+		"  [Alpha] {220 200}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_view view = {0};
+	view.app_id = "evince";
+	view.title = "document.pdf";
+	view.focus_alpha = 255;
+	wm_rules_apply(&rules, &view);
+	assert(view.focus_alpha == 220);
+
+	wm_rules_finish(&rules);
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* Title doesn't end with .pdf */
+	struct wm_view view2 = {0};
+	view2.app_id = "evince";
+	view2.title = "document.txt";
+	view2.focus_alpha = 255;
+	wm_rules_apply(&rules, &view2);
+	assert(view2.focus_alpha == 255);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_title_match\n");
+}
+
+/* Test: view with NULL app_id still works (returns "" for matching) */
+static void
+test_apply_null_app_id(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=^$)\n"
+		"  [Alpha] {100 80}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_view view = {0};
+	view.app_id = NULL; /* NULL app_id -> view_get_property returns "" */
+	view.title = NULL;
+	view.focus_alpha = 255;
+	wm_rules_apply(&rules, &view);
+
+	/* ^$ matches empty string, so rule should apply */
+	assert(view.focus_alpha == 100);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_null_app_id\n");
+}
+
+/* Test: rule with zero valid patterns does not match any view */
+static void
+test_apply_no_patterns(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=[unclosed)\n"
+		"  [Alpha] {100 80}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_view view = {0};
+	view.app_id = "anything";
+	view.title = "";
+	view.focus_alpha = 255;
+	wm_rules_apply(&rules, &view);
+
+	/* Rule has 0 patterns, so rule_matches returns false (count > 0 check) */
+	assert(view.focus_alpha == 255);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_no_patterns\n");
+}
+
+/* Test: alpha with a single value (unfocus_alpha gets same as focus) */
+static void
+test_alpha_single_value(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Alpha] {180}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_alpha);
+	assert(wr->focus_alpha == 180);
+	/* With single value, unfocus_alpha should equal focus_alpha */
+	assert(wr->unfocus_alpha == 180);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_alpha_single_value\n");
+}
+
+/* Test: workspace with non-integer value is ignored */
+static void
+test_workspace_non_integer(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Workspace] {abc}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_workspace == false);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_workspace_non_integer\n");
+}
+
+/* Test: dimensions with bad format is ignored */
+static void
+test_dimensions_bad_format(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Dimensions] {only_one}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_dimensions == false);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_dimensions_bad_format\n");
+}
+
+/* Test: position with bad format is ignored */
+static void
+test_position_bad_format(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Position] {bad}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_position == false);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_position_bad_format\n");
+}
+
+/* Test: FocusProtection with Lock flag (compound: Refuse|Deny) */
+static void
+test_focus_protection_lock(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [FocusProtection] {Lock}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_focus_protection);
+	/* Lock = Refuse | Deny */
+	assert(wr->focus_protection & WM_FOCUS_PROT_REFUSE);
+	assert(wr->focus_protection & WM_FOCUS_PROT_DENY);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_focus_protection_lock\n");
+}
+
+/* Test: FocusProtection with unknown flag (silently ignored) */
+static void
+test_focus_protection_unknown(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [FocusProtection] {Gain,UnknownFlag}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_focus_protection);
+	assert(wr->focus_protection & WM_FOCUS_PROT_GAIN);
+	/* Unknown flag doesn't set any bits */
+	assert(!(wr->focus_protection & WM_FOCUS_PROT_DENY));
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_focus_protection_unknown\n");
+}
+
+/* Test: mixed [app] and [group] blocks in one file */
+static void
+test_mixed_app_and_group(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=Firefox)\n"
+		"  [Workspace] {1}\n"
+		"[end]\n"
+		"[group] (workspace)\n"
+		"  [app] (class=term1)\n"
+		"  [app] (class=term2)\n"
+		"[end]\n"
+		"[app] (class=Gimp)\n"
+		"  [Workspace] {2}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	assert(count_window_rules(&rules) == 2);
+	assert(count_group_rules(&rules) == 1);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_mixed_app_and_group\n");
+}
+
+/* Test: unterminated [app] block with settings is still discarded */
+static void
+test_missing_end_with_settings(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=Firefox)\n"
+		"  [Workspace] {1}\n"
+		"  [Sticky] {yes}\n"
+		"  [Dimensions] {800 600}\n"
+		"  [Alpha] {200 150}\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* All the settings were parsed into a rule that got discarded */
+	assert(count_window_rules(&rules) == 0);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_missing_end_with_settings\n");
+}
+
+/* Test: setting line without braces is ignored */
+static void
+test_setting_no_braces(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Workspace] no_braces\n"
+		"  [Sticky] {yes}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	/* Workspace had no braces, so value is empty -> safe_atoi fails */
+	assert(wr->has_workspace == false);
+	/* Sticky should still be parsed */
+	assert(wr->has_sticky && wr->sticky == true);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_setting_no_braces\n");
+}
+
+/* Test: setting name too long (>=64 chars) is skipped */
+static void
+test_setting_name_too_long(void)
+{
+	char buf[512];
+	/* Build a setting name of 70 chars */
+	char long_name[72];
+	memset(long_name, 'A', 70);
+	long_name[70] = '\0';
+	snprintf(buf, sizeof(buf),
+		"[app] (class=test)\n"
+		"  [%s] {yes}\n"
+		"  [Sticky] {yes}\n"
+		"[end]\n", long_name);
+	write_file(TEST_APPS, buf);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	/* The long setting name was skipped, sticky still works */
+	assert(wr->has_sticky && wr->sticky == true);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_setting_name_too_long\n");
+}
+
+/* Test: more than 4 patterns triggers array growth in parse_patterns */
+static void
+test_many_patterns(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=a) (title=b) (name=c) (role=d) (transient=e)\n"
+		"  [Workspace] {1}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	/* 5 patterns means the initial capacity of 4 had to grow */
+	assert(wr->pattern_count == 5);
+	assert(strcmp(wr->patterns[0].property, "class") == 0);
+	assert(strcmp(wr->patterns[1].property, "title") == 0);
+	assert(strcmp(wr->patterns[2].property, "name") == 0);
+	assert(strcmp(wr->patterns[3].property, "role") == 0);
+	assert(strcmp(wr->patterns[4].property, "transient") == 0);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_many_patterns\n");
+}
+
+/* Test: case-insensitive setting names */
+static void
+test_case_insensitive_settings(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [workspace] {1}\n"
+		"  [sticky] {yes}\n"
+		"  [dimensions] {400 300}\n"
+		"  [maximized] {true}\n"
+		"  [fullscreen] {yes}\n"
+		"  [shaded] {true}\n"
+		"  [focusnewwindow] {no}\n"
+		"  [head] {0}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_workspace && wr->workspace == 1);
+	assert(wr->has_sticky && wr->sticky == true);
+	assert(wr->has_dimensions && wr->width == 400 && wr->height == 300);
+	assert(wr->has_maximized && wr->maximized == true);
+	assert(wr->has_fullscreen && wr->fullscreen == true);
+	assert(wr->has_shaded && wr->shaded == true);
+	assert(wr->has_focus_new && wr->focus_new == false);
+	assert(wr->has_head && wr->head == 0);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_case_insensitive_settings\n");
+}
+
+/* Test: remember window with different layer values */
+static void
+test_remember_layers(void)
+{
+	struct {
+		enum wm_view_layer layer;
+		const char *expected;
+	} cases[] = {
+		{WM_LAYER_DESKTOP, "Desktop"},
+		{WM_LAYER_BELOW,   "Below"},
+		{WM_LAYER_NORMAL,  "Normal"},
+		{WM_LAYER_ABOVE,   "Above"},
+	};
+
+	for (int i = 0; i < 4; i++) {
+		const char *path = TEST_DIR "/remember_layers";
+		write_file(path, "");
+
+		struct wm_view view = {0};
+		view.app_id = "test-layer";
+		view.title = "Layer Test";
+		view.layer = cases[i].layer;
+		view.focus_alpha = 255;
+		view.unfocus_alpha = 200;
+
+		struct wm_workspace ws = {0};
+		ws.index = 0;
+		ws.name = "WS";
+		view.workspace = &ws;
+
+		int ret = wm_rules_remember_window(&view, path);
+		assert(ret == 0);
+
+		FILE *f = fopen(path, "r");
+		assert(f);
+		char buf[2048] = {0};
+		size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+		fclose(f);
+		buf[n] = '\0';
+
+		char expected[64];
+		snprintf(expected, sizeof(expected), "[Layer] {%s}",
+			cases[i].expected);
+		assert(strstr(buf, expected) != NULL);
+
+		unlink(path);
+	}
+	printf("  PASS: test_remember_layers\n");
+}
+
+/* Test: remember window without workspace (index defaults to 0) */
+static void
+test_remember_no_workspace(void)
+{
+	const char *path = TEST_DIR "/remember_no_ws";
+	write_file(path, "");
+
+	struct wm_view view = {0};
+	view.app_id = "no-ws-app";
+	view.title = "No WS";
+	view.workspace = NULL;  /* No workspace assigned */
+	view.layer = WM_LAYER_NORMAL;
+	view.focus_alpha = 255;
+	view.unfocus_alpha = 255;
+
+	int ret = wm_rules_remember_window(&view, path);
+	assert(ret == 0);
+
+	FILE *f = fopen(path, "r");
+	assert(f);
+	char buf[2048] = {0};
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+
+	assert(strstr(buf, "[Workspace] {0}") != NULL);
+
+	unlink(path);
+	printf("  PASS: test_remember_no_workspace\n");
+}
+
+/* Test: remember window with NULL app_id uses "unknown" */
+static void
+test_remember_null_app_id(void)
+{
+	const char *path = TEST_DIR "/remember_null_id";
+	write_file(path, "");
+
+	struct wm_view view = {0};
+	view.app_id = NULL;
+	view.title = "";
+	view.layer = WM_LAYER_NORMAL;
+	view.focus_alpha = 255;
+	view.unfocus_alpha = 255;
+
+	struct wm_workspace ws = {0};
+	ws.index = 0;
+	ws.name = "WS";
+	view.workspace = &ws;
+
+	int ret = wm_rules_remember_window(&view, path);
+	assert(ret == 0);
+
+	FILE *f = fopen(path, "r");
+	assert(f);
+	char buf[2048] = {0};
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+
+	assert(strstr(buf, "(class=unknown)") != NULL);
+
+	unlink(path);
+	printf("  PASS: test_remember_null_app_id\n");
+}
+
+/* Test: [end] that appears outside any block is harmless */
+static void
+test_stray_end(void)
+{
+	write_file(TEST_APPS,
+		"[end]\n"
+		"[app] (class=test)\n"
+		"  [Workspace] {1}\n"
+		"[end]\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	assert(count_window_rules(&rules) == 1);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_stray_end\n");
+}
+
+/* Test: [app] header with case-insensitive matching */
+static void
+test_app_header_case(void)
+{
+	write_file(TEST_APPS,
+		"[APP] (class=test)\n"
+		"  [Workspace] {1}\n"
+		"[END]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	/* strncasecmp is used, so [APP] and [END] should work */
+	assert(count_window_rules(&rules) == 1);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_app_header_case\n");
+}
+
+/* Test: [group] header with case-insensitive matching */
+static void
+test_group_header_case(void)
+{
+	write_file(TEST_APPS,
+		"[GROUP] (workspace)\n"
+		"  [app] (class=test)\n"
+		"[END]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	assert(count_group_rules(&rules) == 1);
+	struct wm_group_rule *gr;
+	wl_list_for_each(gr, &rules.group_rules, link) {
+		assert(gr->workspace_scope == true);
+		break;
+	}
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_group_header_case\n");
+}
+
+/* Test: wm_rules_apply with fullscreen flag (no xdg_toplevel) */
+static void
+test_apply_fullscreen(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=game)\n"
+		"  [Fullscreen] {yes}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_view view = {0};
+	view.app_id = "game";
+	view.title = "";
+	view.fullscreen = false;
+
+	wm_rules_apply(&rules, &view);
+
+	/* Fullscreen flag should be set even without xdg_toplevel */
+	assert(view.fullscreen == true);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_apply_fullscreen\n");
+}
+
+/* Test: Head setting with non-integer value is ignored */
+static void
+test_head_non_integer(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Head] {primary}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_head == false);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_head_non_integer\n");
+}
+
+/* Test: Layer with non-integer value is ignored */
+static void
+test_layer_non_integer(void)
+{
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Layer] {above}\n"
+		"[end]\n"
+	);
+
+	struct wm_rules rules;
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+
+	struct wm_window_rule *wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_layer == false);
+
+	wm_rules_finish(&rules);
+	printf("  PASS: test_layer_non_integer\n");
+}
+
 int
 main(void)
 {
@@ -1029,6 +1950,40 @@ main(void)
 	test_mixed_settings();
 	test_unknown_setting();
 	test_missing_end_group();
+
+	/* New tests */
+	test_name_property();
+	test_role_property();
+	test_transient_property();
+	test_apply_basic();
+	test_apply_first_match_wins();
+	test_apply_no_match();
+	test_apply_negate();
+	test_apply_multi_pattern_and();
+	test_apply_title_match();
+	test_apply_null_app_id();
+	test_apply_no_patterns();
+	test_alpha_single_value();
+	test_workspace_non_integer();
+	test_dimensions_bad_format();
+	test_position_bad_format();
+	test_focus_protection_lock();
+	test_focus_protection_unknown();
+	test_mixed_app_and_group();
+	test_missing_end_with_settings();
+	test_setting_no_braces();
+	test_setting_name_too_long();
+	test_many_patterns();
+	test_case_insensitive_settings();
+	test_remember_layers();
+	test_remember_no_workspace();
+	test_remember_null_app_id();
+	test_stray_end();
+	test_app_header_case();
+	test_group_header_case();
+	test_apply_fullscreen();
+	test_head_non_integer();
+	test_layer_non_integer();
 
 	cleanup();
 	printf("All rules tests passed.\n");
