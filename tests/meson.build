@@ -203,6 +203,17 @@ test_decoration_logic = executable(
 )
 test('decoration_logic', test_decoration_logic)
 
+# --- test_foreign_toplevel: foreign toplevel management unit tests ---
+# foreign_toplevel.c is #included directly in the test to allow stubbing wlroots deps.
+test_foreign_toplevel = executable(
+  'test_foreign_toplevel',
+  files('test_foreign_toplevel.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('foreign_toplevel', test_foreign_toplevel)
+
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
 if wayland_client.found()
@@ -230,6 +241,81 @@ if wayland_client.found()
     'xdg-shell-protocol.c',
     input: xdg_shell_xml,
     output: 'xdg-shell-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- Layer shell client protocol (wlroots, local XML) ---
+  layer_shell_xml = meson.project_source_root() / 'protocols/wlr-layer-shell-unstable-v1.xml'
+  layer_shell_client_h = custom_target(
+    'wlr-layer-shell-unstable-v1-client-protocol.h',
+    input: layer_shell_xml,
+    output: 'wlr-layer-shell-unstable-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  layer_shell_code = custom_target(
+    'wlr-layer-shell-unstable-v1-protocol.c',
+    input: layer_shell_xml,
+    output: 'wlr-layer-shell-unstable-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- Session lock client protocol ---
+  session_lock_xml = wl_protocol_dir / 'staging/ext-session-lock/ext-session-lock-v1.xml'
+  session_lock_client_h = custom_target(
+    'ext-session-lock-v1-client-protocol.h',
+    input: session_lock_xml,
+    output: 'ext-session-lock-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  session_lock_code = custom_target(
+    'ext-session-lock-v1-protocol.c',
+    input: session_lock_xml,
+    output: 'ext-session-lock-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- Idle inhibit client protocol ---
+  idle_inhibit_xml = wl_protocol_dir / 'unstable/idle-inhibit/idle-inhibit-unstable-v1.xml'
+  idle_inhibit_client_h = custom_target(
+    'idle-inhibit-unstable-v1-client-protocol.h',
+    input: idle_inhibit_xml,
+    output: 'idle-inhibit-unstable-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  idle_inhibit_code = custom_target(
+    'idle-inhibit-unstable-v1-protocol.c',
+    input: idle_inhibit_xml,
+    output: 'idle-inhibit-unstable-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- Idle notify client protocol ---
+  idle_notify_xml = wl_protocol_dir / 'staging/ext-idle-notify/ext-idle-notify-v1.xml'
+  idle_notify_client_h = custom_target(
+    'ext-idle-notify-v1-client-protocol.h',
+    input: idle_notify_xml,
+    output: 'ext-idle-notify-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  idle_notify_code = custom_target(
+    'ext-idle-notify-v1-protocol.c',
+    input: idle_notify_xml,
+    output: 'ext-idle-notify-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- Foreign toplevel list client protocol ---
+  foreign_toplevel_list_xml = wl_protocol_dir / 'staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml'
+  foreign_toplevel_list_client_h = custom_target(
+    'ext-foreign-toplevel-list-v1-client-protocol.h',
+    input: foreign_toplevel_list_xml,
+    output: 'ext-foreign-toplevel-list-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  foreign_toplevel_list_code = custom_target(
+    'ext-foreign-toplevel-list-v1-protocol.c',
+    input: foreign_toplevel_list_xml,
+    output: 'ext-foreign-toplevel-list-v1-protocol.c',
     command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
   )
 
@@ -272,6 +358,41 @@ if wayland_client.found()
     install: false,
   )
   test('multi_client', test_multi_client, timeout: 30)
+
+  # --- test_layer_shell: layer shell protocol tests ---
+  test_layer_shell = executable(
+    'test_layer_shell',
+    files('test_layer_shell.c'),
+    layer_shell_client_h,
+    layer_shell_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    c_args: ['-Wno-unused-parameter'],
+    install: false,
+  )
+  test('layer_shell', test_layer_shell, timeout: 10)
+
+  # --- test_session_lock: session lock protocol tests ---
+  test_session_lock = executable('test_session_lock',
+    files('test_session_lock.c'),
+    session_lock_client_h, session_lock_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    c_args: ['-Wno-unused-parameter'],
+    install: false,
+  )
+  test('session_lock', test_session_lock, timeout: 10)
+
+  # --- test_idle: idle inhibit protocol tests ---
+  test_idle = executable('test_idle',
+    files('test_idle.c'),
+    idle_inhibit_client_h, idle_inhibit_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    c_args: ['-Wno-unused-parameter'],
+    install: false,
+  )
+  test('idle', test_idle, timeout: 10)
 endif
 
 # --- Visual regression tests (decoration rendering) ---
