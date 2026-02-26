@@ -2,11 +2,11 @@
 
 ## Current Status (Updated 2026-02-26)
 
-**Current state:** 57.7% line coverage (8,908 / 15,442 executable lines) across 46 source modules
+**Current state:** 75.4% line coverage (11,643 / 15,442 executable lines) across 47 source modules
 **Target:** 90% line coverage
-**Realistic ceiling:** ~75-80% (unit + integration), ~84% theoretical max
-**Test files:** 33 (up from 15 at baseline)
-**All tests passing:** 33/33
+**Realistic ceiling:** ~80-84% theoretical max
+**Test files:** 35 (up from 15 at baseline)
+**All tests passing:** 36/36
 
 ### Phases Completed
 
@@ -18,63 +18,58 @@
 | 3 | Protocol Integration Tests | +5 files, ~41 tests | 51.0% |
 | 4 | Hard Modules (keyboard, cursor, xwayland, placement, render) | +3 files, ~132 tests | 56.7% |
 | 5 | Polish (IPC server, systray, main CLI, autostart) | +3 files, ~49 tests | 57.7% |
-| 5b | Coverage push (rules, view, menu, decoration, workspace) | In progress | ~65% est |
+| 5b | Deep push (rules, view, menu, decoration, workspace) | Extended 5 files | 61.9% |
+| 6 | Deep Coverage Push (toolbar, ipc, output, slit, placement) | Extended + new files | 68.7% |
+| 7 | Coverage push (keyboard, menu, cursor snap, more) | Extended 4 files | 70.9% |
+| 8 | Final push (cursor, keyboard, menu, server, systray) | +1 new file, extended 4 | 75.4% |
 
 ### Key Decisions Made
 - **No shared mock framework needed:** The `#include "source.c"` pattern with header guards
   scaled successfully to all modules including the hardest ones (keyboard.c at 2908 lines)
-- **No keyboard.c refactoring needed:** Achieved 50.1% coverage with extensive stubs instead
-  of the originally proposed vtable refactoring
+- **Keyboard refactor deferred:** Achieved 82.5% coverage via extensive stubs, deferring the
+  vtable refactoring as a future TODO since diminishing returns
 - **Protocol headers generated:** wayland-scanner client headers for layer-shell, session-lock,
   idle-inhibit, idle-notify via Meson custom_target()
 - **Integration tests work:** Headless compositor fork + Wayland client pattern covers protocol code
+- **D-Bus stubs:** Configurable sd_bus stubs with stdarg.h enabled testing systray D-Bus callbacks
 
 ---
 
 ## What Remains (Future Sessions)
 
-### Phase 6: Deep Coverage Push (est. → 70-75%)
-
-These modules have testable code paths remaining but need careful stub work:
-
-| Module | Current | Target | Approach | Effort |
-|--------|---------|--------|----------|--------|
-| toolbar.c | 72.6% | 85% | Extend test_toolbar_layout.c: more layout edge cases, iconbar update | MEDIUM |
-| ipc.c | 60.4% | 80% | Extend test_ipc_server.c: socket accept, full lifecycle | MEDIUM |
-| server.c | 59.3% | 75% | Extend integration tests: reconfigure, destroy paths | MEDIUM |
-| output.c | 65.2% | 80% | NEW test_output.c: output add/remove, mode selection | MEDIUM |
-| output_management.c | 39.8% | 60% | NEW test_output_mgmt.c: config apply/test paths | MEDIUM |
-| slit.c | 58.7% | 70% | Extend test_slit.c: more layout edge cases | EASY |
-| placement.c | 53.3% | 70% | Extend test_placement.c: more strategy edge cases | EASY |
-
-**Estimated gain: +7-10 percentage points**
-
-### Phase 7: Keyboard Refactoring (TODO — deferred)
+### Keyboard Refactoring (TODO — deferred)
 
 The highest single-module ROI remaining. Deferred as a future TODO — current keyboard.c
-is at 64.8% via extensive stubs, and this refactor is a significant architectural change.
+is at 82.5% via extensive stubs, and this refactor is a significant architectural change.
 
 - **Refactor keyboard.c** into:
   - `keyboard_actions.c/h` — action dispatch via vtable (70 function pointers)
   - `condition_eval.c/h` — `evaluate_condition()`, `match_property()`, `bool_match()`
   - `chain_state.c/h` — chain timeout state machine
-- This would make the remaining ~35% of keyboard.c (event handlers, key processing)
+- This would make the remaining ~17% of keyboard.c (event handlers, key processing)
   testable via the vtable pattern instead of 65+ individual stubs
-- **Estimated gain: keyboard.c 64.8% → 80%+, overall +2-3%**
+- **Estimated gain: keyboard.c 82.5% → 90%+, overall +1%**
 - **Prerequisite:** Should be done when there's appetite for a larger refactor, not just test additions
 
-### Phase 8: Advanced Integration Tests (est. → 80-84%)
+### Remaining Module Targets (est. → 78-80%)
 
-Deeper integration test coverage for protocol handlers:
+| Module | Current | Target | Approach | Effort |
+|--------|---------|--------|----------|--------|
+| protocols.c | 38.2% | 55% | Exercise more _create() paths via real clients | MEDIUM |
+| session_lock.c | 73.8% | 85% | More lock/unlock lifecycle edge cases | EASY |
+| main.c | 64.8% | 75% | CLI flag parsing edge cases | EASY |
+| autostart.c | 53.7% | 70% | More startup file parsing paths | EASY |
+
+**Estimated gain: +2-4 percentage points**
+
+### XWayland Integration Tests (est. → 80-82%)
 
 | Module | Current | Approach |
 |--------|---------|----------|
-| cursor.c | 16.5% | Multi-client move/resize integration tests |
-| xwayland.c | 14.5% | XWayland surface lifecycle integration (requires XWayland in test) |
-| output_management.c | 39.8% | Full config apply/test cycle via protocol |
+| xwayland.c | 14.5% | XWayland surface lifecycle (requires XWayland in test env) |
 | protocols.c | 38.2% | Exercise more protocol _create() paths via real clients |
 
-**Estimated gain: +5-8 percentage points**
+**Estimated gain: +2-3 percentage points**
 
 ---
 
@@ -84,7 +79,7 @@ These modules or code paths realistically **cannot** reach high coverage:
 
 | Module/Path | Reason | Realistic Max |
 |-------------|--------|---------------|
-| cursor.c event handlers | Deeply coupled to wlr_cursor, scene graph, touch/gesture protocols | 30% |
+| cursor.c event handlers | Remaining 60% is deeply coupled wlr_cursor/scene graph glue | ~40% |
 | input.c (22.0%) | 100% wlroots event handler glue | 22% (integration only) |
 | text_input.c (12.6%) | Needs simultaneous text-input-v3 + input-method-v2 clients | 15% |
 | tablet.c (4.5%) | Requires tablet hardware simulation | 5% |
@@ -103,52 +98,52 @@ These modules or code paths realistically **cannot** reach high coverage:
 | Module | Lines | Current % | Status |
 |--------|-------|-----------|--------|
 | foreign_toplevel.c | 119 | 96.6% | DONE |
+| placement.c | 394 | 93.1% | DONE |
+| server.c | 285 | 92.6% | DONE |
+| decoration.c | 953 | 92.2% | DONE |
+| output.c | 115 | 89.6% | DONE |
 | tabgroup.c | 153 | 89.5% | DONE |
 | mousebind.c | 296 | 87.8% | DONE |
 | validate.c | 409 | 87.3% | DONE |
+| systray.c | 364 | 87.1% | DONE |
+| util.h | 23 | 87.0% | DONE |
 | animation.c | 71 | 85.9% | DONE |
 | config.c | 628 | 84.6% | DONE |
+| output_management.c | 108 | 84.3% | DONE |
+| rules.c | 486 | 83.3% | DONE |
 | style.c | 582 | 83.7% | DONE |
 | layer_shell.c | 206 | 83.0% | DONE |
 | keybind.c | 561 | 82.9% | DONE |
 | ipc_commands.c | 984 | 82.6% | DONE |
+| keyboard.c | 1064 | 82.5% | DONE (refactor TODO) |
 | focus_nav.c | 139 | 82.0% | DONE |
+| workspace.c | 274 | 81.8% | DONE |
+| toolbar.c | 850 | 81.5% | DONE |
+| slit.c | 506 | 80.8% | DONE |
 | render.c | 421 | 80.8% | DONE |
+| view.c | 937 | 80.4% | DONE |
+| menu.c | 1554 | 80.0% | DONE |
 | rcparser.c | 110 | 80.0% | DONE |
 | session_lock.c | 168 | 73.8% | DONE |
-| toolbar.c | 850 | 72.6% | Phase 6 |
+| fractional_scale.c | 7 | 71.4% | SKIP |
+| ipc.c | 222 | 70.7% | DONE |
 | idle.c | 65 | 70.8% | DONE |
 | main.c | 71 | 64.8% | DONE |
-| output.c | 115 | 65.2% | Phase 6 |
-| rules.c | 486 | 62.3% | Phase 5b (in progress) |
-| ipc.c | 222 | 60.4% | Phase 6 |
-| server.c | 285 | 59.3% | Phase 6 |
-| slit.c | 506 | 58.7% | Phase 6 |
-| decoration.c | 953 | 57.4% | Phase 5b (in progress) |
+| style.h | 8 | 100% | DONE |
+| screencopy.c | 11 | 63.6% | SKIP |
+| viewporter.c | 11 | 63.6% | SKIP |
+| presentation.c | 6 | 66.7% | SKIP |
+| drm_syncobj.c | 13 | 61.5% | SKIP |
 | autostart.c | 54 | 53.7% | DONE |
-| placement.c | 394 | 53.3% | Phase 6 |
-| workspace.c | 274 | 51.1% | Phase 5b (in progress) |
-| keyboard.c | 1064 | 50.1% | Phase 7 (refactor) |
-| menu.c | 1554 | 44.7% | Phase 5b (in progress) |
-| view.c | 937 | 40.8% | Phase 5b (in progress) |
-| output_management.c | 108 | 39.8% | Phase 6 |
-| protocols.c | 249 | 38.2% | Phase 8 |
-| systray.c | 364 | 33.8% | DONE |
-| gamma_control.c | 32 | 21.9% | SKIP |
+| transient_seat.c | 25 | 48.0% | SKIP |
+| drm_lease.c | 26 | 42.3% | SKIP |
+| cursor.c | 953 | 39.5% | DONE |
+| protocols.c | 249 | 38.2% | Future |
 | input.c | 100 | 22.0% | SKIP |
-| cursor.c | 953 | 16.5% | Phase 8 |
-| xwayland.c | 392 | 14.5% | Phase 8 |
+| gamma_control.c | 32 | 21.9% | SKIP |
+| xwayland.c | 392 | 14.5% | Future |
 | text_input.c | 214 | 12.6% | SKIP |
 | tablet.c | 223 | 4.5% | SKIP |
-| drm_lease.c | 26 | 42.3% | SKIP |
-| drm_syncobj.c | 13 | 61.5% | SKIP |
-| fractional_scale.c | 7 | 71.4% | SKIP |
-| presentation.c | 6 | 66.7% | SKIP |
-| screencopy.c | 11 | 63.6% | SKIP |
-| transient_seat.c | 25 | 48.0% | SKIP |
-| viewporter.c | 11 | 63.6% | SKIP |
-| style.h | 8 | 100% | DONE |
-| util.h | 23 | 82.6% | DONE |
 
 ---
 
