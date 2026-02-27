@@ -1,0 +1,62 @@
+"""TC-PLACE: Window placement tests for fluxland compositor.
+
+Tests that the compositor's placement policy correctly positions
+new windows to avoid overlap and stay within output bounds.
+"""
+
+import time
+
+import pytest
+
+SETTLE = 0.2
+
+
+class TestWindowPlacement:
+    """Test window placement policy behavior."""
+
+    def test_default_placement_policy(self, ipc):
+        """Verify default placement policy is row_smart."""
+        config = ipc.get_config()
+        assert config["placement_policy"] == "row_smart"
+
+    def test_windows_get_different_positions(self, ipc, windows):
+        """Smart placement should give windows different positions."""
+        windows.open_many(3, prefix="Place")
+        time.sleep(SETTLE)
+
+        positions = []
+        for i in range(3):
+            win = ipc.get_window_by_title(f"Place{i+1}")
+            assert win is not None, f"Place {i+1} not found"
+            positions.append((win["x"], win["y"]))
+
+        # Not all windows should be at the same position
+        unique_positions = set(positions)
+        assert len(unique_positions) > 1, (
+            f"All windows placed at same position: {positions}"
+        )
+
+    def test_windows_within_output_bounds(self, ipc, windows):
+        """All placed windows should be within output bounds."""
+        output = ipc.get_outputs()[0]
+        out_w = output["width"]
+        out_h = output["height"]
+
+        windows.open_many(3, prefix="Bounds")
+        time.sleep(SETTLE)
+
+        for i in range(3):
+            win = ipc.get_window_by_title(f"Bounds{i+1}")
+            assert win is not None, f"Bounds {i+1} not found"
+            assert win["x"] >= 0, (
+                f"Window x={win['x']} is negative"
+            )
+            assert win["y"] >= 0, (
+                f"Window y={win['y']} is negative"
+            )
+            assert win["x"] < out_w, (
+                f"Window x={win['x']} exceeds output width {out_w}"
+            )
+            assert win["y"] < out_h, (
+                f"Window y={win['y']} exceeds output height {out_h}"
+            )

@@ -1,0 +1,12 @@
+session.screen0.workspaces: 4
+session.screen0.workspaceNames: One,Two,Three,Four
+session.screen0.focusModel: ClickToFocus
+session.screen0.clickRaises: true
+session.screen0.opaqueMove: true
+session.screen0.opaqueResize: true
+session.screen0.edgeSnapThreshold: 10
+session.screen0.windowPlacement: RowSmartPlacement
+session.screen0.toolbar.visible: true
+session.screen0.toolbar.placement: BottomCenter
+session.screen0.toolbar.widthPercent: 100
+session.styleFile: /path/to/fluxland/data/fluxland-hc-dark.style

@@ -1,0 +1,45 @@
+name: UI Tests (Headless)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ui-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build \
+            libwlroots-dev libwayland-dev libxkbcommon-dev \
+            libpango1.0-dev libcairo2-dev libpixman-1-dev \
+            libinput-dev libudev-dev libseat-dev libxcb1-dev \
+            wayland-protocols libdrm-dev \
+            foot python3-pytest
+
+      - name: Build fluxland
+        run: |
+          meson setup build
+          ninja -C build
+
+      - name: Run headless UI tests
+        run: |
+          cd tests/ui
+          python3 -m pytest -v --tb=short 2>&1 | tee results.log
+        env:
+          FLUXLAND_TEST_HEADLESS: "1"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: |
+            tests/ui/results.log
+            tests/ui/results/
