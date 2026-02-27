@@ -1,0 +1,11 @@
+fluxland (1.0.0-1) unstable; urgency=medium
+
+  * Release 1.0.0.
+
+ -- fluxland contributors <fluxland@example.com>  Thu, 27 Feb 2026 00:00:00 +0000
+
+fluxland (0.1.0~dev-1) unstable; urgency=medium
+
+  * Initial packaging.
+
+ -- fluxland contributors <fluxland@example.com>  Tue, 25 Feb 2026 00:00:00 +0000
