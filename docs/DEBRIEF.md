@@ -16,9 +16,13 @@ tags:
 author: Micheal
 ---
 
-I used [Fluxbox](http://fluxbox.org/) for fourteen years. Starting around 2000, it lived on every system I owned. In college, my desktop was Fluxbox with [xmms](https://en.wikipedia.org/wiki/XMMS), [gkrellm](http://gkrellm.srcbox.net/), [aterm](https://en.wikipedia.org/wiki/Aterm), and the rest of the classic X11 toolkit. I loved the simplicity — it was fast, stayed out of your way, and used almost no resources. But what really got me was the aesthetic. You could customize every pixel of the decorations, the toolbar, the menus. You could make a desktop that just *looked cool*. Sitting in front of that setup felt like living in the future. If you were running Linux in the early 2000s, you know [exactly what I mean](https://www.ecliptik.com/blog/2008/Screenshots-Over-the-Years/). The last machine I ran it on was a work-issued ThinkPad X61s around 2014. I even had a Fluxbox t-shirt.
+I used [Fluxbox](http://fluxbox.org/) for fourteen years. Starting around 2000, it lived on every system I owned. In college, my desktop was Fluxbox with [xmms](https://en.wikipedia.org/wiki/XMMS), [gkrellm](http://gkrellm.srcbox.net/), [aterm](https://en.wikipedia.org/wiki/Aterm), and the rest of the classic X11 toolkit.
 
-Then the world moved on. X11 gave way to Wayland. Fluxbox stayed behind. I moved through GNOME, then Sway, but nothing felt the same.
+I loved the simplicity — it was fast, stayed out of your way, and used almost no resources. But what really got me was the ａｅｓｔｈｅｔｉｃ. You could customize every pixel of the decorations, the toolbar, the menus. You could make a desktop that just *looked cool*. Sitting in front of that setup felt like living in the future.
+
+If you were running Linux in the early 2000s, you know [exactly what I mean](https://www.ecliptik.com/blog/2008/Screenshots-Over-the-Years/). The last machine I ran it on was a work-issued ThinkPad X61s around 2014. I even had a Fluxbox t-shirt.
+
+Then the world moved on. X11 gave way to Wayland. Fluxbox stayed behind. I moved through GNOME, then Cinnamon and macOS, but nothing felt the same.
 
 In February 2026, I built Fluxbox again — for Wayland — in 6 active development days. I directed every decision, reviewed every output, triaged every bug, and managed the entire process. But I didn't write a single line of code. Claude did.
 
