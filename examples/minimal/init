@@ -1,0 +1,31 @@
+# fluxland minimal configuration
+# A bare-minimum setup for new users. Start here and customize.
+#
+# Usage:
+#   cp -r examples/minimal/* ~/.config/fluxland/
+
+# -------------------------------------------------------------------
+# Workspaces
+# -------------------------------------------------------------------
+
+session.screen0.workspaces: 4
+session.screen0.workspaceNames: One, Two, Three, Four
+
+# -------------------------------------------------------------------
+# Focus and behavior
+# -------------------------------------------------------------------
+
+session.screen0.focusModel: ClickToFocus
+session.screen0.clickRaises: true
+session.screen0.focusNewWindows: true
+session.screen0.opaqueMove: true
+session.screen0.edgeSnapThreshold: 10
+session.screen0.windowPlacement: RowSmartPlacement
+
+# -------------------------------------------------------------------
+# Toolbar
+# -------------------------------------------------------------------
+
+session.screen0.toolbar.visible: true
+session.screen0.toolbar.placement: BottomCenter
+session.screen0.toolbar.widthPercent: 100

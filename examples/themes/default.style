@@ -1,0 +1,131 @@
+# fluxland default style (theme)
+# A clean, modern Fluxbox-inspired theme with dark colors.
+# Place custom styles in: ~/.config/fluxland/styles/
+#
+# Texture syntax:
+#   Flat, Raised, or Sunken
+#   Solid or Gradient (Horizontal, Vertical, Diagonal, CrossDiagonal,
+#                      PipeCross, Elliptic, Rectangle, Pyramid)
+#   Bevel1 or Bevel2 (raised/sunken bevel style)
+#   Interlaced (striped overlay effect)
+#   ParentRelative (inherit from parent element)
+#
+# Color formats: #RRGGBB, #RGB, rgb:R/G/B, or named (white, black, etc.)
+# Font syntax:  family-size:bold:italic
+
+# -------------------------------------------------------------------
+# Window titlebar
+# -------------------------------------------------------------------
+
+window.title.focus:                 Raised Gradient Vertical
+window.title.focus.color:           #3b4252
+window.title.focus.colorTo:         #2e3440
+window.title.unfocus:               Flat Solid
+window.title.unfocus.color:         #2e3440
+window.title.unfocus.colorTo:       #2e3440
+window.title.height:                22
+
+# -------------------------------------------------------------------
+# Window label (title text area within titlebar)
+# -------------------------------------------------------------------
+
+window.label.focus:                 Flat Solid
+window.label.focus.color:           #3b4252
+window.label.focus.textColor:       #eceff4
+window.label.unfocus:               Flat Solid
+window.label.unfocus.color:         #2e3440
+window.label.unfocus.textColor:     #4c566a
+window.label.active:                Flat Solid
+window.label.active.color:          #434c5e
+window.label.active.textColor:      #d8dee9
+
+window.label.focus.font:            sans-11:bold
+window.label.unfocus.font:          sans-11
+
+window.justify:                     Center
+
+# -------------------------------------------------------------------
+# Window buttons (close, maximize, minimize, shade, stick)
+# -------------------------------------------------------------------
+
+window.button.focus:                Raised Gradient Vertical
+window.button.focus.color:          #434c5e
+window.button.focus.colorTo:        #3b4252
+window.button.unfocus:              Flat Solid
+window.button.unfocus.color:        #3b4252
+window.button.unfocus.colorTo:      #2e3440
+window.button.pressed:              Sunken Solid
+window.button.pressed.color:        #2e3440
+
+window.button.focus.picColor:       #d8dee9
+window.button.unfocus.picColor:     #4c566a
+window.button.pressed.picColor:     #88c0d0
+
+# -------------------------------------------------------------------
+# Window handle (bottom resize bar) and grips (corner resize)
+# -------------------------------------------------------------------
+
+window.handle.focus:                Flat Solid
+window.handle.focus.color:          #3b4252
+window.handle.unfocus:              Flat Solid
+window.handle.unfocus.color:        #2e3440
+window.handleWidth:                 4
+
+window.grip.focus:                  Flat Solid
+window.grip.focus.color:            #4c566a
+window.grip.unfocus:                Flat Solid
+window.grip.unfocus.color:          #3b4252
+
+# -------------------------------------------------------------------
+# Window frame and border
+# -------------------------------------------------------------------
+
+window.frame.focusColor:            #3b4252
+window.frame.unfocusColor:          #2e3440
+window.borderColor:                 #1a1d23
+window.borderWidth:                 1
+window.bevelWidth:                  1
+
+# Focus border (accessibility: highlighted border around focused windows)
+window.focus.border.width:          0
+window.focus.border.color:          #88c0d0
+
+# Rounded corners: TopLeft TopRight BottomLeft BottomRight
+# window.roundCorners:              TopLeft TopRight
+
+# -------------------------------------------------------------------
+# Menu
+# -------------------------------------------------------------------
+
+menu.title:                         Raised Gradient Vertical
+menu.title.color:                   #3b4252
+menu.title.colorTo:                 #2e3440
+menu.title.textColor:               #eceff4
+menu.title.font:                    sans-11:bold
+menu.title.justify:                 Center
+
+menu.frame:                         Flat Solid
+menu.frame.color:                   #2e3440
+menu.frame.textColor:               #d8dee9
+menu.frame.font:                    sans-10
+
+menu.hilite:                        Flat Solid
+menu.hilite.color:                  #5e81ac
+menu.hilite.textColor:              #eceff4
+
+menu.borderColor:                   #1a1d23
+menu.borderWidth:                   1
+
+# -------------------------------------------------------------------
+# Toolbar
+# -------------------------------------------------------------------
+
+toolbar:                            Flat Solid
+toolbar.color:                      #2e3440
+toolbar.textColor:                  #d8dee9
+toolbar.font:                       sans-10
+
+toolbar.iconbar.focused.color:      #5e81ac
+toolbar.iconbar.focused.textColor:  #eceff4
+toolbar.iconbar.unfocused.color:    #3b4252
+toolbar.iconbar.unfocused.textColor:#7b88a1

@@ -1,0 +1,359 @@
+# fluxland keybindings
+# Format: [Modifier ...] key :Action [argument]
+#
+# Modifiers: Mod1 (Alt), Mod4 (Super), Control, Shift, None
+# Key names follow XKB naming conventions (e.g. Return, space, Tab).
+# See fluxbox-keys(5) for detailed format documentation.
+#
+# Mouse bindings:
+#   Context Mouse<button>  :Action
+#   Context Move<button>   :Action   (drag)
+#   Context Double<button> :Action   (double-click)
+#
+# Contexts: OnTitlebar, OnDesktop, OnWindow, OnWindowBorder,
+#           OnLeftGrip, OnRightGrip, OnToolbar
+#
+# Meta-commands:
+#   MacroCmd {Action1} {Action2} ...   - run multiple actions
+#   ToggleCmd {Action1} {Action2}      - cycle through actions
+#
+# Key chains (multi-key sequences):
+#   Mod4 x Mod4 t :Exec foot          - press Mod4+x, then Mod4+t
+#
+# Keymodes (modal keybindings):
+#   modename: key :Action              - binding active in named mode
+#   Mod4 v :KeyMode modename Escape    - enter mode (Escape exits)
+
+# -------------------------------------------------------------------
+# Application launchers
+# -------------------------------------------------------------------
+
+# Terminal emulator
+Mod4 Return :Exec foot
+
+# Application launcher (install: wofi, bemenu, or fuzzel)
+Mod4 d :Exec wofi --show drun
+
+# Web browser
+Mod4 b :Exec firefox
+
+# File manager
+Mod4 e :Exec thunar
+
+# -------------------------------------------------------------------
+# Window close / kill
+# -------------------------------------------------------------------
+
+# Close the focused window gracefully
+Mod4 Shift q :Close
+
+# Force-kill an unresponsive window (sends SIGKILL)
+Mod4 Shift x :Kill
+
+# -------------------------------------------------------------------
+# Window state toggles
+# -------------------------------------------------------------------
+
+# Toggle fullscreen
+Mod4 f :Fullscreen
+
+# Toggle maximize (both directions)
+Mod4 m :Maximize
+
+# Maximize vertically only
+Mod4 Shift m :MaximizeVertical
+
+# Maximize horizontally only
+Mod4 Control m :MaximizeHorizontal
+
+# Minimize (iconify) the focused window
+Mod4 n :Minimize
+
+# Restore a minimized window
+Mod4 Shift n :Deiconify
+
+# Toggle window shading (collapse to title bar)
+Mod4 s :Shade
+
+# Toggle sticky (visible on all workspaces)
+Mod4 Shift s :Stick
+
+# Toggle window decoration
+Mod4 t :ToggleDecor
+
+# Set specific decoration presets
+# Mod4 Shift t :SetDecor NONE
+# Mod4 Control t :SetDecor BORDER
+
+# Show desktop (minimize all on current workspace)
+Mod4 Shift d :ShowDesktop
+
+# -------------------------------------------------------------------
+# Window focus cycling
+# -------------------------------------------------------------------
+
+# Alt-Tab / Shift-Alt-Tab: cycle through windows
+Mod1 Tab :NextWindow
+Mod1 Shift Tab :PrevWindow
+
+# Alternative focus cycling (same as NextWindow/PrevWindow)
+# Mod4 j :FocusNext
+# Mod4 k :FocusPrev
+
+# -------------------------------------------------------------------
+# Window movement (keyboard)
+# -------------------------------------------------------------------
+
+Mod4 Left :MoveLeft 20
+Mod4 Right :MoveRight 20
+Mod4 Up :MoveUp 20
+Mod4 Down :MoveDown 20
+
+# Fine-grained movement (1 pixel at a time)
+Mod4 Shift Left :MoveLeft 1
+Mod4 Shift Right :MoveRight 1
+Mod4 Shift Up :MoveUp 1
+Mod4 Shift Down :MoveDown 1
+
+# Move window to an absolute position
+# Mod4 c :MoveTo 0 0
+
+# -------------------------------------------------------------------
+# Window resizing (keyboard)
+# -------------------------------------------------------------------
+
+# Resize to specific dimensions
+# Mod4 Control r :ResizeTo 640 480
+
+# -------------------------------------------------------------------
+# Window layer management
+# -------------------------------------------------------------------
+
+# Raise/lower the focused window
+Mod4 Prior :Raise
+Mod4 Next :Lower
+
+# Move window up/down in stacking layers
+Mod4 Shift Prior :RaiseLayer
+Mod4 Shift Next :LowerLayer
+
+# Set layer explicitly via key chain: Mod4+l then a/n/b
+Mod4 l a :SetLayer Above
+Mod4 l n :SetLayer Normal
+Mod4 l b :SetLayer Below
+
+# -------------------------------------------------------------------
+# Window arrangement
+# -------------------------------------------------------------------
+
+# Tile all windows in a grid layout
+Mod4 g :ArrangeWindows
+
+# Tile windows in vertical columns
+Mod4 Shift v :ArrangeWindowsVertical
+
+# Tile windows in horizontal rows
+Mod4 Shift h :ArrangeWindowsHorizontal
+
+# Cascade windows from top-left
+Mod4 Shift c :CascadeWindows
+
+# -------------------------------------------------------------------
+# Window list
+# -------------------------------------------------------------------
+
+# Show window list menu
+Mod4 w :WindowList
+
+# -------------------------------------------------------------------
+# Tab operations
+# -------------------------------------------------------------------
+
+# Cycle through tabs within a tab group
+Mod4 Tab :NextTab
+Mod4 Shift Tab :PrevTab
+
+# Detach current client from tab group
+Mod4 Control d :DetachClient
+
+# Reorder tabs
+Mod4 Control Left :MoveTabLeft
+Mod4 Control Right :MoveTabRight
+
+# Activate a specific tab by number (1-indexed)
+# Mod4 Control 1 :ActivateTab 1
+# Mod4 Control 2 :ActivateTab 2
+# Mod4 Control 3 :ActivateTab 3
+
+# -------------------------------------------------------------------
+# Workspace switching
+# -------------------------------------------------------------------
+
+# Switch to workspace by number (1-indexed)
+Mod4 1 :Workspace 1
+Mod4 2 :Workspace 2
+Mod4 3 :Workspace 3
+Mod4 4 :Workspace 4
+Mod4 5 :Workspace 5
+Mod4 6 :Workspace 6
+Mod4 7 :Workspace 7
+Mod4 8 :Workspace 8
+Mod4 9 :Workspace 9
+
+# Next / previous workspace
+Mod4 bracketright :NextWorkspace
+Mod4 bracketleft :PrevWorkspace
+
+# -------------------------------------------------------------------
+# Send window to workspace
+# -------------------------------------------------------------------
+
+Mod4 Shift 1 :SendToWorkspace 1
+Mod4 Shift 2 :SendToWorkspace 2
+Mod4 Shift 3 :SendToWorkspace 3
+Mod4 Shift 4 :SendToWorkspace 4
+Mod4 Shift 5 :SendToWorkspace 5
+Mod4 Shift 6 :SendToWorkspace 6
+Mod4 Shift 7 :SendToWorkspace 7
+Mod4 Shift 8 :SendToWorkspace 8
+Mod4 Shift 9 :SendToWorkspace 9
+
+# -------------------------------------------------------------------
+# Compositor control
+# -------------------------------------------------------------------
+
+# Reload configuration files (keys, apps, menu, style, init)
+Mod4 r :Reconfigure
+
+# Exit the compositor (hardcoded fallback: Mod4+Shift+E always works)
+Mod4 Shift e :Exit
+
+# Switch keyboard layout (for multi-layout XKB configurations)
+Mod4 space :NextLayout
+Mod4 Shift space :PrevLayout
+
+# -------------------------------------------------------------------
+# Menus
+# -------------------------------------------------------------------
+
+# Open root menu with keyboard
+Mod4 F1 :RootMenu
+
+# Open window menu with keyboard
+Mod4 F2 :WindowMenu
+
+# Hide all open menus
+Mod4 Escape :HideMenus
+
+# -------------------------------------------------------------------
+# Accessibility: keyboard-only navigation
+# -------------------------------------------------------------------
+
+# Move keyboard focus to toolbar
+Mod4 F6 :FocusToolbar
+
+# Cycle through toolbar elements (when toolbar has focus)
+Mod4 F7 :FocusNextElement
+Mod4 Shift F7 :FocusPrevElement
+
+# Activate focused toolbar element (Enter/Space equivalent)
+Mod4 F8 :FocusActivate
+
+# -------------------------------------------------------------------
+# Key chain example: Mod4+x prefix, then second key
+# -------------------------------------------------------------------
+
+# Mod4+x, Mod4+t -> launch terminal
+Mod4 x Mod4 t :Exec foot
+
+# Mod4+x, Mod4+f -> launch Firefox
+Mod4 x Mod4 f :Exec firefox
+
+# Mod4+x, Mod4+e -> launch file manager
+Mod4 x Mod4 e :Exec thunar
+
+# -------------------------------------------------------------------
+# Keymode example: move mode
+# -------------------------------------------------------------------
+# Enter move mode with Mod4+v. In move mode, use h/j/k/l or
+# arrow keys to move the window. Press Escape to return to normal.
+
+move: h :MoveLeft 10
+move: l :MoveRight 10
+move: j :MoveDown 10
+move: k :MoveUp 10
+move: Left :MoveLeft 10
+move: Right :MoveRight 10
+move: Down :MoveDown 10
+move: Up :MoveUp 10
+move: Shift h :MoveLeft 1
+move: Shift l :MoveRight 1
+move: Shift j :MoveDown 1
+move: Shift k :MoveUp 1
+move: Escape :KeyMode default
+Mod4 v :KeyMode move Escape
+
+# -------------------------------------------------------------------
+# Mouse bindings: Titlebar
+# -------------------------------------------------------------------
+
+# Click: raise, focus, and activate tab
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+
+# Drag: start moving window
+OnTitlebar Move1 :StartMoving
+
+# Double-click: toggle shade
+OnTitlebar Double1 :Shade
+
+# Middle-click: start tabbing (drag to another window to group)
+OnTitlebar Mouse2 :StartTabbing
+
+# Right-click: open window menu
+OnTitlebar Mouse3 :WindowMenu
+
+# Scroll wheel: shade / unshade
+OnTitlebar Mouse4 :ShadeOn
+OnTitlebar Mouse5 :ShadeOff
+
+# -------------------------------------------------------------------
+# Mouse bindings: Desktop (root window)
+# -------------------------------------------------------------------
+
+# Right-click: open root menu
+OnDesktop Mouse3 :RootMenu
+
+# Scroll: switch workspaces
+OnDesktop Mouse4 :NextWorkspace
+OnDesktop Mouse5 :PrevWorkspace
+
+# Middle-click: show desktop / window list
+OnDesktop Mouse2 :ShowDesktop
+
+# -------------------------------------------------------------------
+# Mouse bindings: Window borders and grips
+# -------------------------------------------------------------------
+
+OnWindowBorder Move1 :StartResizing NearestCorner
+OnLeftGrip Move1 :StartResizing NearestCorner
+OnRightGrip Move1 :StartResizing NearestCorner
+
+# -------------------------------------------------------------------
+# Mouse bindings: Global (Alt+click anywhere on a window)
+# -------------------------------------------------------------------
+
+# Alt+left-click: raise, focus, and move
+Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+
+# Alt+right-click: raise, focus, and resize from nearest corner
+Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing NearestCorner}
+
+# -------------------------------------------------------------------
+# MacroCmd / ToggleCmd examples
+# -------------------------------------------------------------------
+
+# ToggleCmd: alternate between maximize and restore
+# Mod4 Shift f :ToggleCmd {Maximize} {Maximize}
+
+# MacroCmd: raise + focus + shade in one binding
+# Mod4 Shift s :MacroCmd {Raise} {Focus} {Shade}

@@ -25,6 +25,21 @@ fluxland targets users who want a fast, keyboard-driven stacking compositor
 with the depth of configuration that Fluxbox is known for, without sacrificing
 the benefits of a modern Wayland session.
 
+## Screenshots
+
+*Great Wave theme with ocean blue decorations and Hokusai wallpaper.*
+
+| | |
+|---|---|
+| ![Desktop](docs/screenshots/desktop_wave.png) | ![Single Window](docs/screenshots/01_single_window.png) |
+| Desktop with wallpaper | Single terminal window |
+| ![Tiled](docs/screenshots/02_tiled_windows.png) | ![Cascade](docs/screenshots/03_cascade.png) |
+| Two windows tiled left/right | Cascaded window layout |
+| ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
+| Root menu | Grid arrangement (4 windows) |
+
+See [`examples/`](examples/) for themes and complete configuration examples.
+
 ## Features
 
 - **Server-side decorations** with full Fluxbox theme/style support (gradients, textures, fonts, colors)
@@ -123,11 +138,18 @@ ninja -C build
 
 1. **Install dependencies** (see above) and build fluxland.
 
-2. **Create a config directory** and copy the example configuration:
+2. **Create a config directory** and copy the default configuration:
 
    ```sh
    mkdir -p ~/.config/fluxland
    cp /path/to/fluxland/data/* ~/.config/fluxland/
+   chmod +x ~/.config/fluxland/startup
+   ```
+
+   Or start from a themed example (see [`examples/`](examples/)):
+
+   ```sh
+   cp -r /path/to/fluxland/examples/wave-desktop/* ~/.config/fluxland/
    chmod +x ~/.config/fluxland/startup
    ```
 

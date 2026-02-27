@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# fluxland minimal startup script
+# Starts a solid color background. Customize with your preferred tools.
+
+# Simple dark background
+swaybg -c '#2e3440' &

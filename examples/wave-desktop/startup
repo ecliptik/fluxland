@@ -1,0 +1,25 @@
+#!/bin/sh
+#
+# fluxland "Great Wave" desktop startup script
+# Sets the Great Wave wallpaper and starts background services.
+#
+# Prerequisites:
+#   apt install swaybg   (or pacman -S swaybg)
+#   Download wallpaper:  ~/Pictures/great_wave.jpg
+
+# Wallpaper: The Great Wave off Kanagawa
+if [ -f ~/Pictures/great_wave.jpg ]; then
+    swaybg -i ~/Pictures/great_wave.jpg -m fill &
+else
+    # Ocean-inspired solid color fallback
+    swaybg -c '#0f2440' &
+fi
+
+# Notification daemon (uncomment one)
+# mako &
+# dunst &
+
+# Screen idle / lock
+# swayidle -w \
+#   timeout 300 'swaylock -f' \
+#   timeout 600 'wlopm --off \*' resume 'wlopm --on \*' &

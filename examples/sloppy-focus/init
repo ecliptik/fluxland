@@ -1,0 +1,50 @@
+# fluxland sloppy-focus configuration
+# Focus follows the mouse pointer, with auto-raise after a short delay.
+# Good for users who prefer not to click windows to focus them.
+#
+# Usage:
+#   cp -r examples/sloppy-focus/* ~/.config/fluxland/
+
+# -------------------------------------------------------------------
+# Workspaces
+# -------------------------------------------------------------------
+
+session.screen0.workspaces: 4
+session.screen0.workspaceNames: Main, Web, Code, Media
+
+session.screen0.workspacewarping: true
+
+# -------------------------------------------------------------------
+# Focus model: sloppy (mouse) focus
+# -------------------------------------------------------------------
+
+# Focus follows the mouse pointer
+session.screen0.focusModel: MouseFocus
+
+# Auto-raise the focused window after a delay
+session.screen0.autoRaise: true
+session.autoRaiseDelay: 400
+
+# Clicking a window still raises it immediately
+session.screen0.clickRaises: true
+
+# New windows get focus automatically
+session.screen0.focusNewWindows: true
+
+# -------------------------------------------------------------------
+# Window behavior
+# -------------------------------------------------------------------
+
+session.screen0.opaqueMove: true
+session.screen0.opaqueResize: true
+session.screen0.edgeSnapThreshold: 10
+session.screen0.windowPlacement: RowSmartPlacement
+
+# -------------------------------------------------------------------
+# Toolbar
+# -------------------------------------------------------------------
+
+session.screen0.toolbar.visible: true
+session.screen0.toolbar.placement: BottomCenter
+session.screen0.toolbar.autoHide: false
+session.screen0.toolbar.widthPercent: 100

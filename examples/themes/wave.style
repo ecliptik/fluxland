@@ -1,0 +1,116 @@
+# fluxland "Great Wave" style
+# Inspired by Hokusai's "The Great Wave off Kanagawa"
+# Deep indigo blues, ocean teal, cream whites, and warm accents.
+
+# -------------------------------------------------------------------
+# Window titlebar
+# -------------------------------------------------------------------
+
+window.title.focus:                 Raised Gradient Vertical
+window.title.focus.color:           #1b3a5c
+window.title.focus.colorTo:         #0f2440
+window.title.unfocus:               Flat Solid
+window.title.unfocus.color:         #0f2440
+window.title.unfocus.colorTo:       #0f2440
+window.title.height:                24
+
+# -------------------------------------------------------------------
+# Window label (title text area within titlebar)
+# -------------------------------------------------------------------
+
+window.label.focus:                 Flat Solid
+window.label.focus.color:           #1b3a5c
+window.label.focus.textColor:       #f0e6d3
+window.label.unfocus:               Flat Solid
+window.label.unfocus.color:         #0f2440
+window.label.unfocus.textColor:     #5a7a9a
+window.label.active:                Flat Solid
+window.label.active.color:          #1e4060
+window.label.active.textColor:      #d4c8b0
+
+window.label.focus.font:            sans-11:bold
+window.label.unfocus.font:          sans-11
+
+window.justify:                     Center
+
+# -------------------------------------------------------------------
+# Window buttons (close, maximize, minimize, shade, stick)
+# -------------------------------------------------------------------
+
+window.button.focus:                Raised Gradient Vertical
+window.button.focus.color:          #1e4060
+window.button.focus.colorTo:        #1b3a5c
+window.button.unfocus:              Flat Solid
+window.button.unfocus.color:        #1b3a5c
+window.button.unfocus.colorTo:      #0f2440
+window.button.pressed:              Sunken Solid
+window.button.pressed.color:        #0f2440
+
+window.button.focus.picColor:       #f0e6d3
+window.button.unfocus.picColor:     #5a7a9a
+window.button.pressed.picColor:     #4da6a8
+
+# -------------------------------------------------------------------
+# Window handle (bottom resize bar) and grips (corner resize)
+# -------------------------------------------------------------------
+
+window.handle.focus:                Flat Solid
+window.handle.focus.color:          #1b3a5c
+window.handle.unfocus:              Flat Solid
+window.handle.unfocus.color:        #0f2440
+window.handleWidth:                 4
+
+window.grip.focus:                  Flat Solid
+window.grip.focus.color:            #2a5278
+window.grip.unfocus:                Flat Solid
+window.grip.unfocus.color:          #1b3a5c
+
+# -------------------------------------------------------------------
+# Window frame and border
+# -------------------------------------------------------------------
+
+window.frame.focusColor:            #1b3a5c
+window.frame.unfocusColor:          #0f2440
+window.borderColor:                 #081a30
+window.borderWidth:                 1
+window.bevelWidth:                  1
+
+window.focus.border.width:          0
+window.focus.border.color:          #4da6a8
+
+# -------------------------------------------------------------------
+# Menu
+# -------------------------------------------------------------------
+
+menu.title:                         Raised Gradient Vertical
+menu.title.color:                   #1b3a5c
+menu.title.colorTo:                 #0f2440
+menu.title.textColor:               #f0e6d3
+menu.title.font:                    sans-11:bold
+menu.title.justify:                 Center
+
+menu.frame:                         Flat Solid
+menu.frame.color:                   #0f2440
+menu.frame.textColor:               #d4c8b0
+menu.frame.font:                    sans-10
+
+menu.hilite:                        Flat Solid
+menu.hilite.color:                  #2a6b8a
+menu.hilite.textColor:              #f0e6d3
+
+menu.borderColor:                   #081a30
+menu.borderWidth:                   1
+
+# -------------------------------------------------------------------
+# Toolbar
+# -------------------------------------------------------------------
+
+toolbar:                            Flat Solid
+toolbar.color:                      #0f2440
+toolbar.textColor:                  #d4c8b0
+toolbar.font:                       sans-10
+
+toolbar.iconbar.focused.color:      #2a6b8a
+toolbar.iconbar.focused.textColor:  #f0e6d3
+toolbar.iconbar.unfocused.color:    #1b3a5c
+toolbar.iconbar.unfocused.textColor:#7a9ab0

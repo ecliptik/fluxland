@@ -1,0 +1,6 @@
+#!/bin/sh
+#
+# fluxland sloppy-focus startup script
+
+# Solid color background
+swaybg -c '#2e3440' &
