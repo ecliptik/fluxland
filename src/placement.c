@@ -576,7 +576,9 @@ wm_arrange_windows_grid(struct wm_server *server)
 		int row = i / cols;
 		int x = area.x + col * cell_w;
 		int y = area.y + row * cell_h;
-		arrange_view(views[i], x, y, cell_w, cell_h);
+		int w = (col == cols - 1) ? (area.x + area.width - x) : cell_w;
+		int h = (row == rows - 1) ? (area.y + area.height - y) : cell_h;
+		arrange_view(views[i], x, y, w, h);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows in %dx%d grid",
@@ -599,7 +601,8 @@ wm_arrange_windows_vert(struct wm_server *server)
 
 	for (int i = 0; i < n; i++) {
 		int x = area.x + i * col_w;
-		arrange_view(views[i], x, area.y, col_w, area.height);
+		int w = (i == n - 1) ? (area.x + area.width - x) : col_w;
+		arrange_view(views[i], x, area.y, w, area.height);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows in vertical columns", n);
@@ -621,7 +624,8 @@ wm_arrange_windows_horiz(struct wm_server *server)
 
 	for (int i = 0; i < n; i++) {
 		int y = area.y + i * row_h;
-		arrange_view(views[i], area.x, y, area.width, row_h);
+		int h = (i == n - 1) ? (area.y + area.height - y) : row_h;
+		arrange_view(views[i], area.x, y, area.width, h);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows in horizontal rows", n);
@@ -695,7 +699,8 @@ wm_arrange_windows_stack_right(struct wm_server *server)
 
 	for (int i = 1; i < n; i++) {
 		int y = area.y + (i - 1) * cell_h;
-		arrange_view(views[i], stack_x, y, stack_w, cell_h);
+		int h = (i == n - 1) ? (area.y + area.height - y) : cell_h;
+		arrange_view(views[i], stack_x, y, stack_w, h);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows stack-right", n);
@@ -730,7 +735,8 @@ wm_arrange_windows_stack_left(struct wm_server *server)
 
 	for (int i = 1; i < n; i++) {
 		int y = area.y + (i - 1) * cell_h;
-		arrange_view(views[i], area.x, y, stack_w, cell_h);
+		int h = (i == n - 1) ? (area.y + area.height - y) : cell_h;
+		arrange_view(views[i], area.x, y, stack_w, h);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows stack-left", n);
@@ -766,7 +772,8 @@ wm_arrange_windows_stack_bottom(struct wm_server *server)
 
 	for (int i = 1; i < n; i++) {
 		int x = area.x + (i - 1) * cell_w;
-		arrange_view(views[i], x, stack_y, cell_w, stack_h);
+		int w = (i == n - 1) ? (area.x + area.width - x) : cell_w;
+		arrange_view(views[i], x, stack_y, w, stack_h);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows stack-bottom", n);
@@ -801,7 +808,8 @@ wm_arrange_windows_stack_top(struct wm_server *server)
 
 	for (int i = 1; i < n; i++) {
 		int x = area.x + (i - 1) * cell_w;
-		arrange_view(views[i], x, area.y, cell_w, stack_h);
+		int w = (i == n - 1) ? (area.x + area.width - x) : cell_w;
+		arrange_view(views[i], x, area.y, w, stack_h);
 	}
 
 	wlr_log(WLR_DEBUG, "arranged %d windows stack-top", n);
