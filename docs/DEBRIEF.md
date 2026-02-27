@@ -34,7 +34,7 @@ The project is called [fluxland](https://github.com/ecliptik/fluxland), and it w
 
 ## Why a Wayland Compositor?
 
-Let me be clear about what this project was really for: I wanted to understand agentic development. Not by building a TODO app or a CRUD API, but by throwing something genuinely hard at it and seeing what happened.
+Let me be clear about what this project was really for: I wanted to understand [agentic development](https://code.claude.com/docs/en/best-practices). Not by building a TODO app or a CRUD API, but by throwing something genuinely hard at it and seeing what happened.
 
 My background is operations, not software development. I was a LISA sysadmin managing 80,000+ systems across global data centers. Then DevOps — AWS, GCP, Kubernetes. Now I lead a cloud center of excellence, which in practice means spreadsheets and financial tools, not writing code. My C experience was minimal. My Wayland knowledge was zero.
 
