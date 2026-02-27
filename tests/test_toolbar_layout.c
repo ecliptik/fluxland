@@ -1944,6 +1944,728 @@ test_toggle_above_relayout_behavior(void)
 	printf("  PASS: toggle_above_relayout_behavior\n");
 }
 
+/* --- collect_iconbar: workspace_icons mode --- */
+
+static void
+test_collect_iconbar_workspace_icons_mode(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wlr_xdg_toplevel tl;
+	struct wlr_xdg_surface base;
+	memset(&tl, 0, sizeof(tl));
+	memset(&base, 0, sizeof(base));
+	tl.base = &base;
+
+	/* Iconified view on current workspace */
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	view_tree.node.enabled = 0; /* iconified */
+
+	struct wm_view v1;
+	memset(&v1, 0, sizeof(v1));
+	v1.server = &test_server;
+	v1.xdg_toplevel = &tl;
+	v1.scene_tree = &view_tree;
+	v1.workspace = &ws;
+	v1.title = "Iconified";
+
+	/* Non-iconified view on current workspace */
+	struct wlr_scene_tree view_tree2;
+	memset(&view_tree2, 0, sizeof(view_tree2));
+	view_tree2.node.enabled = 1;
+
+	struct wm_view v2;
+	memset(&v2, 0, sizeof(v2));
+	v2.server = &test_server;
+	v2.xdg_toplevel = &tl;
+	v2.scene_tree = &view_tree2;
+	v2.workspace = &ws;
+	v2.title = "Normal";
+
+	wl_list_insert(&test_server.views, &v2.link);
+	wl_list_insert(&test_server.views, &v1.link);
+
+	struct wm_toolbar toolbar;
+	memset(&toolbar, 0, sizeof(toolbar));
+	toolbar.server = &test_server;
+	toolbar.iconbar_mode = WM_ICONBAR_MODE_WORKSPACE_ICONS;
+
+	int count = collect_iconbar_entries(&toolbar);
+	/* Only iconified views on current workspace should appear */
+	assert(count == 1);
+	assert(toolbar.ib_entries[0].view == &v1);
+	assert(toolbar.ib_entries[0].iconified == true);
+
+	free(toolbar.ib_entries);
+	wl_list_remove(&v1.link);
+	wl_list_remove(&v2.link);
+	wl_list_remove(&ws.link);
+	printf("  PASS: collect_iconbar_workspace_icons_mode\n");
+}
+
+/* --- compute_tool_layout: clock with custom format --- */
+
+static void
+test_compute_tool_layout_custom_clock_fmt(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.clock_format = "%H:%M";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar toolbar;
+	memset(&toolbar, 0, sizeof(toolbar));
+	toolbar.server = &test_server;
+	toolbar.height = 24;
+
+	struct wm_toolbar_tool tools[2];
+	memset(tools, 0, sizeof(tools));
+	tools[0].type = WM_TOOL_CLOCK;
+	tools[1].type = WM_TOOL_ICONBAR;
+	toolbar.tools = tools;
+	toolbar.tool_count = 2;
+	toolbar.iconbar_tool = &tools[1];
+	toolbar.clock_tool = &tools[0];
+
+	compute_tool_layout(&toolbar, 800);
+
+	/* Clock should have a reasonable width */
+	assert(tools[0].width >= 80);
+	/* Iconbar should fill the rest */
+	assert(tools[1].width == 800 - tools[0].width);
+	assert(tools[0].x == 0);
+	assert(tools[1].x == tools[0].width);
+
+	wl_list_remove(&ws.link);
+	printf("  PASS: compute_tool_layout_custom_clock_fmt\n");
+}
+
+/* --- compute_tool_layout: no iconbar distributes to text tools --- */
+
+static void
+test_compute_tool_layout_distribute_remaining(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "MyWS";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar toolbar;
+	memset(&toolbar, 0, sizeof(toolbar));
+	toolbar.server = &test_server;
+	toolbar.height = 24;
+
+	/* Two text tools (workspace_name + clock), no iconbar */
+	struct wm_toolbar_tool tools[2];
+	memset(tools, 0, sizeof(tools));
+	tools[0].type = WM_TOOL_WORKSPACE_NAME;
+	tools[1].type = WM_TOOL_CLOCK;
+	toolbar.tools = tools;
+	toolbar.tool_count = 2;
+	toolbar.ws_name_tool = &tools[0];
+	toolbar.clock_tool = &tools[1];
+
+	compute_tool_layout(&toolbar, 400);
+
+	/* Both text tools should share the full width */
+	assert(tools[0].width + tools[1].width <= 400);
+	assert(tools[0].x == 0);
+	assert(tools[1].x == tools[0].width);
+
+	wl_list_remove(&ws.link);
+	printf("  PASS: compute_tool_layout_distribute_remaining\n");
+}
+
+/* --- wlr_buffer_from_cairo: null surface --- */
+
+static void
+test_buffer_from_cairo_null(void)
+{
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(NULL);
+	assert(buf == NULL);
+	printf("  PASS: buffer_from_cairo_null\n");
+}
+
+/* --- pixel_buffer_begin_data_ptr_access: write rejected --- */
+
+static void
+test_pixel_buffer_write_rejected(void)
+{
+	struct wm_pixel_buffer pb;
+	memset(&pb, 0, sizeof(pb));
+	pb.data = (void *)0x1;
+	pb.format = DRM_FORMAT_ARGB8888;
+	pb.stride = 100;
+
+	void *data;
+	uint32_t format;
+	size_t stride;
+
+	/* Read access should succeed */
+	bool ok = pixel_buffer_begin_data_ptr_access(&pb.base, 0,
+		&data, &format, &stride);
+	assert(ok == true);
+	assert(data == (void *)0x1);
+	assert(format == DRM_FORMAT_ARGB8888);
+	assert(stride == 100);
+
+	/* Write access should fail */
+	ok = pixel_buffer_begin_data_ptr_access(&pb.base,
+		WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride);
+	assert(ok == false);
+
+	printf("  PASS: pixel_buffer_write_rejected\n");
+}
+
+/* --- render_clock: caching behavior --- */
+
+static void
+test_render_clock_cache(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "clock";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->clock_tool != NULL);
+
+	/* First call renders and caches */
+	toolbar->cached_clock[0] = '\0';
+	struct wlr_buffer *buf1 = render_clock(toolbar,
+		toolbar->clock_tool->width, toolbar->height);
+	/* buf1 may be non-NULL since this is a fresh render */
+
+	/* Second call with same time should return NULL (cached) */
+	struct wlr_buffer *buf2 = render_clock(toolbar,
+		toolbar->clock_tool->width, toolbar->height);
+	assert(buf2 == NULL);
+
+	if (buf1) wlr_buffer_drop(buf1);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: render_clock_cache\n");
+}
+
+/* --- toolbar_render: zero dimensions early return --- */
+
+static void
+test_toolbar_render_zero_dims(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	/* Force zero width and try render */
+	toolbar->width = 0;
+	toolbar_render(toolbar);
+	/* Should not crash - early return */
+
+	/* Force zero height */
+	toolbar->width = 100;
+	toolbar->height = 0;
+	toolbar_render(toolbar);
+	/* Should not crash */
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_render_zero_dims\n");
+}
+
+/* --- toolbar_render: not visible early return --- */
+
+static void
+test_toolbar_render_not_visible(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_visible = false;
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->visible == false);
+
+	toolbar_render(toolbar);
+	/* Should not crash - early return for !visible */
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_render_not_visible\n");
+}
+
+/* --- get_primary_output: empty output list --- */
+
+static void
+test_get_primary_output_empty(void)
+{
+	reset_globals();
+	setup_test_server();
+	/* Remove the test output */
+	wl_list_remove(&test_output.link);
+	wl_list_init(&test_server.outputs);
+
+	struct wm_output *out = get_primary_output(&test_server);
+	assert(out == NULL);
+
+	/* Re-add for other tests */
+	wl_list_insert(&test_server.outputs, &test_output.link);
+	printf("  PASS: get_primary_output_empty\n");
+}
+
+/* --- render_tool: zero-width tool early return --- */
+
+static void
+test_render_tool_zero_width(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	/* Set tool width to 0 */
+	if (toolbar->tool_count > 0) {
+		toolbar->tools[0].width = 0;
+		render_tool(toolbar, &toolbar->tools[0]);
+		/* Should not crash - early return */
+	}
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: render_tool_zero_width\n");
+}
+
+/* --- toolbar_render: keyboard focus indicator --- */
+
+static void
+test_toolbar_render_with_focus_indicator(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar clock";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* Set focus_nav index to 0 (first tool) */
+	test_server.focus_nav.toolbar_index = 0;
+
+	toolbar_render(toolbar);
+	/* Focus indicator should have been created */
+	assert(toolbar->focus_indicator != NULL);
+	assert(toolbar->focus_indicator->node.enabled == 1);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	test_server.focus_nav.toolbar_index = -1;
+	printf("  PASS: toolbar_render_with_focus_indicator\n");
+}
+
+static void
+test_toolbar_render_focus_indicator_existing(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar clock";
+	test_style.toolbar_iconbar_has_focused_color = true;
+	test_style.toolbar_iconbar_focused_color =
+		(struct wm_color){.r = 255, .g = 200, .b = 0, .a = 255};
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* First render: creates focus_indicator */
+	test_server.focus_nav.toolbar_index = 0;
+	toolbar_render(toolbar);
+	assert(toolbar->focus_indicator != NULL);
+
+	/* Second render: reuses existing focus_indicator (set_buffer path) */
+	test_server.focus_nav.toolbar_index = 1;
+	toolbar_render(toolbar);
+	assert(toolbar->focus_indicator != NULL);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	test_server.focus_nav.toolbar_index = -1;
+	printf("  PASS: toolbar_render_focus_indicator_existing\n");
+}
+
+static void
+test_toolbar_render_focus_indicator_hide(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* First render with focus to create indicator */
+	test_server.focus_nav.toolbar_index = 0;
+	toolbar_render(toolbar);
+	assert(toolbar->focus_indicator != NULL);
+	assert(toolbar->focus_indicator->node.enabled == 1);
+
+	/* Now render with no focus — indicator should be hidden */
+	test_server.focus_nav.toolbar_index = -1;
+	toolbar_render(toolbar);
+	assert(toolbar->focus_indicator->node.enabled == 0);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_render_focus_indicator_hide\n");
+}
+
+/* --- toolbar relayout placement variants --- */
+
+static void
+test_toolbar_relayout_top_left_placement(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+	test_config.toolbar_placement = WM_TOOLBAR_TOP_LEFT;
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->x == 0);
+	assert(toolbar->y == 0);
+	assert(toolbar->on_top == true);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_relayout_top_left_placement\n");
+}
+
+static void
+test_toolbar_relayout_top_right_placement(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+	test_config.toolbar_placement = WM_TOOLBAR_TOP_RIGHT;
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->x == 1920 - toolbar->width);
+	assert(toolbar->y == 0);
+	assert(toolbar->on_top == true);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_relayout_top_right_placement\n");
+}
+
+static void
+test_toolbar_relayout_auto_hide_toggle(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+	test_config.toolbar_auto_hide = false;
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->auto_hide == false);
+
+	/* Toggle auto-hide ON via relayout config change */
+	test_config.toolbar_auto_hide = true;
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->auto_hide == true);
+	assert(toolbar->shown == false);
+
+	/* Toggle auto-hide OFF */
+	test_config.toolbar_auto_hide = false;
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->auto_hide == false);
+	assert(toolbar->shown == true);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_relayout_auto_hide_toggle\n");
+}
+
+/* --- toolbar_update_workspace/iconbar --- */
+
+static void
+test_toolbar_update_workspace(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "workspacename iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "Desktop";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* Should trigger re-render of workspace name tool and iconbar */
+	wm_toolbar_update_workspace(toolbar);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_update_workspace\n");
+}
+
+static void
+test_toolbar_update_iconbar(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* Force a render so iconbar tool has valid dimensions */
+	toolbar_render(toolbar);
+
+	/* Now update iconbar */
+	wm_toolbar_update_iconbar(toolbar);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_update_iconbar\n");
+}
+
+/* --- render_iconbar with actual entries --- */
+
+static void
+test_toolbar_render_iconbar_with_entries(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	ws.index = 0;
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	/* Create mock views */
+	struct wlr_xdg_surface xdg_surf;
+	struct wlr_surface surf;
+	memset(&xdg_surf, 0, sizeof(xdg_surf));
+	memset(&surf, 0, sizeof(surf));
+	xdg_surf.surface = &surf;
+
+	struct wlr_xdg_toplevel tl;
+	memset(&tl, 0, sizeof(tl));
+	tl.base = &xdg_surf;
+	tl.width = 100;
+	tl.height = 100;
+
+	struct wlr_scene_tree view_tree;
+	memset(&view_tree, 0, sizeof(view_tree));
+	view_tree.node.enabled = 1;
+
+	struct wm_view v1;
+	memset(&v1, 0, sizeof(v1));
+	v1.server = &test_server;
+	v1.xdg_toplevel = &tl;
+	v1.scene_tree = &view_tree;
+	v1.title = "Terminal";
+	v1.app_id = "xterm";
+	v1.workspace = &ws;
+	v1.show_decoration = true;
+	v1.focus_alpha = 255;
+	v1.unfocus_alpha = 255;
+
+	wl_list_insert(&test_server.views, &v1.link);
+	test_server.focused_view = &v1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* Render toolbar with an actual view */
+	toolbar_render(toolbar);
+
+	wl_list_remove(&v1.link);
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_render_iconbar_with_entries\n");
+}
+
+/* --- render_workspace_names: inactive workspace path --- */
+
+static void
+test_toolbar_render_workspace_inactive(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "workspacename";
+
+	struct wm_workspace ws1;
+	memset(&ws1, 0, sizeof(ws1));
+	ws1.name = "Desktop 1";
+	ws1.index = 0;
+
+	struct wm_workspace ws2;
+	memset(&ws2, 0, sizeof(ws2));
+	ws2.name = "Desktop 2";
+	ws2.index = 1;
+
+	wl_list_insert(&test_server.workspaces, &ws2.link);
+	wl_list_insert(&test_server.workspaces, &ws1.link);
+	test_server.current_workspace = &ws1;
+	test_server.workspace_count = 2;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	toolbar->width = 800;
+	toolbar->height = 24;
+
+	/* Render should cover both active and inactive workspace paths */
+	toolbar_render(toolbar);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws1.link);
+	wl_list_remove(&ws2.link);
+	printf("  PASS: toolbar_render_workspace_inactive\n");
+}
+
 int
 main(void)
 {
@@ -2010,6 +2732,30 @@ main(void)
 	test_toggle_above_null_safety();
 	test_toggle_above_config_top();
 	test_toggle_above_relayout_behavior();
+
+	/* additional coverage */
+	test_collect_iconbar_workspace_icons_mode();
+	test_compute_tool_layout_custom_clock_fmt();
+	test_compute_tool_layout_distribute_remaining();
+	test_buffer_from_cairo_null();
+	test_pixel_buffer_write_rejected();
+	test_render_clock_cache();
+	test_toolbar_render_zero_dims();
+	test_toolbar_render_not_visible();
+	test_get_primary_output_empty();
+	test_render_tool_zero_width();
+
+	/* additional coverage: focus indicator + relayout placements */
+	test_toolbar_render_with_focus_indicator();
+	test_toolbar_render_focus_indicator_existing();
+	test_toolbar_render_focus_indicator_hide();
+	test_toolbar_relayout_top_left_placement();
+	test_toolbar_relayout_top_right_placement();
+	test_toolbar_relayout_auto_hide_toggle();
+	test_toolbar_update_workspace();
+	test_toolbar_update_iconbar();
+	test_toolbar_render_iconbar_with_entries();
+	test_toolbar_render_workspace_inactive();
 
 	printf("All toolbar_layout tests passed.\n");
 	return 0;

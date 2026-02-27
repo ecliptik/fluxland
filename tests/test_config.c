@@ -6,6 +6,7 @@
 
 #include "config.h"
 #include <assert.h>
+#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1035,6 +1036,459 @@ test_comments_and_blank_lines(void)
 	printf("  PASS: test_comments_and_blank_lines\n");
 }
 
+/* Test: mouse button remapping */
+static void
+test_mouse_button_remapping(void)
+{
+	write_file(TEST_INIT,
+		"session.mouse.button1.map: BTN_RIGHT\n"
+		"session.mouse.button2.map: BTN_LEFT\n"
+		"session.mouse.button3.map: BTN_MIDDLE\n"
+		"session.mouse.button4.map: BTN_EXTRA\n"
+		"session.mouse.button5.map: BTN_SIDE\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->mouse_button_map[1] == BTN_RIGHT);
+	assert(c->mouse_button_map[2] == BTN_LEFT);
+	assert(c->mouse_button_map[3] == BTN_MIDDLE);
+	assert(c->mouse_button_map[4] == BTN_EXTRA);
+	assert(c->mouse_button_map[5] == BTN_SIDE);
+
+	config_destroy(c);
+
+	/* Unknown button name falls back to default */
+	write_file(TEST_INIT,
+		"session.mouse.button1.map: BTN_UNKNOWN\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->mouse_button_map[1] == BTN_LEFT); /* default for button1 */
+	config_destroy(c);
+
+	printf("  PASS: test_mouse_button_remapping\n");
+}
+
+/* Test: file paths with absolute path */
+static void
+test_file_path_absolute(void)
+{
+	write_file(TEST_INIT,
+		"session.keyFile: /tmp/fluxland-test/custom-keys\n"
+		"session.appsFile: /tmp/fluxland-test/custom-apps\n"
+		"session.menuFile: /tmp/fluxland-test/custom-menu\n"
+		"session.styleFile: /tmp/fluxland-test/custom-style\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->keys_file != NULL);
+	assert(strcmp(c->keys_file, "/tmp/fluxland-test/custom-keys") == 0);
+	assert(strcmp(c->apps_file, "/tmp/fluxland-test/custom-apps") == 0);
+	assert(strcmp(c->menu_file, "/tmp/fluxland-test/custom-menu") == 0);
+	assert(strcmp(c->style_file, "/tmp/fluxland-test/custom-style") == 0);
+
+	config_destroy(c);
+	printf("  PASS: test_file_path_absolute\n");
+}
+
+/* Test: file paths with tilde expansion */
+static void
+test_file_path_tilde(void)
+{
+	write_file(TEST_INIT,
+		"session.keyFile: ~/my-keys\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	const char *home = getenv("HOME");
+	if (home) {
+		char expected[4096];
+		snprintf(expected, sizeof(expected), "%s/my-keys", home);
+		assert(c->keys_file != NULL);
+		assert(strcmp(c->keys_file, expected) == 0);
+	}
+
+	config_destroy(c);
+	printf("  PASS: test_file_path_tilde\n");
+}
+
+/* Test: file paths with relative path (no / or ~ prefix) */
+static void
+test_file_path_relative(void)
+{
+	write_file(TEST_INIT,
+		"session.keyFile: custom-keys\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	/* Relative paths are returned as-is via strdup */
+	assert(c->keys_file != NULL);
+	assert(strcmp(c->keys_file, "custom-keys") == 0);
+
+	config_destroy(c);
+	printf("  PASS: test_file_path_relative\n");
+}
+
+/* Test: slitlist file path */
+static void
+test_slitlist_file_path(void)
+{
+	write_file(TEST_INIT,
+		"session.slitlistFile: /tmp/fluxland-test/myslitlist\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->slitlist_file != NULL);
+	assert(strcmp(c->slitlist_file, "/tmp/fluxland-test/myslitlist") == 0);
+
+	config_destroy(c);
+	printf("  PASS: test_slitlist_file_path\n");
+}
+
+/* Test: placement direction settings */
+static void
+test_placement_directions(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.rowPlacementDirection: RightToLeft\n"
+		"session.screen0.colPlacementDirection: BottomToTop\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->row_right_to_left == true);
+	assert(c->col_bottom_to_top == true);
+
+	config_destroy(c);
+
+	/* Default directions */
+	write_file(TEST_INIT,
+		"session.screen0.rowPlacementDirection: LeftToRight\n"
+		"session.screen0.colPlacementDirection: TopToBottom\n"
+	);
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->row_right_to_left == false);
+	assert(c->col_bottom_to_top == false);
+	config_destroy(c);
+
+	printf("  PASS: test_placement_directions\n");
+}
+
+/* Test: tab-related settings */
+static void
+test_tab_settings(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.tabFocusModel: MouseTabFocus\n"
+		"session.screen0.tabs.intitlebar: false\n"
+		"session.screen0.tab.placement: Bottom\n"
+		"session.screen0.tab.width: 80\n"
+		"session.screen0.tabPadding: 4\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->tab_focus_model == 1); /* MouseTabFocus */
+	assert(c->tabs_intitlebar == false);
+	assert(c->tab_placement == 1); /* Bottom */
+	assert(c->tab_width == 80);
+	assert(c->tab_padding == 4);
+
+	config_destroy(c);
+
+	/* Left tab placement */
+	write_file(TEST_INIT,
+		"session.screen0.tab.placement: Left\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_placement == 2);
+	config_destroy(c);
+
+	/* Right tab placement */
+	write_file(TEST_INIT,
+		"session.screen0.tab.placement: Right\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_placement == 3);
+	config_destroy(c);
+
+	/* Top tab placement (default) */
+	write_file(TEST_INIT,
+		"session.screen0.tab.placement: Top\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_placement == 0);
+	config_destroy(c);
+
+	/* ClickTabFocus (default) */
+	write_file(TEST_INIT,
+		"session.screen0.tabFocusModel: ClickTabFocus\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_focus_model == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_tab_settings\n");
+}
+
+/* Test: iconbar configuration options */
+static void
+test_iconbar_settings(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.alignment: Left\n"
+		"session.screen0.iconbar.iconWidth: 128\n"
+		"session.screen0.iconbar.usePixmap: false\n"
+		"session.screen0.iconbar.wheelMode: Off\n"
+		"session.screen0.iconbar.iconifiedPattern: (%s)\n"
+	);
+
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->iconbar_alignment == 0); /* Left */
+	assert(c->iconbar_icon_width == 128);
+	assert(c->iconbar_use_pixmap == false);
+	assert(c->iconbar_wheel_mode == 1); /* Off */
+	assert(c->iconbar_iconified_pattern != NULL);
+	assert(strcmp(c->iconbar_iconified_pattern, "(%s)") == 0);
+
+	config_destroy(c);
+
+	/* Right alignment */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.alignment: Right\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_alignment == 2);
+	config_destroy(c);
+
+	/* Unknown alignment defaults to Center */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.alignment: Unknown\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_alignment == 1);
+	config_destroy(c);
+
+	/* Screen wheel mode (default/non-Off) */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.wheelMode: Screen\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_wheel_mode == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_iconbar_settings\n");
+}
+
+/* Test: slit layer with numeric value */
+static void
+test_slit_layer_numeric(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: 7\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 7);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: 0\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_slit_layer_numeric\n");
+}
+
+/* Test: slit layer with unknown non-numeric string */
+static void
+test_slit_layer_unknown_string(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.slit.layer: SomeGarbage\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 4); /* default fallback */
+	config_destroy(c);
+
+	printf("  PASS: test_slit_layer_unknown_string\n");
+}
+
+/* Test: toolbar tools layout override */
+static void
+test_toolbar_tools_override(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.tools: clock iconbar\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->toolbar_tools != NULL);
+	assert(strcmp(c->toolbar_tools, "clock iconbar") == 0);
+
+	config_destroy(c);
+	printf("  PASS: test_toolbar_tools_override\n");
+}
+
+/* Test: show window position option */
+static void
+test_show_window_position(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.showWindowPosition: true\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->show_window_position == true);
+	config_destroy(c);
+
+	/* Default is false */
+	write_file(TEST_INIT, "\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->show_window_position == false);
+	config_destroy(c);
+
+	printf("  PASS: test_show_window_position\n");
+}
+
+/* Test: auto tab placement */
+static void
+test_auto_tab_placement(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.autoTabPlacement: true\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->auto_tab_placement == true);
+	config_destroy(c);
+
+	printf("  PASS: test_auto_tab_placement\n");
+}
+
+/* Test: edge resize snap threshold clamping */
+static void
+test_edge_resize_snap_threshold_clamp(void)
+{
+	/* Negative value clamps to 0 */
+	write_file(TEST_INIT,
+		"session.screen0.edgeResizeSnapThreshold: -5\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->edge_resize_snap_threshold == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_edge_resize_snap_threshold_clamp\n");
+}
+
+/* Test: animation boolean options */
+static void
+test_animation_booleans(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.animateWindowMap: true\n"
+		"session.screen0.animateWindowUnmap: true\n"
+		"session.screen0.animateMinimize: true\n"
+	);
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(c->animate_window_map == true);
+	assert(c->animate_window_unmap == true);
+	assert(c->animate_minimize == true);
+
+	config_destroy(c);
+	printf("  PASS: test_animation_booleans\n");
+}
+
+/* Test: slit max over option */
+static void
+test_slit_max_over(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.slit.maxOver: true\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_max_over == true);
+	config_destroy(c);
+
+	printf("  PASS: test_slit_max_over\n");
+}
+
+/* Test: workspace warping */
+static void
+test_workspace_warping(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.workspacewarping: false\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->workspace_warping == false);
+	config_destroy(c);
+
+	printf("  PASS: test_workspace_warping\n");
+}
+
+/* Test: iconbar icon width negative clamping */
+static void
+test_iconbar_icon_width_clamp(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.iconWidth: -10\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->iconbar_icon_width == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_iconbar_icon_width_clamp\n");
+}
+
+/* Test: tab width and padding negative clamping */
+static void
+test_tab_width_and_padding_clamp(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.tab.width: -5\n"
+		"session.screen0.tabPadding: -3\n"
+	);
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_width == 0);
+	assert(c->tab_padding == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_tab_width_and_padding_clamp\n");
+}
+
+/* Test: slit layer falls back to rc_get_int when no string value */
+static void
+test_slit_layer_fallback_to_int(void)
+{
+	/* When session.screen0.slit.layer has no string value,
+	 * the code falls back to rc_get_int with default 4 */
+	write_file(TEST_INIT, "\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->slit_layer == 4); /* default from rc_get_int fallback */
+	config_destroy(c);
+
+	printf("  PASS: test_slit_layer_fallback_to_int\n");
+}
+
 int
 main(void)
 {
@@ -1078,6 +1532,28 @@ main(void)
 	test_snap_zone_threshold_clamp();
 	test_load_null_config_dir();
 	test_comments_and_blank_lines();
+
+	/* Phase 9 coverage expansion */
+	test_mouse_button_remapping();
+	test_file_path_absolute();
+	test_file_path_tilde();
+	test_file_path_relative();
+	test_slitlist_file_path();
+	test_placement_directions();
+	test_tab_settings();
+	test_iconbar_settings();
+	test_slit_layer_numeric();
+	test_slit_layer_unknown_string();
+	test_toolbar_tools_override();
+	test_show_window_position();
+	test_auto_tab_placement();
+	test_edge_resize_snap_threshold_clamp();
+	test_animation_booleans();
+	test_slit_max_over();
+	test_workspace_warping();
+	test_iconbar_icon_width_clamp();
+	test_tab_width_and_padding_clamp();
+	test_slit_layer_fallback_to_int();
 
 	cleanup();
 	printf("All config tests passed.\n");

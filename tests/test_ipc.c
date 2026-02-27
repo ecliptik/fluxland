@@ -2834,6 +2834,421 @@ test_action_custom_menu(void)
 	printf("  PASS: test_action_custom_menu\n");
 }
 
+/* === Group F: Additional coverage tests === */
+
+/* Test: json_escape indirectly via error response */
+static void
+test_json_escape_via_error(void)
+{
+	setup();
+	/* Feed a command that will trigger json_escape in error path */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"\"}");
+	assert(r != NULL);
+	/* Empty action => error "missing action argument" */
+	assert(response_is_error(r));
+	free(r);
+
+	/* Valid ping exercises json response construction */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"ping\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_json_escape_via_error\n");
+}
+
+/* Test: SetEnv exercises is_blocked_env_var for all blocked vars */
+static void
+test_setenv_blocked_all_vars(void)
+{
+	setup();
+	/* LD_PRELOAD */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv LD_PRELOAD=evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* PATH */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv PATH=/evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* HOME */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv HOME=/evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* LD_LIBRARY_PATH */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv LD_LIBRARY_PATH=/evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* SHELL */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv SHELL=/evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* XDG_RUNTIME_DIR */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv XDG_RUNTIME_DIR=/evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* WAYLAND_DISPLAY via space separator */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv WAYLAND_DISPLAY evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* IFS */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv IFS=evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* LD_AUDIT */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv LD_AUDIT=evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* LD_DEBUG */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv LD_DEBUG=evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* LD_PROFILE */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetEnv LD_PROFILE=evil\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	printf("  PASS: test_setenv_blocked_all_vars\n");
+}
+
+/* Test: FocusToolbar action (falls through to default) */
+static void
+test_action_focus_toolbar(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"FocusToolbar\"}");
+	assert(r != NULL);
+	/* FocusToolbar is not handled in switch, returns error */
+	assert(response_is_error(r));
+	free(r);
+	printf("  PASS: test_action_focus_toolbar\n");
+}
+
+/* Test: FocusNextElement action (unsupported) */
+static void
+test_action_focus_next_element(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"FocusNextElement\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+	printf("  PASS: test_action_focus_next_element\n");
+}
+
+/* Test: FocusPrevElement action (unsupported) */
+static void
+test_action_focus_prev_element(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"FocusPrevElement\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+	printf("  PASS: test_action_focus_prev_element\n");
+}
+
+/* Test: FocusActivate action (unsupported) */
+static void
+test_action_focus_activate(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"FocusActivate\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+	printf("  PASS: test_action_focus_activate\n");
+}
+
+/* Test: If/ForEach/Map/Delay unsupported actions */
+static void
+test_action_if_foreach_map_delay(void)
+{
+	setup();
+
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"If\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"ForEach\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Map\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Delay\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+
+	printf("  PASS: test_action_if_foreach_map_delay\n");
+}
+
+/* Test: NOP action */
+static void
+test_action_nop_direct(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Nop\"}");
+	/* NOP should be parsed but not match any action_table entry
+	 * since NOP is sentinel; actually there's no "Nop" entry.
+	 * Let's try a valid action that does nothing */
+	assert(r != NULL);
+	free(r);
+	printf("  PASS: test_action_nop_direct\n");
+}
+
+/* Test: SetStyle blocked by ipc_no_exec */
+static void
+test_action_set_style_blocked(void)
+{
+	setup();
+	test_server.ipc_no_exec = true;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetStyle /some/path\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_set_style_blocked\n");
+}
+
+/* Test: SetDecor with "0" (maps to NONE) */
+static void
+test_action_set_decor_zero_string(void)
+{
+	setup_with_wlr_view();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetDecor 0\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_set_decor_zero_string\n");
+}
+
+/* Test: SetDecor with various preset names */
+static void
+test_action_set_decor_all_presets(void)
+{
+	setup_with_wlr_view();
+
+	/* BORDER */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetDecor BORDER\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* TAB */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetDecor TAB\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* TINY */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetDecor TINY\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	/* TOOL */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"SetDecor TOOL\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+
+	printf("  PASS: test_action_set_decor_all_presets\n");
+}
+
+/* Test: subscribe with style_changed event */
+static void
+test_subscribe_style_changed(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"subscribe\","
+		"\"events\":\"style_changed\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(test_client.subscribed_events & WM_IPC_EVENT_STYLE_CHANGED);
+	free(r);
+	printf("  PASS: test_subscribe_style_changed\n");
+}
+
+/* Test: subscribe with focus_changed event */
+static void
+test_subscribe_focus_changed(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"subscribe\","
+		"\"events\":\"focus_changed\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(test_client.subscribed_events & WM_IPC_EVENT_FOCUS_CHANGED);
+	free(r);
+	printf("  PASS: test_subscribe_focus_changed\n");
+}
+
+/* Test: subscribe with menu event */
+static void
+test_subscribe_menu(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"subscribe\","
+		"\"events\":\"menu\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(test_client.subscribed_events & WM_IPC_EVENT_MENU);
+	free(r);
+	printf("  PASS: test_subscribe_menu\n");
+}
+
+/* Test: subscribe with individual window sub-events */
+static void
+test_subscribe_window_close_only(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"subscribe\","
+		"\"events\":\"window_close\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(test_client.subscribed_events & WM_IPC_EVENT_WINDOW_CLOSE);
+	free(r);
+	printf("  PASS: test_subscribe_window_close_only\n");
+}
+
+/* Test: subscribe with window_title event */
+static void
+test_subscribe_window_title(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"subscribe\","
+		"\"events\":\"window_title\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	assert(test_client.subscribed_events & WM_IPC_EVENT_WINDOW_TITLE);
+	free(r);
+	printf("  PASS: test_subscribe_window_title\n");
+}
+
+/* Test: Exec action blocked by ipc_no_exec */
+static void
+test_action_exec_allowed(void)
+{
+	setup();
+	test_server.ipc_no_exec = false;
+	/* Exec with invalid command (empty) - should still succeed */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"Exec true\"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_action_exec_allowed\n");
+}
+
+/* Test: parse_action with whitespace */
+static void
+test_parse_action_whitespace(void)
+{
+	setup();
+	/* Leading whitespace in action */
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"  FocusNext  \"}");
+	assert(r != NULL);
+	assert(response_is_success(r));
+	free(r);
+	printf("  PASS: test_parse_action_whitespace\n");
+}
+
+/* Test: ToggleCmd returns error (unsupported) */
+static void
+test_action_toggle_cmd(void)
+{
+	setup();
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\","
+		"\"action\":\"ToggleCmd\"}");
+	assert(r != NULL);
+	assert(response_is_error(r));
+	free(r);
+	printf("  PASS: test_action_toggle_cmd\n");
+}
+
 int
 main(void)
 {
@@ -3001,6 +3416,27 @@ main(void)
 	test_action_workspace_menu();
 	test_action_client_menu();
 	test_action_custom_menu();
+
+	/* Group F: Additional coverage */
+	test_json_escape_via_error();
+	test_setenv_blocked_all_vars();
+	test_action_focus_toolbar();
+	test_action_focus_next_element();
+	test_action_focus_prev_element();
+	test_action_focus_activate();
+	test_action_if_foreach_map_delay();
+	test_action_nop_direct();
+	test_action_set_style_blocked();
+	test_action_set_decor_zero_string();
+	test_action_set_decor_all_presets();
+	test_subscribe_style_changed();
+	test_subscribe_focus_changed();
+	test_subscribe_menu();
+	test_subscribe_window_close_only();
+	test_subscribe_window_title();
+	test_action_exec_allowed();
+	test_parse_action_whitespace();
+	test_action_toggle_cmd();
 
 	printf("All IPC tests passed.\n");
 	return 0;

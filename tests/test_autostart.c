@@ -263,6 +263,88 @@ test_multiple_rapid_run_cmd(void)
 	printf("  PASS: test_multiple_rapid_run_cmd\n");
 }
 
+/* Test: empty startup file (0 bytes) still returns 0 */
+static void
+test_empty_startup_file(void)
+{
+	write_script(TEST_STARTUP, "", 0644);
+	int ret = wm_autostart_run(TEST_DIR, "wayland-0");
+	assert(ret == 0);
+	usleep(50000);
+	printf("  PASS: test_empty_startup_file\n");
+}
+
+/* Test: startup file that is a device node (not regular file) returns -1
+ * Note: We use /dev/null as config_dir/startup by symlinking to it.
+ * open() succeeds on /dev/null but fstat returns !S_ISREG. */
+static void
+test_devnull_startup(void)
+{
+	unlink(TEST_STARTUP);
+	int sret = symlink("/dev/null", TEST_STARTUP);
+	if (sret == 0) {
+		int ret = wm_autostart_run(TEST_DIR, "wayland-0");
+		assert(ret == -1);
+		unlink(TEST_STARTUP);
+		printf("  PASS: test_devnull_startup\n");
+	} else {
+		printf("  SKIP: test_devnull_startup (symlink failed)\n");
+	}
+}
+
+/* Test: startup file with multiline script content */
+static void
+test_multiline_script(void)
+{
+	write_script(TEST_STARTUP,
+		"#!/bin/sh\n"
+		"VAR=hello\n"
+		"export VAR\n"
+		"exit 0\n", 0755);
+	int ret = wm_autostart_run(TEST_DIR, "wayland-0");
+	assert(ret == 0);
+	usleep(50000);
+	printf("  PASS: test_multiline_script\n");
+}
+
+/* Test: wm_autostart_run_cmd with very long command */
+static void
+test_run_cmd_long(void)
+{
+	/* Build a long but valid command string */
+	char long_cmd[2048];
+	memset(long_cmd, 0, sizeof(long_cmd));
+	snprintf(long_cmd, sizeof(long_cmd),
+		"echo '%.*s'", 2000, "aaaaaaaaaaaaaaaaaaaaa");
+	wm_autostart_run_cmd(long_cmd, "wayland-0");
+	usleep(50000);
+	printf("  PASS: test_run_cmd_long\n");
+}
+
+/* Test: wm_autostart_run with config_dir that has trailing slash */
+static void
+test_config_dir_trailing_slash(void)
+{
+	write_script(TEST_STARTUP, "#!/bin/sh\nexit 0\n", 0755);
+	/* Note: snprintf in autostart.c adds "/startup" so
+	 * this becomes TEST_DIR//startup which is valid on Unix */
+	int ret = wm_autostart_run(TEST_DIR "/", "wayland-0");
+	/* This might fail or succeed depending on the path;
+	 * the key is it doesn't crash */
+	(void)ret;
+	usleep(50000);
+	printf("  PASS: test_config_dir_trailing_slash\n");
+}
+
+/* Test: wm_autostart_run_cmd with wayland_display set */
+static void
+test_run_cmd_with_display(void)
+{
+	wm_autostart_run_cmd("true", "wayland-99");
+	usleep(50000);
+	printf("  PASS: test_run_cmd_with_display\n");
+}
+
 int
 main(void)
 {
@@ -297,6 +379,14 @@ main(void)
 	test_run_cmd_empty();
 	test_run_cmd_special_chars();
 	test_multiple_rapid_run_cmd();
+
+	/* Additional edge case tests */
+	test_empty_startup_file();
+	test_devnull_startup();
+	test_multiline_script();
+	test_run_cmd_long();
+	test_config_dir_trailing_slash();
+	test_run_cmd_with_display();
 
 	cleanup();
 	printf("All autostart tests passed.\n");

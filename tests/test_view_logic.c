@@ -749,12 +749,15 @@ wlr_scene_node_reparent(struct wlr_scene_node *node,
 static void
 wlr_scene_node_destroy(struct wlr_scene_node *node) { (void)node; }
 
+/* Configurable return value for wlr_scene_node_at stub */
+static struct wlr_scene_node *g_scene_node_at_return = NULL;
+
 static struct wlr_scene_node *
 wlr_scene_node_at(struct wlr_scene_node *node, double lx, double ly,
 	double *nx, double *ny)
 {
 	(void)node; (void)lx; (void)ly; (void)nx; (void)ny;
-	return NULL;
+	return g_scene_node_at_return;
 }
 
 typedef void (*wlr_scene_buffer_iterator_func_t)(
@@ -773,17 +776,25 @@ wlr_scene_buffer_set_opacity(struct wlr_scene_buffer *buf, float opacity)
 	(void)buf; (void)opacity;
 }
 
+static struct wlr_scene_buffer g_stub_scene_buffer;
+
 static struct wlr_scene_buffer *
 wlr_scene_buffer_from_node(struct wlr_scene_node *node)
 {
 	(void)node;
+	if (g_scene_node_at_return)
+		return &g_stub_scene_buffer;
 	return NULL;
 }
+
+static struct wlr_scene_surface g_stub_scene_surface;
 
 static struct wlr_scene_surface *
 wlr_scene_surface_try_from_buffer(struct wlr_scene_buffer *buf)
 {
 	(void)buf;
+	if (g_scene_node_at_return)
+		return &g_stub_scene_surface;
 	return NULL;
 }
 
@@ -819,11 +830,14 @@ wlr_xdg_toplevel_set_size(struct wlr_xdg_toplevel *tl, int w, int h)
 	return 0;
 }
 
+/* Configurable return for wlr_xdg_toplevel_try_from_wlr_surface */
+static struct wlr_xdg_toplevel *g_try_from_surface_return = NULL;
+
 static struct wlr_xdg_toplevel *
 wlr_xdg_toplevel_try_from_wlr_surface(struct wlr_surface *surface)
 {
 	(void)surface;
-	return NULL;
+	return g_try_from_surface_return;
 }
 
 static void
@@ -859,11 +873,15 @@ wlr_xdg_surface_try_from_wlr_surface(struct wlr_surface *surface)
 	return NULL;
 }
 
+/* Configurable keyboard for seat */
+static struct wlr_keyboard g_stub_keyboard;
+static bool g_seat_has_keyboard = false;
+
 static struct wlr_keyboard *
 wlr_seat_get_keyboard(struct wlr_seat *seat)
 {
 	(void)seat;
-	return NULL;
+	return g_seat_has_keyboard ? &g_stub_keyboard : NULL;
 }
 
 static void
@@ -3678,6 +3696,516 @@ test_deiconify_view_with_animation(void)
 	printf("  PASS: deiconify_view_with_animation\n");
 }
 
+/* ===== Focus protection tests ===== */
+
+static void
+test_focus_view_protection_refuse(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Focus v0 first (user-initiated) */
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
+	assert(test_server.focused_view == &test_views[0]);
+
+	/* Set v0 with REFUSE protection */
+	test_views[0].focus_protection = WM_FOCUS_PROT_REFUSE;
+
+	/* Non-user-initiated focus to v1 should be BLOCKED (v0 has REFUSE) */
+	test_server.focus_user_initiated = false;
+	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
+	assert(test_server.focused_view == &test_views[0]); /* unchanged */
+
+	/* User-initiated focus to v1 should succeed */
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_view_protection_refuse\n");
+}
+
+static void
+test_focus_view_protection_deny(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Focus v0 first */
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
+	assert(test_server.focused_view == &test_views[0]);
+
+	/* Set v1 with DENY protection */
+	test_views[1].focus_protection = WM_FOCUS_PROT_DENY;
+
+	/* Non-user-initiated focus to v1 should be BLOCKED (target has DENY) */
+	test_server.focus_user_initiated = false;
+	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
+	assert(test_server.focused_view == &test_views[0]); /* unchanged */
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_view_protection_deny\n");
+}
+
+static void
+test_focus_view_protection_gain_overrides_refuse(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Focus v0 first */
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
+
+	/* Set v0 with REFUSE, v1 with GAIN */
+	test_views[0].focus_protection = WM_FOCUS_PROT_REFUSE;
+	test_views[1].focus_protection = WM_FOCUS_PROT_GAIN;
+
+	/* Non-user focus to v1 should SUCCEED (v1 has GAIN overriding REFUSE) */
+	test_server.focus_user_initiated = false;
+	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_view_protection_gain_overrides_refuse\n");
+}
+
+static void
+test_focus_view_same_surface_noop(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	/* Set the seat's keyboard focused surface to our view's surface */
+	test_seat.keyboard_state.focused_surface =
+		test_views[0].xdg_toplevel->base->surface;
+
+	/* Focusing the same surface should be a no-op */
+	int prev_count = g_focus_view_count;
+	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
+	/* Should have returned early */
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: focus_view_same_surface_noop\n");
+}
+
+/* ===== wm_focus_update_for_cursor tests ===== */
+
+static void
+test_focus_update_for_cursor_click_policy(void)
+{
+	init_test_server();
+	test_server.focus_policy = WM_FOCUS_CLICK;
+
+	/* Click policy: cursor movement should NOT change focus */
+	wm_focus_update_for_cursor(&test_server, 100, 100);
+	assert(test_server.focused_view == NULL); /* unchanged */
+	printf("  PASS: focus_update_for_cursor_click_policy\n");
+}
+
+static void
+test_focus_update_for_cursor_during_move(void)
+{
+	init_test_server();
+	test_server.focus_policy = WM_FOCUS_SLOPPY;
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+
+	/* During interactive move, should NOT change focus */
+	wm_focus_update_for_cursor(&test_server, 100, 100);
+	assert(test_server.focused_view == NULL); /* unchanged */
+	printf("  PASS: focus_update_for_cursor_during_move\n");
+}
+
+/* ===== wm_view_at tests ===== */
+
+static void
+test_view_at_no_node(void)
+{
+	init_test_server();
+	/* wlr_scene_node_at stub returns NULL → view_at returns NULL */
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wm_view *result = wm_view_at(&test_server, 100, 100,
+		&surface, &sx, &sy);
+	assert(result == NULL);
+	printf("  PASS: view_at_no_node\n");
+}
+
+/* ===== wm_view_cycle_prev wraps around tests ===== */
+
+static void
+test_view_cycle_prev_wraps(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Focus first view; prev should wrap to last */
+	test_server.focused_view = &test_views[0];
+	wm_view_cycle_prev(&test_server);
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_cycle_prev_wraps\n");
+}
+
+/* ===== Additional maximize/fullscreen edge cases ===== */
+
+static void
+test_maximize_enter_full_max(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	test_config.full_maximization = true;
+
+	/* Trigger maximize */
+	test_views[0].request_maximize.notify = handle_xdg_toplevel_request_maximize;
+	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+
+	assert(test_views[0].maximized == true);
+	/* full maximization uses output box, not usable area */
+
+	/* Toggle maximize off */
+	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+	assert(test_views[0].maximized == false);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: maximize_enter_full_max\n");
+}
+
+static void
+test_maximize_already_lhalf(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+
+	/* Pre-set as lhalf */
+	test_views[0].lhalf = true;
+	test_views[0].saved_geometry.x = 100;
+	test_views[0].saved_geometry.y = 100;
+	test_views[0].saved_geometry.width = 400;
+	test_views[0].saved_geometry.height = 300;
+
+	test_views[0].request_maximize.notify = handle_xdg_toplevel_request_maximize;
+	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+
+	/* Should have maximized (lhalf state is preserved, maximize is orthogonal) */
+	assert(test_views[0].maximized == true);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: maximize_already_lhalf\n");
+}
+
+static void
+test_maximize_already_rhalf(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+
+	/* Pre-set as rhalf */
+	test_views[0].rhalf = true;
+	test_views[0].saved_geometry.x = 200;
+	test_views[0].saved_geometry.y = 200;
+	test_views[0].saved_geometry.width = 500;
+	test_views[0].saved_geometry.height = 400;
+
+	test_views[0].request_maximize.notify = handle_xdg_toplevel_request_maximize;
+	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+
+	assert(test_views[0].maximized == true);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: maximize_already_rhalf\n");
+}
+
+/* ===== Maximize vert/horiz with output ===== */
+
+static void
+test_maximize_vert_with_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized_vert = false;
+
+	wm_view_maximize_vert(&test_views[0]);
+	assert(test_views[0].maximized_vert == true);
+	/* Should have saved geometry and set y to usable area */
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: maximize_vert_with_output\n");
+}
+
+static void
+test_maximize_horiz_with_output(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	test_views[0].x = 100;
+	test_views[0].y = 200;
+	test_views[0].maximized_horiz = false;
+
+	wm_view_maximize_horiz(&test_views[0]);
+	assert(test_views[0].maximized_horiz == true);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: maximize_horiz_with_output\n");
+}
+
+/* ===== json_escape: zero-size buffer ===== */
+
+static void
+test_json_escape_zero_buffer(void)
+{
+	char buf[2];
+	buf[0] = 'x';
+	buf[1] = 'y';
+	json_escape(buf, 1, "test");
+	/* With dst_size == 1, only null terminator fits (j + 6 < 1 is false) */
+	assert(buf[0] == '\0');
+	printf("  PASS: json_escape_zero_buffer\n");
+}
+
+/* ===== wm_view_resize_by clamp to minimum ===== */
+
+static void
+test_view_resize_by_negative_clamp(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	/* Resize by huge negative: 800-10000 should clamp to min_size=1 */
+	wm_view_resize_by(&test_views[0], -10000, -10000);
+	/* New size should be clamped (>0) */
+	assert(test_toplevels[0].width >= 1);
+	assert(test_toplevels[0].height >= 1);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_resize_by_negative_clamp\n");
+}
+
+/* ===== Sloppy focus tests ===== */
+
+static void
+test_focus_update_for_cursor_sloppy_focus(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	test_server.focus_policy = WM_FOCUS_SLOPPY;
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	test_server.focused_view = &test_views[0];
+
+	/* Set up scene_node_at to return a node with the right parent chain */
+	struct wlr_scene_node fake_node;
+	memset(&fake_node, 0, sizeof(fake_node));
+	fake_node.type = WLR_SCENE_NODE_BUFFER;
+	fake_node.parent = test_views[1].scene_tree;
+	test_views[1].scene_tree->node.data = &test_views[1];
+
+	/* Set up stub surface for scene surface */
+	g_stub_scene_surface.surface = test_xdg_surfaces[1].surface;
+
+	g_scene_node_at_return = &fake_node;
+	g_try_from_surface_return = &test_toplevels[0]; /* for prev deactivation */
+
+	/* Set up a previous focused surface */
+	test_seat.keyboard_state.focused_surface = test_xdg_surfaces[0].surface;
+
+	wm_focus_update_for_cursor(&test_server, 100, 100);
+
+	/* Focus should have changed to test_views[1] */
+	assert(test_server.focused_view == &test_views[1]);
+
+	g_scene_node_at_return = NULL;
+	g_try_from_surface_return = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_update_for_cursor_sloppy_focus\n");
+}
+
+static void
+test_focus_update_for_cursor_strict_mouse(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	test_server.focus_policy = WM_FOCUS_STRICT_MOUSE;
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	test_server.focused_view = &test_views[0];
+
+	struct wlr_scene_node fake_node;
+	memset(&fake_node, 0, sizeof(fake_node));
+	fake_node.type = WLR_SCENE_NODE_BUFFER;
+	fake_node.parent = test_views[1].scene_tree;
+	test_views[1].scene_tree->node.data = &test_views[1];
+	g_stub_scene_surface.surface = test_xdg_surfaces[1].surface;
+
+	g_scene_node_at_return = &fake_node;
+
+	wm_focus_update_for_cursor(&test_server, 200, 200);
+
+	assert(test_server.focused_view == &test_views[1]);
+
+	g_scene_node_at_return = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_update_for_cursor_strict_mouse\n");
+}
+
+/* ===== focus_view with previous deactivation ===== */
+
+static void
+test_focus_view_deactivate_previous(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Set up previous focused surface */
+	test_seat.keyboard_state.focused_surface = test_xdg_surfaces[0].surface;
+	test_server.focused_view = &test_views[0];
+	test_server.focus_user_initiated = true;
+	g_try_from_surface_return = &test_toplevels[0];
+
+	/* Focus a different view - should deactivate previous */
+	wm_focus_view(&test_views[1], test_xdg_surfaces[1].surface);
+
+	assert(test_server.focused_view == &test_views[1]);
+	assert(test_server.focus_user_initiated == false);
+
+	g_try_from_surface_return = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: focus_view_deactivate_previous\n");
+}
+
+static void
+test_focus_view_with_keyboard(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_server.focus_user_initiated = true;
+	g_seat_has_keyboard = true;
+	memset(&g_stub_keyboard, 0, sizeof(g_stub_keyboard));
+
+	wm_focus_view(&test_views[0], test_xdg_surfaces[0].surface);
+
+	assert(test_server.focused_view == &test_views[0]);
+
+	g_seat_has_keyboard = false;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: focus_view_with_keyboard\n");
+}
+
+/* ===== unfocus_current with previous surface ===== */
+
+static void
+test_unfocus_current_with_prev(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	test_seat.keyboard_state.focused_surface = test_xdg_surfaces[0].surface;
+	test_server.focused_view = &test_views[0];
+	g_try_from_surface_return = &test_toplevels[0];
+
+	wm_unfocus_current(&test_server);
+
+	assert(test_server.focused_view == NULL);
+
+	g_try_from_surface_return = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: unfocus_current_with_prev\n");
+}
+
+/* ===== deiconify_all_workspace ===== */
+
+static void
+test_view_deiconify_all_workspace(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+
+	/* Minimize both views */
+	test_views[0].scene_tree->node.enabled = false;
+	test_views[1].scene_tree->node.enabled = false;
+
+	wm_view_deiconify_all_workspace(&test_server);
+
+	/* Both should be restored */
+	assert(test_views[0].scene_tree->node.enabled == true);
+	assert(test_views[1].scene_tree->node.enabled == true);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: view_deiconify_all_workspace\n");
+}
+
+/* ===== view_at with scene node ===== */
+
+static void
+test_view_at_with_node(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	struct wlr_scene_node fake_node;
+	memset(&fake_node, 0, sizeof(fake_node));
+	fake_node.type = WLR_SCENE_NODE_BUFFER;
+	fake_node.parent = test_views[0].scene_tree;
+	test_views[0].scene_tree->node.data = &test_views[0];
+	g_stub_scene_surface.surface = test_xdg_surfaces[0].surface;
+
+	g_scene_node_at_return = &fake_node;
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wm_view *result = wm_view_at(&test_server, 100, 100,
+		&surface, &sx, &sy);
+
+	assert(result == &test_views[0]);
+	assert(surface == test_xdg_surfaces[0].surface);
+
+	g_scene_node_at_return = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_at_with_node\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -3858,6 +4386,52 @@ main(void)
 	/* deiconify_view */
 	test_deiconify_view_basic();
 	test_deiconify_view_with_animation();
+
+	/* focus protection */
+	test_focus_view_protection_refuse();
+	test_focus_view_protection_deny();
+	test_focus_view_protection_gain_overrides_refuse();
+	test_focus_view_same_surface_noop();
+
+	/* cursor focus */
+	test_focus_update_for_cursor_click_policy();
+	test_focus_update_for_cursor_during_move();
+
+	/* view_at */
+	test_view_at_no_node();
+
+	/* cycle prev wrap */
+	test_view_cycle_prev_wraps();
+
+	/* maximize edge cases */
+	test_maximize_enter_full_max();
+	test_maximize_already_lhalf();
+	test_maximize_already_rhalf();
+	test_maximize_vert_with_output();
+	test_maximize_horiz_with_output();
+
+	/* json_escape zero buffer */
+	test_json_escape_zero_buffer();
+
+	/* resize clamp */
+	test_view_resize_by_negative_clamp();
+
+	/* sloppy focus */
+	test_focus_update_for_cursor_sloppy_focus();
+	test_focus_update_for_cursor_strict_mouse();
+
+	/* focus_view full path with previous surface */
+	test_focus_view_deactivate_previous();
+	test_focus_view_with_keyboard();
+
+	/* unfocus_current with previous surface */
+	test_unfocus_current_with_prev();
+
+	/* deiconify_all_workspace */
+	test_view_deiconify_all_workspace();
+
+	/* view_at with scene node */
+	test_view_at_with_node();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

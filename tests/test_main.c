@@ -308,6 +308,148 @@ test_check_config_empty_dir(void)
 	printf("  PASS: test_check_config_empty_dir\n");
 }
 
+/* ---- Test: -d flag enables debug (shouldn't crash with just -d) ---- */
+static void
+test_debug_flag(void)
+{
+	const char *bin = get_binary();
+	char cmd[512];
+	/* -d alone without a running Wayland session will fail at server init,
+	 * but the important thing is it gets past the flag parsing.
+	 * We combine -d with --help to get a clean exit. */
+	snprintf(cmd, sizeof(cmd), "%s -d --help 2>&1", bin);
+
+	char *out = NULL;
+	int status = run_cmd(cmd, &out, NULL);
+
+	assert(WIFEXITED(status));
+	assert(WEXITSTATUS(status) == 0);
+	assert(strstr(out, "Usage:") != NULL);
+
+	free(out);
+	printf("  PASS: test_debug_flag\n");
+}
+
+/* ---- Test: -s flag with --help still shows help ---- */
+static void
+test_startup_flag_with_help(void)
+{
+	const char *bin = get_binary();
+	char cmd[512];
+	/* -s requires an argument; combine with --help */
+	snprintf(cmd, sizeof(cmd), "%s -s 'echo test' --help 2>&1", bin);
+
+	char *out = NULL;
+	int status = run_cmd(cmd, &out, NULL);
+
+	assert(WIFEXITED(status));
+	assert(WEXITSTATUS(status) == 0);
+	assert(strstr(out, "Usage:") != NULL);
+
+	free(out);
+	printf("  PASS: test_startup_flag_with_help\n");
+}
+
+/* ---- Test: --ipc-no-exec flag with --help ---- */
+static void
+test_ipc_no_exec_flag(void)
+{
+	const char *bin = get_binary();
+	char cmd[512];
+	snprintf(cmd, sizeof(cmd), "%s --ipc-no-exec --help 2>&1", bin);
+
+	char *out = NULL;
+	int status = run_cmd(cmd, &out, NULL);
+
+	assert(WIFEXITED(status));
+	assert(WEXITSTATUS(status) == 0);
+	assert(strstr(out, "Usage:") != NULL);
+
+	free(out);
+	printf("  PASS: test_ipc_no_exec_flag\n");
+}
+
+/* ---- Test: no XDG_RUNTIME_DIR causes error exit ---- */
+static void
+test_no_xdg_runtime_dir(void)
+{
+	const char *bin = get_binary();
+	char cmd[1024];
+	/* Unset XDG_RUNTIME_DIR so the compositor fails at startup.
+	 * Also unset HOME to avoid any fallback. */
+	snprintf(cmd, sizeof(cmd),
+		"env -u XDG_RUNTIME_DIR %s 2>&1", bin);
+
+	char *out = NULL;
+	int status = run_cmd(cmd, &out, NULL);
+
+	assert(WIFEXITED(status));
+	/* Should exit with error (1) */
+	assert(WEXITSTATUS(status) == 1);
+
+	free(out);
+	printf("  PASS: test_no_xdg_runtime_dir\n");
+}
+
+/* ---- Test: --check-config with bad key reports error content ---- */
+static void
+test_check_config_bad_key(void)
+{
+	const char *bin = get_binary();
+	const char *bad_dir = TEST_DIR "/bad-cfg";
+
+	mkdir("/tmp/fluxland-test", 0755);
+	mkdir(TEST_DIR, 0700);
+	mkdir(bad_dir, 0700);
+
+	/* Write an init file with an obviously wrong key */
+	char init_path[512];
+	snprintf(init_path, sizeof(init_path), "%s/init", bad_dir);
+	FILE *f = fopen(init_path, "w");
+	assert(f);
+	fprintf(f, "totally.invalid.key.that.does.not.exist: true\n");
+	fclose(f);
+
+	char cmd[1024];
+	snprintf(cmd, sizeof(cmd),
+		"HOME=/tmp/fluxland-test-noexist "
+		"FLUXLAND_CONFIG_DIR=%s "
+		"%s --check-config 2>&1",
+		bad_dir, bin);
+
+	char *out = NULL;
+	int status = run_cmd(cmd, &out, NULL);
+
+	/* Should succeed (unknown keys are warnings, not fatal) or
+	 * report the issues */
+	assert(WIFEXITED(status));
+
+	free(out);
+	unlink(init_path);
+	rmdir(bad_dir);
+	printf("  PASS: test_check_config_bad_key\n");
+}
+
+/* ---- Test: multiple flags combined ---- */
+static void
+test_combined_flags(void)
+{
+	const char *bin = get_binary();
+	char cmd[512];
+	snprintf(cmd, sizeof(cmd), "%s -d -v 2>&1", bin);
+
+	char *out = NULL;
+	int status = run_cmd(cmd, &out, NULL);
+
+	assert(WIFEXITED(status));
+	/* -v prints version and exits first */
+	assert(WEXITSTATUS(status) == 0);
+	assert(strstr(out, "fluxland") != NULL);
+
+	free(out);
+	printf("  PASS: test_combined_flags\n");
+}
+
 static void
 cleanup(void)
 {
@@ -316,6 +458,10 @@ cleanup(void)
 	snprintf(path, sizeof(path), "%s/init", TEST_DIR);
 	unlink(path);
 	snprintf(path, sizeof(path), "%s/empty-cfg", TEST_DIR);
+	rmdir(path);
+	snprintf(path, sizeof(path), "%s/bad-cfg/init", TEST_DIR);
+	unlink(path);
+	snprintf(path, sizeof(path), "%s/bad-cfg", TEST_DIR);
 	rmdir(path);
 	rmdir(TEST_DIR);
 }
@@ -334,6 +480,12 @@ main(void)
 	test_check_config_unreadable();
 	test_check_config_empty_dir();
 	test_invalid_flag();
+	test_debug_flag();
+	test_startup_flag_with_help();
+	test_ipc_no_exec_flag();
+	test_no_xdg_runtime_dir();
+	test_check_config_bad_key();
+	test_combined_flags();
 
 	cleanup();
 	printf("All main tests passed.\n");

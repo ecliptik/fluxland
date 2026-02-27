@@ -1417,6 +1417,272 @@ test_workspace_per_output_init_all_enabled(void)
 	printf("  PASS: workspace_per_output_init_all_enabled\n");
 }
 
+/* ===== per-output mode workspace switching ===== */
+
+static void
+test_workspace_switch_per_output_with_output(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	/* Set up a mock focused output (after init_test_server resets globals) */
+	memset(&test_output, 0, sizeof(test_output));
+	test_output.server = &test_server;
+	test_output.active_workspace = wm_workspace_get(&test_server, 0);
+	test_output.wlr_output = &test_wlr_output;
+	test_wlr_output.name = "test-output";
+	g_mock_focused_output = &test_output;
+	g_toolbar_ws_update_count = 0;
+	g_ipc_broadcast_count = 0;
+
+	wm_workspace_switch(&test_server, 2);
+
+	/* In per-output mode, output's active_workspace should change */
+	assert(test_output.active_workspace ==
+		wm_workspace_get(&test_server, 2));
+	/* Server current_workspace also tracks it */
+	assert(test_server.current_workspace ==
+		wm_workspace_get(&test_server, 2));
+	assert(g_toolbar_ws_update_count == 1);
+	assert(g_ipc_broadcast_count == 1);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_per_output_with_output\n");
+}
+
+static void
+test_workspace_switch_per_output_no_output(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	/* No focused output */
+	g_mock_focused_output = NULL;
+
+	reset_globals();
+	wm_workspace_switch(&test_server, 2);
+
+	/* Should be a no-op (no output to switch) */
+	assert(g_toolbar_ws_update_count == 0);
+	assert(g_ipc_broadcast_count == 0);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_per_output_no_output\n");
+}
+
+static void
+test_workspace_switch_per_output_same_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	memset(&test_output, 0, sizeof(test_output));
+	test_output.server = &test_server;
+	test_output.active_workspace = wm_workspace_get(&test_server, 2);
+	test_output.wlr_output = &test_wlr_output;
+	test_wlr_output.name = "test-output";
+	g_mock_focused_output = &test_output;
+	g_toolbar_ws_update_count = 0;
+	g_ipc_broadcast_count = 0;
+
+	/* Switch to the same workspace that's already active on this output */
+	wm_workspace_switch(&test_server, 2);
+
+	/* Should be a no-op */
+	assert(g_toolbar_ws_update_count == 0);
+	assert(g_ipc_broadcast_count == 0);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_switch_per_output_same_workspace\n");
+}
+
+/* ===== per-output mode: send view to workspace ===== */
+
+static void
+test_view_send_per_output_mode(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	memset(&test_output, 0, sizeof(test_output));
+	test_output.server = &test_server;
+	test_output.active_workspace = wm_workspace_get(&test_server, 0);
+	test_output.wlr_output = &test_wlr_output;
+	test_wlr_output.name = "test-output";
+	g_mock_focused_output = &test_output;
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+	g_toolbar_iconbar_update_count = 0;
+
+	wm_view_send_to_workspace(&test_server, 2);
+
+	/* View moved to workspace 2 */
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_views[0].workspace == ws2);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_send_per_output_mode\n");
+}
+
+/* ===== per-output mode: remove last resets output active workspace ===== */
+
+static void
+test_workspace_remove_last_per_output(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	/* Set up an output with active workspace pointing to the last one */
+	memset(&test_output, 0, sizeof(test_output));
+	test_output.server = &test_server;
+	struct wm_workspace *ws3 = wm_workspace_get(&test_server, 3);
+	test_output.active_workspace = ws3;
+	wl_list_insert(test_server.outputs.prev, &test_output.link);
+	g_mock_focused_output = &test_output;
+
+	reset_globals();
+	wm_workspace_remove_last(&test_server);
+
+	/* Output should have been switched to workspace 2 */
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	assert(test_output.active_workspace == ws2);
+	assert(test_server.workspace_count == 3);
+
+	wl_list_remove(&test_output.link);
+	cleanup_test_server();
+	printf("  PASS: workspace_remove_last_per_output\n");
+}
+
+/* ===== view_set_sticky in per-output mode ===== */
+
+static void
+test_view_set_sticky_per_output(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+
+	/* Set sticky in per-output mode */
+	wm_view_set_sticky(&test_views[0], true);
+	assert(test_views[0].sticky == true);
+
+	/* Unstick */
+	wm_view_set_sticky(&test_views[0], false);
+	assert(test_views[0].sticky == false);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_set_sticky_per_output\n");
+}
+
+/* ===== workspace_add multiple times ===== */
+
+static void
+test_workspace_add_multiple(void)
+{
+	init_test_server(2, WM_WORKSPACE_GLOBAL);
+	assert(test_server.workspace_count == 2);
+
+	wm_workspace_add(&test_server);
+	wm_workspace_add(&test_server);
+	assert(test_server.workspace_count == 4);
+
+	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
+	struct wm_workspace *ws3 = wm_workspace_get(&test_server, 3);
+	assert(ws2 != NULL && ws2->index == 2);
+	assert(ws3 != NULL && ws3->index == 3);
+	assert(strcmp(ws2->name, "Workspace 3") == 0);
+	assert(strcmp(ws3->name, "Workspace 4") == 0);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_add_multiple\n");
+}
+
+/* ===== remove_last cascading: remove down to 1 ===== */
+
+static void
+test_workspace_remove_to_minimum(void)
+{
+	init_test_server(3, WM_WORKSPACE_GLOBAL);
+	assert(test_server.workspace_count == 3);
+
+	wm_workspace_remove_last(&test_server);
+	assert(test_server.workspace_count == 2);
+	wm_workspace_remove_last(&test_server);
+	assert(test_server.workspace_count == 1);
+	/* Should refuse to remove the last workspace */
+	wm_workspace_remove_last(&test_server);
+	assert(test_server.workspace_count == 1);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_remove_to_minimum\n");
+}
+
+/* ===== view_take with invalid index ===== */
+
+static void
+test_view_take_to_invalid_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_take_to_workspace(&test_server, 99);
+
+	/* Should be a no-op (invalid index) */
+	assert(test_views[0].workspace == ws0);
+	assert(test_server.current_workspace->index == 0);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_take_to_invalid_workspace\n");
+}
+
+/* ===== view_take to same workspace ===== */
+
+static void
+test_view_take_to_same_workspace(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+
+	struct wm_workspace *ws0 = wm_workspace_get(&test_server, 0);
+	setup_mock_view(0, ws0);
+	test_server.focused_view = &test_views[0];
+
+	reset_globals();
+	wm_view_take_to_workspace(&test_server, 0);
+
+	/* View stays on ws0, we're still on ws0 */
+	assert(test_views[0].workspace == ws0);
+	assert(test_server.current_workspace == ws0);
+
+	wl_list_remove(&test_views[0].link);
+	cleanup_test_server();
+	printf("  PASS: view_take_to_same_workspace\n");
+}
+
+/* ===== workspace_get_active per-output with active_workspace NULL ===== */
+
+static void
+test_workspace_get_active_per_output_null_active(void)
+{
+	init_test_server(4, WM_WORKSPACE_PER_OUTPUT);
+
+	/* Output exists but active_workspace is NULL */
+	memset(&test_output, 0, sizeof(test_output));
+	test_output.active_workspace = NULL;
+	g_mock_focused_output = &test_output;
+
+	struct wm_workspace *active = wm_workspace_get_active(&test_server);
+	/* Should fall back to current_workspace */
+	assert(active == test_server.current_workspace);
+
+	cleanup_test_server();
+	printf("  PASS: workspace_get_active_per_output_null_active\n");
+}
+
 /* ===== wm_workspace_switch_left normal (non-boundary) ===== */
 
 static void
@@ -1546,6 +1812,19 @@ main(void)
 
 	/* per-output mode */
 	test_workspace_per_output_init_all_enabled();
+	test_workspace_switch_per_output_with_output();
+	test_workspace_switch_per_output_no_output();
+	test_workspace_switch_per_output_same_workspace();
+	test_view_send_per_output_mode();
+	test_workspace_remove_last_per_output();
+	test_view_set_sticky_per_output();
+
+	/* additional add/remove/take edge cases */
+	test_workspace_add_multiple();
+	test_workspace_remove_to_minimum();
+	test_view_take_to_invalid_workspace();
+	test_view_take_to_same_workspace();
+	test_workspace_get_active_per_output_null_active();
 
 	printf("All workspace tests passed.\n");
 	return 0;

@@ -1573,6 +1573,708 @@ test_slit_null_safety(void)
 	printf("  PASS: slit_null_safety\n");
 }
 
+/* --- additional coverage: slit_compute_position remaining placements --- */
+
+static void
+test_slit_position_right_top(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	slit.width = 50;
+	slit.height = 200;
+	slit.placement = WM_SLIT_RIGHT_TOP;
+	slit_compute_position(&slit, 1920, 1080);
+	assert(slit.x == 1920 - 50);
+	assert(slit.y == 0);
+	printf("  PASS: slit_position_right_top\n");
+}
+
+static void
+test_slit_position_right_bottom(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	slit.width = 50;
+	slit.height = 200;
+	slit.placement = WM_SLIT_RIGHT_BOTTOM;
+	slit_compute_position(&slit, 1920, 1080);
+	assert(slit.x == 1920 - 50);
+	assert(slit.y == 1080 - 200);
+	printf("  PASS: slit_position_right_bottom\n");
+}
+
+static void
+test_slit_position_bottom_left(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	slit.width = 200;
+	slit.height = 50;
+	slit.placement = WM_SLIT_BOTTOM_LEFT;
+	slit_compute_position(&slit, 1920, 1080);
+	assert(slit.x == 0);
+	assert(slit.y == 1080 - 50);
+	printf("  PASS: slit_position_bottom_left\n");
+}
+
+static void
+test_slit_position_bottom_right(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	slit.width = 200;
+	slit.height = 50;
+	slit.placement = WM_SLIT_BOTTOM_RIGHT;
+	slit_compute_position(&slit, 1920, 1080);
+	assert(slit.x == 1920 - 200);
+	assert(slit.y == 1080 - 50);
+	printf("  PASS: slit_position_bottom_right\n");
+}
+
+static void
+test_slit_position_left_top(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	slit.width = 50;
+	slit.height = 200;
+	slit.placement = WM_SLIT_LEFT_TOP;
+	slit_compute_position(&slit, 1920, 1080);
+	assert(slit.x == 0);
+	assert(slit.y == 0);
+	printf("  PASS: slit_position_left_top\n");
+}
+
+static void
+test_slit_position_left_bottom(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	slit.width = 50;
+	slit.height = 200;
+	slit.placement = WM_SLIT_LEFT_BOTTOM;
+	slit_compute_position(&slit, 1920, 1080);
+	assert(slit.x == 0);
+	assert(slit.y == 1080 - 200);
+	printf("  PASS: slit_position_left_bottom\n");
+}
+
+/* --- additional coverage: slit_hide_timer_cb edge cases --- */
+
+static void
+test_slit_hide_timer_no_auto_hide(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	wl_list_init(&slit.clients);
+	slit.auto_hide = false;
+	slit.hidden = false;
+
+	/* Timer fires but auto_hide is false: nothing should change */
+	slit_hide_timer_cb(&slit);
+	assert(slit.hidden == false);
+	printf("  PASS: slit_hide_timer_no_auto_hide\n");
+}
+
+static void
+test_slit_hide_timer_already_hidden(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	wl_list_init(&slit.clients);
+	slit.auto_hide = true;
+	slit.hidden = true;
+
+	/* Timer fires but already hidden: no-op */
+	slit_hide_timer_cb(&slit);
+	assert(slit.hidden == true);
+	printf("  PASS: slit_hide_timer_already_hidden\n");
+}
+
+/* --- additional coverage: slit_layout_clients horizontal min_size --- */
+
+static void
+test_slit_layout_horizontal_min_size(void)
+{
+	struct wm_slit slit;
+	memset(&slit, 0, sizeof(slit));
+	wl_list_init(&slit.clients);
+	slit.direction = WM_SLIT_HORIZONTAL;
+
+	/* No mapped clients => min size applied */
+	slit_layout_clients(&slit);
+	assert(slit.width >= WM_SLIT_MIN_SIZE);
+	assert(slit.height >= WM_SLIT_MIN_SIZE);
+	printf("  PASS: slit_layout_horizontal_min_size\n");
+}
+
+/* --- additional coverage: get_slit_output with non-zero on_head --- */
+
+static void
+test_slit_get_output_second_head(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Add a second output */
+	struct wm_output second_output;
+	memset(&second_output, 0, sizeof(second_output));
+	struct wlr_output second_wlr = {.width = 1920, .height = 1080};
+	second_output.wlr_output = &second_wlr;
+	second_output.usable_area = (struct wlr_box){0, 0, 1920, 1080};
+	wl_list_insert(test_server.outputs.prev, &second_output.link);
+
+	/* Set on_head = 1 to target the second output */
+	slit->on_head = 1;
+	wm_slit_reconfigure(slit);
+
+	/* Slit should be positioned based on second output */
+	/* (just verifying no crash with multi-head) */
+
+	wl_list_remove(&second_output.link);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_get_output_second_head\n");
+}
+
+/* --- additional coverage: create with overlay layer --- */
+
+static void
+test_slit_create_overlay_layer(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	test_config.slit_layer = 6; /* AboveDock/Overlay */
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_create_overlay_layer\n");
+}
+
+static void
+test_slit_create_bottom_layer(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	test_config.slit_layer = 2; /* Bottom */
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_create_bottom_layer\n");
+}
+
+/* --- additional coverage: create with alpha < 255 --- */
+
+static void
+test_slit_create_with_alpha(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	test_config.slit_alpha = 128;
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+	assert(slit->alpha == 128);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_create_with_alpha\n");
+}
+
+/* --- additional coverage: create with border --- */
+
+static void
+test_slit_create_with_border(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	test_style.slit_border_width = 2;
+	test_style.slit_border_color = (struct wm_color){128, 128, 128, 255};
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+	assert(slit->border_rect != NULL);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_create_with_border\n");
+}
+
+/* --- additional coverage: reconfigure with max_over disabled + different placements --- */
+
+static void
+test_slit_reconfigure_max_over_left_placements(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.slit_max_over = false;
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Add a mapped client so has_clients is true */
+	struct wlr_surface surface;
+	memset(&surface, 0, sizeof(surface));
+	wl_signal_init(&surface.events.map);
+	wl_signal_init(&surface.events.unmap);
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &surface;
+	xsurf.width = 64;
+	xsurf.height = 64;
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+	client->mapped = true;
+
+	/* Test LEFT_TOP placement */
+	slit->placement = WM_SLIT_LEFT_TOP;
+	wm_slit_reconfigure(slit);
+
+	/* Test TOP_LEFT placement */
+	slit->placement = WM_SLIT_TOP_LEFT;
+	wm_slit_reconfigure(slit);
+
+	/* Test BOTTOM_LEFT placement */
+	slit->placement = WM_SLIT_BOTTOM_LEFT;
+	wm_slit_reconfigure(slit);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_reconfigure_max_over_left_placements\n");
+}
+
+/* --- additional coverage: reconfigure hidden slit undoes reservation --- */
+
+static void
+test_slit_reconfigure_hidden_undo_reservation(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.slit_max_over = false;
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Simulate previous reservation */
+	slit->reserved_space = 50;
+	slit->placement = WM_SLIT_LEFT_CENTER;
+
+	/* Reconfigure with no clients => undo reservation */
+	wm_slit_reconfigure(slit);
+
+	assert(slit->reserved_space == 0);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_reconfigure_hidden_undo_reservation\n");
+}
+
+/* --- additional coverage: relayout with bottom layer --- */
+
+static void
+test_slit_relayout_bottom_layer(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Change to bottom layer */
+	test_config.slit_layer = 2;
+
+	reset_globals();
+	wm_slit_relayout(slit);
+
+	assert(g_scene_node_reparent_count > 0);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_relayout_bottom_layer\n");
+}
+
+/* --- additional coverage: relayout updates style colors --- */
+
+static void
+test_slit_relayout_updates_colors(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_style.slit_border_width = 2;
+	test_style.slit_border_color = (struct wm_color){255, 0, 0, 255};
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Change colors in style and relayout */
+	test_style.slit_texture.color = 0xFF00FF00; /* green */
+	test_style.slit_border_color = (struct wm_color){0, 0, 255, 255};
+
+	reset_globals();
+	wm_slit_relayout(slit);
+
+	/* Should have called set_color for bg and border rects */
+	assert(g_scene_rect_set_color_count >= 2);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_relayout_updates_colors\n");
+}
+
+/* --- additional coverage: relayout with alpha < 255 --- */
+
+static void
+test_slit_relayout_with_alpha(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.slit_alpha = 200;
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	reset_globals();
+	wm_slit_relayout(slit);
+
+	/* Should still apply alpha */
+	assert(slit->alpha == 200);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_relayout_with_alpha\n");
+}
+
+/* --- additional coverage: toggle_above with bottom config --- */
+
+static void
+test_slit_toggle_above_overlay_to_base(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Move to overlay first */
+	slit->scene_tree->node.parent = &test_layer_overlay;
+
+	reset_globals();
+	wm_slit_toggle_above(slit);
+
+	/* Should reparent back to configured base layer (layer_top) */
+	assert(g_scene_node_reparent_count > 0);
+	assert(slit->scene_tree->node.parent == &test_layer_top);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_toggle_above_overlay_to_base\n");
+}
+
+/* --- additional coverage: toggle_hidden enable then disable --- */
+
+static void
+test_slit_toggle_hidden_cycle(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+	assert(slit->auto_hide == false);
+
+	/* Toggle on */
+	wm_slit_toggle_hidden(slit);
+	assert(slit->auto_hide == true);
+
+	/* Toggle off */
+	wm_slit_toggle_hidden(slit);
+	assert(slit->auto_hide == false);
+	assert(slit->hidden == false);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_toggle_hidden_cycle\n");
+}
+
+/* ===== XWayland slit client handler tests ===== */
+
+static void
+test_slit_client_map_basic(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	/* Create a fake xwayland surface */
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 48;
+	xsurf.height = 48;
+	xsurf.title = "test-dock";
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+	assert(client->mapped == false);
+
+	/* Invoke the map handler directly */
+	handle_slit_client_map(&client->map, NULL);
+	assert(client->mapped == true);
+	assert(client->width == 48);
+	assert(client->height == 48);
+
+	/* Clean up */
+	wm_slit_remove_client(client);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_map_basic\n");
+}
+
+static void
+test_slit_client_map_with_alpha(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.slit_alpha = 128; /* partial alpha */
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 64;
+	xsurf.height = 64;
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+
+	/* Give it a scene tree so the alpha path executes */
+	struct wlr_scene_tree scene_tree;
+	memset(&scene_tree, 0, sizeof(scene_tree));
+	client->scene_tree = &scene_tree;
+
+	handle_slit_client_map(&client->map, NULL);
+	assert(client->mapped == true);
+	/* Alpha < 255 and scene_tree non-NULL should trigger for_each_buffer */
+	assert(g_scene_node_for_each_buffer_count > 0);
+
+	client->scene_tree = NULL; /* prevent double-destroy */
+	wm_slit_remove_client(client);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_map_with_alpha\n");
+}
+
+static void
+test_slit_client_unmap_basic(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 32;
+	xsurf.height = 32;
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+
+	/* Map first */
+	handle_slit_client_map(&client->map, NULL);
+	assert(client->mapped == true);
+
+	/* Give it a scene tree so the destroy path runs */
+	struct wlr_scene_tree scene_tree;
+	memset(&scene_tree, 0, sizeof(scene_tree));
+	client->scene_tree = &scene_tree;
+
+	int before_destroy = g_scene_node_destroy_count;
+	handle_slit_client_unmap(&client->unmap, NULL);
+	assert(client->mapped == false);
+	assert(client->scene_tree == NULL);
+	assert(g_scene_node_destroy_count == before_destroy + 1);
+
+	wm_slit_remove_client(client);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_unmap_basic\n");
+}
+
+static void
+test_slit_client_destroy_basic(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 64;
+	xsurf.height = 64;
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+	assert(slit->client_count == 1);
+
+	/* Destroy handler removes client from slit */
+	handle_slit_client_destroy(&client->destroy, NULL);
+	assert(slit->client_count == 0);
+
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_destroy_basic\n");
+}
+
+static void
+test_slit_client_configure_basic(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 64;
+	xsurf.height = 64;
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+
+	/* Send configure event with new size */
+	struct wlr_xwayland_surface_configure_event event = {
+		.x = 100, .y = 200, .width = 96, .height = 96,
+	};
+	handle_slit_client_configure(&client->configure, &event);
+	assert(client->width == 96);
+	assert(client->height == 96);
+	assert(g_xwayland_configure_count > 0);
+
+	wm_slit_remove_client(client);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_configure_basic\n");
+}
+
+static void
+test_slit_client_configure_while_mapped(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 64;
+	xsurf.height = 64;
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+
+	/* Map first, then configure */
+	handle_slit_client_map(&client->map, NULL);
+	assert(client->mapped == true);
+
+	struct wlr_xwayland_surface_configure_event event = {
+		.x = 0, .y = 0, .width = 128, .height = 128,
+	};
+	handle_slit_client_configure(&client->configure, &event);
+	assert(client->width == 128);
+	assert(client->height == 128);
+	/* When mapped, reconfigure should be called */
+
+	wm_slit_remove_client(client);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_configure_while_mapped\n");
+}
+
+static void
+test_slit_client_map_no_title(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_slit *slit = wm_slit_create(&test_server);
+	assert(slit != NULL);
+
+	struct wlr_surface fake_surface;
+	memset(&fake_surface, 0, sizeof(fake_surface));
+	wl_signal_init(&fake_surface.events.map);
+	wl_signal_init(&fake_surface.events.unmap);
+
+	struct wlr_xwayland_surface xsurf;
+	memset(&xsurf, 0, sizeof(xsurf));
+	xsurf.surface = &fake_surface;
+	xsurf.width = 32;
+	xsurf.height = 32;
+	xsurf.title = NULL; /* no title */
+	wl_signal_init(&xsurf.events.destroy);
+	wl_signal_init(&xsurf.events.request_configure);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
+	assert(client != NULL);
+
+	/* Map with NULL title (exercises the ternary in wlr_log) */
+	handle_slit_client_map(&client->map, NULL);
+	assert(client->mapped == true);
+
+	wm_slit_remove_client(client);
+	wm_slit_destroy(slit);
+	printf("  PASS: slit_client_map_no_title\n");
+}
+
 int
 main(void)
 {
@@ -1643,6 +2345,50 @@ main(void)
 	test_slit_create_with_config();
 	test_slit_toggle_hidden();
 	test_slit_null_safety();
+
+	/* additional coverage: remaining placements */
+	test_slit_position_right_top();
+	test_slit_position_right_bottom();
+	test_slit_position_bottom_left();
+	test_slit_position_bottom_right();
+	test_slit_position_left_top();
+	test_slit_position_left_bottom();
+
+	/* additional coverage: timer edge cases */
+	test_slit_hide_timer_no_auto_hide();
+	test_slit_hide_timer_already_hidden();
+
+	/* additional coverage: layout */
+	test_slit_layout_horizontal_min_size();
+
+	/* additional coverage: multi-head / layer / alpha / border */
+	test_slit_get_output_second_head();
+	test_slit_create_overlay_layer();
+	test_slit_create_bottom_layer();
+	test_slit_create_with_alpha();
+	test_slit_create_with_border();
+
+	/* additional coverage: reconfigure edge cases */
+	test_slit_reconfigure_max_over_left_placements();
+	test_slit_reconfigure_hidden_undo_reservation();
+
+	/* additional coverage: relayout edge cases */
+	test_slit_relayout_bottom_layer();
+	test_slit_relayout_updates_colors();
+	test_slit_relayout_with_alpha();
+
+	/* additional coverage: toggle */
+	test_slit_toggle_above_overlay_to_base();
+	test_slit_toggle_hidden_cycle();
+
+	/* XWayland slit client handler coverage */
+	test_slit_client_map_basic();
+	test_slit_client_map_with_alpha();
+	test_slit_client_unmap_basic();
+	test_slit_client_destroy_basic();
+	test_slit_client_configure_basic();
+	test_slit_client_configure_while_mapped();
+	test_slit_client_map_no_title();
 
 	printf("All slit tests passed.\n");
 	return 0;

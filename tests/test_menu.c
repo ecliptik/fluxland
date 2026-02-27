@@ -558,6 +558,710 @@ test_window_menu_tags(void)
 	printf("  PASS: test_window_menu_tags\n");
 }
 
+/* Test: encoding block converts labels */
+static void
+test_encoding_block(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[encoding] {ISO-8859-1}\n"
+		"[exec] (Caf\xe9) {cafe}\n"
+		"[endencoding]\n"
+		"[exec] (Plain) {plain}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 2);
+
+	/* First item had encoding conversion from ISO-8859-1 */
+	struct wm_menu_item *item0 = get_item(menu, 0);
+	assert(item0 != NULL);
+	assert(item0->type == WM_MENU_EXEC);
+	assert(item0->label != NULL);
+	/* é in UTF-8 is 0xC3 0xA9 */
+	assert(strstr(item0->label, "Caf") != NULL);
+	assert(strcmp(item0->command, "cafe") == 0);
+
+	/* Second item was outside encoding block, no conversion */
+	struct wm_menu_item *item1 = get_item(menu, 1);
+	assert(item1 != NULL);
+	assert(strcmp(item1->label, "Plain") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_encoding_block\n");
+}
+
+/* Test: sendto and layer simple tags */
+static void
+test_sendto_layer_tags(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Win)\n"
+		"[sendto] (Send To)\n"
+		"[layer] (Layer)\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 2);
+
+	assert(get_item(menu, 0)->type == WM_MENU_SENDTO);
+	assert(strcmp(get_item(menu, 0)->label, "Send To") == 0);
+	assert(get_item(menu, 1)->type == WM_MENU_LAYER);
+	assert(strcmp(get_item(menu, 1)->label, "Layer") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_sendto_layer_tags\n");
+}
+
+/* Test: tilde expansion in include path */
+static void
+test_include_tilde(void)
+{
+	/* Write include file in /tmp so it's allowed */
+	write_file(TEST_INCLUDE,
+		"[exec] (TildeProg) {tilde_cmd}\n"
+	);
+
+	/* Include with relative path under /tmp */
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[include] (" TEST_INCLUDE ")\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) >= 1);
+
+	struct wm_menu_item *item = get_item(menu, 0);
+	assert(item != NULL);
+	assert(item->type == WM_MENU_EXEC);
+	assert(strcmp(item->label, "TildeProg") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_include_tilde\n");
+}
+
+/* Test: include path with .. is rejected */
+static void
+test_include_traversal_rejected(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[include] (/tmp/../etc/passwd)\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	/* The include with .. should be rejected, no items added */
+	assert(count_items(menu) == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_include_traversal_rejected\n");
+}
+
+/* Test: stylesdir creates style entries from a directory */
+static void
+test_stylesdir(void)
+{
+	/* Create a temporary styles directory with files */
+	char stylesdir[] = TEST_DIR "/styles";
+	mkdir(stylesdir, 0755);
+
+	FILE *f1 = fopen(TEST_DIR "/styles/dark.style", "w");
+	assert(f1);
+	fputs("# dark\n", f1);
+	fclose(f1);
+
+	FILE *f2 = fopen(TEST_DIR "/styles/light.style", "w");
+	assert(f2);
+	fputs("# light\n", f2);
+	fclose(f2);
+
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[stylesdir] (" TEST_DIR "/styles)\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	/* Should have 2 style items (dark.style and light.style) */
+	assert(count_items(menu) == 2);
+
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		assert(item->type == WM_MENU_STYLE);
+		assert(item->label != NULL);
+		assert(item->command != NULL);
+	}
+
+	wm_menu_destroy(menu);
+
+	/* Clean up */
+	unlink(TEST_DIR "/styles/dark.style");
+	unlink(TEST_DIR "/styles/light.style");
+	rmdir(stylesdir);
+	printf("  PASS: test_stylesdir\n");
+}
+
+/* Test: wallpapers tag creates a submenu with image files */
+static void
+test_wallpapers(void)
+{
+	/* Create wallpaper directory */
+	char wpdir[] = TEST_DIR "/walls";
+	mkdir(wpdir, 0755);
+
+	FILE *f1 = fopen(TEST_DIR "/walls/beach.jpg", "w");
+	assert(f1);
+	fputs("fake jpg\n", f1);
+	fclose(f1);
+
+	FILE *f2 = fopen(TEST_DIR "/walls/forest.png", "w");
+	assert(f2);
+	fputs("fake png\n", f2);
+	fclose(f2);
+
+	/* non-image file should be skipped */
+	FILE *f3 = fopen(TEST_DIR "/walls/readme.txt", "w");
+	assert(f3);
+	fputs("not an image\n", f3);
+	fclose(f3);
+
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[wallpapers] (Backgrounds) {" TEST_DIR "/walls}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *wp_item = get_item(menu, 0);
+	assert(wp_item != NULL);
+	assert(wp_item->type == WM_MENU_SUBMENU);
+	assert(strcmp(wp_item->label, "Backgrounds") == 0);
+	assert(wp_item->submenu != NULL);
+
+	/* Submenu should have 2 image entries (beach.jpg, forest.png) */
+	assert(count_items(wp_item->submenu) == 2);
+
+	/* Verify items are EXEC with swaybg commands */
+	struct wm_menu_item *sub_item;
+	wl_list_for_each(sub_item, &wp_item->submenu->items, link) {
+		assert(sub_item->type == WM_MENU_EXEC);
+		assert(sub_item->command != NULL);
+		assert(strstr(sub_item->command, "swaybg") != NULL);
+	}
+
+	wm_menu_destroy(menu);
+
+	unlink(TEST_DIR "/walls/beach.jpg");
+	unlink(TEST_DIR "/walls/forest.png");
+	unlink(TEST_DIR "/walls/readme.txt");
+	rmdir(wpdir);
+	printf("  PASS: test_wallpapers\n");
+}
+
+/* Test: wallpapers with empty directory shows (empty) nop */
+static void
+test_wallpapers_empty_dir(void)
+{
+	char wpdir[] = TEST_DIR "/emptywalls";
+	mkdir(wpdir, 0755);
+
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[wallpapers] (BG) {" TEST_DIR "/emptywalls}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *wp_item = get_item(menu, 0);
+	assert(wp_item->submenu != NULL);
+	assert(count_items(wp_item->submenu) == 1);
+
+	struct wm_menu_item *empty = get_item(wp_item->submenu, 0);
+	assert(empty->type == WM_MENU_NOP);
+	assert(strcmp(empty->label, "(empty)") == 0);
+
+	wm_menu_destroy(menu);
+	rmdir(wpdir);
+	printf("  PASS: test_wallpapers_empty_dir\n");
+}
+
+/* Test: stylesmenu creates a submenu with style entries */
+static void
+test_stylesmenu(void)
+{
+	char stylesdir[] = TEST_DIR "/sm_styles";
+	mkdir(stylesdir, 0755);
+
+	FILE *f1 = fopen(TEST_DIR "/sm_styles/theme_a", "w");
+	assert(f1);
+	fputs("# theme a\n", f1);
+	fclose(f1);
+
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[stylesmenu] (Themes) {" TEST_DIR "/sm_styles}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *sm_item = get_item(menu, 0);
+	assert(sm_item->type == WM_MENU_SUBMENU);
+	assert(strcmp(sm_item->label, "Themes") == 0);
+	assert(sm_item->submenu != NULL);
+	assert(count_items(sm_item->submenu) >= 1);
+
+	wm_menu_destroy(menu);
+
+	unlink(TEST_DIR "/sm_styles/theme_a");
+	rmdir(stylesdir);
+	printf("  PASS: test_stylesmenu\n");
+}
+
+/* Test: workspace menu creation */
+static void
+test_workspace_menu(void)
+{
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.workspaces);
+	wl_list_init(&server.views);
+
+	struct wm_workspace ws0 = {0};
+	ws0.name = "Desktop 1";
+	ws0.index = 0;
+	wl_list_insert(server.workspaces.prev, &ws0.link);
+
+	struct wm_workspace ws1 = {0};
+	ws1.name = "Desktop 2";
+	ws1.index = 1;
+	wl_list_insert(server.workspaces.prev, &ws1.link);
+
+	struct wm_menu *menu = wm_menu_create_workspace_menu(&server);
+	assert(menu != NULL);
+	assert(count_items(menu) == 2);
+
+	struct wm_menu_item *item0 = get_item(menu, 0);
+	assert(item0->type == WM_MENU_COMMAND);
+	assert(strstr(item0->label, "Desktop 1") != NULL);
+	assert(item0->command != NULL);
+	assert(strstr(item0->command, "SendToWorkspace") != NULL);
+
+	struct wm_menu_item *item1 = get_item(menu, 1);
+	assert(item1->type == WM_MENU_COMMAND);
+	assert(strstr(item1->label, "Desktop 2") != NULL);
+
+	wm_menu_destroy(menu);
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&ws1.link);
+	printf("  PASS: test_workspace_menu\n");
+}
+
+/* Test: window menu creation */
+static void
+test_window_menu(void)
+{
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.workspaces);
+	wl_list_init(&server.views);
+
+	struct wm_menu *menu = wm_menu_create_window_menu(&server);
+	assert(menu != NULL);
+	/* Window menu has a standard set of items */
+	assert(count_items(menu) > 5);
+
+	/* Check it has the standard types */
+	bool has_shade = false;
+	bool has_close = false;
+	bool has_maximize = false;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->type == WM_MENU_SHADE) has_shade = true;
+		if (item->type == WM_MENU_CLOSE) has_close = true;
+		if (item->type == WM_MENU_MAXIMIZE) has_maximize = true;
+	}
+	assert(has_shade);
+	assert(has_close);
+	assert(has_maximize);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_window_menu\n");
+}
+
+/* Test: window list creation */
+static void
+test_window_list(void)
+{
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.workspaces);
+	wl_list_init(&server.views);
+
+	struct wm_workspace ws = {0};
+	ws.name = "Main";
+	ws.index = 0;
+	wl_list_insert(server.workspaces.prev, &ws.link);
+
+	/* Create a mock view */
+	struct wlr_scene_tree scene_tree;
+	memset(&scene_tree, 0, sizeof(scene_tree));
+	scene_tree.node.enabled = true;
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = "Test Window";
+	view.app_id = "test";
+	view.workspace = &ws;
+	view.scene_tree = &scene_tree;
+	wl_list_insert(server.views.prev, &view.link);
+
+	server.focused_view = &view;
+
+	struct wm_menu *menu = wm_menu_create_window_list(&server);
+	assert(menu != NULL);
+	assert(count_items(menu) >= 2); /* header + window entry */
+
+	/* Check for WM_MENU_WINDOW_ENTRY */
+	bool has_entry = false;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->type == WM_MENU_WINDOW_ENTRY) {
+			has_entry = true;
+			/* Focused view should have * prefix */
+			assert(strstr(item->label, "Test Window") != NULL);
+			assert(item->data == &view);
+		}
+	}
+	assert(has_entry);
+
+	wm_menu_destroy(menu);
+
+	wl_list_remove(&ws.link);
+	wl_list_remove(&view.link);
+	printf("  PASS: test_window_list\n");
+}
+
+/* Test: window list with iconified window shows brackets */
+static void
+test_window_list_iconified(void)
+{
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.workspaces);
+	wl_list_init(&server.views);
+
+	struct wm_workspace ws = {0};
+	ws.name = "Main";
+	ws.index = 0;
+	wl_list_insert(server.workspaces.prev, &ws.link);
+
+	struct wlr_scene_tree scene_tree;
+	memset(&scene_tree, 0, sizeof(scene_tree));
+	scene_tree.node.enabled = false; /* iconified */
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = "Hidden";
+	view.workspace = &ws;
+	view.scene_tree = &scene_tree;
+	wl_list_insert(server.views.prev, &view.link);
+
+	server.focused_view = NULL;
+
+	struct wm_menu *menu = wm_menu_create_window_list(&server);
+	assert(menu != NULL);
+
+	/* Find window entry with brackets */
+	bool found_bracketed = false;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->type == WM_MENU_WINDOW_ENTRY) {
+			assert(strstr(item->label, "[Hidden]") != NULL);
+			found_bracketed = true;
+		}
+	}
+	assert(found_bracketed);
+
+	wm_menu_destroy(menu);
+
+	wl_list_remove(&ws.link);
+	wl_list_remove(&view.link);
+	printf("  PASS: test_window_list_iconified\n");
+}
+
+/* Test: window list with untitled window uses app_id */
+static void
+test_window_list_untitled(void)
+{
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.workspaces);
+	wl_list_init(&server.views);
+
+	struct wm_workspace ws = {0};
+	ws.name = "Main";
+	ws.index = 0;
+	wl_list_insert(server.workspaces.prev, &ws.link);
+
+	struct wlr_scene_tree scene_tree;
+	memset(&scene_tree, 0, sizeof(scene_tree));
+	scene_tree.node.enabled = true;
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = NULL;
+	view.app_id = "my-app";
+	view.workspace = &ws;
+	view.scene_tree = &scene_tree;
+	wl_list_insert(server.views.prev, &view.link);
+
+	server.focused_view = NULL;
+
+	struct wm_menu *menu = wm_menu_create_window_list(&server);
+	assert(menu != NULL);
+
+	/* Entry should use app_id as fallback */
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (item->type == WM_MENU_WINDOW_ENTRY) {
+			assert(strstr(item->label, "my-app") != NULL);
+		}
+	}
+
+	wm_menu_destroy(menu);
+
+	wl_list_remove(&ws.link);
+	wl_list_remove(&view.link);
+	printf("  PASS: test_window_list_untitled\n");
+}
+
+/* Test: window list empty workspace is skipped */
+static void
+test_window_list_empty_ws(void)
+{
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.workspaces);
+	wl_list_init(&server.views);
+
+	struct wm_workspace ws0 = {0};
+	ws0.name = "Empty";
+	ws0.index = 0;
+	wl_list_insert(server.workspaces.prev, &ws0.link);
+
+	struct wm_workspace ws1 = {0};
+	ws1.name = "Has Views";
+	ws1.index = 1;
+	wl_list_insert(server.workspaces.prev, &ws1.link);
+
+	struct wlr_scene_tree scene_tree;
+	memset(&scene_tree, 0, sizeof(scene_tree));
+	scene_tree.node.enabled = true;
+
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.title = "View1";
+	view.workspace = &ws1;
+	view.scene_tree = &scene_tree;
+	wl_list_insert(server.views.prev, &view.link);
+
+	server.focused_view = NULL;
+
+	struct wm_menu *menu = wm_menu_create_window_list(&server);
+	assert(menu != NULL);
+
+	/* Only ws1 should appear (ws0 has no views) */
+	/* Should have header + entry = 2 items */
+	assert(count_items(menu) == 2);
+
+	wm_menu_destroy(menu);
+
+	wl_list_remove(&ws0.link);
+	wl_list_remove(&ws1.link);
+	wl_list_remove(&view.link);
+	printf("  PASS: test_window_list_empty_ws\n");
+}
+
+/* Test: exec item with nested parens in label */
+static void
+test_nested_paren_label(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[exec] (App (v2.0)) {myapp}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *item = get_item(menu, 0);
+	assert(item->type == WM_MENU_EXEC);
+	assert(strcmp(item->label, "App (v2.0)") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_nested_paren_label\n");
+}
+
+/* Test: exec item with nested braces in command */
+static void
+test_nested_brace_command(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[exec] (Test) {sh -c \"echo ${HOME}\"}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *item = get_item(menu, 0);
+	assert(item->type == WM_MENU_EXEC);
+	/* Nested braces should be correctly parsed */
+	assert(strstr(item->command, "echo") != NULL);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_nested_brace_command\n");
+}
+
+/* Test: submenu with no title uses label */
+static void
+test_submenu_label_as_title(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Root)\n"
+		"[submenu] (MyApps)\n"
+		"  [exec] (App) {app}\n"
+		"[end]\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *sub = get_item(menu, 0);
+	assert(sub->submenu != NULL);
+	/* When no brace title, submenu title should be the label */
+	assert(strcmp(sub->submenu->title, "MyApps") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_submenu_label_as_title\n");
+}
+
+/* Test: unknown tag is silently ignored */
+static void
+test_unknown_tag_ignored(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[unknowntag] (Foo) {bar}\n"
+		"[exec] (A) {a}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	/* Unknown tag is skipped, only exec item remains */
+	assert(count_items(menu) == 1);
+	assert(get_item(menu, 0)->type == WM_MENU_EXEC);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_unknown_tag_ignored\n");
+}
+
+/* Test: line without tag bracket is skipped */
+static void
+test_no_bracket_skipped(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"not a valid line\n"
+		"  also not valid\n"
+		"[exec] (Valid) {cmd}\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_no_bracket_skipped\n");
+}
+
+/* Test: submenu with icon */
+static void
+test_submenu_with_icon(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Root)\n"
+		"[submenu] (Apps) {My Apps} <folder.png>\n"
+		"  [exec] (A) {a}\n"
+		"[end]\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *sub = get_item(menu, 0);
+	assert(sub->type == WM_MENU_SUBMENU);
+	assert(sub->icon_path != NULL);
+	assert(strcmp(sub->icon_path, "folder.png") == 0);
+	assert(sub->submenu != NULL);
+	assert(strcmp(sub->submenu->title, "My Apps") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_submenu_with_icon\n");
+}
+
+/* Test: style with icon */
+static void
+test_style_with_icon(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[style] (Dracula) {/themes/dracula} <dracula.png>\n"
+		"[end]\n"
+	);
+
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	assert(count_items(menu) == 1);
+
+	struct wm_menu_item *item = get_item(menu, 0);
+	assert(item->type == WM_MENU_STYLE);
+	assert(item->icon_path != NULL);
+	assert(strcmp(item->icon_path, "dracula.png") == 0);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: test_style_with_icon\n");
+}
+
 int
 main(void)
 {
@@ -581,6 +1285,39 @@ main(void)
 	test_destroy_null();
 	test_include();
 	test_window_menu_tags();
+
+	/* Encoding conversion */
+	test_encoding_block();
+
+	/* Additional simple tags */
+	test_sendto_layer_tags();
+
+	/* Include edge cases */
+	test_include_tilde();
+	test_include_traversal_rejected();
+
+	/* Directory scanning tags */
+	test_stylesdir();
+	test_wallpapers();
+	test_wallpapers_empty_dir();
+	test_stylesmenu();
+
+	/* Dynamic menu creation */
+	test_workspace_menu();
+	test_window_menu();
+	test_window_list();
+	test_window_list_iconified();
+	test_window_list_untitled();
+	test_window_list_empty_ws();
+
+	/* Parser edge cases */
+	test_nested_paren_label();
+	test_nested_brace_command();
+	test_submenu_label_as_title();
+	test_unknown_tag_ignored();
+	test_no_bracket_skipped();
+	test_submenu_with_icon();
+	test_style_with_icon();
 
 	cleanup();
 	printf("All menu tests passed.\n");

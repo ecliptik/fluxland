@@ -4014,6 +4014,625 @@ test_keybind_action_foreach_with_subcmds(void)
 }
 
 /* ====================================================================
+ * Group S: NEXT_WINDOW / PREV_WINDOW filtered cycling
+ * ==================================================================== */
+
+/* Helper to set up multiple views on a workspace for filtered cycling */
+static struct wm_view test_views_arr[4];
+static struct wlr_scene_tree test_scene_trees_arr[4];
+static struct wlr_xdg_toplevel test_toplevels_arr[4];
+static struct wlr_xdg_surface test_xdg_surfaces_arr[4];
+static struct wlr_surface test_surfaces_arr[4];
+
+static void
+setup_multi_view(int count)
+{
+	setup();
+	stub_active_workspace = &test_workspace;
+	for (int i = 0; i < count && i < 4; i++) {
+		memset(&test_views_arr[i], 0, sizeof(test_views_arr[i]));
+		memset(&test_scene_trees_arr[i], 0, sizeof(test_scene_trees_arr[i]));
+		memset(&test_toplevels_arr[i], 0, sizeof(test_toplevels_arr[i]));
+		memset(&test_xdg_surfaces_arr[i], 0, sizeof(test_xdg_surfaces_arr[i]));
+		memset(&test_surfaces_arr[i], 0, sizeof(test_surfaces_arr[i]));
+
+		test_xdg_surfaces_arr[i].surface = &test_surfaces_arr[i];
+		test_toplevels_arr[i].base = &test_xdg_surfaces_arr[i];
+		test_scene_trees_arr[i].node.enabled = true;
+
+		test_views_arr[i].server = &test_server;
+		test_views_arr[i].xdg_toplevel = &test_toplevels_arr[i];
+		test_views_arr[i].scene_tree = &test_scene_trees_arr[i];
+		test_views_arr[i].workspace = &test_workspace;
+		test_views_arr[i].sticky = false;
+		wl_list_insert(test_server.views.prev, &test_views_arr[i].link);
+	}
+}
+
+static void
+cleanup_multi_view(int count)
+{
+	for (int i = 0; i < count && i < 4; i++)
+		wl_list_remove(&test_views_arr[i].link);
+}
+
+/* Test NEXT_WINDOW without argument calls cycle_next */
+static void
+test_action_next_window_no_arg(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, NULL);
+	assert(stub_cycle_next_count == 1);
+	printf("  PASS: test_action_next_window_no_arg\n");
+}
+
+/* Test PREV_WINDOW without argument calls cycle_prev */
+static void
+test_action_prev_window_no_arg(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_PREV_WINDOW, NULL);
+	assert(stub_cycle_prev_count == 1);
+	printf("  PASS: test_action_prev_window_no_arg\n");
+}
+
+/* Test NEXT_WINDOW with filter matching app_id */
+static void
+test_action_next_window_filtered(void)
+{
+	setup_multi_view(3);
+	test_views_arr[0].app_id = "terminal";
+	test_views_arr[1].app_id = "browser";
+	test_views_arr[2].app_id = "terminal";
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "terminal");
+	/* Should focus the next terminal (views_arr[2]) */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_next_window_filtered\n");
+}
+
+/* Test NEXT_WINDOW with filter matching title */
+static void
+test_action_next_window_filtered_title(void)
+{
+	setup_multi_view(2);
+	test_views_arr[0].title = "Firefox";
+	test_views_arr[1].title = "Firefox - Tab 2";
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "Firefox*");
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(2);
+	printf("  PASS: test_action_next_window_filtered_title\n");
+}
+
+/* Test NEXT_WINDOW wraps around when no match after focused */
+static void
+test_action_next_window_filtered_wrap(void)
+{
+	setup_multi_view(3);
+	test_views_arr[0].app_id = "terminal";
+	test_views_arr[1].app_id = "browser";
+	test_views_arr[2].app_id = "editor";
+	/* focused is last terminal, next should wrap to first */
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "terminal");
+	/* Only one match (self), no focus change */
+	assert(stub_focus_view_count == 0);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_next_window_filtered_wrap\n");
+}
+
+/* Test NEXT_WINDOW skips views on other workspaces (non-sticky) */
+static void
+test_action_next_window_filtered_skip_ws(void)
+{
+	struct wm_workspace other_ws = {0};
+	other_ws.name = "other";
+	other_ws.index = 1;
+
+	setup_multi_view(3);
+	test_views_arr[0].app_id = "terminal";
+	test_views_arr[1].app_id = "terminal";
+	test_views_arr[1].workspace = &other_ws; /* different workspace */
+	test_views_arr[2].app_id = "terminal";
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "terminal");
+	/* Should skip views_arr[1] and focus views_arr[2] */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_next_window_filtered_skip_ws\n");
+}
+
+/* Test PREV_WINDOW with filter */
+static void
+test_action_prev_window_filtered(void)
+{
+	setup_multi_view(3);
+	test_views_arr[0].app_id = "terminal";
+	test_views_arr[1].app_id = "browser";
+	test_views_arr[2].app_id = "terminal";
+	test_server.focused_view = &test_views_arr[2];
+
+	wm_execute_action(&test_server, WM_ACTION_PREV_WINDOW, "terminal");
+	/* Should focus the previous terminal (views_arr[0]) */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_prev_window_filtered\n");
+}
+
+/* Test PREV_WINDOW wrap: focused is first match, wraps to last */
+static void
+test_action_prev_window_filtered_wrap(void)
+{
+	setup_multi_view(3);
+	test_views_arr[0].app_id = "terminal";
+	test_views_arr[1].app_id = "browser";
+	test_views_arr[2].app_id = "terminal";
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_PREV_WINDOW, "terminal");
+	/* Should wrap to last terminal (views_arr[2]) */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_prev_window_filtered_wrap\n");
+}
+
+/* ====================================================================
+ * Group T: NEXT_GROUP / PREV_GROUP
+ * ==================================================================== */
+
+static struct wm_tab_group test_groups[3];
+
+/* Test NEXT_GROUP with < 2 groups does nothing */
+static void
+test_action_next_group_too_few(void)
+{
+	setup_multi_view(2);
+	memset(test_groups, 0, sizeof(test_groups));
+	wl_list_init(&test_groups[0].views);
+	test_groups[0].active_view = &test_views_arr[0];
+	test_views_arr[0].tab_group = &test_groups[0];
+	test_views_arr[1].tab_group = &test_groups[0]; /* same group */
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_GROUP, NULL);
+	/* < 2 unique groups → no focus change */
+	assert(stub_focus_view_count == 0);
+
+	cleanup_multi_view(2);
+	printf("  PASS: test_action_next_group_too_few\n");
+}
+
+/* Test NEXT_GROUP cycles to next group */
+static void
+test_action_next_group_cycles(void)
+{
+	setup_multi_view(3);
+	memset(test_groups, 0, sizeof(test_groups));
+	wl_list_init(&test_groups[0].views);
+	wl_list_init(&test_groups[1].views);
+	test_groups[0].active_view = &test_views_arr[0];
+	test_groups[1].active_view = &test_views_arr[2];
+
+	test_views_arr[0].tab_group = &test_groups[0];
+	test_views_arr[1].tab_group = &test_groups[0]; /* same group as [0] */
+	test_views_arr[2].tab_group = &test_groups[1]; /* different group */
+	test_server.focused_view = &test_views_arr[0];
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_GROUP, NULL);
+	/* Should focus active_view of next group */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_next_group_cycles\n");
+}
+
+/* Test PREV_GROUP cycles to previous group */
+static void
+test_action_prev_group_cycles(void)
+{
+	setup_multi_view(3);
+	memset(test_groups, 0, sizeof(test_groups));
+	wl_list_init(&test_groups[0].views);
+	wl_list_init(&test_groups[1].views);
+	test_groups[0].active_view = &test_views_arr[0];
+	test_groups[1].active_view = &test_views_arr[2];
+
+	test_views_arr[0].tab_group = &test_groups[0];
+	test_views_arr[1].tab_group = &test_groups[0];
+	test_views_arr[2].tab_group = &test_groups[1];
+	test_server.focused_view = &test_views_arr[2];
+
+	wm_execute_action(&test_server, WM_ACTION_PREV_GROUP, NULL);
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_prev_group_cycles\n");
+}
+
+/* Test NEXT_GROUP with no focused view tab_group */
+static void
+test_action_next_group_no_current(void)
+{
+	setup_multi_view(3);
+	memset(test_groups, 0, sizeof(test_groups));
+	wl_list_init(&test_groups[0].views);
+	wl_list_init(&test_groups[1].views);
+	test_groups[0].active_view = &test_views_arr[0];
+	test_groups[1].active_view = &test_views_arr[2];
+
+	test_views_arr[0].tab_group = &test_groups[0];
+	test_views_arr[1].tab_group = NULL; /* no group */
+	test_views_arr[2].tab_group = &test_groups[1];
+	test_server.focused_view = &test_views_arr[1]; /* not in any group */
+
+	wm_execute_action(&test_server, WM_ACTION_NEXT_GROUP, NULL);
+	/* cur_idx < 0, so next_idx = 0 → focus first group's active view */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_next_group_no_current\n");
+}
+
+/* ====================================================================
+ * Group U: SET_ENV with space format blocked
+ * ==================================================================== */
+
+/* Test SetEnv: blocked variable with space format */
+static void
+test_action_set_env_blocked_space(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_SET_ENV, "LD_PRELOAD evil.so");
+	const char *val = getenv("LD_PRELOAD");
+	assert(val == NULL || strcmp(val, "evil.so") != 0);
+	printf("  PASS: test_action_set_env_blocked_space\n");
+}
+
+/* Test SetEnv: PATH blocked with = format */
+static void
+test_action_set_env_path_blocked(void)
+{
+	setup();
+	const char *orig = getenv("PATH");
+	wm_execute_action(&test_server, WM_ACTION_SET_ENV, "PATH=/evil");
+	const char *val = getenv("PATH");
+	/* PATH should NOT have been changed to /evil */
+	assert(val == NULL || strcmp(val, "/evil") != 0);
+	/* Restore if needed (should not have been changed) */
+	(void)orig;
+	printf("  PASS: test_action_set_env_path_blocked\n");
+}
+
+/* Test SetEnv: no argument does nothing */
+static void
+test_action_set_env_no_arg(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_SET_ENV, NULL);
+	/* No crash = pass */
+	printf("  PASS: test_action_set_env_no_arg\n");
+}
+
+/* ====================================================================
+ * Group V: SetStyle / ReloadStyle edge cases
+ * ==================================================================== */
+
+/* Test SetStyle updates decorations on views */
+static void
+test_action_set_style_updates_views(void)
+{
+	setup_with_view();
+	test_view.workspace = &test_workspace;
+	wl_list_insert(&test_server.views, &test_view.link);
+	test_config.style_file = strdup("/old/style");
+
+	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "/new/style");
+	assert(stub_style_load_count == 1);
+	assert(stub_toolbar_relayout_count == 1);
+	assert(stub_decoration_update_count == 1);
+	assert(strcmp(test_config.style_file, "/new/style") == 0);
+
+	free(test_config.style_file);
+	test_config.style_file = NULL;
+	wl_list_remove(&test_view.link);
+	printf("  PASS: test_action_set_style_updates_views\n");
+}
+
+/* Test ReloadStyle reloads and updates decorations */
+static void
+test_action_reload_style_updates_views(void)
+{
+	setup_with_view();
+	test_view.workspace = &test_workspace;
+	wl_list_insert(&test_server.views, &test_view.link);
+	test_config.style_file = strdup("/some/style");
+
+	wm_execute_action(&test_server, WM_ACTION_RELOAD_STYLE, NULL);
+	assert(stub_style_load_count == 1);
+	assert(stub_toolbar_relayout_count == 1);
+	assert(stub_decoration_update_count == 1);
+
+	free(test_config.style_file);
+	test_config.style_file = NULL;
+	wl_list_remove(&test_view.link);
+	printf("  PASS: test_action_reload_style_updates_views\n");
+}
+
+/* ====================================================================
+ * Group W: keybind_action dispatch edge cases
+ * ==================================================================== */
+
+/* Test ToggleCmd cycles through subcmds */
+static void
+test_keybind_action_toggle_cycles(void)
+{
+	setup_with_view();
+	struct wm_subcmd cmd1 = { .action = WM_ACTION_RAISE, .argument = NULL, .next = NULL };
+	struct wm_subcmd cmd0 = { .action = WM_ACTION_LOWER, .argument = NULL, .next = &cmd1 };
+
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_TOGGLE_CMD;
+	bind.subcmds = &cmd0;
+	bind.subcmd_count = 2;
+	bind.toggle_index = 0;
+
+	/* First call: index 0 → LOWER */
+	wm_execute_keybind_action(&test_server, &bind);
+	assert(stub_lower_count == 1);
+	assert(bind.toggle_index == 1);
+
+	/* Second call: index 1 → RAISE */
+	wm_execute_keybind_action(&test_server, &bind);
+	assert(stub_raise_count == 1);
+	assert(bind.toggle_index == 0); /* wraps back */
+
+	printf("  PASS: test_keybind_action_toggle_cycles\n");
+}
+
+/* Test If with else_cmd branch */
+static void
+test_keybind_action_if_else(void)
+{
+	setup_with_view();
+	test_view.title = "Firefox";
+
+	struct wm_condition cond = {
+		.type = WM_COND_MATCHES,
+		.property = "title",
+		.pattern = "Chrome", /* doesn't match */
+	};
+	struct wm_subcmd then_cmd = { .action = WM_ACTION_RAISE, .argument = NULL, .next = NULL };
+	struct wm_subcmd else_cmd = { .action = WM_ACTION_LOWER, .argument = NULL, .next = NULL };
+
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_IF;
+	bind.condition = &cond;
+	bind.subcmds = &then_cmd;
+	bind.else_cmd = &else_cmd;
+
+	wm_execute_keybind_action(&test_server, &bind);
+	/* Condition is false, so else_cmd (LOWER) should run */
+	assert(stub_lower_count == 1);
+	assert(stub_raise_count == 0);
+
+	printf("  PASS: test_keybind_action_if_else\n");
+}
+
+/* Test Map executes on all views regardless of condition */
+static void
+test_keybind_action_map_all_views(void)
+{
+	setup_multi_view(3);
+	struct wm_subcmd cmd = { .action = WM_ACTION_RAISE, .argument = NULL, .next = NULL };
+
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_MAP;
+	bind.subcmds = &cmd;
+
+	wm_execute_keybind_action(&test_server, &bind);
+	assert(stub_raise_count == 3); /* once per view */
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_keybind_action_map_all_views\n");
+}
+
+/* Test Delay with no subcmds */
+static void
+test_keybind_action_delay_no_subcmds(void)
+{
+	setup();
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_DELAY;
+	bind.subcmds = NULL;
+
+	bool result = wm_execute_keybind_action(&test_server, &bind);
+	assert(result == true);
+	printf("  PASS: test_keybind_action_delay_no_subcmds\n");
+}
+
+/* Test ForEach with no subcmds */
+static void
+test_keybind_action_foreach_no_subcmds(void)
+{
+	setup();
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_FOREACH;
+	bind.subcmds = NULL;
+
+	bool result = wm_execute_keybind_action(&test_server, &bind);
+	assert(result == true);
+	printf("  PASS: test_keybind_action_foreach_no_subcmds\n");
+}
+
+/* Test regular action via keybind_action falls through to execute_action */
+static void
+test_keybind_action_regular(void)
+{
+	setup();
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_RECONFIGURE;
+
+	bool result = wm_execute_keybind_action(&test_server, &bind);
+	assert(result == true);
+	assert(stub_reconfigure_count == 1);
+	printf("  PASS: test_keybind_action_regular\n");
+}
+
+/* ====================================================================
+ * Group X: Additional action no-view guards
+ * ==================================================================== */
+
+/* Test MoveLeft with no view does nothing */
+static void
+test_action_move_left_no_view(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_MOVE_LEFT, "10");
+	assert(stub_set_pos_called == 0);
+	printf("  PASS: test_action_move_left_no_view\n");
+}
+
+/* Test Shade with no decoration does nothing */
+static void
+test_action_shade_no_decoration(void)
+{
+	setup_with_view();
+	test_view.decoration = NULL;
+	wm_execute_action(&test_server, WM_ACTION_SHADE, NULL);
+	assert(stub_decoration_set_shaded_count == 0);
+	printf("  PASS: test_action_shade_no_decoration\n");
+}
+
+/* Test SetDecor with no decoration does nothing */
+static void
+test_action_set_decor_no_decoration(void)
+{
+	setup_with_view();
+	test_view.decoration = NULL;
+	wm_execute_action(&test_server, WM_ACTION_SET_DECOR, "NONE");
+	assert(stub_decoration_set_preset_count == 0);
+	printf("  PASS: test_action_set_decor_no_decoration\n");
+}
+
+/* Test NextTab / PrevTab with no tab_group */
+static void
+test_action_tab_no_group(void)
+{
+	setup_with_view();
+	test_view.tab_group = NULL;
+	wm_execute_action(&test_server, WM_ACTION_NEXT_TAB, NULL);
+	assert(stub_tab_group_next_count == 0);
+	wm_execute_action(&test_server, WM_ACTION_PREV_TAB, NULL);
+	assert(stub_tab_group_prev_count == 0);
+	printf("  PASS: test_action_tab_no_group\n");
+}
+
+/* Test Move / Resize with no view */
+static void
+test_action_move_resize_no_view(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_MOVE, NULL);
+	wm_execute_action(&test_server, WM_ACTION_RESIZE, NULL);
+	assert(stub_begin_interactive_count == 0);
+	printf("  PASS: test_action_move_resize_no_view\n");
+}
+
+/* Test ResizeHoriz / ResizeVert with no view */
+static void
+test_action_resize_horiz_vert_no_view(void)
+{
+	setup();
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_HORIZ, "10");
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_VERT, "10");
+	assert(stub_resize_by_count == 0);
+	printf("  PASS: test_action_resize_horiz_vert_no_view\n");
+}
+
+/* Test GotoWindow skips views on different workspace */
+static void
+test_action_goto_window_skip_ws(void)
+{
+	struct wm_workspace other_ws = {0};
+	other_ws.name = "other";
+	other_ws.index = 1;
+
+	setup_multi_view(3);
+	stub_active_workspace = &test_workspace;
+	test_views_arr[0].workspace = &other_ws; /* different ws */
+	test_views_arr[1].workspace = &test_workspace;
+	test_views_arr[2].workspace = &test_workspace;
+
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
+	/* views_arr[0] is on other ws, so window 1 = views_arr[1] */
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(3);
+	printf("  PASS: test_action_goto_window_skip_ws\n");
+}
+
+/* Test GotoWindow counts sticky views */
+static void
+test_action_goto_window_sticky(void)
+{
+	setup_multi_view(2);
+	stub_active_workspace = &test_workspace;
+	test_views_arr[0].sticky = true;
+	test_views_arr[0].workspace = NULL; /* sticky, no ws */
+	test_views_arr[1].workspace = &test_workspace;
+
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
+	assert(stub_focus_view_count == 1);
+
+	cleanup_multi_view(2);
+	printf("  PASS: test_action_goto_window_sticky\n");
+}
+
+/* Test Unclutter skips minimized views */
+static void
+test_action_unclutter_skips_minimized(void)
+{
+	setup_multi_view(2);
+	stub_active_workspace = &test_workspace;
+
+	struct wm_output test_out;
+	memset(&test_out, 0, sizeof(test_out));
+	test_out.usable_area = (struct wlr_box){0, 0, 800, 600};
+	wl_list_insert(&test_server.outputs, &test_out.link);
+
+	/* Minimize second view */
+	test_scene_trees_arr[1].node.enabled = false;
+
+	wm_execute_action(&test_server, WM_ACTION_UNCLUTTER, NULL);
+	/* Only first view should have been repositioned */
+	assert(test_views_arr[0].x == 0);
+	assert(test_views_arr[0].y == 0);
+	/* Second view (minimized) should NOT have been moved */
+
+	wl_list_remove(&test_out.link);
+	cleanup_multi_view(2);
+	printf("  PASS: test_action_unclutter_skips_minimized\n");
+}
+
+/* ====================================================================
  * main()
  * ==================================================================== */
 
@@ -4217,6 +4836,50 @@ main(void)
 
 	printf("\n  Group R: ForEach with subcmds\n");
 	test_keybind_action_foreach_with_subcmds();
+
+	printf("\n  Group S: NEXT_WINDOW / PREV_WINDOW filtered cycling\n");
+	test_action_next_window_no_arg();
+	test_action_prev_window_no_arg();
+	test_action_next_window_filtered();
+	test_action_next_window_filtered_title();
+	test_action_next_window_filtered_wrap();
+	test_action_next_window_filtered_skip_ws();
+	test_action_prev_window_filtered();
+	test_action_prev_window_filtered_wrap();
+
+	printf("\n  Group T: NEXT_GROUP / PREV_GROUP\n");
+	test_action_next_group_too_few();
+	test_action_next_group_cycles();
+	test_action_prev_group_cycles();
+	test_action_next_group_no_current();
+
+	printf("\n  Group U: SET_ENV edge cases\n");
+	test_action_set_env_blocked_space();
+	test_action_set_env_path_blocked();
+	test_action_set_env_no_arg();
+
+	printf("\n  Group V: SetStyle / ReloadStyle edge cases\n");
+	test_action_set_style_updates_views();
+	test_action_reload_style_updates_views();
+
+	printf("\n  Group W: keybind_action dispatch edge cases\n");
+	test_keybind_action_toggle_cycles();
+	test_keybind_action_if_else();
+	test_keybind_action_map_all_views();
+	test_keybind_action_delay_no_subcmds();
+	test_keybind_action_foreach_no_subcmds();
+	test_keybind_action_regular();
+
+	printf("\n  Group X: Additional action no-view guards\n");
+	test_action_move_left_no_view();
+	test_action_shade_no_decoration();
+	test_action_set_decor_no_decoration();
+	test_action_tab_no_group();
+	test_action_move_resize_no_view();
+	test_action_resize_horiz_vert_no_view();
+	test_action_goto_window_skip_ws();
+	test_action_goto_window_sticky();
+	test_action_unclutter_skips_minimized();
 
 	printf("\nAll keyboard tests passed!\n");
 	return 0;

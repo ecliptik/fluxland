@@ -3321,6 +3321,298 @@ test_update_ext_tab_bar_auto_size(void)
 	printf("  PASS: update_ext_tab_bar_auto_size\n");
 }
 
+/* --- additional coverage: render_button all types --- */
+
+static void
+test_render_button_all_types(void)
+{
+	struct wm_texture bg_tex = {0};
+	struct wm_color pic = {255, 255, 255, 255};
+
+	/* Close */
+	struct wlr_buffer *buf = render_button(&bg_tex, &pic,
+		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+
+	/* Maximize */
+	buf = render_button(&bg_tex, &pic,
+		WM_BUTTON_MAXIMIZE, DEFAULT_BUTTON_SIZE);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+
+	/* Iconify */
+	buf = render_button(&bg_tex, &pic,
+		WM_BUTTON_ICONIFY, DEFAULT_BUTTON_SIZE);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+
+	/* Shade */
+	buf = render_button(&bg_tex, &pic,
+		WM_BUTTON_SHADE, DEFAULT_BUTTON_SIZE);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+
+	/* Stick */
+	buf = render_button(&bg_tex, &pic,
+		WM_BUTTON_STICK, DEFAULT_BUTTON_SIZE);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+
+	printf("  PASS: render_button_all_types\n");
+}
+
+/* --- additional coverage: render_label left justify (default) --- */
+
+static void
+test_render_label_left_justify(void)
+{
+	struct wm_texture bg = {0};
+	struct wm_font font = {.size = 12};
+	struct wm_color color = {255, 255, 255, 255};
+
+	struct wlr_buffer *buf = render_label(&bg, "Left Title", &font,
+		&color, WM_JUSTIFY_LEFT, 200, 20);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_label_left_justify\n");
+}
+
+/* --- additional coverage: render_label with very small height --- */
+
+static void
+test_render_label_small_height(void)
+{
+	struct wm_texture bg = {0};
+	struct wm_font font = {.size = 12};
+	struct wm_color color = {255, 255, 255, 255};
+
+	/* Height 2 is smaller than text height => text_y < 0 guard hit */
+	struct wlr_buffer *buf = render_label(&bg, "Title", &font,
+		&color, WM_JUSTIFY_LEFT, 100, 2);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_label_small_height\n");
+}
+
+/* --- additional coverage: render_rounded_border_frame all corners --- */
+
+static void
+test_render_rounded_border_frame_all_corners(void)
+{
+	struct wm_color color = {128, 128, 128, 255};
+
+	struct wlr_buffer *buf = render_rounded_border_frame(
+		200, 200, 3, 12.0,
+		WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT |
+		WM_CORNER_BOTTOM_LEFT | WM_CORNER_BOTTOM_RIGHT,
+		&color);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_rounded_border_frame_all_corners\n");
+}
+
+/* --- additional coverage: render_rounded_border_frame bottom only --- */
+
+static void
+test_render_rounded_border_frame_bottom_only(void)
+{
+	struct wm_color color = {200, 200, 200, 255};
+
+	struct wlr_buffer *buf = render_rounded_border_frame(
+		150, 150, 2, 6.0,
+		WM_CORNER_BOTTOM_LEFT | WM_CORNER_BOTTOM_RIGHT,
+		&color);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	printf("  PASS: render_rounded_border_frame_bottom_only\n");
+}
+
+/* --- additional coverage: decoration with large bevel width --- */
+
+static void
+test_update_large_bevel_round_corners(void)
+{
+	setup();
+	setup_view();
+	test_style.window_round_corners = WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT
+		| WM_CORNER_BOTTOM_LEFT | WM_CORNER_BOTTOM_RIGHT;
+	test_style.window_bevel_width = 10;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Border frame should use bevel_width as radius */
+	assert(deco->border_frame != NULL);
+	assert(deco->border_frame->node.enabled == 1);
+
+	wm_decoration_destroy(deco);
+	test_style.window_round_corners = 0;
+	test_style.window_bevel_width = 0;
+	printf("  PASS: update_large_bevel_round_corners\n");
+}
+
+/* --- additional coverage: region_at TAB preset --- */
+
+static void
+test_region_at_tab_preset(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_TAB, 800, 600);
+
+	/* TAB has titlebar but no handle */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 10);
+	assert(region == WM_DECOR_REGION_TITLEBAR);
+
+	/* Client area */
+	region = wm_decoration_region_at(deco, 400, 300);
+	assert(region == WM_DECOR_REGION_CLIENT);
+
+	free_test_decoration(deco);
+	printf("  PASS: region_at_tab_preset\n");
+}
+
+/* --- additional coverage: decoration set_shaded with BORDER preset (no handle) --- */
+
+static void
+test_set_shaded_border_preset(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	/* Switch to BORDER: no titlebar, no handle */
+	wm_decoration_set_preset(deco, WM_DECOR_BORDER, &test_style);
+
+	/* Shade: should still work even without handle */
+	wm_decoration_set_shaded(deco, true, &test_style);
+	assert(deco->shaded == true);
+
+	wm_decoration_set_shaded(deco, false, &test_style);
+	assert(deco->shaded == false);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: set_shaded_border_preset\n");
+}
+
+/* --- additional coverage: decoration update resizes content_area --- */
+
+static void
+test_decoration_update_content_resize(void)
+{
+	setup();
+	setup_view();
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->content_width == 800);
+
+	/* Directly set new content dimensions (as the compositor does
+	 * when handling a configure ack) and trigger re-layout */
+	deco->content_width = 1024;
+	deco->content_height = 768;
+	wm_decoration_update(deco, &test_style);
+
+	/* Verify layout preserved the new dimensions */
+	assert(deco->content_width == 1024);
+	assert(deco->content_height == 768);
+
+	wm_decoration_destroy(deco);
+	printf("  PASS: decoration_update_content_resize\n");
+}
+
+/* --- additional coverage: render_button zero size --- */
+
+static void
+test_render_button_zero_size(void)
+{
+	struct wm_texture bg_tex = {0};
+	struct wm_color pic = {255, 255, 255, 255};
+
+	/* Zero size: glyph_size logic (0 - 4 < 4 => glyph_size = size = 0) */
+	struct wlr_buffer *buf = render_button(&bg_tex, &pic,
+		WM_BUTTON_CLOSE, 0);
+	/* May return NULL or empty buffer; main thing is no crash */
+	if (buf) wlr_buffer_drop(buf);
+	printf("  PASS: render_button_zero_size\n");
+}
+
+/* --- additional coverage: ext tab bar with vertical and bottom placements --- */
+
+static void
+test_update_ext_tab_bar_right_content_area(void)
+{
+	setup();
+	setup_view();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_width = 30;
+	test_config.tab_placement = WM_TAB_BAR_RIGHT;
+
+	struct wm_view view2 = {0};
+	view2.server = &test_server;
+	view2.title = "Tab 2";
+	wl_list_init(&view2.tab_link);
+
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	tg.server = &test_server;
+
+	setup_view();
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+
+	assert(deco->tab_bar_size == 30);
+	assert(deco->tab_bar_placement == WM_TAB_BAR_RIGHT);
+	/* Content area x stays at bw since right bar is outside */
+	assert(deco->content_area.x == 1);
+
+	test_view.tab_group = NULL;
+	wm_decoration_destroy(deco);
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 0;
+	test_config.tab_placement = 0;
+	printf("  PASS: update_ext_tab_bar_right_content_area\n");
+}
+
+/* --- additional coverage: focused/unfocused button rendering --- */
+
+static void
+test_decoration_unfocused_buttons(void)
+{
+	setup();
+	setup_view();
+	test_config.titlebar_left = "Stick";
+	test_config.titlebar_right = "Close";
+
+	struct wm_decoration *deco = wm_decoration_create(&test_view,
+		&test_style);
+	assert(deco != NULL);
+	assert(deco->focused == true);
+	assert(deco->buttons_left_count == 1);
+	assert(deco->buttons_right_count == 1);
+
+	/* Unfocus: should re-render with unfocused style */
+	wm_decoration_set_focused(deco, false, &test_style);
+	assert(deco->focused == false);
+	assert(deco->buttons_left_count == 1);
+	assert(deco->buttons_right_count == 1);
+
+	wm_decoration_destroy(deco);
+	test_config.titlebar_left = NULL;
+	test_config.titlebar_right = NULL;
+	printf("  PASS: decoration_unfocused_buttons\n");
+}
+
 /* ===================== Main ===================== */
 
 int
@@ -3531,6 +3823,22 @@ main(void)
 	test_xdg_decoration_init_error();
 	test_xdg_decoration_request_mode_handler();
 	test_xdg_decoration_destroy_handler();
+
+	/* additional coverage: render functions */
+	test_render_button_all_types();
+	test_render_label_left_justify();
+	test_render_label_small_height();
+	test_render_rounded_border_frame_all_corners();
+	test_render_rounded_border_frame_bottom_only();
+	test_render_button_zero_size();
+
+	/* additional coverage: layout and presets */
+	test_update_large_bevel_round_corners();
+	test_region_at_tab_preset();
+	test_set_shaded_border_preset();
+	test_decoration_update_content_resize();
+	test_update_ext_tab_bar_right_content_area();
+	test_decoration_unfocused_buttons();
 
 	printf("All decoration logic tests passed.\n");
 	return 0;

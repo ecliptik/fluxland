@@ -2858,6 +2858,980 @@ test_schedule_auto_raise_null_config(void)
 	printf("  PASS: schedule_auto_raise_null_config\n");
 }
 
+/* Helper: init cursor signals and call wm_cursor_init for handler tests */
+static void
+setup_with_cursor_init(void)
+{
+	setup();
+	wl_signal_init_stub(&test_cursor.events.motion);
+	wl_signal_init_stub(&test_cursor.events.motion_absolute);
+	wl_signal_init_stub(&test_cursor.events.button);
+	wl_signal_init_stub(&test_cursor.events.axis);
+	wl_signal_init_stub(&test_cursor.events.frame);
+	wl_signal_init_stub(&test_cursor.events.touch_down);
+	wl_signal_init_stub(&test_cursor.events.touch_up);
+	wl_signal_init_stub(&test_cursor.events.touch_motion);
+	wl_signal_init_stub(&test_cursor.events.touch_cancel);
+	wl_signal_init_stub(&test_cursor.events.touch_frame);
+	wl_signal_init_stub(&test_cursor.events.swipe_begin);
+	wl_signal_init_stub(&test_cursor.events.swipe_update);
+	wl_signal_init_stub(&test_cursor.events.swipe_end);
+	wl_signal_init_stub(&test_cursor.events.pinch_begin);
+	wl_signal_init_stub(&test_cursor.events.pinch_update);
+	wl_signal_init_stub(&test_cursor.events.pinch_end);
+	wl_signal_init_stub(&test_cursor.events.hold_begin);
+	wl_signal_init_stub(&test_cursor.events.hold_end);
+	wm_cursor_init(&test_server);
+}
+
+static void
+teardown_cursor_init(void)
+{
+	wm_cursor_finish(&test_server);
+}
+
+/*
+ * Test 63: handle_cursor_motion forwards relative motion event.
+ */
+static void
+test_handle_cursor_motion(void)
+{
+	setup_with_cursor_init();
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_motion_event event = {
+		.pointer = &ptr,
+		.time_msec = 1000,
+		.delta_x = 10.0,
+		.delta_y = 5.0,
+		.unaccel_dx = 10.0,
+		.unaccel_dy = 5.0,
+	};
+
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	test_server.cursor_motion.notify(&test_server.cursor_motion, &event);
+	/* No crash — motion processed in passthrough */
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_motion\n");
+}
+
+/*
+ * Test 64: handle_cursor_motion_absolute warps and processes.
+ */
+static void
+test_handle_cursor_motion_absolute(void)
+{
+	setup_with_cursor_init();
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_motion_absolute_event event = {
+		.pointer = &ptr,
+		.time_msec = 2000,
+		.x = 0.5,
+		.y = 0.5,
+	};
+
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	test_server.cursor_motion_absolute.notify(
+		&test_server.cursor_motion_absolute, &event);
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_motion_absolute\n");
+}
+
+/*
+ * Test 65: handle_cursor_button press records mouse state.
+ */
+static void
+test_handle_cursor_button_press(void)
+{
+	setup_with_cursor_init();
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 3000,
+		.button = 0x110, /* BTN_LEFT */
+		.state = WL_POINTER_BUTTON_STATE_PRESSED,
+	};
+
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+	reset_globals();
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Button press should record state */
+	assert(test_server.mouse_state.button_pressed == true);
+	assert(test_server.mouse_state.pressed_button == 0x110);
+	assert(test_server.mouse_state.press_x == 500.0);
+	assert(test_server.mouse_state.press_y == 400.0);
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_button_press\n");
+}
+
+/*
+ * Test 66: handle_cursor_button release clears mouse state.
+ */
+static void
+test_handle_cursor_button_release(void)
+{
+	setup_with_cursor_init();
+	struct wlr_pointer ptr = {0};
+
+	/* First, press */
+	test_server.mouse_state.button_pressed = true;
+	test_server.mouse_state.pressed_button = 0x110;
+	test_server.mouse_state.press_x = 500;
+	test_server.mouse_state.press_y = 400;
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+
+	struct wlr_pointer_button_event release_event = {
+		.pointer = &ptr,
+		.time_msec = 3100,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_RELEASED,
+	};
+
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+	reset_globals();
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &release_event);
+
+	/* After release, button_pressed should be cleared */
+	assert(test_server.mouse_state.button_pressed == false);
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_button_release\n");
+}
+
+/*
+ * Test 67: handle_cursor_button blocked when session is locked.
+ */
+static void
+test_handle_cursor_button_locked(void)
+{
+	setup_with_cursor_init();
+	test_server.session_lock.locked = true;
+
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 4000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_PRESSED,
+	};
+
+	test_server.mouse_state.button_pressed = false;
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Should not record state when locked */
+	assert(test_server.mouse_state.button_pressed == false);
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_button_locked\n");
+}
+
+/*
+ * Test 68: handle_cursor_axis forwards scroll event.
+ */
+static void
+test_handle_cursor_axis(void)
+{
+	setup_with_cursor_init();
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_axis_event event = {
+		.pointer = &ptr,
+		.time_msec = 5000,
+		.orientation = WL_POINTER_AXIS_VERTICAL_SCROLL,
+		.delta = 15.0,
+		.delta_discrete = 1,
+		.source = 0,
+		.relative_direction = 0,
+	};
+
+	test_server.cursor_axis.notify(
+		&test_server.cursor_axis, &event);
+	/* No crash — forwarded to seat */
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_axis\n");
+}
+
+/*
+ * Test 69: handle_cursor_frame forwards frame event.
+ */
+static void
+test_handle_cursor_frame(void)
+{
+	setup_with_cursor_init();
+	test_server.cursor_frame.notify(
+		&test_server.cursor_frame, NULL);
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_frame\n");
+}
+
+/*
+ * Test 70: touch event handlers (touch_down, touch_up, touch_motion).
+ */
+static void
+test_handle_touch_events(void)
+{
+	setup_with_cursor_init();
+
+	/* Touch down */
+	struct wlr_touch touch = {0};
+	struct wlr_touch_down_event down_event = {
+		.touch = &touch,
+		.time_msec = 6000,
+		.touch_id = 1,
+		.x = 0.5,
+		.y = 0.5,
+	};
+	test_server.cursor_touch_down.notify(
+		&test_server.cursor_touch_down, &down_event);
+
+	/* Touch motion */
+	struct wlr_touch_motion_event motion_event = {
+		.touch = &touch,
+		.time_msec = 6100,
+		.touch_id = 1,
+		.x = 0.6,
+		.y = 0.6,
+	};
+	test_server.cursor_touch_motion.notify(
+		&test_server.cursor_touch_motion, &motion_event);
+
+	/* Touch up */
+	struct wlr_touch_up_event up_event = {
+		.touch = &touch,
+		.time_msec = 6200,
+		.touch_id = 1,
+	};
+	test_server.cursor_touch_up.notify(
+		&test_server.cursor_touch_up, &up_event);
+
+	/* Touch frame */
+	test_server.cursor_touch_frame.notify(
+		&test_server.cursor_touch_frame, NULL);
+
+	teardown_cursor_init();
+	printf("  PASS: handle_touch_events\n");
+}
+
+/*
+ * Test 71: touch cancel handler.
+ */
+static void
+test_handle_touch_cancel(void)
+{
+	setup_with_cursor_init();
+
+	test_server.cursor_touch_cancel.notify(
+		&test_server.cursor_touch_cancel, NULL);
+	/* No touch points in list, no crash */
+	teardown_cursor_init();
+	printf("  PASS: handle_touch_cancel\n");
+}
+
+/*
+ * Test 72: gesture handlers (swipe, pinch, hold).
+ */
+static void
+test_handle_gesture_events(void)
+{
+	setup_with_cursor_init();
+
+	/* Swipe begin */
+	struct wlr_pointer_swipe_begin_event swipe_begin = {
+		.time_msec = 7000, .fingers = 3,
+	};
+	test_server.cursor_swipe_begin.notify(
+		&test_server.cursor_swipe_begin, &swipe_begin);
+
+	/* Swipe update */
+	struct wlr_pointer_swipe_update_event swipe_update = {
+		.time_msec = 7100, .dx = 10.0, .dy = 5.0,
+	};
+	test_server.cursor_swipe_update.notify(
+		&test_server.cursor_swipe_update, &swipe_update);
+
+	/* Swipe end */
+	struct wlr_pointer_swipe_end_event swipe_end = {
+		.time_msec = 7200, .cancelled = false,
+	};
+	test_server.cursor_swipe_end.notify(
+		&test_server.cursor_swipe_end, &swipe_end);
+
+	/* Pinch begin */
+	struct wlr_pointer_pinch_begin_event pinch_begin = {
+		.time_msec = 8000, .fingers = 2,
+	};
+	test_server.cursor_pinch_begin.notify(
+		&test_server.cursor_pinch_begin, &pinch_begin);
+
+	/* Pinch update */
+	struct wlr_pointer_pinch_update_event pinch_update = {
+		.time_msec = 8100, .dx = 1.0, .dy = 2.0,
+		.scale = 1.5, .rotation = 0.1,
+	};
+	test_server.cursor_pinch_update.notify(
+		&test_server.cursor_pinch_update, &pinch_update);
+
+	/* Pinch end */
+	struct wlr_pointer_pinch_end_event pinch_end = {
+		.time_msec = 8200, .cancelled = false,
+	};
+	test_server.cursor_pinch_end.notify(
+		&test_server.cursor_pinch_end, &pinch_end);
+
+	/* Hold begin */
+	struct wlr_pointer_hold_begin_event hold_begin = {
+		.time_msec = 9000, .fingers = 3,
+	};
+	test_server.cursor_hold_begin.notify(
+		&test_server.cursor_hold_begin, &hold_begin);
+
+	/* Hold end */
+	struct wlr_pointer_hold_end_event hold_end = {
+		.time_msec = 9100, .cancelled = true,
+	};
+	test_server.cursor_hold_end.notify(
+		&test_server.cursor_hold_end, &hold_end);
+
+	teardown_cursor_init();
+	printf("  PASS: handle_gesture_events\n");
+}
+
+/*
+ * Test 73: handle_cursor_button release ends interactive move mode.
+ */
+static void
+test_handle_button_release_ends_move(void)
+{
+	setup_with_cursor_init();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 200;
+
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grabbed_view = &view;
+	test_server.snap_zone = WM_SNAP_ZONE_NONE;
+
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 10000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_RELEASED,
+	};
+
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Interactive mode should be cleared */
+	assert(test_server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+	assert(test_server.grabbed_view == NULL);
+	teardown_cursor_init();
+	printf("  PASS: handle_button_release_ends_move\n");
+}
+
+/*
+ * Test 74: handle_cursor_button release ends interactive resize
+ * with wireframe, applying the wireframe geometry.
+ */
+static void
+test_handle_button_release_wireframe_resize(void)
+{
+	setup_with_cursor_init();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 0;
+	view.y = 0;
+
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.grabbed_view = &view;
+	test_server.snap_zone = WM_SNAP_ZONE_NONE;
+	test_server.wireframe_active = true;
+	test_server.wireframe_x = 50;
+	test_server.wireframe_y = 60;
+	test_server.wireframe_w = 500;
+	test_server.wireframe_h = 400;
+
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 11000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_RELEASED,
+	};
+
+	reset_globals();
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Wireframe geometry should be applied to view */
+	assert(view.x == 50);
+	assert(view.y == 60);
+	assert(toplevel.width == 500);
+	assert(toplevel.height == 400);
+	assert(test_server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+	assert(test_server.wireframe_active == false);
+	teardown_cursor_init();
+	printf("  PASS: handle_button_release_wireframe_resize\n");
+}
+
+/*
+ * Test 75: handle_cursor_button release with snap zone applies snap geometry.
+ */
+static void
+test_handle_button_release_snap_zone(void)
+{
+	setup_with_cursor_init();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 100;
+
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grabbed_view = &view;
+	test_server.snap_zone = WM_SNAP_ZONE_LEFT_HALF;
+	test_server.snap_preview_box = (struct wlr_box){0, 0, 960, 1080};
+
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 12000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_RELEASED,
+	};
+
+	reset_globals();
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Snap geometry should be applied */
+	assert(view.x == 0);
+	assert(view.y == 0);
+	assert(toplevel.width == 960);
+	assert(toplevel.height == 1080);
+	assert(test_server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
+	teardown_cursor_init();
+	printf("  PASS: handle_button_release_snap_zone\n");
+}
+
+/*
+ * Test 76: get_cursor_context returns DESKTOP when no view under cursor.
+ */
+static void
+test_get_cursor_context_desktop(void)
+{
+	setup();
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+	struct wm_view *view = NULL;
+	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == WM_MOUSE_CTX_DESKTOP);
+	assert(view == NULL);
+	printf("  PASS: get_cursor_context_desktop\n");
+}
+
+/*
+ * Test 77: get_cursor_context returns SLIT when cursor over slit.
+ */
+static void
+test_get_cursor_context_slit(void)
+{
+	setup();
+	struct wm_slit slit = {0};
+	slit.visible = true;
+	slit.hidden = false;
+	slit.x = 100;
+	slit.y = 200;
+	slit.width = 64;
+	slit.height = 400;
+	test_server.slit = &slit;
+
+	test_cursor.x = 130;
+	test_cursor.y = 350;
+	struct wm_view *view = NULL;
+	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == WM_MOUSE_CTX_SLIT);
+	assert(view == NULL);
+	printf("  PASS: get_cursor_context_slit\n");
+}
+
+/*
+ * Test 78: get_cursor_context returns DESKTOP when slit is hidden.
+ */
+static void
+test_get_cursor_context_slit_hidden(void)
+{
+	setup();
+	struct wm_slit slit = {0};
+	slit.visible = true;
+	slit.hidden = true;
+	slit.x = 100;
+	slit.y = 200;
+	slit.width = 64;
+	slit.height = 400;
+	test_server.slit = &slit;
+
+	test_cursor.x = 130;
+	test_cursor.y = 350;
+	struct wm_view *view = NULL;
+	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == WM_MOUSE_CTX_DESKTOP);
+	printf("  PASS: get_cursor_context_slit_hidden\n");
+}
+
+/*
+ * Test 79: get_cursor_context cursor outside slit returns DESKTOP.
+ */
+static void
+test_get_cursor_context_slit_outside(void)
+{
+	setup();
+	struct wm_slit slit = {0};
+	slit.visible = true;
+	slit.hidden = false;
+	slit.x = 100;
+	slit.y = 200;
+	slit.width = 64;
+	slit.height = 400;
+	test_server.slit = &slit;
+
+	test_cursor.x = 50; /* outside slit */
+	test_cursor.y = 350;
+	struct wm_view *view = NULL;
+	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == WM_MOUSE_CTX_DESKTOP);
+	printf("  PASS: get_cursor_context_slit_outside\n");
+}
+
+/*
+ * Test 80: process_cursor_motion passthrough with sloppy focus policy.
+ */
+static void
+test_process_cursor_motion_sloppy_focus(void)
+{
+	setup();
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	test_config.focus_policy = WM_FOCUS_SLOPPY;
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+
+	reset_globals();
+	process_cursor_motion(&test_server, 1000);
+	/* No view found (stub), so no focus change occurs */
+	assert(g_focus_view_count == 0);
+	printf("  PASS: process_cursor_motion_sloppy_focus\n");
+}
+
+/*
+ * Test 81: process_cursor_motion with drag icon tree set.
+ */
+static void
+test_process_cursor_motion_drag_icon(void)
+{
+	setup();
+	struct wlr_scene_tree drag_tree = {0};
+	test_server.drag_icon_tree = &drag_tree;
+	test_server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+	test_cursor.x = 200;
+	test_cursor.y = 300;
+
+	reset_globals();
+	process_cursor_motion(&test_server, 1000);
+
+	/* Drag icon position should be updated */
+	assert(drag_tree.node.x == 200);
+	assert(drag_tree.node.y == 300);
+
+	test_server.drag_icon_tree = NULL;
+	printf("  PASS: process_cursor_motion_drag_icon\n");
+}
+
+/*
+ * Test 82: execute_mouse_action START_TABBING action.
+ */
+static void
+test_execute_mouse_action_start_tabbing(void)
+{
+	setup();
+	struct wm_view view = {0};
+	reset_globals();
+	execute_mouse_action(&test_server, WM_ACTION_START_TABBING,
+		NULL, &view);
+	assert(g_begin_interactive_count == 1);
+	printf("  PASS: execute_mouse_action_start_tabbing\n");
+}
+
+/*
+ * Test 83: execute_mouse_action LOWER action.
+ */
+static void
+test_execute_mouse_action_lower(void)
+{
+	setup();
+	struct wm_view view = {0};
+	execute_mouse_action(&test_server, WM_ACTION_LOWER, NULL, &view);
+	/* wm_view_lower is a stub, no crash */
+	printf("  PASS: execute_mouse_action_lower\n");
+}
+
+/*
+ * Test 84: execute_mouse_action CLOSE action.
+ */
+static void
+test_execute_mouse_action_close(void)
+{
+	setup();
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.xdg_toplevel = &toplevel;
+	execute_mouse_action(&test_server, WM_ACTION_CLOSE, NULL, &view);
+	/* wlr_xdg_toplevel_send_close is a stub, no crash */
+	printf("  PASS: execute_mouse_action_close\n");
+}
+
+/*
+ * Test 85: execute_mouse_action STICK toggles sticky.
+ */
+static void
+test_execute_mouse_action_stick(void)
+{
+	setup();
+	struct wm_view view = {0};
+	view.sticky = false;
+	execute_mouse_action(&test_server, WM_ACTION_STICK, NULL, &view);
+	/* wm_view_set_sticky is a stub, no crash */
+	printf("  PASS: execute_mouse_action_stick\n");
+}
+
+/*
+ * Test 86: execute_mouse_action ROOT_MENU and WINDOW_MENU.
+ */
+static void
+test_execute_mouse_action_menus(void)
+{
+	setup();
+	test_cursor.x = 100;
+	test_cursor.y = 200;
+	execute_mouse_action(&test_server, WM_ACTION_ROOT_MENU, NULL, NULL);
+	execute_mouse_action(&test_server, WM_ACTION_WINDOW_MENU, NULL, NULL);
+	execute_mouse_action(&test_server, WM_ACTION_HIDE_MENUS, NULL, NULL);
+	/* All stub, no crash */
+	printf("  PASS: execute_mouse_action_menus\n");
+}
+
+/*
+ * Test 87: handle_cursor_button release ends wireframe move mode.
+ */
+static void
+test_handle_button_release_wireframe_move(void)
+{
+	setup_with_cursor_init();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 0;
+	view.y = 0;
+
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grabbed_view = &view;
+	test_server.snap_zone = WM_SNAP_ZONE_NONE;
+	test_server.wireframe_active = true;
+	test_server.wireframe_x = 150;
+	test_server.wireframe_y = 250;
+	test_server.wireframe_w = 800;
+	test_server.wireframe_h = 600;
+
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 13000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_RELEASED,
+	};
+
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Wireframe position applied to view */
+	assert(view.x == 150);
+	assert(view.y == 250);
+	assert(test_server.wireframe_active == false);
+	assert(test_server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+	teardown_cursor_init();
+	printf("  PASS: handle_button_release_wireframe_move\n");
+}
+
+/*
+ * Test 88: snap_zone_check with snapping enabled but no output
+ * destroys any existing preview.
+ */
+static void
+test_snap_zone_check_no_output(void)
+{
+	setup();
+	test_config.enable_window_snapping = true;
+	test_server.snap_zone = WM_SNAP_ZONE_LEFT_HALF;
+	/* wlr_output_layout_output_at returns NULL, so no output found */
+	snap_zone_check(&test_server);
+	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
+	printf("  PASS: snap_zone_check_no_output\n");
+}
+
+/*
+ * Test 89: handle_cursor_button press with double-click timing.
+ */
+static void
+test_handle_cursor_button_double_click(void)
+{
+	setup_with_cursor_init();
+	struct wlr_pointer ptr = {0};
+
+	/* First click */
+	struct wlr_pointer_button_event click1 = {
+		.pointer = &ptr,
+		.time_msec = 14000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_PRESSED,
+	};
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &click1);
+
+	/* Second click within double-click interval */
+	struct wlr_pointer_button_event click2 = {
+		.pointer = &ptr,
+		.time_msec = 14100, /* 100ms later */
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_PRESSED,
+	};
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &click2);
+
+	/* Double-click detected but no binding matched,
+	 * so default action still runs */
+	assert(test_server.mouse_state.last_button == 0x110);
+	teardown_cursor_init();
+	printf("  PASS: handle_cursor_button_double_click\n");
+}
+
+/*
+ * Test 90: handle_cursor_button release saves snap geometry for
+ * view that wasn't already maximized.
+ */
+static void
+test_handle_button_release_snap_saves_geometry(void)
+{
+	setup_with_cursor_init();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wlr_xdg_surface xdg_surface = {0};
+	toplevel.base = &xdg_surface;
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 150;
+	view.maximized = false;
+	view.fullscreen = false;
+	view.lhalf = false;
+	view.rhalf = false;
+
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grabbed_view = &view;
+	test_server.snap_zone = WM_SNAP_ZONE_RIGHT_HALF;
+	test_server.snap_preview_box = (struct wlr_box){960, 0, 960, 1080};
+
+	struct wlr_pointer ptr = {0};
+	struct wlr_pointer_button_event event = {
+		.pointer = &ptr,
+		.time_msec = 15000,
+		.button = 0x110,
+		.state = WL_POINTER_BUTTON_STATE_RELEASED,
+	};
+
+	test_server.cursor_button.notify(
+		&test_server.cursor_button, &event);
+
+	/* Original geometry should have been saved */
+	assert(view.saved_geometry.x == 100);
+	assert(view.saved_geometry.y == 150);
+	assert(view.saved_geometry.width == 800);
+	assert(view.saved_geometry.height == 600);
+	/* View now at snap position */
+	assert(view.x == 960);
+	assert(view.y == 0);
+	teardown_cursor_init();
+	printf("  PASS: handle_button_release_snap_saves_geometry\n");
+}
+
+/*
+ * Test 91: process_cursor_resize with left-only edge.
+ */
+static void
+test_process_cursor_resize_left_only(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 200;
+	view.y = 100;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.resize_edges = WLR_EDGE_LEFT;
+	test_server.grab_x = 200;
+	test_server.grab_y = 300;
+	test_server.grab_geobox = (struct wlr_box){200, 100, 600, 400};
+	test_config.opaque_resize = true;
+
+	test_cursor.x = 150; /* dx = -50 */
+	test_cursor.y = 300;
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+
+	/* x should shift left by 50, width should grow by 50 */
+	assert(view.x == 150);
+	assert(toplevel.width == 650);
+	/* y and height unchanged (no vertical edge) */
+	assert(view.y == 100);
+	assert(toplevel.height == 400);
+	printf("  PASS: process_cursor_resize_left_only\n");
+}
+
+/*
+ * Test 92: process_cursor_resize with top-only edge.
+ */
+static void
+test_process_cursor_resize_top_only(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wlr_xdg_toplevel toplevel = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	view.xdg_toplevel = &toplevel;
+	view.x = 100;
+	view.y = 200;
+
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_RESIZE;
+	test_server.resize_edges = WLR_EDGE_TOP;
+	test_server.grab_x = 300;
+	test_server.grab_y = 200;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 500, 400};
+	test_config.opaque_resize = true;
+
+	test_cursor.x = 300;
+	test_cursor.y = 170; /* dy = -30 */
+	reset_globals();
+	process_cursor_resize(&test_server, 0);
+
+	/* y should shift up by 30, height should grow by 30 */
+	assert(view.y == 170);
+	assert(toplevel.height == 430);
+	/* x and width unchanged (no horizontal edge) */
+	assert(view.x == 100);
+	assert(toplevel.width == 500);
+	printf("  PASS: process_cursor_resize_top_only\n");
+}
+
+/*
+ * Test 93: position_overlay_destroy with non-NULL overlay.
+ */
+static void
+test_position_overlay_destroy_with_overlay(void)
+{
+	setup();
+	struct wlr_scene_buffer fake_buf = {0};
+	test_server.position_overlay = &fake_buf;
+	reset_globals();
+	position_overlay_destroy(&test_server);
+	assert(test_server.position_overlay == NULL);
+	assert(g_scene_node_destroy_count == 1);
+	printf("  PASS: position_overlay_destroy_with_overlay\n");
+}
+
+/*
+ * Test 94: snap_preview_destroy with non-NULL preview.
+ */
+static void
+test_snap_preview_destroy_with_preview(void)
+{
+	setup();
+	struct wlr_scene_buffer fake_buf = {0};
+	test_server.snap_preview = &fake_buf;
+	test_server.snap_zone = WM_SNAP_ZONE_RIGHT_HALF;
+	reset_globals();
+	snap_preview_destroy(&test_server);
+	assert(test_server.snap_preview == NULL);
+	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
+	assert(g_scene_node_destroy_count == 1);
+	printf("  PASS: snap_preview_destroy_with_preview\n");
+}
+
+/*
+ * Test 95: wireframe_show called twice reuses existing rects.
+ */
+static void
+test_wireframe_show_reuse(void)
+{
+	setup();
+	/* First call creates, second resizes */
+	wireframe_show(&test_server, 10, 20, 100, 100);
+	assert(test_server.wireframe_active == true);
+	wireframe_show(&test_server, 20, 30, 200, 200);
+	assert(test_server.wireframe_x == 20);
+	assert(test_server.wireframe_y == 30);
+	assert(test_server.wireframe_w == 200);
+	assert(test_server.wireframe_h == 200);
+	printf("  PASS: wireframe_show_reuse\n");
+}
+
+/*
+ * Test 96: cursor_pixel_buffer_destroy frees memory (exercise code path).
+ */
+static void
+test_pixel_buffer_destroy(void)
+{
+	struct wm_cursor_pixel_buffer *buf =
+		calloc(1, sizeof(*buf));
+	assert(buf);
+	buf->data = malloc(256);
+	assert(buf->data);
+	buf->format = DRM_FORMAT_ARGB8888;
+	buf->stride = 16;
+
+	/* Call destroy - should free data and the buffer struct */
+	cursor_pixel_buffer_destroy(&buf->base);
+	/* No crash or leak */
+	printf("  PASS: pixel_buffer_destroy\n");
+}
+
 int
 main(void)
 {
@@ -2950,6 +3924,54 @@ main(void)
 	/* snap_zone_check tests */
 	test_snap_zone_check_disabled();
 	test_snap_zone_check_null_config();
+	test_snap_zone_check_no_output();
+
+	/* event handler tests */
+	test_handle_cursor_motion();
+	test_handle_cursor_motion_absolute();
+	test_handle_cursor_button_press();
+	test_handle_cursor_button_release();
+	test_handle_cursor_button_locked();
+	test_handle_cursor_button_double_click();
+	test_handle_cursor_axis();
+	test_handle_cursor_frame();
+	test_handle_touch_events();
+	test_handle_touch_cancel();
+	test_handle_gesture_events();
+
+	/* button release with interactive modes */
+	test_handle_button_release_ends_move();
+	test_handle_button_release_wireframe_resize();
+	test_handle_button_release_wireframe_move();
+	test_handle_button_release_snap_zone();
+	test_handle_button_release_snap_saves_geometry();
+
+	/* get_cursor_context tests */
+	test_get_cursor_context_desktop();
+	test_get_cursor_context_slit();
+	test_get_cursor_context_slit_hidden();
+	test_get_cursor_context_slit_outside();
+
+	/* passthrough motion tests */
+	test_process_cursor_motion_sloppy_focus();
+	test_process_cursor_motion_drag_icon();
+
+	/* additional execute_mouse_action tests */
+	test_execute_mouse_action_start_tabbing();
+	test_execute_mouse_action_lower();
+	test_execute_mouse_action_close();
+	test_execute_mouse_action_stick();
+	test_execute_mouse_action_menus();
+
+	/* additional resize edge combinations */
+	test_process_cursor_resize_left_only();
+	test_process_cursor_resize_top_only();
+
+	/* overlay/wireframe lifecycle tests */
+	test_position_overlay_destroy_with_overlay();
+	test_snap_preview_destroy_with_preview();
+	test_wireframe_show_reuse();
+	test_pixel_buffer_destroy();
 
 	printf("All cursor_snap tests passed.\n");
 	return 0;
