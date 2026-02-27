@@ -2,10 +2,9 @@
 
 A lightweight, highly configurable Wayland compositor inspired by Fluxbox.
 
-<!-- Badges placeholder -->
-<!-- [![Build](https://img.shields.io/github/actions/workflow/status/ecliptik/fluxland/ci.yml)](https://github.com/ecliptik/fluxland/actions) -->
-<!-- [![License](https://img.shields.io/github/license/ecliptik/fluxland)](LICENSE) -->
-<!-- [![Version](https://img.shields.io/github/v/release/ecliptik/fluxland)](https://github.com/ecliptik/fluxland/releases) -->
+[![Build](https://img.shields.io/github/actions/workflow/status/ecliptik/fluxland/ui-tests.yml)](https://github.com/ecliptik/fluxland/actions)
+[![License](https://img.shields.io/github/license/ecliptik/fluxland)](LICENSE)
+[![Version](https://img.shields.io/github/v/release/ecliptik/fluxland)](https://github.com/ecliptik/fluxland/releases)
 
 ## About
 
@@ -39,6 +38,55 @@ the benefits of a modern Wayland session.
 | Root menu | Grid arrangement (4 windows) |
 
 See [`examples/`](examples/) for themes and complete configuration examples.
+
+## Quick Start
+
+1. **Install dependencies** (see [Dependencies](#dependencies) below) and build:
+
+   ```sh
+   meson setup build && ninja -C build
+   sudo ninja -C build install
+   ```
+
+   For distro-specific instructions, see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
+2. **Copy the example configuration:**
+
+   ```sh
+   mkdir -p ~/.config/fluxland
+   cp /path/to/fluxland/data/* ~/.config/fluxland/
+   chmod +x ~/.config/fluxland/startup
+   ```
+
+   Or start from a themed example (see [`examples/`](examples/)):
+
+   ```sh
+   cp -r /path/to/fluxland/examples/wave-desktop/* ~/.config/fluxland/
+   chmod +x ~/.config/fluxland/startup
+   ```
+
+3. **Start the compositor** from a TTY or from within another compositor:
+
+   ```sh
+   fluxland
+   ```
+
+4. **Essential keybindings:**
+
+   | Key | Action |
+   |---|---|
+   | `Mod4+Return` | Open terminal (foot) |
+   | `Mod4+d` | Application launcher (wofi) |
+   | `Mod4+Shift+q` | Close focused window |
+   | `Mod4+f` | Toggle fullscreen |
+   | `Mod4+m` | Toggle maximize |
+   | `Mod4+1`..`9` | Switch to workspace |
+   | `Mod4+Shift+1`..`9` | Send window to workspace |
+   | `Alt+Tab` | Cycle windows |
+   | `Mod4+r` | Reload configuration |
+   | `Mod4+Shift+e` | Exit compositor |
+
+   `Mod4` is the Super/Windows key.
 
 ## Features
 
@@ -132,69 +180,6 @@ Example with options:
 ```sh
 meson setup build -Dxwayland=enabled -Dasan=true
 ninja -C build
-```
-
-## Quick Start
-
-1. **Install dependencies** (see above) and build fluxland.
-
-2. **Create a config directory** and copy the default configuration:
-
-   ```sh
-   mkdir -p ~/.config/fluxland
-   cp /path/to/fluxland/data/* ~/.config/fluxland/
-   chmod +x ~/.config/fluxland/startup
-   ```
-
-   Or start from a themed example (see [`examples/`](examples/)):
-
-   ```sh
-   cp -r /path/to/fluxland/examples/wave-desktop/* ~/.config/fluxland/
-   chmod +x ~/.config/fluxland/startup
-   ```
-
-3. **Start the compositor** from a TTY or from within another compositor:
-
-   ```sh
-   fluxland
-   ```
-
-   Or with a startup command:
-
-   ```sh
-   fluxland -s foot
-   ```
-
-4. **Essential default keybindings:**
-
-   | Key | Action |
-   |---|---|
-   | `Mod4+Return` | Open terminal (foot) |
-   | `Mod4+d` | Application launcher (wofi) |
-   | `Mod4+Shift+q` | Close focused window |
-   | `Mod4+f` | Toggle fullscreen |
-   | `Mod4+m` | Toggle maximize |
-   | `Mod4+1`..`9` | Switch to workspace |
-   | `Mod4+Shift+1`..`9` | Send window to workspace |
-   | `Alt+Tab` | Cycle windows |
-   | `Mod4+Tab` | Next tab in group |
-   | `Mod4+r` | Reload configuration |
-   | `Mod4+Shift+e` | Exit compositor |
-
-   `Mod4` is the Super/Windows key. `Mod1` is Alt.
-
-5. **Environment:** fluxland sets `WAYLAND_DISPLAY` automatically. The startup
-   script (`~/.config/fluxland/startup`) runs once on launch -- use it for
-   wallpaper, bars, and background services.
-
-### Command-line options
-
-```
-fluxland [options...]
-  -s, --startup <cmd>  Run command on startup
-  -d, --debug          Enable debug logging
-  -v, --version        Show version and exit
-  -h, --help           Show this help
 ```
 
 ## Configuration

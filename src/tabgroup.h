@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * tabgroup.h - Window tabbing/grouping (Fluxbox-style tab groups)
  *
  * Multiple windows can be combined into a single decoration frame with

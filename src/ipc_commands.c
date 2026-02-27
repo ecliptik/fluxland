@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * ipc_commands.c - IPC command dispatch and handlers
  *
  * Parses incoming JSON requests and builds JSON responses using

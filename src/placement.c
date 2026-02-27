@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * placement.c - Window placement and edge snapping
  *
  * Implements Fluxbox-style window placement policies and edge

@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * rules.h - Per-window rules and auto-grouping (Fluxbox apps file)
  *
  * Parses the Fluxbox-compatible apps file to define per-window rules

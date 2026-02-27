@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * wlcs_shim.c - WLCS (Wayland Conformance Test Suite) integration module
  *
  * This file implements the WLCS integration shim that allows fluxland to be

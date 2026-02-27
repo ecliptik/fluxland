@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * fractional_scale.c - wp-fractional-scale-v1 protocol support
  *
  * Provides fractional scale information to Wayland clients so they can

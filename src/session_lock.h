@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * session_lock.h - ext-session-lock-v1 protocol support
  *
  * Handles screen lockers (swaylock, waylock) by providing the

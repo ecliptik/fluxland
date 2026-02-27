@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * keyboard.c - Keyboard input handling
  *
  * Handles key events, chain state for multi-key sequences,

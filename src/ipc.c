@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * ipc.c - Unix socket IPC server
  *
  * Creates a Unix domain socket for external tools (fluxland-ctl)

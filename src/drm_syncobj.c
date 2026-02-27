@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * drm_syncobj.c - linux-drm-syncobj-v1 explicit synchronization support
  *
  * Advertises explicit sync support to clients. This allows GPU clients

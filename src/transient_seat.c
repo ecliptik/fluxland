@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * transient_seat.c - ext-transient-seat-v1 protocol support
  *
  * Allows clients (e.g. remote desktop tools) to create temporary seats

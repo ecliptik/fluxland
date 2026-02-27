@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * presentation.c - wp-presentation-time protocol support
  *
  * Provides frame timing feedback to clients via the wp_presentation

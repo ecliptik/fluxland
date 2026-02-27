@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * protocols.c - Primary selection, pointer constraints, relative pointer,
  *               XDG activation, tearing control, output power management,
  *               keyboard shortcuts inhibit

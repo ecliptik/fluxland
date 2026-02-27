@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * output_management.c - wlr-output-management-unstable-v1 protocol support
  *
  * Enables display configuration tools (wlr-randr, kanshi) to query

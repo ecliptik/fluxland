@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * screencopy.c - Screen capture protocol support
  *
  * Enables screenshot tools (grim) and screen recorders by providing:

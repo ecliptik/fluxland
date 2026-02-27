@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * idle.c - Idle notification and idle inhibit protocol support
  *
  * Implements ext-idle-notify-v1 for swayidle-style idle managers

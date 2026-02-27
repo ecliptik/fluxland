@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * layer_shell.h - wlr-layer-shell-unstable-v1 protocol support
  *
  * Handles external panels (waybar), wallpaper setters (swaybg),

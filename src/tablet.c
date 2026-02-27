@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * tablet.c - Tablet/stylus input support via tablet-v2 protocol
  *
  * Handles tablet tool (stylus) and tablet pad devices using the

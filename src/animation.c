@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * animation.c - Window animation infrastructure (fade in/out)
  *
  * Uses wl_event_loop timer to drive ~60fps opacity interpolation.

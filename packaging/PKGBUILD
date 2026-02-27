@@ -1,6 +1,6 @@
 # Maintainer: fluxland contributors <fluxland@example.com>
 pkgname=fluxland
-pkgver=0.1.0.dev
+pkgver=0.1.0
 pkgrel=1
 pkgdesc='A Fluxbox-inspired Wayland compositor'
 arch=('x86_64' 'aarch64')

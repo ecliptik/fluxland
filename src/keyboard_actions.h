@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * keyboard_actions.h - Keyboard action dispatch interface
  *
  * Declares the interface between keyboard event handling (keyboard.c)

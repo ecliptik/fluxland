@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * foreign_toplevel.c - wlr-foreign-toplevel-management-v1 for external taskbars
  *
  * Provides the wlr-foreign-toplevel-management protocol so that external

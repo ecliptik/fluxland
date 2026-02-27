@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * cursor.c - Pointer/cursor input handling
  *
  * Handles mouse events with context-sensitive binding dispatch.

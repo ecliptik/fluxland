@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * gamma_control.c - Gamma control protocol for color temperature tools
  *
  * Enables tools like gammastep, wlsunset, and redshift-wayland to

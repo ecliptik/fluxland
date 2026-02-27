@@ -16,7 +16,7 @@
         in {
           default = pkgs.stdenv.mkDerivation {
             pname = "fluxland";
-            version = "0.1.0-dev";
+            version = "0.1.0";
 
             src = self;
 

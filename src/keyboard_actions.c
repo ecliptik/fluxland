@@ -1,5 +1,7 @@
 /*
  * fluxland - A Fluxbox-inspired Wayland compositor
+ * Copyright (c) 2025 fluxland contributors
+ * SPDX-License-Identifier: MIT
  * keyboard_actions.c - Keyboard action dispatch
  *
  * All action execution, condition evaluation, and security helpers.
