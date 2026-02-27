@@ -204,6 +204,13 @@ void wm_decoration_set_preset(struct wm_decoration *decoration,
 void wm_decoration_get_extents(struct wm_decoration *decoration,
 	int *top, int *bottom, int *left, int *right);
 
+/*
+ * Refresh decoration geometry after the client commits a new size.
+ * Updates content_width/content_height and re-renders all elements.
+ */
+void wm_decoration_refresh_geometry(struct wm_decoration *decoration,
+	struct wm_style *style);
+
 /* --- xdg-decoration protocol init --- */
 
 /*

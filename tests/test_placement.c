@@ -37,6 +37,7 @@
 #define WM_SERVER_H
 #define WM_VIEW_H
 #define WM_WORKSPACE_H
+#define WLR_UTIL_EDGES_H
 
 /* --- Stub wayland types --- */
 
@@ -106,6 +107,15 @@ struct wlr_xdg_toplevel {
 
 struct wlr_cursor {
 	double x, y;
+};
+
+/* Stub edge constants */
+enum wlr_edges {
+	WLR_EDGE_NONE = 0,
+	WLR_EDGE_TOP = 1 << 0,
+	WLR_EDGE_BOTTOM = 1 << 1,
+	WLR_EDGE_LEFT = 1 << 2,
+	WLR_EDGE_RIGHT = 1 << 3,
 };
 
 /* wlr_log no-op */
@@ -228,6 +238,15 @@ wlr_xdg_toplevel_set_size(struct wlr_xdg_toplevel *toplevel,
 		toplevel->height = height;
 	}
 	g_set_size_count++;
+	return 0;
+}
+
+static uint32_t
+wlr_xdg_toplevel_set_tiled(struct wlr_xdg_toplevel *toplevel,
+	uint32_t tiled_edges)
+{
+	(void)toplevel;
+	(void)tiled_edges;
 	return 0;
 }
 

@@ -1343,6 +1343,26 @@ wm_decoration_update(struct wm_decoration *decoration,
 }
 
 void
+wm_decoration_refresh_geometry(struct wm_decoration *decoration,
+	struct wm_style *style)
+{
+	if (!decoration || !style) {
+		return;
+	}
+
+	struct wlr_box geo;
+	wlr_xdg_surface_get_geometry(decoration->view->xdg_toplevel->base,
+		&geo);
+	if (geo.width > 0 && geo.height > 0 &&
+	    (geo.width != decoration->content_width ||
+	     geo.height != decoration->content_height)) {
+		decoration->content_width = geo.width;
+		decoration->content_height = geo.height;
+		layout_and_render(decoration, style);
+	}
+}
+
+void
 wm_decoration_set_focused(struct wm_decoration *decoration,
 	bool focused, struct wm_style *style)
 {

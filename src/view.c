@@ -935,6 +935,12 @@ handle_xdg_toplevel_commit(struct wl_listener *listener, void *data)
 		wlr_xdg_toplevel_set_size(view->xdg_toplevel, 0, 0);
 		return;
 	}
+
+	/* Refresh decoration geometry when client commits a new size */
+	if (view->decoration && view->server->style) {
+		wm_decoration_refresh_geometry(view->decoration,
+			view->server->style);
+	}
 }
 
 static void

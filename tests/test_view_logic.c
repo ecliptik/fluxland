@@ -946,6 +946,8 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 static void wm_decoration_destroy(struct wm_decoration *d) { (void)d; }
 static void wm_decoration_update(struct wm_decoration *d,
 	struct wm_style *s) { (void)d; (void)s; }
+static void wm_decoration_refresh_geometry(struct wm_decoration *d,
+	struct wm_style *s) { (void)d; (void)s; }
 static void wm_decoration_set_focused(struct wm_decoration *d,
 	bool focused, struct wm_style *s) { (void)d; (void)focused; (void)s; }
 static void wm_decoration_get_extents(struct wm_decoration *d,
