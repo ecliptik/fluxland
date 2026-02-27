@@ -2,11 +2,11 @@
 
 ## Current Status (Updated 2026-02-27)
 
-**Current state:** 80.1% line coverage (12,369 / 15,442 executable lines) across 48 source modules
+**Current state:** 81.2% line coverage (12,539 / 15,442 executable lines) across 48 source modules
 **Target:** 90% line coverage
 **Realistic ceiling:** ~84% theoretical max
-**Test files:** 35 (up from 15 at baseline)
-**All tests passing:** 36/36
+**Test files:** 37 (up from 15 at baseline)
+**All tests passing:** 38/38
 
 ### Phases Completed
 
@@ -23,6 +23,7 @@
 | 7 | Coverage push (keyboard, menu, cursor snap, more) | Extended 4 files | 70.9% |
 | 8 | Final push (cursor, keyboard, menu, server, systray) | +1 new file, extended 4 | 75.4% |
 | 9 | Keyboard refactor + 80% push (13 test files, ~220 tests) | keyboard.c split + extended 13 files | 80.1% |
+| 10 | Final modules (protocols.c, session_lock.c) | +2 new files, 60 tests | 81.2% |
 
 ### Key Decisions Made
 - **No shared mock framework needed:** The `#include "source.c"` pattern with header guards
@@ -42,9 +43,7 @@
 
 | Module | Current | Target | Approach | Effort |
 |--------|---------|--------|----------|--------|
-| protocols.c | 38.2% | 55% | New test file with `#include "protocols.c"` stubs | MEDIUM |
-| session_lock.c | 73.8% | 85% | More lock/unlock lifecycle edge cases | EASY |
-| autostart.c | 53.7% | 70% | More startup file parsing paths | EASY |
+| autostart.c | 53.7% | ~55% | Remaining lines are in double-fork _exit() paths (uncoverable by gcov) | DONE |
 
 **Estimated gain: +1-2 percentage points**
 
@@ -113,7 +112,7 @@ These modules or code paths realistically **cannot** reach high coverage:
 | menu.c | 1554 | 80.4% | DONE |
 | main.c | 71 | 80.3% | DONE |
 | rcparser.c | 110 | 80.0% | DONE |
-| session_lock.c | 168 | 73.8% | DONE |
+| session_lock.c | 168 | 94.6% | DONE |
 | ipc.c | 222 | 72.1% | DONE |
 | fractional_scale.c | 7 | 71.4% | SKIP |
 | idle.c | 65 | 70.8% | DONE |
@@ -125,7 +124,7 @@ These modules or code paths realistically **cannot** reach high coverage:
 | autostart.c | 54 | 53.7% | DONE |
 | transient_seat.c | 25 | 48.0% | SKIP |
 | drm_lease.c | 26 | 42.3% | SKIP |
-| protocols.c | 249 | 38.2% | Future |
+| protocols.c | 249 | 94.4% | DONE |
 | input.c | 100 | 22.0% | SKIP |
 | gamma_control.c | 32 | 21.9% | SKIP |
 | xwayland.c | 392 | 14.5% | Future |
