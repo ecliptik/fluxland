@@ -8,6 +8,10 @@ Test-drive fluxland on **Debian Trixie** (13) or newer.
 
 ---
 
+[Install Dependencies](#1-install-build-dependencies) | [Build](#2-build) | [Package](#3-create-a-deb-package-optional) | [Install](#4-install-without-packaging) | [Configure](#5-configure) | [Test Drive](#6-test-drive) | [Reporting Bugs](#7-reporting-bugs) | [Further Reading](#further-reading)
+
+---
+
 ## 1. Install build dependencies
 
 ### On Debian Trixie (13)
