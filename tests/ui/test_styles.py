@@ -1,5 +1,6 @@
 """Tests for style/theme operations via IPC."""
 
+import os
 import time
 
 import pytest
@@ -8,10 +9,10 @@ from lib.ipc_client import CommandError, TimeoutError as IPCTimeoutError
 
 SETTLE = 0.2
 
-# Absolute paths to style files in the source tree
-STYLE_DEFAULT = "/path/to/fluxland/data/style"
-STYLE_HC_DARK = "/path/to/fluxland/data/fluxland-hc-dark.style"
-STYLE_HC_LIGHT = "/path/to/fluxland/data/fluxland-hc-light.style"
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+STYLE_DEFAULT = os.path.join(_PROJECT_ROOT, "data", "style")
+STYLE_HC_DARK = os.path.join(_PROJECT_ROOT, "data", "fluxland-hc-dark.style")
+STYLE_HC_LIGHT = os.path.join(_PROJECT_ROOT, "data", "fluxland-hc-light.style")
 
 
 class TestStyles:

@@ -295,12 +295,19 @@ class CompositorManager:
             if os.path.isfile(fp):
                 os.unlink(fp)
 
-        # Copy all files from the config set
+        # Copy all files from the config set, substituting @PROJECT_ROOT@
+        project_root = str(Path(__file__).parent.parent.parent.parent)
         for f in os.listdir(src_dir):
             src = os.path.join(src_dir, f)
             dst = os.path.join(self._config_dir, f)
             if os.path.isfile(src):
-                shutil.copy2(src, dst)
+                content = Path(src).read_text()
+                if "@PROJECT_ROOT@" in content:
+                    Path(dst).write_text(
+                        content.replace("@PROJECT_ROOT@", project_root)
+                    )
+                else:
+                    shutil.copy2(src, dst)
 
     def wait_ready(self, timeout=5.0):
         """Wait for IPC socket to appear and respond to ping.

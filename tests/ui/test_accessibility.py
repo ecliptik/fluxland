@@ -5,14 +5,16 @@ and assistive technology via its IPC protocol, and that the accessibility
 meta-subscription covers the expected event categories.
 """
 
+import os
 import time
 import pytest
 from lib.ipc_client import TimeoutError as IPCTimeoutError
 
 SETTLE = 0.2
 
-STYLE_DEFAULT = "/path/to/fluxland/data/style"
-STYLE_HC_DARK = "/path/to/fluxland/data/fluxland-hc-dark.style"
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+STYLE_DEFAULT = os.path.join(_PROJECT_ROOT, "data", "style")
+STYLE_HC_DARK = os.path.join(_PROJECT_ROOT, "data", "fluxland-hc-dark.style")
 
 
 class TestAccessibilitySubscription:

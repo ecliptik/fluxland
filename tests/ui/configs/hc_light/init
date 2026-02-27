@@ -9,4 +9,4 @@ session.screen0.windowPlacement: RowSmartPlacement
 session.screen0.toolbar.visible: true
 session.screen0.toolbar.placement: BottomCenter
 session.screen0.toolbar.widthPercent: 100
-session.styleFile: /path/to/fluxland/data/fluxland-hc-light.style
+session.styleFile: @PROJECT_ROOT@/data/fluxland-hc-light.style
