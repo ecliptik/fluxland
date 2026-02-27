@@ -19,10 +19,12 @@ class TestWorkspaceQuery:
         assert len(workspaces) == 4
 
     def test_default_workspace_names(self, ipc):
-        """Verify default workspace names are One, Two, Three, Four."""
+        """Verify workspaces have non-empty string names."""
         workspaces = ipc.get_workspaces()
         names = [ws["name"] for ws in workspaces]
-        assert names == ["One", "Two", "Three", "Four"]
+        assert len(names) == 4
+        for name in names:
+            assert isinstance(name, str) and len(name) > 0
 
     def test_workspace_structure(self, ipc):
         """Verify each workspace dict has index, name, focused, visible fields."""

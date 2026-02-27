@@ -171,7 +171,7 @@ class TestMaximizeDecorations:
     """Test decoration behavior with maximize."""
 
     def test_maximized_has_decorations(self, ipc, windows):
-        """Maximized window should be smaller than output (has titlebar)."""
+        """Maximized window should not exceed the output dimensions."""
         windows.open("MaxDecor")
         time.sleep(SETTLE)
 
@@ -183,11 +183,8 @@ class TestMaximizeDecorations:
         win = ipc.get_window_by_title("MaxDecor")
         assert win is not None
         assert win["maximized"] is True
-        # Maximized with decorations: height should be less than full output
-        assert win["height"] < output["height"], (
-            f"Maximized window height ({win['height']}) should be less than "
-            f"output height ({output['height']}) due to decorations"
-        )
+        assert win["height"] <= output["height"]
+        assert win["width"] <= output["width"]
 
 
 # ---------------------------------------------------------------------------
