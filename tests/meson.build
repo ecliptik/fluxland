@@ -140,6 +140,17 @@ test_validate = executable(
 )
 test('validate', test_validate)
 
+# --- test_session_lock_logic: session lock unit tests ---
+# session_lock.c is #included directly in the test to allow stubbing wlroots deps.
+test_session_lock_logic = executable(
+  'test_session_lock_logic',
+  files('test_session_lock_logic.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('session_lock_logic', test_session_lock_logic)
+
 # --- test_autostart: autostart module tests ---
 test_autostart = executable(
   'test_autostart',
@@ -317,6 +328,17 @@ test_output_mgmt = executable(
   install: false,
 )
 test('output_mgmt', test_output_mgmt)
+
+# --- test_protocols: protocol handler unit tests ---
+# protocols.c is #included directly in the test to allow stubbing wlroots deps.
+test_protocols = executable(
+  'test_protocols',
+  files('test_protocols.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('protocols', test_protocols)
 
 # --- test_integration: headless compositor startup test ---
 wayland_client = dependency('wayland-client', required: false)
