@@ -437,4 +437,3 @@ When the Claude team receives your issue:
 - `man fluxland-style` -- theme/style format
 - `man fluxland-menu` -- menu definition format
 - [CONTRIBUTING.md](CONTRIBUTING.md) -- development workflow and architecture
-- [TODO.md](TODO.md) -- planned features and backlog
