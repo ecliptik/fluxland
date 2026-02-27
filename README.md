@@ -20,6 +20,9 @@ simplicity, speed, and deep configurability. As the Linux desktop ecosystem
 transitions from X11 to Wayland, fluxland provides a familiar home for
 Fluxbox users while embracing modern display server capabilities.
 
+This project was 100% vibe coded using [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) orchestration.
+
 Built on wlroots 0.18, fluxland implements 30+ Wayland protocols and delivers
 first-class support for server-side decorations with Fluxbox theme
 compatibility, key chains and modal keybindings, window tabbing, a configurable
