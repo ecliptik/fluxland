@@ -1184,7 +1184,8 @@ test_slit_add_client_basic(void)
 	assert(client->xsurface == &xs);
 	assert(client->width == 48);
 	assert(client->height == 48);
-	assert(client->mapped == false);
+	/* Client is immediately mapped since surface was set at add time */
+	assert(client->mapped == true);
 	assert(slit->client_count == 1);
 	assert(!wl_list_empty(&slit->clients));
 
@@ -1352,13 +1353,11 @@ test_slit_reconfigure_max_over_off(void)
 	wl_signal_init(&xs.events.destroy);
 	wl_signal_init(&xs.events.request_configure);
 
-	struct wm_slit_client *client = wm_slit_add_client(slit, &xs);
-	client->mapped = true;
-
-	/* Store original usable area */
+	/* Store original usable area before adding client */
 	int orig_width = test_output.usable_area.width;
 
-	wm_slit_reconfigure(slit);
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xs);
+	/* Client is immediately mapped and reconfigured since surface exists */
 
 	/* With slit_max_over=false, usable area width should be reduced */
 	assert(test_output.usable_area.width < orig_width);
@@ -1394,11 +1393,10 @@ test_slit_reconfigure_different_placements(void)
 	wl_signal_init(&xs.events.destroy);
 	wl_signal_init(&xs.events.request_configure);
 
-	struct wm_slit_client *client = wm_slit_add_client(slit, &xs);
-	client->mapped = true;
-
 	int orig_x = test_output.usable_area.x;
-	wm_slit_reconfigure(slit);
+
+	struct wm_slit_client *client = wm_slit_add_client(slit, &xs);
+	/* Client is immediately mapped and reconfigured since surface exists */
 
 	/* Left placement should shift usable_area x right */
 	assert(test_output.usable_area.x > orig_x);
@@ -2024,13 +2022,14 @@ test_slit_client_map_basic(void)
 
 	struct wm_slit_client *client = wm_slit_add_client(slit, &xsurf);
 	assert(client != NULL);
-	assert(client->mapped == false);
-
-	/* Invoke the map handler directly */
-	handle_slit_client_map(&client->map, NULL);
+	/* Client is immediately mapped since surface exists at add time */
 	assert(client->mapped == true);
 	assert(client->width == 48);
 	assert(client->height == 48);
+
+	/* Calling the map handler again is a no-op (still mapped) */
+	handle_slit_client_map(&client->map, NULL);
+	assert(client->mapped == true);
 
 	/* Clean up */
 	wm_slit_remove_client(client);
