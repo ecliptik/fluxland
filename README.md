@@ -104,7 +104,7 @@ See [`examples/`](examples/) for themes and complete configuration examples.
 - **Keymodes** -- modal keybinding sets (e.g. a resize mode with vim-style movement keys)
 - **Window tabbing** -- group windows into tabbed containers, drag-to-tab from titlebars
 - **Toolbar** with workspace switcher, icon bar, and clock; configurable placement and auto-hide
-- **Slit** -- dock area for Window Maker dockapps and other dockable applications
+- **Slit** -- dock area for Window Maker dockapps and other dockable applications (e.g. gkrellm via XWayland)
 - **Root menu and window menu** -- Fluxbox-compatible menu definitions with submenus, separators, and built-in entries
 - **Per-window rules** -- match by app_id, title, or class with regex; set workspace, dimensions, position, decorations, layer, transparency, and more
 - **Auto-grouping** -- automatically tab windows matching specified patterns
