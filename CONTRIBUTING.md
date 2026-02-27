@@ -179,9 +179,9 @@ static const struct action_map actions[] = {
 This maps the string name used in keys files (e.g., `:MyAction`) to the
 enum value. The lookup is case-insensitive.
 
-### 3. `src/keyboard.c` - Implement the action
+### 3. `src/keyboard_actions.c` - Implement the action
 
-Add a `case` to the `execute_action()` switch statement:
+Add a `case` to the `wm_execute_action()` switch statement:
 
 ```c
 case WM_ACTION_MY_ACTION:
@@ -194,7 +194,8 @@ case WM_ACTION_MY_ACTION:
 ### 4. `src/ipc_commands.c` - Add IPC support
 
 Add the action to `action_table[]` and add a matching `case` in
-`ipc_execute_action()`:
+`ipc_execute_action()`. Both dispatch functions should share the same
+logic:
 
 ```c
 // In action_table[]:
@@ -203,7 +204,7 @@ Add the action to `action_table[]` and add a matching `case` in
 // In ipc_execute_action():
 case WM_ACTION_MY_ACTION:
     if (view) {
-        /* same implementation as keyboard.c */
+        /* same implementation as keyboard_actions.c */
     }
     return true;
 ```
@@ -292,7 +293,7 @@ config->my_option = 42;  /* default */
 
 // In the parsing section of config_load():
 if (strcasecmp(key, "session.MyOption") == 0) {
-    config->my_option = atoi(value);
+    safe_atoi(value, &config->my_option);
 }
 ```
 
