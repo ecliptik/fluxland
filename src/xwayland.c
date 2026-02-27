@@ -144,11 +144,11 @@ should_dock_in_slit(struct wlr_xwayland_surface *xsurface,
 
 	/*
 	 * Classic dockapps use withdrawn state (initial_state == 0
-	 * in WM_HINTS).  Check the size hints: tiny windows with
-	 * no window type set are likely dockapps.
+	 * in WM_HINTS).  Some apps (e.g. gkrellm -w) set withdrawn
+	 * state but also set _NET_WM_WINDOW_TYPE_NORMAL, so don't
+	 * require window_type_len == 0.
 	 */
-	if (xsurface->window_type_len == 0 &&
-	    !xsurface->override_redirect &&
+	if (!xsurface->override_redirect &&
 	    xsurface->hints &&
 	    xsurface->hints->initial_state == 0 /* WithdrawnState */) {
 		return true;

@@ -658,6 +658,29 @@ wm_slit_add_client(struct wm_slit *slit, void *surface)
 	wlr_log(WLR_INFO, "slit: added client (total %d)",
 		slit->client_count);
 
+#ifdef WM_HAS_XWAYLAND
+	/*
+	 * If the surface is already mapped (e.g. routed from the xwayland
+	 * map handler), trigger map logic immediately since we missed the
+	 * wl_surface map event.
+	 */
+	if (client->xsurface->surface) {
+		client->mapped = true;
+		client->width = client->xsurface->width;
+		client->height = client->xsurface->height;
+		if (!client->scene_tree && slit->scene_tree) {
+			client->scene_tree = wlr_scene_subsurface_tree_create(
+				slit->scene_tree,
+				client->xsurface->surface);
+		}
+		wlr_log(WLR_INFO, "slit client mapped: %s (%dx%d)",
+			client->xsurface->title ?
+				client->xsurface->title : "(null)",
+			client->width, client->height);
+		wm_slit_reconfigure(slit);
+	}
+#endif
+
 	return client;
 }
 
