@@ -666,8 +666,10 @@ wm_slit_add_client(struct wm_slit *slit, void *surface)
 	 */
 	if (client->xsurface->surface) {
 		client->mapped = true;
-		client->width = client->xsurface->width;
-		client->height = client->xsurface->height;
+		if (client->xsurface->width > 0)
+			client->width = client->xsurface->width;
+		if (client->xsurface->height > 0)
+			client->height = client->xsurface->height;
 		if (!client->scene_tree && slit->scene_tree) {
 			client->scene_tree = wlr_scene_subsurface_tree_create(
 				slit->scene_tree,
