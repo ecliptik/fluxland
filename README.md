@@ -22,6 +22,8 @@ Fluxbox users while embracing modern display server capabilities.
 
 This project was 100% vibe coded using [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) orchestration.
+[Read about how it was built](docs/DEBRIEF.md) — from Fluxbox nostalgia to a working Wayland
+compositor in 6 days.
 
 Built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) 0.18, fluxland implements 30+ Wayland protocols and delivers
 first-class support for server-side decorations with Fluxbox theme
