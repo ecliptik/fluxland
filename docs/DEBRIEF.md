@@ -16,11 +16,11 @@ tags:
 author: Micheal
 ---
 
-I used [Fluxbox](http://fluxbox.org/) for a decade. From 2000 to 2010, it lived on every system I owned. In college, my desktop was Fluxbox with [xmms](https://en.wikipedia.org/wiki/XMMS), [gkrellm](http://gkrellm.srcbox.net/), [aterm](https://en.wikipedia.org/wiki/Aterm), and the rest of the classic X11 toolkit. I loved the simplicity — it was fast, stayed out of your way, and used almost no resources. But what really got me was the aesthetic. You could customize every pixel of the decorations, the toolbar, the menus. You could make a desktop that just *looked cool*. Sitting in front of that setup felt like living in the future. If you were running Linux in the early 2000s, you know [exactly what I mean](https://www.ecliptik.com/blog/2008/Screenshots-Over-the-Years/).
+I used [Fluxbox](http://fluxbox.org/) for fourteen years. Starting around 2000, it lived on every system I owned. In college, my desktop was Fluxbox with [xmms](https://en.wikipedia.org/wiki/XMMS), [gkrellm](http://gkrellm.srcbox.net/), [aterm](https://en.wikipedia.org/wiki/Aterm), and the rest of the classic X11 toolkit. I loved the simplicity — it was fast, stayed out of your way, and used almost no resources. But what really got me was the aesthetic. You could customize every pixel of the decorations, the toolbar, the menus. You could make a desktop that just *looked cool*. Sitting in front of that setup felt like living in the future. If you were running Linux in the early 2000s, you know [exactly what I mean](https://www.ecliptik.com/blog/2008/Screenshots-Over-the-Years/). The last machine I ran it on was a work-issued ThinkPad X61s around 2014. I even had a Fluxbox t-shirt.
 
 Then the world moved on. X11 gave way to Wayland. Fluxbox stayed behind. I moved through GNOME, then Sway, but nothing felt the same.
 
-In February 2026, I built Fluxbox again — for Wayland — in 6 days. I didn't write a single line of code.
+In February 2026, I built Fluxbox again — for Wayland — in 6 active development days. I directed every decision, reviewed every output, triaged every bug, and managed the entire process. But I didn't write a single line of code. Claude did.
 
 | | |
 |---|---|
@@ -28,6 +28,7 @@ In February 2026, I built Fluxbox again — for Wayland — in 6 days. I didn't 
 | 30+ Wayland protocols | 110+ window manager actions |
 | 81% test coverage | 175 tests (38 C + 137 Python) |
 | 5 man pages | 5 packaging targets |
+| 6 active development days | 153 commits |
 
 The project is called [fluxland](https://github.com/ecliptik/fluxland), and it was 100% vibe coded using [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) orchestration. This is the story of how it was built and what I learned about agentic software development along the way.
 
@@ -78,7 +79,7 @@ This two-phase structure — build fast, step away, return to harden — turned 
 
 ### Day 3 — The bug hunt
 
-I came back, launched fluxland in a QEMU VM running Debian Trixie, and started using it. Twelve bugs in one day. The bugs tell the real story of agentic development — they reveal both what the AI gets wrong and what's genuinely hard about the problem domain.
+I came back, launched fluxland in the QEMU/KVM VM where all development happened — a Debian Trixie instance with 8GB RAM and 4 cores, accessed via SSH from my Linux Mint laptop — and started using it. Twelve bugs in one day. The bugs tell the real story of agentic development — they reveal both what the AI gets wrong and what's genuinely hard about the problem domain.
 
 **The AI mistakes** were subtle. The menu system used `pango_layout_get_pixel_size()` to measure text width for surface allocation. The code looked perfectly reasonable, and a human unfamiliar with Pango might have written the same thing. But `get_pixel_size()` underestimates actual rendered width — you need `pango_layout_get_pixel_extents()` with the ink rectangle. The result: menu titles showed "flu" instead of "fluxland." The code was plausible, correct-looking, and wrong.
 
@@ -115,7 +116,7 @@ Everything above could have been done with a single Claude Code session. What ch
 
 The breakthrough wasn't Claude writing code — it was running 4-5 agents simultaneously in tmux, filling the role of engineering manager rather than developer. I've been a tmux user for years (old sysadmin habits), so I already had a `.tmux.conf` that made navigation between panes natural. Watching AI agents take over those familiar panes and start working in parallel was the moment agentic development stopped being a novelty and started feeling like a real workflow.
 
-![Claude Code Teams — 5 agents working simultaneously in tmux](docs/screenshots/claude-teams.png)
+![Claude Code Teams — 5 agents working simultaneously in tmux](screenshots/claude-teams.png)
 *Five Claude Code agents working in parallel: team lead coordinating in one pane, dev and QA agents building, testing, and fixing in others.*
 
 ### The team structure
@@ -133,7 +134,7 @@ This mirrors how real engineering teams work, because it *is* how real engineeri
 
 ### The QA/Dev feedback loop
 
-QA agents tested the live compositor running in a VM. They used `wtype` for keyboard simulation and `grim` for screenshots. They'd work through feature areas — menus, window decorations, workspaces, key chains — and report PASS/FAIL for each one. I'd triage the failures, prioritize by severity, and send bug batches to the dev agent. The dev agent would fix, build, deploy, and report the root cause. I'd create re-test tasks and assign them back to QA. QA would verify.
+QA agents tested the live compositor running in the same VM. The VM ran two users: `claude` for development and `micheal` for the compositor session, with `lightdm` auto-login. Agents used `wtype` for keyboard simulation and `grim` for screenshots, running commands as the session user. They'd work through feature areas — menus, window decorations, workspaces, key chains — and report PASS/FAIL for each one. I'd triage the failures, prioritize by severity, and send bug batches to the dev agent. The dev agent would fix, build, deploy, and report the root cause. I'd create re-test tasks and assign them back to QA. QA would verify.
 
 This is not a new process. It's standard software engineering. What's new is that every role except mine was filled by an AI agent.
 
@@ -175,7 +176,7 @@ A multimodal AI doing visual QA on a graphical application it built. That's some
 
 ## The Desktop I Got Back
 
-![fluxland desktop with Great Wave theme](docs/screenshots/desktop_wave.png)
+![fluxland desktop with Great Wave theme](screenshots/desktop_wave.png)
 
 Fluxland is genuinely functional. It reads Fluxbox config files, supports key chains and keymodes, renders server-side decorations with the same theming system, runs the slit for dockable apps, and implements 30+ Wayland protocols. You could use it as a daily driver. It has features Fluxbox never had — snap zones, window animations, IPC event subscriptions, WCAG AAA high-contrast themes.
 
