@@ -47,7 +47,7 @@
 
             meta = with pkgs.lib; {
               description = "A Fluxbox-inspired Wayland compositor";
-              homepage = "https://github.com/fluxland/fluxland";
+              homepage = "https://github.com/ecliptik/fluxland";
               license = licenses.mit;
               platforms = platforms.linux;
               mainProgram = "fluxland";

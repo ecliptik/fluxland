@@ -3,7 +3,7 @@ Version:        0.1.0~dev
 Release:        1%{?dist}
 Summary:        A Fluxbox-inspired Wayland compositor
 License:        MIT
-URL:            https://github.com/fluxland/fluxland
+URL:            https://github.com/ecliptik/fluxland
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 
 BuildRequires:  gcc

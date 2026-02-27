@@ -7,7 +7,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: fluxland 0.1\n"
-"Report-Msgid-Bugs-To: https://github.com/fluxland/fluxland/issues\n"
+"Report-Msgid-Bugs-To: https://github.com/ecliptik/fluxland/issues\n"
 "POT-Creation-Date: 2026-02-25 09:53-0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"

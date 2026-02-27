@@ -4,7 +4,7 @@ pkgver=0.1.0.dev
 pkgrel=1
 pkgdesc='A Fluxbox-inspired Wayland compositor'
 arch=('x86_64' 'aarch64')
-url='https://github.com/fluxland/fluxland'
+url='https://github.com/ecliptik/fluxland'
 license=('MIT')
 depends=(
   'wlroots0.18'
