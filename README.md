@@ -1,6 +1,6 @@
 # fluxland
 
-A lightweight, highly configurable Wayland compositor inspired by Fluxbox.
+A lightweight, highly configurable Wayland compositor inspired by [Fluxbox](http://fluxbox.org/).
 
 [![Build](https://img.shields.io/github/actions/workflow/status/ecliptik/fluxland/ui-tests.yml)](https://github.com/ecliptik/fluxland/actions)
 [![License](https://img.shields.io/github/license/ecliptik/fluxland)](LICENSE)
@@ -14,7 +14,7 @@ A lightweight, highly configurable Wayland compositor inspired by Fluxbox.
 
 ## About
 
-fluxland brings the Fluxbox experience to the Wayland display protocol. For
+fluxland brings the Fluxbox experience to the [Wayland](https://wayland.freedesktop.org/) display protocol. For
 years, Fluxbox has been the window manager of choice for users who value
 simplicity, speed, and deep configurability. As the Linux desktop ecosystem
 transitions from X11 to Wayland, fluxland provides a familiar home for
@@ -23,7 +23,7 @@ Fluxbox users while embracing modern display server capabilities.
 This project was 100% vibe coded using [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) orchestration.
 
-Built on wlroots 0.18, fluxland implements 30+ Wayland protocols and delivers
+Built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) 0.18, fluxland implements 30+ Wayland protocols and delivers
 first-class support for server-side decorations with Fluxbox theme
 compatibility, key chains and modal keybindings, window tabbing, a configurable
 toolbar with icon bar, the slit (dockapp container), and per-window rules. It
@@ -35,12 +35,12 @@ the benefits of a modern Wayland session.
 
 ## Screenshots
 
-*Great Wave theme with ocean blue decorations and Hokusai wallpaper.*
+*[Great Wave](https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa) theme with ocean blue decorations and [Hokusai](https://en.wikipedia.org/wiki/Hokusai) wallpaper.*
 
 | | |
 |---|---|
 | ![Desktop](docs/screenshots/desktop_wave.png) | ![Single Window](docs/screenshots/01_single_window.png) |
-| Desktop with wallpaper | Single window with gkrellm in slit (XWayland) |
+| Desktop with wallpaper | Single window with [gkrellm](http://gkrellm.srcbox.net/) in slit (XWayland) |
 | ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
 | Root menu | Grid arrangement (4 windows) |
 
@@ -82,8 +82,8 @@ See [`examples/`](examples/) for themes and complete configuration examples.
 
    | Key | Action |
    |---|---|
-   | `Mod4+Return` | Open terminal (foot) |
-   | `Mod4+d` | Application launcher (wofi) |
+   | `Mod4+Return` | Open terminal ([foot](https://codeberg.org/dnkl/foot)) |
+   | `Mod4+d` | Application launcher ([wofi](https://hg.sr.ht/~scoopta/wofi)) |
    | `Mod4+Shift+q` | Close focused window |
    | `Mod4+f` | Toggle fullscreen |
    | `Mod4+m` | Toggle maximize |
@@ -102,7 +102,7 @@ See [`examples/`](examples/) for themes and complete configuration examples.
 - **Keymodes** -- modal keybinding sets (e.g. a resize mode with vim-style movement keys)
 - **Window tabbing** -- group windows into tabbed containers, drag-to-tab from titlebars
 - **Toolbar** with workspace switcher, icon bar, and clock; configurable placement and auto-hide
-- **Slit** -- dock area for Window Maker dockapps and other dockable applications (e.g. gkrellm via XWayland)
+- **Slit** -- dock area for [Window Maker](https://www.windowmaker.org/) dockapps and other dockable applications (e.g. gkrellm via XWayland)
 - **Root menu and window menu** -- Fluxbox-compatible menu definitions with submenus, separators, and built-in entries
 - **Per-window rules** -- match by app_id, title, or class with regex; set workspace, dimensions, position, decorations, layer, transparency, and more
 - **Auto-grouping** -- automatically tab windows matching specified patterns
@@ -154,12 +154,12 @@ See [`examples/`](examples/) for themes and complete configuration examples.
 ### Runtime companions (recommended)
 
 - **foot** or another Wayland terminal emulator
-- **wofi**, **bemenu**, or **fuzzel** for application launching
-- **swaybg** for wallpaper
-- **waybar** for a status bar
-- **mako** or **dunst** for notifications
-- **swayidle** + **swaylock** for idle/lock management
-- **grim** + **slurp** for screenshots
+- **wofi**, **[bemenu](https://github.com/Cloudef/bemenu)**, or **[fuzzel](https://codeberg.org/dnkl/fuzzel)** for application launching
+- **[swaybg](https://github.com/swaywm/swaybg)** for wallpaper
+- **[waybar](https://github.com/Alexays/Waybar)** for a status bar
+- **[mako](https://github.com/emersion/mako)** or **[dunst](https://dunst-project.org/)** for notifications
+- **[swayidle](https://github.com/swaywm/swayidle)** + **[swaylock](https://github.com/swaywm/swaylock)** for idle/lock management
+- **[grim](https://sr.ht/~emersion/grim/)** + **[slurp](https://github.com/emersion/slurp)** for screenshots
 
 ## Building
 
@@ -294,4 +294,5 @@ fluxland is released under the [MIT License](LICENSE).
 
 - [Fluxbox](http://fluxbox.org/) -- the window manager that inspires this project
 - [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) -- the Wayland compositor library
-- The broader Wayland compositor community (Sway, Wayfire, Hyprland, labwc) for pioneering patterns we build upon
+- [Window Maker](https://www.windowmaker.org/) -- the dock app ecosystem that the slit supports
+- The broader [Wayland](https://wayland.freedesktop.org/) compositor community ([Sway](https://swaywm.org/), [Wayfire](https://wayfire.org/), [Hyprland](https://hyprland.org/), [labwc](https://labwc.github.io/)) for pioneering patterns we build upon
