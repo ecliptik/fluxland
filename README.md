@@ -6,6 +6,12 @@ A lightweight, highly configurable Wayland compositor inspired by Fluxbox.
 [![License](https://img.shields.io/github/license/ecliptik/fluxland)](LICENSE)
 [![Version](https://img.shields.io/github/v/release/ecliptik/fluxland)](https://github.com/ecliptik/fluxland/releases)
 
+---
+
+[About](#about) | [Screenshots](#screenshots) | [Quick Start](#quick-start) | [Features](#features) | [Dependencies](#dependencies) | [Building](#building) | [Configuration](#configuration) | [Migration from Fluxbox](#migration-from-fluxbox) | [IPC](#ipc) | [Man Pages](#man-pages) | [Contributing](#contributing) | [License](#license)
+
+---
+
 ## About
 
 fluxland brings the Fluxbox experience to the Wayland display protocol. For
