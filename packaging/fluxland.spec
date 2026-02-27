@@ -1,5 +1,5 @@
 Name:           fluxland
-Version:        0.1.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        A Fluxbox-inspired Wayland compositor
 License:        MIT
@@ -59,5 +59,8 @@ keybindings, window decorations, workspaces, a toolbar, and menus.
 %{_mandir}/man5/fluxland-style.5*
 
 %changelog
+* Fri Feb 27 2026 fluxland contributors <fluxland@example.com> - 1.0.0-1
+- Release 1.0.0
+
 * Tue Feb 25 2026 fluxland contributors <fluxland@example.com> - 0.1.0-1
 - Initial package
