@@ -152,6 +152,8 @@ A multimodal AI doing visual QA on a graphical application it built. That's some
 
 **Persistent memory.** Claude Code's memory system — a directory of markdown files that persists across sessions — became the institutional knowledge of the project. Bug patterns, architectural decisions, gotchas, and lessons learned were all captured. Without this, every session would have started from zero. With it, Claude remembered that `pango_layout_get_pixel_size()` can't be trusted, that decorations are scene buffers not wl_surfaces, and that child processes need double-fork.
 
+An interesting side effect: the project didn't have a `CLAUDE.md` file (the standard project instruction file for Claude Code) until the very end. It didn't need one. The memory system had organically accumulated everything a `CLAUDE.md` would contain — build commands, architecture notes, convention guides, known pitfalls — just written by the AI for itself across dozens of sessions rather than curated upfront by a human. The memory files *became* the project documentation, growing as the project grew. By the time we wrote a proper `CLAUDE.md`, it was mostly a matter of distilling what the memory system already knew.
+
 ### What didn't work
 
 **Worktree cleanup.** Git worktrees used for agent isolation sometimes got cleaned up between turns, losing work. We learned to avoid worktree isolation when agents touched different files and could safely share the main branch.
