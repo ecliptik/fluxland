@@ -873,19 +873,19 @@ static void test_override_redirect_with_withdrawn_should_not_dock(void)
 	assert(should_dock_in_slit(&xs, &atoms) == false);
 }
 
-static void test_has_type_with_withdrawn_should_not_dock(void)
+static void test_has_type_with_withdrawn_should_dock(void)
 {
 	struct wm_xwayland_atoms atoms = make_test_atoms();
 	struct wlr_xwayland_surface xs = make_xsurface();
-	/* Has a (non-dock) type, and hints with withdrawn — type check
-	 * doesn't match dock, and withdrawn check requires no types */
+	/* Has a (non-dock) type with withdrawn state — apps like gkrellm -w
+	 * set _NET_WM_WINDOW_TYPE_NORMAL but use withdrawn initial_state */
 	xcb_atom_t types[] = { atoms.net_wm_window_type_normal };
 	xs.window_type = types;
 	xs.window_type_len = 1;
 	xcb_icccm_wm_hints_t hints = { .initial_state = 0 };
 	xs.hints = &hints;
 
-	assert(should_dock_in_slit(&xs, &atoms) == false);
+	assert(should_dock_in_slit(&xs, &atoms) == true);
 }
 
 static void test_non_withdrawn_state_should_not_dock(void)
@@ -977,7 +977,7 @@ int main(void)
 	RUN_TEST(test_withdrawn_dockapp_should_dock);
 	RUN_TEST(test_no_type_no_hints_should_not_dock);
 	RUN_TEST(test_override_redirect_with_withdrawn_should_not_dock);
-	RUN_TEST(test_has_type_with_withdrawn_should_not_dock);
+	RUN_TEST(test_has_type_with_withdrawn_should_dock);
 	RUN_TEST(test_non_withdrawn_state_should_not_dock);
 
 	printf("\n--- clamp_coord / clamp_size ---\n");
