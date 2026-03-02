@@ -867,6 +867,7 @@ typedef uint32_t xkb_keysym_t;
 void wm_spawn_command(const char *cmd) { (void)cmd; }
 
 #include "menu_parse.c"
+#include "menu_render.c"
 #include "menu.c"
 
 /* ===================== Test helpers ===================== */

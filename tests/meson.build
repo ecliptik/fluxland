@@ -57,7 +57,7 @@ test('placement', test_placement)
 # --- test_menu: menu parser tests ---
 test_menu = executable(
   'test_menu',
-  files('test_menu.c', '../src/menu.c', '../src/menu_parse.c'),
+  files('test_menu.c', '../src/menu.c', '../src/menu_parse.c', '../src/menu_render.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
   install: false,

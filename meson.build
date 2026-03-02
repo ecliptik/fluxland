@@ -210,6 +210,7 @@ wm_sources = files(
   'src/viewporter.c',
   'src/menu.c',
   'src/menu_parse.c',
+  'src/menu_render.c',
   'src/slit.c',
   'src/tablet.c',
   'src/toolbar.c',
