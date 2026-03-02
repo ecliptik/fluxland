@@ -888,6 +888,26 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 	/* The action part is everything after the ':' */
 	const char *action_str = colon + 1;
 
+	/*
+	 * Check for a guard condition in the key spec: {condition}
+	 * This appears between the key names and the colon separator.
+	 * Extract and remove it before tokenizing for key segments.
+	 */
+	struct wm_condition *guard_cond = NULL;
+	char *brace = strchr(key_part, '{');
+	if (brace) {
+		/* Extract the condition block from the key spec */
+		const char *bp = brace;
+		char *cond_block = extract_brace_block(&bp);
+		if (cond_block) {
+			const char *cp = cond_block;
+			guard_cond = parse_condition(&cp);
+			free(cond_block);
+		}
+		/* Truncate key_part at the brace to remove condition */
+		*brace = '\0';
+	}
+
 	/* Tokenize the key part into modifier+key segments */
 	char *saveptr;
 	char *tokens[64];
@@ -900,6 +920,7 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 	}
 
 	if (token_count == 0) {
+		wm_condition_destroy(guard_cond);
 		free(key_part);
 		return false;
 	}
@@ -918,6 +939,7 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 		xkb_keysym_t keysym;
 		if (!parse_key_segment(tokens, token_count, &pos,
 				       &mods, &keysym)) {
+			wm_condition_destroy(guard_cond);
 			free(key_part);
 			return false;
 		}
@@ -927,6 +949,7 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 	}
 
 	if (seg_count == 0) {
+		wm_condition_destroy(guard_cond);
 		free(key_part);
 		return false;
 	}
@@ -937,6 +960,7 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 		struct wm_keybind *node = find_or_create_chain_node(
 			current_list, segments[i].mods, segments[i].keysym);
 		if (!node) {
+			wm_condition_destroy(guard_cond);
 			free(key_part);
 			return false;
 		}
@@ -948,14 +972,31 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 		segments[seg_count - 1].mods,
 		segments[seg_count - 1].keysym);
 	if (!bind) {
+		wm_condition_destroy(guard_cond);
 		free(key_part);
 		return false;
 	}
 
 	if (!parse_action_part(action_str, bind)) {
+		wm_condition_destroy(guard_cond);
 		keybind_free(bind);
 		free(key_part);
 		return false;
+	}
+
+	/*
+	 * Attach the guard condition. For non-conditional actions
+	 * (not If/ForEach/Map/Delay), this acts as a per-binding guard.
+	 * For conditional actions, parse_action_part() already set
+	 * bind->condition, so we discard the guard.
+	 */
+	if (guard_cond) {
+		if (bind->condition) {
+			/* Action already has its own condition (If/ForEach) */
+			wm_condition_destroy(guard_cond);
+		} else {
+			bind->condition = guard_cond;
+		}
 	}
 
 	wl_list_insert(current_list->prev, &bind->link);

@@ -208,7 +208,7 @@ struct wlr_session {
 };
 
 struct wlr_output {
-	int dummy;
+	const char *name;
 };
 
 struct wlr_output_layout {
@@ -805,6 +805,7 @@ struct wm_slit {
 };
 
 struct wm_output {
+	struct wlr_output *wlr_output;
 	struct wlr_box usable_area;
 	struct wl_list link;
 };
@@ -1161,6 +1162,8 @@ bool wm_execute_action(struct wm_server *server,
 	enum wm_action action, const char *argument);
 bool wm_execute_keybind_action(struct wm_server *server,
 	struct wm_keybind *bind);
+bool wm_keybind_check_condition(struct wm_server *server,
+	struct wm_keybind *bind);
 void wm_chain_reset(struct wm_server *server);
 struct wl_list *wm_get_active_bindings(struct wm_server *server);
 
@@ -1507,10 +1510,10 @@ test_match_property_title(void)
 	setup_with_view();
 	test_view.title = "Firefox";
 
-	assert(match_property(&test_view, "title", "Firefox") == true);
-	assert(match_property(&test_view, "title", "Chrome") == false);
+	assert(match_property(&test_server, &test_view, "title", "Firefox") == true);
+	assert(match_property(&test_server, &test_view, "title", "Chrome") == false);
 	/* Glob matching */
-	assert(match_property(&test_view, "title", "Fire*") == true);
+	assert(match_property(&test_server, &test_view, "title", "Fire*") == true);
 	printf("  PASS: test_match_property_title\n");
 }
 
@@ -1521,9 +1524,9 @@ test_match_property_class(void)
 	setup_with_view();
 	test_view.app_id = "org.mozilla.firefox";
 
-	assert(match_property(&test_view, "class", "org.mozilla.firefox") == true);
-	assert(match_property(&test_view, "name", "org.mozilla.firefox") == true);
-	assert(match_property(&test_view, "class", "chromium") == false);
+	assert(match_property(&test_server, &test_view, "class", "org.mozilla.firefox") == true);
+	assert(match_property(&test_server, &test_view, "name", "org.mozilla.firefox") == true);
+	assert(match_property(&test_server, &test_view, "class", "chromium") == false);
 	printf("  PASS: test_match_property_class\n");
 }
 
@@ -1536,10 +1539,10 @@ test_match_property_booleans(void)
 	test_view.fullscreen = false;
 	test_view.sticky = true;
 
-	assert(match_property(&test_view, "maximized", "true") == true);
-	assert(match_property(&test_view, "maximized", "false") == false);
-	assert(match_property(&test_view, "fullscreen", "false") == true);
-	assert(match_property(&test_view, "sticky", "yes") == true);
+	assert(match_property(&test_server, &test_view, "maximized", "true") == true);
+	assert(match_property(&test_server, &test_view, "maximized", "false") == false);
+	assert(match_property(&test_server, &test_view, "fullscreen", "false") == true);
+	assert(match_property(&test_server, &test_view, "sticky", "yes") == true);
 	printf("  PASS: test_match_property_booleans\n");
 }
 
@@ -1550,8 +1553,8 @@ test_match_property_layer(void)
 	setup_with_view();
 	test_view.layer = WM_LAYER_ABOVE;
 
-	assert(match_property(&test_view, "layer", "Above") == true);
-	assert(match_property(&test_view, "layer", "Normal") == false);
+	assert(match_property(&test_server, &test_view, "layer", "Above") == true);
+	assert(match_property(&test_server, &test_view, "layer", "Normal") == false);
 	printf("  PASS: test_match_property_layer\n");
 }
 
@@ -1562,8 +1565,8 @@ test_match_property_shaded(void)
 	setup_with_view();
 	test_decoration.shaded = true;
 
-	assert(match_property(&test_view, "shaded", "true") == true);
-	assert(match_property(&test_view, "shaded", "false") == false);
+	assert(match_property(&test_server, &test_view, "shaded", "true") == true);
+	assert(match_property(&test_server, &test_view, "shaded", "false") == false);
 	printf("  PASS: test_match_property_shaded\n");
 }
 
@@ -1574,8 +1577,8 @@ test_match_property_minimized(void)
 	setup_with_view();
 	test_scene_tree.node.enabled = false; /* minimized */
 
-	assert(match_property(&test_view, "minimized", "true") == true);
-	assert(match_property(&test_view, "minimized", "false") == false);
+	assert(match_property(&test_server, &test_view, "minimized", "true") == true);
+	assert(match_property(&test_server, &test_view, "minimized", "false") == false);
 	printf("  PASS: test_match_property_minimized\n");
 }
 
@@ -1589,10 +1592,10 @@ test_match_property_workspace(void)
 	test_workspace.index = 2;
 	test_view.workspace = &test_workspace;
 
-	assert(match_property(&test_view, "workspace", "coding") == true);
-	assert(match_property(&test_view, "workspace", "gaming") == false);
+	assert(match_property(&test_server, &test_view, "workspace", "coding") == true);
+	assert(match_property(&test_server, &test_view, "workspace", "gaming") == false);
 	/* Index-based matching (1-indexed display, so index 2 → "3") */
-	assert(match_property(&test_view, "workspace", "3") == true);
+	assert(match_property(&test_server, &test_view, "workspace", "3") == true);
 	printf("  PASS: test_match_property_workspace\n");
 }
 
@@ -1600,10 +1603,10 @@ test_match_property_workspace(void)
 static void
 test_match_property_null(void)
 {
-	assert(match_property(NULL, "title", "test") == false);
 	setup_with_view();
-	assert(match_property(&test_view, NULL, "test") == false);
-	assert(match_property(&test_view, "title", NULL) == false);
+	assert(match_property(&test_server, NULL, "title", "test") == false);
+	assert(match_property(&test_server, &test_view, NULL, "test") == false);
+	assert(match_property(&test_server, &test_view, "title", NULL) == false);
 	printf("  PASS: test_match_property_null\n");
 }
 

@@ -164,6 +164,41 @@ handle_compositor_keybinding(struct wm_server *server,
 		return false;
 	}
 
+	/*
+	 * Check guard condition. If the binding has a condition that
+	 * fails, search for the next matching binding with the same
+	 * key combo. This allows multiple bindings on the same key
+	 * with different conditions.
+	 */
+	if (!wm_keybind_check_condition(server, bind)) {
+		struct wm_keybind *alt = NULL;
+		bool past = false;
+		struct wm_keybind *b;
+		wl_list_for_each(b, search_list, link) {
+			if (b == bind) {
+				past = true;
+				continue;
+			}
+			if (!past)
+				continue;
+			if (b->modifiers != modifiers || b->keysym != sym)
+				continue;
+			if (!wm_keybind_check_condition(server, b))
+				continue;
+			alt = b;
+			break;
+		}
+		bind = alt;
+		if (!bind) {
+			if (cs->in_chain) {
+				wlr_log(WLR_DEBUG, "%s",
+					"chain broken: condition failed");
+				wm_chain_reset(server);
+			}
+			return false;
+		}
+	}
+
 	/* Check if this is an intermediate chain node */
 	if (bind->action == WM_ACTION_NOP &&
 	    !wl_list_empty(&bind->children)) {
