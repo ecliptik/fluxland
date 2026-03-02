@@ -28,6 +28,7 @@
 #define WLR_UTIL_BOX_H
 #define WLR_TYPES_WLR_SCENE_H
 #define WLR_TYPES_WLR_OUTPUT_H
+#define WLR_TYPES_WLR_XDG_SHELL_H
 #define WLR_XWAYLAND_XWAYLAND_H
 #define WLR_XWAYLAND_SERVER_H
 #define WLR_XWAYLAND_SHELL_H
@@ -162,6 +163,7 @@ struct wlr_surface {
 	struct {
 		struct wl_signal map;
 		struct wl_signal unmap;
+		struct wl_signal commit;
 	} events;
 };
 
@@ -179,6 +181,23 @@ struct wlr_xwayland_surface {
 struct wlr_xwayland_surface_configure_event {
 	int x, y;
 	uint16_t width, height;
+};
+
+/* XDG shell stub types for native slit client support */
+struct wlr_xdg_surface {
+	struct wlr_surface *surface;
+	void *data;
+	bool initial_commit;
+};
+
+struct wlr_xdg_toplevel {
+	struct wlr_xdg_surface *base;
+	char *title;
+	char *app_id;
+	int width, height;
+	struct {
+		struct wl_signal destroy;
+	} events;
 };
 
 /* wlr_log no-op */
@@ -423,6 +442,30 @@ wlr_xwayland_surface_configure(struct wlr_xwayland_surface *surface,
 	(void)surface; (void)x; (void)y; (void)w; (void)h;
 	g_xwayland_configure_count++;
 }
+
+/* XDG shell stubs */
+static struct wlr_box g_xdg_geometry;
+
+static void
+wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
+	struct wlr_box *box)
+{
+	(void)surface;
+	*box = g_xdg_geometry;
+}
+
+static uint32_t
+wlr_xdg_toplevel_set_tiled(struct wlr_xdg_toplevel *toplevel,
+	uint32_t tiled)
+{
+	(void)toplevel; (void)tiled;
+	return 0;
+}
+
+#define WLR_EDGE_TOP    1
+#define WLR_EDGE_BOTTOM 2
+#define WLR_EDGE_LEFT   4
+#define WLR_EDGE_RIGHT  8
 
 /* --- Include slit source directly --- */
 

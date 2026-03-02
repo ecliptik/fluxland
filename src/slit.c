@@ -24,6 +24,8 @@
 #include "style.h"
 #include "util.h"
 
+#include <wlr/types/wlr_xdg_shell.h>
+
 #ifdef WM_HAS_XWAYLAND
 #include <wlr/xwayland.h>
 #endif
@@ -234,9 +236,21 @@ slit_apply_alpha(struct wm_slit *slit)
 	}
 }
 
-/* --- Slitlist functions (persistent dockapp ordering) --- */
+/* --- Helper: get identifier name for a slit client --- */
 
+static const char *
+slit_client_name(struct wm_slit_client *client)
+{
 #ifdef WM_HAS_XWAYLAND
+	if (client->type == WM_SLIT_CLIENT_XWAYLAND && client->xsurface)
+		return client->xsurface->class;
+#endif
+	if (client->type == WM_SLIT_CLIENT_NATIVE && client->xdg_toplevel)
+		return client->xdg_toplevel->app_id;
+	return NULL;
+}
+
+/* --- Slitlist functions (persistent dockapp ordering) --- */
 
 static void
 slit_load_slitlist(struct wm_slit *slit, const char *path)
@@ -305,8 +319,9 @@ slit_save_slitlist(struct wm_slit *slit, const char *path)
 
 	struct wm_slit_client *client;
 	wl_list_for_each(client, &slit->clients, link) {
-		if (client->xsurface && client->xsurface->class) {
-			fprintf(fp, "%s\n", client->xsurface->class);
+		const char *name = slit_client_name(client);
+		if (name) {
+			fprintf(fp, "%s\n", name);
 		}
 	}
 
@@ -352,16 +367,14 @@ slit_find_insert_position(struct wm_slit *slit, const char *class_name)
 	 * index is greater than target_idx; insert before it */
 	struct wm_slit_client *client;
 	wl_list_for_each(client, &slit->clients, link) {
-		const char *cclass = NULL;
-		if (client->xsurface)
-			cclass = client->xsurface->class;
-		if (!cclass)
+		const char *cname = slit_client_name(client);
+		if (!cname)
 			continue;
 
 		int cidx = -1;
 		for (int i = 0; i < slit->slitlist_count; i++) {
 			if (slit->slitlist[i] &&
-			    strcmp(slit->slitlist[i], cclass) == 0) {
+			    strcmp(slit->slitlist[i], cname) == 0) {
 				cidx = i;
 				break;
 			}
@@ -376,7 +389,48 @@ slit_find_insert_position(struct wm_slit *slit, const char *class_name)
 	return slit->clients.prev; /* append */
 }
 
-#endif /* WM_HAS_XWAYLAND (slitlist) */
+/* --- Native Wayland slit client handlers --- */
+
+static void
+handle_native_slit_client_commit(struct wl_listener *listener, void *data)
+{
+	struct wm_slit_client *client =
+		wl_container_of(listener, client, native_commit);
+
+	if (!client->mapped || !client->xdg_toplevel)
+		return;
+
+	struct wlr_box geo;
+	wlr_xdg_surface_get_geometry(client->xdg_toplevel->base, &geo);
+
+	int new_w = geo.width > 0 ? geo.width : client->width;
+	int new_h = geo.height > 0 ? geo.height : client->height;
+
+	if (new_w != client->width || new_h != client->height) {
+		client->width = new_w;
+		client->height = new_h;
+		wm_slit_reconfigure(client->slit);
+	}
+}
+
+static void
+handle_native_slit_client_unmap(struct wl_listener *listener, void *data)
+{
+	struct wm_slit_client *client =
+		wl_container_of(listener, client, native_unmap);
+
+	client->mapped = false;
+	wm_slit_reconfigure(client->slit);
+}
+
+static void
+handle_native_slit_client_destroy(struct wl_listener *listener, void *data)
+{
+	struct wm_slit_client *client =
+		wl_container_of(listener, client, native_destroy);
+
+	wm_slit_remove_client(client);
+}
 
 /* --- XWayland slit client handlers --- */
 
@@ -546,12 +600,10 @@ wm_slit_create(struct wm_server *server)
 	slit->hide_timer = wl_event_loop_add_timer(
 		server->wl_event_loop, slit_hide_timer_cb, slit);
 
-#ifdef WM_HAS_XWAYLAND
 	/* Load slitlist for persistent dockapp ordering */
 	if (server->config && server->config->slitlist_file) {
 		slit_load_slitlist(slit, server->config->slitlist_file);
 	}
-#endif
 
 	/* Position the slit */
 	wm_slit_reconfigure(slit);
@@ -573,7 +625,6 @@ wm_slit_destroy(struct wm_slit *slit)
 		return;
 	}
 
-#ifdef WM_HAS_XWAYLAND
 	/* Save slitlist before destroying */
 	if (slit->server->config && slit->server->config->slitlist_file &&
 	    slit->client_count > 0) {
@@ -581,7 +632,6 @@ wm_slit_destroy(struct wm_slit *slit)
 			slit->server->config->slitlist_file);
 	}
 	slit_free_slitlist(slit);
-#endif
 
 	/* Remove all clients */
 	struct wm_slit_client *client, *tmp;
@@ -614,6 +664,7 @@ wm_slit_add_client(struct wm_slit *slit, void *surface)
 
 	client->slit = slit;
 	client->mapped = false;
+	client->type = WM_SLIT_CLIENT_XWAYLAND;
 
 #ifdef WM_HAS_XWAYLAND
 	struct wlr_xwayland_surface *xsurface = surface;
@@ -634,27 +685,23 @@ wm_slit_add_client(struct wm_slit *slit, void *surface)
 	client->configure.notify = handle_slit_client_configure;
 	wl_signal_add(&xsurface->events.request_configure,
 		&client->configure);
+#endif
 
 	/* Use slitlist ordering if available */
 	{
-		const char *class_name = xsurface->class;
+		const char *name = slit_client_name(client);
 		struct wl_list *insert_after =
-			slit_find_insert_position(slit, class_name);
+			slit_find_insert_position(slit, name);
 		wl_list_insert(insert_after, &client->link);
 	}
-#else
-	wl_list_insert(slit->clients.prev, &client->link);
-#endif
 
 	slit->client_count++;
 
-#ifdef WM_HAS_XWAYLAND
 	/* Save updated slitlist */
 	if (slit->server->config && slit->server->config->slitlist_file) {
 		slit_save_slitlist(slit,
 			slit->server->config->slitlist_file);
 	}
-#endif
 
 	wlr_log(WLR_INFO, "slit: added client (total %d)",
 		slit->client_count);
@@ -687,6 +734,89 @@ wm_slit_add_client(struct wm_slit *slit, void *surface)
 	return client;
 }
 
+struct wm_slit_client *
+wm_slit_add_native_client(struct wm_slit *slit,
+	struct wlr_xdg_toplevel *toplevel,
+	struct wlr_scene_tree *scene_tree)
+{
+	if (!slit || !toplevel || !scene_tree) {
+		return NULL;
+	}
+
+	struct wm_slit_client *client = calloc(1, sizeof(*client));
+	if (!client) {
+		return NULL;
+	}
+
+	client->slit = slit;
+	client->type = WM_SLIT_CLIENT_NATIVE;
+	client->xdg_toplevel = toplevel;
+	client->mapped = true;
+
+	/* Reparent the view's scene tree into the slit */
+	wlr_scene_node_reparent(&scene_tree->node, slit->scene_tree);
+	client->scene_tree = scene_tree;
+
+	/* Get initial geometry from XDG surface */
+	struct wlr_box geo;
+	wlr_xdg_surface_get_geometry(toplevel->base, &geo);
+	client->width = geo.width > 0 ? geo.width : 64;
+	client->height = geo.height > 0 ? geo.height : 64;
+
+	/* Set tiled hints so client fills exact size (no gaps) */
+	wlr_xdg_toplevel_set_tiled(toplevel,
+		WLR_EDGE_TOP | WLR_EDGE_BOTTOM |
+		WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+
+	/* Listen for surface commit (size changes) */
+	client->native_commit.notify = handle_native_slit_client_commit;
+	wl_signal_add(&toplevel->base->surface->events.commit,
+		&client->native_commit);
+
+	/* Listen for surface unmap */
+	client->native_unmap.notify = handle_native_slit_client_unmap;
+	wl_signal_add(&toplevel->base->surface->events.unmap,
+		&client->native_unmap);
+
+	/* Listen for toplevel destroy */
+	client->native_destroy.notify = handle_native_slit_client_destroy;
+	wl_signal_add(&toplevel->events.destroy,
+		&client->native_destroy);
+
+	/* Use slitlist ordering (app_id as identifier) */
+	{
+		const char *name = toplevel->app_id;
+		struct wl_list *insert_after =
+			slit_find_insert_position(slit, name);
+		wl_list_insert(insert_after, &client->link);
+	}
+
+	slit->client_count++;
+
+	/* Apply slit alpha to this client's surface */
+	if (slit->alpha < 255 && client->scene_tree) {
+		float opacity = slit->alpha / 255.0f;
+		wlr_scene_node_for_each_buffer(
+			&client->scene_tree->node,
+			slit_set_buffer_opacity, &opacity);
+	}
+
+	/* Save updated slitlist */
+	if (slit->server->config && slit->server->config->slitlist_file) {
+		slit_save_slitlist(slit,
+			slit->server->config->slitlist_file);
+	}
+
+	wlr_log(WLR_INFO, "slit: added native client '%s' (%dx%d, total %d)",
+		toplevel->app_id ? toplevel->app_id : "(null)",
+		client->width, client->height, slit->client_count);
+
+	/* Reconfigure slit layout */
+	wm_slit_reconfigure(slit);
+
+	return client;
+}
+
 void
 wm_slit_remove_client(struct wm_slit_client *client)
 {
@@ -697,11 +827,19 @@ wm_slit_remove_client(struct wm_slit_client *client)
 	struct wm_slit *slit = client->slit;
 
 #ifdef WM_HAS_XWAYLAND
-	wl_list_remove(&client->map.link);
-	wl_list_remove(&client->unmap.link);
-	wl_list_remove(&client->destroy.link);
-	wl_list_remove(&client->configure.link);
+	if (client->type == WM_SLIT_CLIENT_XWAYLAND) {
+		wl_list_remove(&client->map.link);
+		wl_list_remove(&client->unmap.link);
+		wl_list_remove(&client->destroy.link);
+		wl_list_remove(&client->configure.link);
+	}
 #endif
+
+	if (client->type == WM_SLIT_CLIENT_NATIVE) {
+		wl_list_remove(&client->native_commit.link);
+		wl_list_remove(&client->native_unmap.link);
+		wl_list_remove(&client->native_destroy.link);
+	}
 
 	if (client->scene_tree) {
 		wlr_scene_node_destroy(&client->scene_tree->node);
@@ -711,13 +849,11 @@ wm_slit_remove_client(struct wm_slit_client *client)
 	slit->client_count--;
 	free(client);
 
-#ifdef WM_HAS_XWAYLAND
 	/* Save updated slitlist */
 	if (slit->server->config && slit->server->config->slitlist_file) {
 		slit_save_slitlist(slit,
 			slit->server->config->slitlist_file);
 	}
-#endif
 
 	wm_slit_reconfigure(slit);
 }

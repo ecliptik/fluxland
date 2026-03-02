@@ -22,6 +22,7 @@
 #include <wlr/util/box.h>
 
 struct wm_server;
+struct wlr_xdg_toplevel;
 
 /* Slit placement around screen edges (Fluxbox-compatible) */
 enum wm_slit_placement {
@@ -45,10 +46,17 @@ enum wm_slit_direction {
 	WM_SLIT_HORIZONTAL,
 };
 
+/* Slit client type */
+enum wm_slit_client_type {
+	WM_SLIT_CLIENT_XWAYLAND,
+	WM_SLIT_CLIENT_NATIVE,
+};
+
 /* A single client docked into the slit */
 struct wm_slit_client {
 	struct wm_slit *slit;
 	struct wlr_scene_tree *scene_tree;
+	enum wm_slit_client_type type;
 
 #ifdef WM_HAS_XWAYLAND
 	struct wlr_xwayland_surface *xsurface;
@@ -57,6 +65,12 @@ struct wm_slit_client {
 	struct wl_listener destroy;
 	struct wl_listener configure;
 #endif
+
+	/* Native Wayland client (XDG toplevel) */
+	struct wlr_xdg_toplevel *xdg_toplevel;
+	struct wl_listener native_commit;
+	struct wl_listener native_unmap;
+	struct wl_listener native_destroy;
 
 	int width, height;
 	bool mapped;
@@ -96,11 +110,10 @@ struct wm_slit {
 	/* MaxOver usable_area tracking */
 	int reserved_space; /* pixels subtracted from usable_area */
 
-#ifdef WM_HAS_XWAYLAND
-	/* Slitlist: ordered WM_CLASS names for persistent dockapp ordering */
+	/* Slitlist: ordered names for persistent dockapp ordering
+	 * (WM_CLASS for XWayland, app_id for native clients) */
 	char **slitlist;
 	int slitlist_count;
-#endif
 };
 
 /* Create the slit and add it to the scene graph */
@@ -109,9 +122,14 @@ struct wm_slit *wm_slit_create(struct wm_server *server);
 /* Destroy the slit and free resources */
 void wm_slit_destroy(struct wm_slit *slit);
 
-/* Add a client window to the slit */
+/* Add an XWayland client window to the slit */
 struct wm_slit_client *wm_slit_add_client(struct wm_slit *slit,
 	void *surface);
+
+/* Add a native Wayland (XDG toplevel) client to the slit */
+struct wm_slit_client *wm_slit_add_native_client(struct wm_slit *slit,
+	struct wlr_xdg_toplevel *toplevel,
+	struct wlr_scene_tree *scene_tree);
 
 /* Remove a client from the slit */
 void wm_slit_remove_client(struct wm_slit_client *client);
