@@ -1,0 +1,20 @@
+# Mouse bindings with all contexts and event types
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnTitlebar Double1 :Maximize
+OnTitlebar Move1 :StartMoving
+OnTitlebar Mouse3 :WindowMenu
+OnTab Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnTab Move1 :StartTabbing
+OnWindow Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+OnWindow Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing}
+OnWindowBorder Mouse1 :MacroCmd {Raise} {Focus}
+OnLeftGrip Move1 :StartResizing
+OnRightGrip Move1 :StartResizing
+OnDesktop Mouse1 :HideMenus
+OnDesktop Mouse3 :RootMenu
+OnDesktop Mouse4 :NextWorkspace
+OnDesktop Mouse5 :PrevWorkspace
+OnToolbar Mouse1 :Focus
+OnSlit Mouse3 :WindowMenu
+Mod4 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+Mod4 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing}

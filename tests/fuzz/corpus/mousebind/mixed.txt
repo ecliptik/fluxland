@@ -1,0 +1,7 @@
+# Mixed key and mouse bindings (as found in real keys files)
+Mod4 Return :Exec foot
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+Mod4 q :Close
+OnDesktop Mouse3 :RootMenu
+Mod4 space :RootMenu
+OnTitlebar Double1 :Maximize

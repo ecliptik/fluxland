@@ -1,0 +1,27 @@
+# Window rules for common applications
+[app] (class=firefox) (title=.*Mozilla.*)
+  [Dimensions] {1200 900}
+  [Position] (Center) {0 0}
+  [Workspace] {0}
+  [Deco] {NORMAL}
+  [Sticky] {no}
+  [Layer] {4}
+  [Alpha] {255 200}
+  [Maximized] {no}
+  [Minimized] {no}
+  [Fullscreen] {no}
+  [Shaded] {no}
+  [FocusNewWindow] {yes}
+  [Head] {0}
+  [FocusProtection] {Gain,Refuse}
+  [IgnoreSizeHints] {yes}
+[end]
+
+[app] (name!=foot)
+  [Deco] {BORDER}
+[end]
+
+[group] (workspace)
+  [app] (class=foot)
+  [app] (class=alacritty)
+[end]
