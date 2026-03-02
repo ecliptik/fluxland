@@ -1,7 +1,7 @@
 # Fluxland Improvement Plan
 
 *Generated from comprehensive codebase review — 2026-03-02*
-*Last updated: 2026-03-02 — 19 items completed across three sprints*
+*Last updated: 2026-03-02 — 21 items completed across four sprints*
 
 ## Executive Summary
 
@@ -117,40 +117,36 @@ Original 2,920 lines split into ~1,000 lines each.
 
 ## 4. Test Coverage & Quality
 
-### 4.1 Add test files for untested modules
+### ~~4.1 Add test files for untested modules~~ DONE
 **Effort**: XL (total) | **Category**: Testing
 
-22 of 47 source modules have no dedicated test file. Priority order by module size and criticality:
+Fixed in sprint 4. Added 11 new test files (157 tests) covering all previously untested modules:
 
-| Module | Lines | Priority | Effort |
-|--------|-------|----------|--------|
-| `view.c` | 1,931 | Critical | L |
-| `decoration.c` | 1,821 | Critical | L |
-| `cursor.c` | 1,796 | High | L |
-| `ipc_commands.c` | 1,664 | High | L |
-| `toolbar.c` | 1,523 | High | M |
-| `keyboard_actions.c` | 1,282 | High | L |
-| `render.c` | 770 | Medium | M |
-| `rcparser.c` | varies | Medium | M |
-| `input.c` | varies | Medium | M |
-| `xwayland.c` | 869 | Medium | L |
-| `tablet.c` | 551 | Low | M |
-| `screencopy.c` | varies | Low | M |
-| `output_management.c` | varies | Low | M |
-| `text_input.c` | varies | Medium | M |
+| Test file | Module(s) | Tests |
+|-----------|-----------|-------|
+| `test_input.c` | input.c | 17 — device mgmt, seat caps, drag handling |
+| `test_text_input.c` | text_input.c | 18 — v3 lifecycle, client-match guard, IM relay |
+| `test_tablet.c` | tablet.c | 17 — tool proximity, tip/button, pad input |
+| `test_render.c` | render.c | 27 — color helpers, text rendering, ink extents |
+| `test_rcparser.c` | rcparser.c | 21 — key-value parsing, int/bool coercion, file loading |
+| `test_util.c` | util.c | 18 — safe_atoi, blocked env vars, fopen_nofollow |
+| `test_screencopy.c` | screencopy.c | 4 — screencopy + DMA-BUF init |
+| `test_drm_lease.c` | drm_lease.c | 8 — init, lease request, offer_output |
+| `test_gamma_control.c` | gamma_control.c | 8 — init, set_gamma handler paths |
+| `test_transient_seat.c` | transient_seat.c | 7 — init, seat creation, counter |
+| `test_small_protocols.c` | fractional_scale, presentation, viewporter, drm_syncobj | 12 — init/failure paths |
 
-**Note**: Some modules (like `rcparser.c`) are already indirectly tested through other tests or fuzz targets. Focus on modules with complex logic and no indirect coverage first.
+Test count: 38 → 49 unit tests. Full QA: 150/150 UI tests passed.
 
-### 4.2 Expand fuzz targets
+### ~~4.2 Expand fuzz targets~~ DONE
 **Effort**: M | **Category**: Testing
 
-Current fuzz targets: `fuzz_rcparser`, `fuzz_keybind`, `fuzz_style`, `fuzz_menu`. Additional fuzzing candidates:
-- **IPC command parser** — fuzzing the JSON command parsing in `ipc_commands.c` would cover a network-facing attack surface
-- **Window rules parser** — `rules.c` `fgets()` parsing of apps file
-- **Mousebind parser** — `mousebind.c` config parsing
-- **Validate** — `validate.c` handles arbitrary user config input
+Fixed in sprint 4. Added 3 new fuzz targets + 14 seed corpus files:
+- **fuzz_ipc_command** — JSON command parsing (network-facing attack surface)
+- **fuzz_rules** — window rules/apps file parser
+- **fuzz_mousebind** — mouse binding config parser
 
-**Action**: Add `fuzz_ipc_command`, `fuzz_rules`, `fuzz_mousebind` targets. IPC fuzzing is highest priority as it processes external input.
+Fuzz target count: 4 → 7. Corpus: `tests/fuzz/corpus/{ipc_command,rules,mousebind}/`.
 
 ### ~~4.3 XWayland test coverage~~ DONE
 **Effort**: L | **Category**: Testing
@@ -300,8 +296,8 @@ No known performance issues, but systematic profiling of:
 | 3.2 | Consistent config parser error handling | M | Medium | Robustness | **DONE** |
 | 3.3 | Split menu.c | L | Medium | Code Quality | **DONE** |
 | 3.4 | Split view.c and cursor.c | M each | Medium | Code Quality | Deferred |
-| 4.1 | Test files for 22 untested modules | XL | High | Testing | Open |
-| 4.2 | Expand fuzz targets | M | High | Testing | Open |
+| 4.1 | Test files for untested modules | XL | High | Testing | **DONE** |
+| 4.2 | Expand fuzz targets | M | High | Testing | **DONE** |
 | 4.3 | XWayland test coverage | L | Medium | Testing | **DONE** |
 | 4.4 | Integration test edge cases | M | Medium | Testing | **DONE** |
 | 5.1 | Missing man pages (init, startup, ctl) | M | High | Docs | **DONE** |
@@ -330,7 +326,7 @@ No known performance issues, but systematic profiling of:
 1. ~~**Sprint 1 — Quick wins**: Items 1.1, 1.2, 1.4, 2.2, 2.4, 3.1~~ **DONE**
 2. ~~**Sprint 2 — Medium/Low priority**: Items 1.3, 3.2, 3.3, 4.3, 4.4, 5.1, 5.2, 5.4, 5.5, 5.6~~ **DONE**
 3. ~~**Sprint 3 — Code quality**: Item 2.3~~ **DONE** — decomposed 4 mega-functions
-4. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
-5. **Test coverage sprint**: Items 4.1 (priority modules first), 4.2
+4. ~~**Sprint 4 — Test coverage**: Items 4.1, 4.2~~ **DONE** — 11 test files (157 tests), 3 fuzz targets
+5. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
 6. **Code quality**: Item 3.4 — split view.c and cursor.c
 7. **Features** (ongoing): Items from sections 6–7 based on user demand
