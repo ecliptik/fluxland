@@ -70,8 +70,24 @@ WLR_BACKENDS=headless WLR_RENDERER=pixman ./build/fluxland
 ### Running tests
 
 ```sh
-meson test -C build
+# C unit tests (38 tests)
+meson test -C build --print-errorlogs
+
+# Python UI tests (137 tests, requires running compositor)
+python3 -m pytest tests/ui/ --timeout=30
 ```
+
+### Validating configuration
+
+Use the `--check-config` flag to validate all configuration files
+without starting the compositor:
+
+```sh
+./build/fluxland --check-config
+```
+
+This checks the init, keys, and style files for syntax errors,
+unknown keys, and invalid values.
 
 ## Code style
 
@@ -302,6 +318,60 @@ if (strcasecmp(key, "session.MyOption") == 0) {
 Use `server->config->my_option` wherever the option is needed. If the
 option should take effect on reconfigure (SIGHUP / `:Reconfigure`),
 read it in `wm_server_reconfigure()`.
+
+## How to write a fuzz target
+
+Fluxland includes 4 fuzz targets in `tests/fuzz/` using libFuzzer.
+Fuzz targets require Clang to build.
+
+### Existing targets
+
+| Target | File | What it fuzzes |
+|--------|------|---------------|
+| `fuzz_rcparser` | `tests/fuzz/fuzz_rcparser.c` | X resource database parser |
+| `fuzz_keybind` | `tests/fuzz/fuzz_keybind.c` | Key binding parser |
+| `fuzz_style` | `tests/fuzz/fuzz_style.c` | Style/theme parser |
+| `fuzz_menu` | `tests/fuzz/fuzz_menu.c` | Menu file parser |
+
+### Adding a new fuzz target
+
+1. Create `tests/fuzz/fuzz_myparser.c` with a `LLVMFuzzerTestOneInput`
+   entry point:
+
+```c
+#include <stdint.h>
+#include <stddef.h>
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+{
+    /* Feed data to your parser */
+    return 0;
+}
+```
+
+2. Add the target to `tests/meson.build` in the fuzz targets section.
+
+3. Build with Clang and run:
+
+```sh
+CC=clang meson setup build-fuzz -Db_sanitize=address,fuzzer
+ninja -C build-fuzz
+./build-fuzz/fuzz_myparser
+```
+
+## WLCS integration testing
+
+WLCS (Wayland Conformance Test Suite) integration is available via
+`src/wlcs_shim.c`. This is a Google Test-based test suite that
+validates Wayland protocol conformance.
+
+To build and run WLCS tests:
+
+```sh
+meson setup build_wlcs -Dwlcs=enabled
+ninja -C build_wlcs
+# Run via the WLCS test runner
+```
 
 ## Commit message convention
 
