@@ -944,12 +944,848 @@ static void test_clamp_size_large_is_clamped(void)
 }
 
 /* ================================================================ */
+/*  Handler test infrastructure                                      */
+/* ================================================================ */
+
+static struct wlr_seat test_seat_inst;
+static struct wlr_cursor test_cursor_inst;
+static struct wlr_output_layout test_layout_inst;
+static struct wlr_surface test_wl_surface_inst;
+
+static void
+init_test_server(struct wm_server *s)
+{
+	memset(s, 0, sizeof(*s));
+	memset(&test_seat_inst, 0, sizeof(test_seat_inst));
+	memset(&test_cursor_inst, 0, sizeof(test_cursor_inst));
+	memset(&test_layout_inst, 0, sizeof(test_layout_inst));
+	s->seat = &test_seat_inst;
+	s->cursor = &test_cursor_inst;
+	s->output_layout = &test_layout_inst;
+	wl_list_init(&s->views);
+	wl_list_init(&s->xwayland_views);
+	s->xwayland_atoms = make_test_atoms();
+}
+
+static void
+init_xsurface_signals(struct wlr_xwayland_surface *xs)
+{
+	wl_signal_init(&xs->events.destroy);
+	wl_signal_init(&xs->events.associate);
+	wl_signal_init(&xs->events.dissociate);
+	wl_signal_init(&xs->events.request_configure);
+	wl_signal_init(&xs->events.request_move);
+	wl_signal_init(&xs->events.request_resize);
+	wl_signal_init(&xs->events.request_maximize);
+	wl_signal_init(&xs->events.request_fullscreen);
+	wl_signal_init(&xs->events.request_minimize);
+	wl_signal_init(&xs->events.request_activate);
+	wl_signal_init(&xs->events.set_title);
+	wl_signal_init(&xs->events.set_class);
+	wl_signal_init(&xs->events.set_hints);
+	wl_signal_init(&xs->events.set_override_redirect);
+}
+
+static void
+init_test_scene_tree(struct wlr_scene_tree *st)
+{
+	memset(st, 0, sizeof(*st));
+	wl_list_init(&st->node.link);
+	wl_list_init(&st->children);
+	st->node.enabled = true;
+}
+
+/* ================================================================ */
+/*  Tests: resolve_atom                                              */
+/* ================================================================ */
+
+static void test_resolve_atom_null_reply_returns_none(void)
+{
+	/* xcb_intern_atom_reply stub returns NULL → XCB_ATOM_NONE */
+	xcb_atom_t atom = resolve_atom(NULL, "TEST_ATOM");
+	assert(atom == XCB_ATOM_NONE);
+}
+
+/* ================================================================ */
+/*  Tests: xwayland_focus_view                                       */
+/* ================================================================ */
+
+static void test_focus_view_null_is_noop(void)
+{
+	xwayland_focus_view(NULL);
+}
+
+static void test_focus_view_unmapped_is_noop(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = false;
+
+	xwayland_focus_view(&xview);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_set_title                                 */
+/* ================================================================ */
+
+static void test_set_title_updates_from_null(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.title = "New Title";
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.title = NULL;
+
+	xview.set_title.notify = handle_xwayland_set_title;
+	xview.set_title.notify(&xview.set_title, NULL);
+
+	assert(xview.title != NULL);
+	assert(strcmp(xview.title, "New Title") == 0);
+	free(xview.title);
+}
+
+static void test_set_title_replaces_existing(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.title = "Updated";
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.title = strdup("Old Title");
+
+	xview.set_title.notify = handle_xwayland_set_title;
+	xview.set_title.notify(&xview.set_title, NULL);
+
+	assert(strcmp(xview.title, "Updated") == 0);
+	free(xview.title);
+}
+
+static void test_set_title_handles_null_xsurface_title(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.title = NULL;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.title = strdup("Was Set");
+
+	xview.set_title.notify = handle_xwayland_set_title;
+	xview.set_title.notify(&xview.set_title, NULL);
+
+	assert(xview.title == NULL);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_set_class                                 */
+/* ================================================================ */
+
+static void test_set_class_updates_app_id(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.class = "firefox";
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.app_id = NULL;
+
+	xview.set_class.notify = handle_xwayland_set_class;
+	xview.set_class.notify(&xview.set_class, NULL);
+
+	assert(xview.app_id != NULL);
+	assert(strcmp(xview.app_id, "firefox") == 0);
+	free(xview.app_id);
+}
+
+static void test_set_class_handles_null_class(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.class = NULL;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.app_id = strdup("old-class");
+
+	xview.set_class.notify = handle_xwayland_set_class;
+	xview.set_class.notify(&xview.set_class, NULL);
+
+	assert(xview.app_id == NULL);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_set_override_redirect                     */
+/* ================================================================ */
+
+static void test_override_redirect_reclassifies_when_mapped(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xcb_atom_t types[] = {
+		server.xwayland_atoms.net_wm_window_type_normal
+	};
+	xs.window_type = types;
+	xs.window_type_len = 1;
+	xs.override_redirect = true;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.window_class = WM_XW_MANAGED;
+
+	xview.set_override_redirect.notify =
+		handle_xwayland_set_override_redirect;
+	xview.set_override_redirect.notify(
+		&xview.set_override_redirect, NULL);
+
+	assert(xview.window_class == WM_XW_UNMANAGED);
+}
+
+static void test_override_redirect_skips_when_unmapped(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.override_redirect = true;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = false;
+	xview.window_class = WM_XW_MANAGED;
+
+	xview.set_override_redirect.notify =
+		handle_xwayland_set_override_redirect;
+	xview.set_override_redirect.notify(
+		&xview.set_override_redirect, NULL);
+
+	assert(xview.window_class == WM_XW_MANAGED);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_request_configure                         */
+/* ================================================================ */
+
+static void test_request_configure_updates_position(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.scene_tree = &st;
+
+	struct wlr_xwayland_surface_configure_event event = {
+		.surface = &xs,
+		.x = 100, .y = 200,
+		.width = 800, .height = 600,
+		.mask = 0,
+	};
+
+	xview.request_configure.notify =
+		handle_xwayland_request_configure;
+	xview.request_configure.notify(
+		&xview.request_configure, &event);
+
+	assert(xview.x == 100);
+	assert(xview.y == 200);
+	assert(st.node.x == 100);
+	assert(st.node.y == 200);
+}
+
+static void test_request_configure_no_scene_tree(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.scene_tree = NULL;
+	xview.x = 0;
+	xview.y = 0;
+
+	struct wlr_xwayland_surface_configure_event event = {
+		.surface = &xs,
+		.x = 200, .y = 300,
+		.width = 640, .height = 480,
+		.mask = 0,
+	};
+
+	xview.request_configure.notify =
+		handle_xwayland_request_configure;
+	xview.request_configure.notify(
+		&xview.request_configure, &event);
+
+	/* Position NOT updated on xview when no scene tree */
+	assert(xview.x == 0);
+	assert(xview.y == 0);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_request_activate                          */
+/* ================================================================ */
+
+static void test_request_activate_focuses_no_focused_view(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	memset(&test_wl_surface_inst, 0, sizeof(test_wl_surface_inst));
+	xs.surface = &test_wl_surface_inst;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+	server.focused_view = NULL;
+
+	xview.request_activate.notify =
+		handle_xwayland_request_activate;
+	xview.request_activate.notify(
+		&xview.request_activate, NULL);
+
+	/* xwayland_focus_view was called (sets focused_view to NULL) */
+	assert(server.focused_view == NULL);
+}
+
+static void test_request_activate_skips_focused_view(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wm_view dummy_view;
+	memset(&dummy_view, 0, sizeof(dummy_view));
+	server.focused_view = &dummy_view;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+
+	xview.request_activate.notify =
+		handle_xwayland_request_activate;
+	xview.request_activate.notify(
+		&xview.request_activate, NULL);
+
+	/* focused_view unchanged — focus steal prevented */
+	assert(server.focused_view == &dummy_view);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_request_move                              */
+/* ================================================================ */
+
+static void test_request_move_noop_when_unmapped(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	server.cursor_mode = WM_CURSOR_MOVE;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = false;
+
+	xview.request_move.notify = handle_xwayland_request_move;
+	xview.request_move.notify(&xview.request_move, NULL);
+
+	assert(server.cursor_mode == WM_CURSOR_MOVE);
+}
+
+static void test_request_move_sets_passthrough(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+	server.cursor_mode = WM_CURSOR_MOVE;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	xview.request_move.notify = handle_xwayland_request_move;
+	xview.request_move.notify(&xview.request_move, NULL);
+
+	assert(server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_request_minimize                          */
+/* ================================================================ */
+
+static void test_request_minimize_hides_node(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	struct wlr_xwayland_minimize_event event = {
+		.surface = &xs,
+		.minimize = true,
+	};
+
+	xview.request_minimize.notify =
+		handle_xwayland_request_minimize;
+	xview.request_minimize.notify(
+		&xview.request_minimize, &event);
+
+	assert(st.node.enabled == false);
+}
+
+static void test_request_minimize_restore_shows_node(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	memset(&test_wl_surface_inst, 0, sizeof(test_wl_surface_inst));
+	xs.surface = &test_wl_surface_inst;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+	st.node.enabled = false;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	struct wlr_xwayland_minimize_event event = {
+		.surface = &xs,
+		.minimize = false,
+	};
+
+	xview.request_minimize.notify =
+		handle_xwayland_request_minimize;
+	xview.request_minimize.notify(
+		&xview.request_minimize, &event);
+
+	assert(st.node.enabled == true);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_request_maximize                          */
+/* ================================================================ */
+
+static void test_request_maximize_saves_geometry(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.width = 800;
+	xs.height = 600;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+	xview.x = 100;
+	xview.y = 50;
+
+	xview.request_maximize.notify =
+		handle_xwayland_request_maximize;
+	xview.request_maximize.notify(
+		&xview.request_maximize, NULL);
+
+	assert(xview.maximized == true);
+	assert(xview.saved_geometry.x == 100);
+	assert(xview.saved_geometry.y == 50);
+	assert(xview.saved_geometry.width == 800);
+	assert(xview.saved_geometry.height == 600);
+}
+
+static void test_request_maximize_restore(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+	xview.maximized = true;
+	xview.saved_geometry = (struct wlr_box){
+		.x = 100, .y = 50, .width = 800, .height = 600
+	};
+
+	xview.request_maximize.notify =
+		handle_xwayland_request_maximize;
+	xview.request_maximize.notify(
+		&xview.request_maximize, NULL);
+
+	assert(xview.maximized == false);
+	assert(xview.x == 100);
+	assert(xview.y == 50);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_request_fullscreen                        */
+/* ================================================================ */
+
+static void test_request_fullscreen_saves_geometry(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.width = 800;
+	xs.height = 600;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+	xview.x = 100;
+	xview.y = 50;
+
+	xview.request_fullscreen.notify =
+		handle_xwayland_request_fullscreen;
+	xview.request_fullscreen.notify(
+		&xview.request_fullscreen, NULL);
+
+	assert(xview.fullscreen == true);
+	assert(xview.saved_geometry.x == 100);
+	assert(xview.saved_geometry.y == 50);
+	assert(xview.saved_geometry.width == 800);
+	assert(xview.saved_geometry.height == 600);
+}
+
+static void test_request_fullscreen_preserves_saved_when_maximized(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.width = 1920;
+	xs.height = 1080;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+	xview.maximized = true;
+	xview.saved_geometry = (struct wlr_box){
+		.x = 100, .y = 50, .width = 800, .height = 600
+	};
+
+	xview.request_fullscreen.notify =
+		handle_xwayland_request_fullscreen;
+	xview.request_fullscreen.notify(
+		&xview.request_fullscreen, NULL);
+
+	assert(xview.fullscreen == true);
+	/* saved_geometry preserved (was already maximized) */
+	assert(xview.saved_geometry.x == 100);
+	assert(xview.saved_geometry.y == 50);
+	assert(xview.saved_geometry.width == 800);
+	assert(xview.saved_geometry.height == 600);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_surface_map                               */
+/* ================================================================ */
+
+static void test_surface_map_classifies_and_mirrors(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.title = "MapTest";
+	xs.class = "TestClass";
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+
+	xview.map.notify = handle_xwayland_surface_map;
+	xview.map.notify(&xview.map, NULL);
+
+	assert(xview.mapped == true);
+	assert(xview.window_class == WM_XW_MANAGED);
+	assert(xview.title != NULL);
+	assert(strcmp(xview.title, "MapTest") == 0);
+	assert(xview.app_id != NULL);
+	assert(strcmp(xview.app_id, "TestClass") == 0);
+	/* scene_tree NULL because stub returns NULL */
+	assert(xview.scene_tree == NULL);
+
+	free(xview.title);
+	free(xview.app_id);
+}
+
+static void test_surface_map_routes_dock_to_slit(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	static struct wm_slit test_slit_inst;
+	server.slit = &test_slit_inst;
+
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xcb_atom_t types[] = {
+		server.xwayland_atoms.net_wm_window_type_dock
+	};
+	xs.window_type = types;
+	xs.window_type_len = 1;
+	xs.title = "DockApp";
+	xs.class = "dock_class";
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+
+	xview.map.notify = handle_xwayland_surface_map;
+	xview.map.notify(&xview.map, NULL);
+
+	assert(xview.mapped == true);
+	assert(xview.window_class == WM_XW_UNMANAGED);
+	/* Routed to slit — no scene tree created */
+	assert(xview.scene_tree == NULL);
+
+	free(xview.title);
+	free(xview.app_id);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_surface_unmap                             */
+/* ================================================================ */
+
+static void test_surface_unmap_clears_state(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	xview.unmap.notify = handle_xwayland_surface_unmap;
+	xview.unmap.notify(&xview.unmap, NULL);
+
+	assert(xview.mapped == false);
+	assert(xview.scene_tree == NULL);
+}
+
+static void test_surface_unmap_shifts_focus(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	memset(&test_wl_surface_inst, 0, sizeof(test_wl_surface_inst));
+	xs.surface = &test_wl_surface_inst;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	/* Set focused surface to match this xview */
+	server.seat->keyboard_state.focused_surface =
+		&test_wl_surface_inst;
+
+	xview.unmap.notify = handle_xwayland_surface_unmap;
+	xview.unmap.notify(&xview.unmap, NULL);
+
+	assert(xview.mapped == false);
+	assert(xview.scene_tree == NULL);
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_surface_destroy                           */
+/* ================================================================ */
+
+static void test_surface_destroy_cleanup(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	init_xsurface_signals(&xs);
+
+	struct wm_xwayland_view *xview = calloc(1, sizeof(*xview));
+	assert(xview != NULL);
+	xview->server = &server;
+	xview->xsurface = &xs;
+	xview->title = strdup("test-title");
+	xview->app_id = strdup("test-class");
+	xview->scene_tree = NULL;
+
+	/* Wire all listeners into signals so wl_list_remove works */
+	xview->destroy.notify = handle_xwayland_surface_destroy;
+	wl_signal_add(&xs.events.destroy, &xview->destroy);
+	xview->associate.notify = handle_xwayland_associate;
+	wl_signal_add(&xs.events.associate, &xview->associate);
+	xview->dissociate.notify = handle_xwayland_dissociate;
+	wl_signal_add(&xs.events.dissociate, &xview->dissociate);
+	xview->request_configure.notify =
+		handle_xwayland_request_configure;
+	wl_signal_add(&xs.events.request_configure,
+		&xview->request_configure);
+	xview->request_move.notify = handle_xwayland_request_move;
+	wl_signal_add(&xs.events.request_move, &xview->request_move);
+	xview->request_resize.notify = handle_xwayland_request_resize;
+	wl_signal_add(&xs.events.request_resize,
+		&xview->request_resize);
+	xview->request_maximize.notify =
+		handle_xwayland_request_maximize;
+	wl_signal_add(&xs.events.request_maximize,
+		&xview->request_maximize);
+	xview->request_fullscreen.notify =
+		handle_xwayland_request_fullscreen;
+	wl_signal_add(&xs.events.request_fullscreen,
+		&xview->request_fullscreen);
+	xview->request_minimize.notify =
+		handle_xwayland_request_minimize;
+	wl_signal_add(&xs.events.request_minimize,
+		&xview->request_minimize);
+	xview->request_activate.notify =
+		handle_xwayland_request_activate;
+	wl_signal_add(&xs.events.request_activate,
+		&xview->request_activate);
+	xview->set_title.notify = handle_xwayland_set_title;
+	wl_signal_add(&xs.events.set_title, &xview->set_title);
+	xview->set_class.notify = handle_xwayland_set_class;
+	wl_signal_add(&xs.events.set_class, &xview->set_class);
+	xview->set_hints.notify = handle_xwayland_set_hints;
+	wl_signal_add(&xs.events.set_hints, &xview->set_hints);
+	xview->set_override_redirect.notify =
+		handle_xwayland_set_override_redirect;
+	wl_signal_add(&xs.events.set_override_redirect,
+		&xview->set_override_redirect);
+
+	wl_list_insert(&server.xwayland_views, &xview->link);
+	assert(!wl_list_empty(&server.xwayland_views));
+
+	/* Invoke destroy — frees xview */
+	xview->destroy.notify(&xview->destroy, NULL);
+
+	/* Verify removed from server list */
+	assert(wl_list_empty(&server.xwayland_views));
+	assert(wl_list_empty(&xs.events.destroy.listener_list));
+}
+
+/* ================================================================ */
+/*  Tests: handle_xwayland_new_surface                               */
+/* ================================================================ */
+
+static void test_new_surface_creates_xview(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	init_xsurface_signals(&xs);
+	xs.window_id = 42;
+
+	server.xwayland_new_surface.notify =
+		handle_xwayland_new_surface;
+	server.xwayland_new_surface.notify(
+		&server.xwayland_new_surface, &xs);
+
+	assert(!wl_list_empty(&server.xwayland_views));
+
+	struct wm_xwayland_view *xview;
+	xview = wl_container_of(
+		server.xwayland_views.next, xview, link);
+	assert(xview->server == &server);
+	assert(xview->xsurface == &xs);
+	assert(xview->destroy.notify ==
+		handle_xwayland_surface_destroy);
+
+	/* Cleanup via destroy handler */
+	xview->destroy.notify(&xview->destroy, NULL);
+	assert(wl_list_empty(&server.xwayland_views));
+}
+
+/* ================================================================ */
 /*  main                                                             */
 /* ================================================================ */
 
 int main(void)
 {
-	printf("test_xwayland_logic: xwayland.c classification & clamping tests\n");
+	printf("test_xwayland_logic: xwayland.c classification, handler & lifecycle tests\n");
 
 	printf("\n--- classify_window ---\n");
 	RUN_TEST(test_classify_override_redirect_is_unmanaged);
@@ -987,6 +1823,62 @@ int main(void)
 	RUN_TEST(test_clamp_size_normal);
 	RUN_TEST(test_clamp_size_zero_becomes_one);
 	RUN_TEST(test_clamp_size_large_is_clamped);
+
+	printf("\n--- resolve_atom ---\n");
+	RUN_TEST(test_resolve_atom_null_reply_returns_none);
+
+	printf("\n--- xwayland_focus_view ---\n");
+	RUN_TEST(test_focus_view_null_is_noop);
+	RUN_TEST(test_focus_view_unmapped_is_noop);
+
+	printf("\n--- set_title / set_class ---\n");
+	RUN_TEST(test_set_title_updates_from_null);
+	RUN_TEST(test_set_title_replaces_existing);
+	RUN_TEST(test_set_title_handles_null_xsurface_title);
+	RUN_TEST(test_set_class_updates_app_id);
+	RUN_TEST(test_set_class_handles_null_class);
+
+	printf("\n--- set_override_redirect ---\n");
+	RUN_TEST(test_override_redirect_reclassifies_when_mapped);
+	RUN_TEST(test_override_redirect_skips_when_unmapped);
+
+	printf("\n--- request_configure ---\n");
+	RUN_TEST(test_request_configure_updates_position);
+	RUN_TEST(test_request_configure_no_scene_tree);
+
+	printf("\n--- request_activate ---\n");
+	RUN_TEST(test_request_activate_focuses_no_focused_view);
+	RUN_TEST(test_request_activate_skips_focused_view);
+
+	printf("\n--- request_move ---\n");
+	RUN_TEST(test_request_move_noop_when_unmapped);
+	RUN_TEST(test_request_move_sets_passthrough);
+
+	printf("\n--- request_minimize ---\n");
+	RUN_TEST(test_request_minimize_hides_node);
+	RUN_TEST(test_request_minimize_restore_shows_node);
+
+	printf("\n--- request_maximize ---\n");
+	RUN_TEST(test_request_maximize_saves_geometry);
+	RUN_TEST(test_request_maximize_restore);
+
+	printf("\n--- request_fullscreen ---\n");
+	RUN_TEST(test_request_fullscreen_saves_geometry);
+	RUN_TEST(test_request_fullscreen_preserves_saved_when_maximized);
+
+	printf("\n--- surface_map ---\n");
+	RUN_TEST(test_surface_map_classifies_and_mirrors);
+	RUN_TEST(test_surface_map_routes_dock_to_slit);
+
+	printf("\n--- surface_unmap ---\n");
+	RUN_TEST(test_surface_unmap_clears_state);
+	RUN_TEST(test_surface_unmap_shifts_focus);
+
+	printf("\n--- surface_destroy ---\n");
+	RUN_TEST(test_surface_destroy_cleanup);
+
+	printf("\n--- new_surface ---\n");
+	RUN_TEST(test_new_surface_creates_xview);
 
 	printf("\n%d/%d tests passed\n", tests_passed, tests_run);
 	return tests_passed == tests_run ? 0 : 1;
