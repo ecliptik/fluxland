@@ -423,6 +423,14 @@ struct wm_toolbar {
 	int dummy;
 };
 
+struct wm_slit {
+	int dummy;
+};
+
+struct wm_slit_client {
+	int dummy;
+};
+
 /* Rules */
 struct wm_rules {
 	int dummy;
@@ -523,6 +531,7 @@ struct wm_view {
 	struct wm_animation *animation;
 	int focus_protection;
 	bool ignore_size_hints;
+	bool docked;
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener foreign_toplevel_request_activate;
 	struct wl_listener foreign_toplevel_request_maximize;
@@ -621,6 +630,7 @@ struct wm_server {
 	struct wm_workspace *current_workspace;
 	int workspace_count;
 	struct wlr_scene_tree *sticky_tree;
+	void *ws_transition;
 	struct wl_list keyboards;
 	struct wm_config *config;
 	struct wl_list keybindings;
@@ -691,7 +701,8 @@ struct wm_server {
 	struct wl_listener transient_seat_create;
 	void *syncobj_mgr;
 	struct wm_toolbar *toolbar;
-	void *slit;
+	struct wm_slit *slit;
+	void *wallpaper;
 	struct wm_menu *root_menu;
 	struct wm_menu *window_menu;
 	struct wm_menu *window_list_menu;
@@ -980,6 +991,15 @@ static void wm_placement_apply(struct wm_server *s,
 
 static void wm_rules_apply(struct wm_rules *r,
 	struct wm_view *v) { (void)r; (void)v; }
+static bool wm_rules_should_dock(struct wm_rules *r,
+	struct wm_view *v) { (void)r; (void)v; return false; }
+static struct wm_slit_client *wm_slit_add_native_client(
+	struct wm_slit *slit, struct wlr_xdg_toplevel *toplevel,
+	struct wlr_scene_tree *tree)
+{
+	(void)slit; (void)toplevel; (void)tree;
+	return NULL;
+}
 static struct wm_view *wm_rules_find_group(struct wm_rules *r,
 	struct wm_view *v, struct wm_server *s)
 {
