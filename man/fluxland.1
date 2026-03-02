@@ -92,6 +92,8 @@ Within the configuration directory, the following files are used:
 Main configuration file using X resource database syntax.
 Controls workspaces, focus policy, placement, toolbar, XKB keyboard
 layout, and paths to other configuration files.
+See
+.BR fluxland-init (5).
 .TP
 .B keys
 Key binding definitions.
@@ -121,6 +123,8 @@ by
 The
 .B WAYLAND_DISPLAY
 environment variable is set before the script runs.
+See
+.BR fluxland-startup (5).
 .SH EMERGENCY KEYBINDINGS
 The following keybindings are always active, regardless of key binding
 configuration, keymodes, or keyboard shortcut inhibition:
@@ -278,9 +282,12 @@ session.xkb.options: grp:alt_shift_toggle,caps:escape
 .fi
 .RE
 .SH SEE ALSO
+.BR fluxland-ctl (1),
 .BR fluxland-keys (5),
 .BR fluxland-apps (5),
-.BR fluxland-style (5),
-.BR fluxland-menu (5)
+.BR fluxland-init (5),
+.BR fluxland-menu (5),
+.BR fluxland-startup (5),
+.BR fluxland-style (5)
 .SH AUTHORS
 The fluxland project.

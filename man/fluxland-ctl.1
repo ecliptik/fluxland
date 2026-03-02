@@ -1,0 +1,444 @@
+.TH FLUXLAND-CTL 1 "2026-02-27" "fluxland 1.0.0" "General Commands Manual"
+.SH NAME
+fluxland-ctl \- command-line IPC client for fluxland
+.SH SYNOPSIS
+.B fluxland-ctl
+.RB [ \-s
+.IR socket ]
+.RB [ \-r ]
+.IR command " [" args... ]
+.br
+.B fluxland-ctl
+.B \-h
+.SH DESCRIPTION
+.B fluxland-ctl
+is a command-line tool for communicating with a running
+.BR fluxland (1)
+compositor via its IPC socket.
+It can execute compositor actions, query window and workspace state,
+subscribe to events, and more.
+.PP
+The tool connects to the compositor's Unix domain socket, sends a
+JSON-encoded command, and prints the JSON response.
+.SH OPTIONS
+.TP
+.BI \-s " socket"
+Path to the IPC socket.
+By default,
+.B fluxland-ctl
+auto-detects the socket by checking
+.B $FLUXLAND_SOCK
+and then trying
+.IR $XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock .
+.TP
+.B \-r
+Raw output mode (no pretty printing).
+This is currently the default.
+.TP
+.B \-h
+Print usage information and exit.
+.SH COMMANDS
+.TP
+.BI action " name" " [" argument ]
+Execute a compositor action on the focused window.
+The action name is case-insensitive.
+See the
+.B ACTIONS
+section below for available actions.
+Alias:
+.BR command .
+.TP
+.B get_windows
+List all managed windows as a JSON array.
+Each entry includes the window ID, title, app_id, workspace,
+geometry, and state flags (maximized, minimized, fullscreen,
+sticky, shaded).
+.TP
+.B get_workspaces
+List all workspaces as a JSON array with names, window counts,
+and the currently active workspace index.
+.TP
+.B get_outputs
+List all outputs (monitors) as a JSON array with names,
+geometry, scale, and refresh rate.
+.TP
+.B get_config
+Dump the current compositor configuration as a JSON object.
+.TP
+.BI subscribe " type" "[," type ]...
+Subscribe to compositor events and print them as they occur.
+The connection stays open and events are printed one JSON object
+per line.
+See the
+.B EVENT TYPES
+section for available types.
+.TP
+.B list-actions
+Print all available action names and their descriptions.
+This command does not require a running compositor.
+.TP
+.B ping
+Test connectivity to the compositor.
+Returns a success response if the compositor is reachable.
+.SH ACTIONS
+The following actions can be used with the
+.B action
+command.
+Actions that operate on windows affect the currently focused window.
+.SS Window Management
+.TP
+.BI "Exec " command
+Execute a shell command.
+.TP
+.B Close
+Close the focused window.
+.TP
+.B Kill
+Force-kill the focused window's process.
+.TP
+.B Maximize
+Toggle maximize.
+.TP
+.B MaximizeVertical
+Toggle vertical maximize.
+.TP
+.B MaximizeHorizontal
+Toggle horizontal maximize.
+.TP
+.B Fullscreen
+Toggle fullscreen.
+.TP
+.BR Minimize ", " Iconify
+Minimize (iconify) the focused window.
+.TP
+.B Deiconify
+Restore the last minimized window.
+.TP
+.BR Shade ", " ShadeOn ", " ShadeOff
+Toggle, enable, or disable window shading.
+.TP
+.B Stick
+Toggle sticky (visible on all workspaces).
+.TP
+.B ToggleDecor
+Toggle window decorations.
+.TP
+.BI "SetDecor " preset
+Set decoration preset
+.RB ( NORMAL ", " NONE ", " BORDER ", " TAB ", " TINY ", " TOOL ).
+.SS Movement and Resizing
+.TP
+.BI "MoveLeft " pixels
+Move the focused window left.
+.TP
+.BI "MoveRight " pixels
+Move right.
+.TP
+.BI "MoveUp " pixels
+Move up.
+.TP
+.BI "MoveDown " pixels
+Move down.
+.TP
+.BI "MoveTo " "x y"
+Move to absolute position.
+.TP
+.BI "ResizeTo " "width height"
+Resize to the given dimensions.
+.TP
+.BI "ResizeHorizontal " pixels
+Resize horizontally.
+.TP
+.BI "ResizeVertical " pixels
+Resize vertically.
+.TP
+.BR LHalf ", " RHalf
+Snap window to left or right half of the screen.
+.SS Focus and Stacking
+.TP
+.BR FocusNext ", " NextWindow
+Focus the next window.
+.TP
+.BR FocusPrev ", " PrevWindow
+Focus the previous window.
+.TP
+.BR FocusLeft ", " FocusRight ", " FocusUp ", " FocusDown
+Focus the nearest window in the given direction.
+.TP
+.B Raise
+Raise the focused window.
+.TP
+.B Lower
+Lower the focused window.
+.TP
+.BR RaiseLayer ", " LowerLayer
+Move window up or down one stacking layer.
+.TP
+.BI "SetLayer " layer
+Set the stacking layer explicitly.
+.SS Workspaces
+.TP
+.BI "Workspace " N
+Switch to workspace
+.I N
+(1-based).
+.TP
+.BI "SendToWorkspace " N
+Send the focused window to workspace
+.IR N .
+.TP
+.BI "TakeToWorkspace " N
+Move with the focused window to workspace
+.IR N .
+.TP
+.BR NextWorkspace ", " PrevWorkspace
+Switch to the next or previous workspace.
+.TP
+.BR SendToNextWorkspace ", " SendToPrevWorkspace
+Send the focused window to the next or previous workspace.
+.TP
+.BR TakeToNextWorkspace ", " TakeToPrevWorkspace
+Move with the focused window to the next or previous workspace.
+.TP
+.BR AddWorkspace ", " RemoveLastWorkspace
+Add a new workspace or remove the last empty workspace.
+.TP
+.B ShowDesktop
+Minimize all windows on the current workspace.
+.SS Tabs
+.TP
+.BR NextTab ", " PrevTab
+Switch to the next or previous tab.
+.TP
+.BI "ActivateTab " N
+Activate tab number
+.IR N .
+.TP
+.B DetachClient
+Detach the focused window from its tab group.
+.TP
+.BR MoveTabLeft ", " MoveTabRight
+Reorder tabs.
+.SS Window Arrangement
+.TP
+.B ArrangeWindows
+Tile all windows in a grid.
+.TP
+.BR ArrangeWindowsVertical ", " ArrangeWindowsHorizontal
+Tile in columns or rows.
+.TP
+.B ArrangeWindowsStackLeft\fR, \fBArrangeWindowsStackRight
+Master-stack layout.
+.TP
+.B ArrangeWindowsStackTop\fR, \fBArrangeWindowsStackBottom
+Master-stack layout (vertical).
+.TP
+.B CascadeWindows
+Cascade windows diagonally.
+.TP
+.B CloseAllWindows
+Close all windows on the current workspace.
+.SS Menus
+.TP
+.BR RootMenu ", " WindowMenu ", " WindowList
+Show the root menu, window menu, or window list menu.
+.TP
+.BR WorkspaceMenu ", " ClientMenu
+Show the workspace or client menu.
+.TP
+.B HideMenus
+Hide all open menus.
+.SS Compositor Control
+.TP
+.B Reconfigure
+Reload all configuration files.
+.TP
+.BR Exit ", " Quit
+Terminate the compositor.
+.SH EVENT TYPES
+The following event type names are accepted by the
+.B subscribe
+command.
+Multiple types can be specified as comma-separated or
+space-separated values.
+.TP
+.B window
+All window events (open, close, focus, title change).
+Equivalent to subscribing to
+.BR window_open ,
+.BR window_close ,
+.BR window_focus ,
+and
+.BR window_title .
+.TP
+.B window_open
+A window was opened.
+.TP
+.B window_close
+A window was closed.
+.TP
+.B window_focus
+A window received focus.
+.TP
+.B window_title
+A window's title changed.
+.TP
+.B workspace
+The active workspace changed.
+.TP
+.B output
+An output was added or removed.
+.TP
+.B style_changed
+The style/theme was changed.
+.TP
+.B config_reloaded
+Configuration files were reloaded.
+.TP
+.B focus_changed
+Focus changed (detailed, includes surface-level changes).
+.TP
+.B menu
+A menu was opened or closed.
+.TP
+.B accessibility
+Meta-subscription for accessibility tools.
+Subscribes to
+.BR focus_changed ,
+.BR menu ,
+.BR workspace ,
+and
+.BR window_focus .
+.SH IPC PROTOCOL
+The IPC protocol uses newline-delimited JSON over a Unix domain socket.
+.PP
+Requests have the form:
+.PP
+.RS 4
+.nf
+{"command": "\fIname\fP", ...}\en
+.fi
+.RE
+.PP
+Responses have the form:
+.PP
+.RS 4
+.nf
+{"success": true, "data": ...}\en
+{"success": false, "error": "\fImessage\fP"}\en
+.fi
+.RE
+.PP
+Event notifications (for subscribed clients) are JSON objects with an
+.B event
+field:
+.PP
+.RS 4
+.nf
+{"event": "window_open", "window": {...}}\en
+.fi
+.RE
+.PP
+The socket is authenticated using
+.BR SO_PEERCRED ;
+only connections from the same UID as the compositor are accepted.
+.SH SOCKET DISCOVERY
+.B fluxland-ctl
+locates the IPC socket in this order:
+.PP
+.RS 4
+1. The
+.B \-s
+command-line option.
+.br
+2. The
+.B FLUXLAND_SOCK
+environment variable (set automatically by the compositor for child
+processes).
+.br
+3. Constructed from
+.IR $XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock .
+.RE
+.SH EXAMPLES
+Close the focused window:
+.PP
+.RS 4
+.nf
+fluxland-ctl action Close
+.fi
+.RE
+.PP
+Switch to workspace 3:
+.PP
+.RS 4
+.nf
+fluxland-ctl action Workspace 3
+.fi
+.RE
+.PP
+Launch a terminal:
+.PP
+.RS 4
+.nf
+fluxland-ctl action Exec foot
+.fi
+.RE
+.PP
+List all windows (JSON):
+.PP
+.RS 4
+.nf
+fluxland-ctl get_windows
+.fi
+.RE
+.PP
+Get the focused window title using jq:
+.PP
+.RS 4
+.nf
+fluxland-ctl get_windows | jq '.[] | select(.focused) | .title'
+.fi
+.RE
+.PP
+Subscribe to window events:
+.PP
+.RS 4
+.nf
+fluxland-ctl subscribe window
+.fi
+.RE
+.PP
+Subscribe to multiple event types:
+.PP
+.RS 4
+.nf
+fluxland-ctl subscribe window,workspace,output
+.fi
+.RE
+.PP
+List available actions (no compositor needed):
+.PP
+.RS 4
+.nf
+fluxland-ctl list-actions
+.fi
+.RE
+.PP
+Connect to a specific socket:
+.PP
+.RS 4
+.nf
+fluxland-ctl -s /run/user/1000/fluxland.wayland-1.sock get_windows
+.fi
+.RE
+.SH EXIT STATUS
+.TP
+.B 0
+Command executed successfully.
+.TP
+.B 1
+An error occurred (connection failure, unknown command, etc.).
+.SH SEE ALSO
+.BR fluxland (1),
+.BR fluxland-keys (5),
+.BR fluxland-init (5)

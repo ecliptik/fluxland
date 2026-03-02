@@ -346,10 +346,13 @@ install_data(
 
 install_man(
   'man/fluxland.1',
+  'man/fluxland-ctl.1',
   'man/fluxland-keys.5',
   'man/fluxland-apps.5',
-  'man/fluxland-style.5',
+  'man/fluxland-init.5',
   'man/fluxland-menu.5',
+  'man/fluxland-startup.5',
+  'man/fluxland-style.5',
 )
 
 # --- Tests ---

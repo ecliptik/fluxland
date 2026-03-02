@@ -1,0 +1,102 @@
+.TH FLUXLAND-STARTUP 5 "2026-02-27" "fluxland 1.0.0" "File Formats Manual"
+.SH NAME
+fluxland-startup \- autostart script for fluxland
+.SH DESCRIPTION
+The startup file is a shell script executed when
+.BR fluxland (1)
+starts.
+It is used to launch applications, set wallpapers, configure displays,
+or perform other initialization tasks.
+.PP
+By default, the file is located at
+.I ~/.config/fluxland/startup
+within the configuration directory.
+.SH EXECUTION
+The startup script runs after the compositor is fully initialized and
+the Wayland socket is available.
+The
+.B WAYLAND_DISPLAY
+environment variable is set before the script executes.
+.PP
+If the startup file has the executable permission bit set
+.RB ( "chmod +x" ),
+it is executed directly.
+Otherwise, it is run via
+.BR /bin/sh .
+.PP
+The script is launched using a double-fork mechanism: the compositor
+does not wait for the script to exit and does not manage its child
+processes.
+Long-running programs started from the script are inherited by the
+init process.
+.PP
+In addition to the startup file, a command can be passed via the
+.B \-s
+option on the
+.BR fluxland (1)
+command line.
+Both the startup file and the
+.B \-s
+command are executed.
+.SH ENVIRONMENT
+The following environment variables are available to the startup script:
+.TP
+.B WAYLAND_DISPLAY
+The name of the Wayland socket (e.g.\&
+.IR wayland-0 ).
+.TP
+.B FLUXLAND_SOCK
+Path to the IPC socket for
+.BR fluxland-ctl (1).
+.TP
+.B XDG_RUNTIME_DIR
+The XDG runtime directory.
+.SH EXAMPLES
+Simple startup script:
+.PP
+.RS 4
+.nf
+#!/bin/sh
+# Set wallpaper
+swaybg -i ~/wallpaper.png -m fill &
+
+# Start notification daemon
+mako &
+
+# Launch a terminal
+foot &
+.fi
+.RE
+.PP
+Startup script with display configuration:
+.PP
+.RS 4
+.nf
+#!/bin/sh
+# Configure displays
+wlr-randr --output HDMI-A-1 --pos 0,0 \\
+           --output eDP-1 --pos 1920,0
+
+# Set wallpaper
+swaybg -i ~/wallpaper.png -m fill &
+
+# Start panel and notification daemon
+waybar &
+mako &
+.fi
+.RE
+.PP
+Make the script executable:
+.PP
+.RS 4
+.nf
+chmod +x ~/.config/fluxland/startup
+.fi
+.RE
+.SH FILES
+.TP
+.I ~/.config/fluxland/startup
+Default startup script location.
+.SH SEE ALSO
+.BR fluxland (1),
+.BR fluxland-init (5)

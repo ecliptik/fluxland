@@ -1,0 +1,463 @@
+.TH FLUXLAND-INIT 5 "2026-02-27" "fluxland 1.0.0" "File Formats Manual"
+.SH NAME
+fluxland-init \- main configuration file for fluxland
+.SH DESCRIPTION
+The init file is the main configuration file for
+.BR fluxland (1).
+It uses X resource database syntax (key: value) to control workspaces,
+focus policy, window placement, toolbar behavior, keyboard layout, and
+paths to other configuration files.
+.PP
+By default, the file is located at
+.I ~/.config/fluxland/init
+within the configuration directory.
+Boolean values accept
+.BR true / false ,
+.BR yes / no ,
+or
+.BR 1 / 0 .
+.SH SYNTAX
+Each line has the form:
+.PP
+.RS 4
+.nf
+\fIkey\fP: \fIvalue\fP
+.fi
+.RE
+.PP
+Blank lines and lines beginning with
+.B #
+or
+.B !
+are comments.
+.SH WORKSPACE SETTINGS
+.TP
+.B session.screen0.workspaces
+Number of workspaces (1\-32, default: 4).
+.TP
+.B session.screen0.workspaceNames
+Comma-separated workspace names (e.g.\&
+.IR Web,Code,Term,Chat ).
+.TP
+.B session.screen0.workspacewarping
+Allow moving windows between workspaces by dragging to screen edges
+(default: true).
+.TP
+.B session.screen0.workspaceMode
+Workspace mode:
+.BR global " (default)"
+or
+.BR per-output .
+.SH FOCUS SETTINGS
+.TP
+.B session.screen0.focusModel
+Focus policy.
+One of
+.BR ClickToFocus " (default),"
+.BR MouseFocus " (sloppy),"
+or
+.BR StrictMouseFocus .
+.TP
+.B session.screen0.autoRaise
+Automatically raise windows on focus (default: false).
+.TP
+.B session.autoRaiseDelay
+Delay in milliseconds before auto-raising (default: 250).
+.TP
+.B session.screen0.clickRaises
+Clicking a window raises it (default: true).
+.TP
+.B session.screen0.focusNewWindows
+New windows receive focus (default: true).
+.SH WINDOW BEHAVIOR
+.TP
+.B session.screen0.opaqueMove
+Show window contents while moving (default: true).
+.TP
+.B session.screen0.opaqueResize
+Show window contents while resizing (default: false).
+.TP
+.B session.screen0.edgeSnapThreshold
+Pixel distance for edge snapping (default: 10).
+.TP
+.B session.screen0.windowPlacement
+Window placement algorithm.
+One of
+.BR RowSmartPlacement " (default),"
+.BR ColSmartPlacement ,
+.BR CascadePlacement ,
+.BR UnderMousePlacement ,
+.BR RowMinOverlapPlacement ,
+or
+.BR ColMinOverlapPlacement .
+.TP
+.B session.screen0.rowPlacementDirection
+Direction for row placement.
+One of
+.BR LeftToRight " (default)"
+or
+.BR RightToLeft .
+.TP
+.B session.screen0.colPlacementDirection
+Direction for column placement.
+One of
+.BR TopToBottom " (default)"
+or
+.BR BottomToTop .
+.TP
+.B session.screen0.fullMaximization
+Maximize windows over the toolbar and slit (default: false).
+.TP
+.B session.screen0.showWindowPosition
+Show window position overlay during move/resize (default: false).
+.TP
+.B session.screen0.defaultDeco
+Default decoration preset for new windows (e.g.\&
+.BR NORMAL ,
+.BR NONE ,
+.BR BORDER ).
+.TP
+.B session.screen0.struts
+Manual struts as four space-separated integers:
+.IR "left right top bottom" .
+Reserves screen edges from window placement.
+.SH WINDOW OPACITY
+.TP
+.B session.screen0.window.focus.alpha
+Opacity for focused windows (0\-255, default: 255).
+.TP
+.B session.screen0.window.unfocus.alpha
+Opacity for unfocused windows (0\-255, default: 255).
+.SH WINDOW ANIMATIONS
+.TP
+.B session.screen0.animateWindowMap
+Fade-in animation when windows appear (default: false).
+.TP
+.B session.screen0.animateWindowUnmap
+Fade-out animation when windows close (default: false).
+.TP
+.B session.screen0.animateMinimize
+Animate minimize/restore (default: false).
+.TP
+.B session.screen0.animationDuration
+Animation duration in milliseconds (0\-5000, default: 300).
+.SH WINDOW SNAP ZONES
+.TP
+.B session.screen0.enableWindowSnapping
+Enable edge/corner snap zones for tiling (default: false).
+.TP
+.B session.screen0.snapZoneThreshold
+Pixel distance from screen edge to trigger snap zones (1\-100, default: 10).
+.TP
+.B session.screen0.edgeResizeSnapThreshold
+Pixel distance for edge resize snapping (default: 0, disabled).
+.SH TOOLBAR SETTINGS
+.TP
+.B session.screen0.toolbar.visible
+Show the toolbar (default: true).
+.TP
+.B session.screen0.toolbar.placement
+Toolbar position.
+One of
+.BR TopLeft ,
+.BR TopCenter ,
+.BR TopRight ,
+.BR BottomLeft ,
+.BR BottomCenter " (default),"
+or
+.BR BottomRight .
+.TP
+.B session.screen0.toolbar.autoHide
+Auto-hide the toolbar (default: false).
+.TP
+.B session.screen0.toolbar.autoHideDelay
+Delay in milliseconds before hiding (default: 500).
+.TP
+.B session.screen0.toolbar.widthPercent
+Toolbar width as percentage of screen (10\-100, default: 100).
+.TP
+.B session.screen0.toolbar.height
+Toolbar height in pixels (0 = auto from font, default: 0).
+.TP
+.B session.screen0.toolbar.layer
+Toolbar stacking layer (default: 4, Dock).
+.TP
+.B session.screen0.toolbar.alpha
+Toolbar opacity (0\-255, default: 255).
+.TP
+.B session.screen0.toolbar.onhead
+Monitor number for toolbar placement (default: 0).
+.TP
+.B session.screen0.toolbar.tools
+Space-separated list of toolbar components (default:
+.IR "prevworkspace workspacename nextworkspace iconbar clock" ).
+.TP
+.B session.screen0.toolbar.maxOver
+Allow maximized windows to cover the toolbar (default: false).
+.SH TITLEBAR SETTINGS
+.TP
+.B session.titlebar.left
+Space-separated list of buttons for the left side of the titlebar
+(default:
+.IR Stick ).
+.TP
+.B session.titlebar.right
+Space-separated list of buttons for the right side of the titlebar
+(default:
+.IR "Shade Minimize Maximize Close" ).
+.SH CLOCK SETTINGS
+.TP
+.B session.screen0.strftimeFormat
+Clock format string using
+.BR strftime (3)
+syntax (default:
+.IR %H:%M ).
+.SH ICONBAR SETTINGS
+.TP
+.B session.screen0.iconbar.mode
+Iconbar display mode.
+One of
+.BR Workspace " (default, show current workspace windows),"
+.BR AllWindows ,
+.BR Icons " (minimized only),"
+.BR NoIcons " (exclude minimized),"
+or
+.BR WorkspaceIcons .
+.TP
+.B session.screen0.iconbar.alignment
+Text alignment in iconbar entries:
+.BR Left ,
+.BR Center " (default),"
+or
+.BR Right .
+.TP
+.B session.screen0.iconbar.iconWidth
+Fixed width for iconbar entries in pixels (0 = auto, default: 0).
+.TP
+.B session.screen0.iconbar.usePixmap
+Use pixmap textures for iconbar entries (default: true).
+.TP
+.B session.screen0.iconbar.wheelMode
+Mouse wheel behavior on iconbar:
+.BR Screen " (default, switch workspaces)"
+or
+.BR Off .
+.TP
+.B session.screen0.iconbar.iconifiedPattern
+Display pattern for minimized window names in the iconbar.
+.SH TAB SETTINGS
+.TP
+.B session.screen0.autoTabPlacement
+Automatically group new windows into tabs (default: false).
+.TP
+.B session.screen0.tabFocusModel
+Tab focus model:
+.BR ClickTabFocus " (default)"
+or
+.BR MouseTabFocus .
+.TP
+.B session.screen0.tabs.intitlebar
+Display tabs in the titlebar (default: true).
+.TP
+.B session.screen0.tab.placement
+External tab bar position when not in titlebar:
+.BR Top " (default),"
+.BR Bottom ,
+.BR Left ,
+or
+.BR Right .
+.TP
+.B session.screen0.tab.width
+External tab width in pixels (0 = auto from font, default: 0).
+.TP
+.B session.screen0.tabPadding
+Padding between tabs in pixels (default: 0).
+.SH SLIT SETTINGS
+.TP
+.B session.screen0.slit.autoHide
+Auto-hide the slit (default: false).
+.TP
+.B session.screen0.slit.placement
+Slit position.
+One of
+.BR TopLeft ,
+.BR TopCenter ,
+.BR TopRight ,
+.BR RightTop ,
+.BR RightCenter " (default),"
+.BR RightBottom ,
+.BR BottomLeft ,
+.BR BottomCenter ,
+.BR BottomRight ,
+.BR LeftTop ,
+.BR LeftCenter ,
+or
+.BR LeftBottom .
+.TP
+.B session.screen0.slit.direction
+Slit layout direction:
+.BR Vertical " (default)"
+or
+.BR Horizontal .
+.TP
+.B session.screen0.slit.layer
+Slit stacking layer:
+.BR Bottom ,
+.BR Normal ,
+.BR Dock " (default),"
+.BR Above ,
+or
+.BR AboveDock .
+.TP
+.B session.screen0.slit.onhead
+Monitor number for slit placement (default: 0).
+.TP
+.B session.screen0.slit.alpha
+Slit opacity (0\-255, default: 255).
+.TP
+.B session.screen0.slit.maxOver
+Allow maximized windows to cover the slit (default: false).
+.TP
+.B session.slitlistFile
+Path to the slit client ordering file.
+.SH MENU SETTINGS
+.TP
+.B session.screen0.menu.alpha
+Menu opacity (0\-255, default: 255).
+.TP
+.B session.menuSearch
+Menu type-ahead search mode:
+.BR Nowhere " (default, disabled),"
+.BR ItemStart " (match item prefix),"
+or
+.BR Somewhere " (match anywhere in item)."
+.TP
+.B session.screen0.menuDelay
+Submenu hover-open delay in milliseconds (0\-5000, default: 200).
+.TP
+.B session.screen0.windowMenu
+Path to a custom window context menu file.
+.SH MISCELLANEOUS
+.TP
+.B session.doubleClickInterval
+Double-click interval in milliseconds (50\-2000, default: 300).
+.TP
+.B session.screen0.rootCommand
+Shell command to execute on startup (e.g.\& to set a wallpaper).
+.SH MOUSE BUTTON REMAPPING
+.TP
+.B session.mouse.button1.map
+Remap mouse button 1.
+Value is one of
+.BR BTN_LEFT ,
+.BR BTN_MIDDLE ,
+.BR BTN_RIGHT ,
+.BR BTN_SIDE ,
+or
+.BR BTN_EXTRA .
+.TP
+.B session.mouse.button2.map
+Remap mouse button 2.
+.TP
+.B session.mouse.button3.map
+Remap mouse button 3.
+.TP
+.B session.mouse.button4.map
+Remap mouse button 4.
+.TP
+.B session.mouse.button5.map
+Remap mouse button 5.
+.SH XKB KEYBOARD LAYOUT
+.TP
+.B session.xkb.rules
+XKB rules (e.g.\&
+.IR evdev ).
+.TP
+.B session.xkb.model
+Keyboard model (e.g.\&
+.IR pc105 ).
+.TP
+.B session.xkb.layout
+Keyboard layout, comma-separated for multiple layouts (e.g.\&
+.IR us,de ).
+.TP
+.B session.xkb.variant
+Layout variant (e.g.\&
+.IR ,nodeadkeys ).
+.TP
+.B session.xkb.options
+XKB options (e.g.\&
+.IR grp:alt_shift_toggle,caps:escape ).
+.SH FILE PATHS
+These override the default locations of other configuration files.
+Absolute paths, tilde-expanded paths, and relative paths (resolved from
+the config directory) are supported.
+.TP
+.B session.keyFile
+Path to key bindings file (default:
+.IR keys ).
+.TP
+.B session.appsFile
+Path to window rules file (default:
+.IR apps ).
+.TP
+.B session.menuFile
+Path to menu file (default:
+.IR menu ).
+.TP
+.B session.styleFile
+Path to style/theme file (default:
+.IR styles/default ).
+.TP
+.B session.styleOverlay
+Path to a style overlay file applied on top of the main style.
+.SH EXAMPLES
+Minimal init file:
+.PP
+.RS 4
+.nf
+session.screen0.workspaces: 4
+session.screen0.focusModel: ClickToFocus
+session.screen0.toolbar.placement: BottomCenter
+.fi
+.RE
+.PP
+Power user configuration:
+.PP
+.RS 4
+.nf
+session.screen0.workspaces: 6
+session.screen0.workspaceNames: Web,Code,Term,Chat,Media,Misc
+session.screen0.focusModel: MouseFocus
+session.screen0.autoRaise: true
+session.autoRaiseDelay: 200
+session.screen0.edgeSnapThreshold: 15
+session.screen0.windowPlacement: RowSmartPlacement
+
+session.screen0.toolbar.placement: BottomCenter
+session.screen0.toolbar.widthPercent: 80
+session.screen0.toolbar.autoHide: true
+session.screen0.toolbar.alpha: 230
+
+session.screen0.enableWindowSnapping: true
+session.screen0.snapZoneThreshold: 20
+
+session.screen0.animateWindowMap: true
+session.screen0.animateWindowUnmap: true
+session.screen0.animationDuration: 200
+
+session.screen0.window.focus.alpha: 255
+session.screen0.window.unfocus.alpha: 200
+
+session.screen0.strftimeFormat: %a %H:%M
+session.xkb.layout: us,de
+session.xkb.options: grp:alt_shift_toggle,caps:escape
+.fi
+.RE
+.SH SEE ALSO
+.BR fluxland (1),
+.BR fluxland-keys (5),
+.BR fluxland-apps (5),
+.BR fluxland-style (5),
+.BR fluxland-menu (5),
+.BR fluxland-startup (5)
