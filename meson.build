@@ -209,6 +209,7 @@ wm_sources = files(
   'src/drm_syncobj.c',
   'src/viewporter.c',
   'src/menu.c',
+  'src/menu_parse.c',
   'src/slit.c',
   'src/tablet.c',
   'src/toolbar.c',
