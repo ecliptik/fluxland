@@ -234,6 +234,16 @@ void wm_view_maximize_vert(struct wm_view *view);
 void wm_view_maximize_horiz(struct wm_view *view);
 
 /*
+ * Toggle maximize on/off for the given view.
+ */
+void wm_view_toggle_maximize(struct wm_view *view);
+
+/*
+ * Toggle fullscreen on/off for the given view.
+ */
+void wm_view_toggle_fullscreen(struct wm_view *view);
+
+/*
  * Toggle decoration visibility on/off.
  */
 void wm_view_toggle_decoration(struct wm_view *view);

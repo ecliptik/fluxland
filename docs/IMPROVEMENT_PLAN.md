@@ -1,7 +1,7 @@
 # Fluxland Improvement Plan
 
 *Generated from comprehensive codebase review — 2026-03-02*
-*Last updated: 2026-03-02 — 21 items completed across four sprints*
+*Last updated: 2026-03-02 — 23 items completed across five sprints*
 
 ## Executive Summary
 
@@ -106,12 +106,22 @@ Fixed in sprint 2 (commits `ccc2682`, `cc1c8b8`). Split menu.c into three module
 
 Original 2,920 lines split into ~1,000 lines each.
 
-### 3.4 View.c and cursor.c complexity
-**Effort**: M per file | **Category**: Code Quality | **Status**: Deferred
+### ~~3.4 View.c and cursor.c complexity~~ DONE
+**Effort**: M per file | **Category**: Code Quality
 
-`view.c` (1,931 lines) and `cursor.c` (1,796 lines) remain as single files. Menu.c was prioritized and split successfully (3.3). These can be split in a future sprint using the same approach.
+Fixed in sprint 5. Split both files using the same internal-header pattern as menu.c:
 
-**Action**: Extract snap zone logic from cursor.c, extract focus management from view.c.
+**view.c** (1,932 → 629 lines):
+- `view_focus.c/h` (~637 lines): Focus management, cycling, deiconify, layer stacking, directional focus
+- `view_geometry.c/h` (~528 lines): Maximize, fullscreen, tiling halves, multi-monitor moves
+- `wm_json_escape()` moved to `util.c/h` as shared utility
+- Added `wm_view_toggle_maximize()` and `wm_view_toggle_fullscreen()` public API
+
+**cursor.c** (1,796 → ~1,130 lines):
+- `cursor_snap.c/h` (~340 lines): Snap zones, wireframes, position overlay, Cairo pixel buffer bridge
+- `cursor_actions.c/h` (~320 lines): Mouse action dispatch, hit testing, context detection
+
+Full QA: 49/49 C unit tests, 151 Python UI tests passed.
 
 ---
 
@@ -177,10 +187,10 @@ Man page count: 5 → 8.
 
 Fixed in sprint 2 (commits `876fe54`, `aaf8b21`). Added `_()` wrapping to `config.c`, `toolbar.c`, `keyboard_actions.c`. Updated `po/POTFILES.in`, created `po/meson.build` with gettext integration, added `po/LINGUAS`, regenerated `po/fluxland.pot` (40+ translatable strings). i18n files now use `_()`: menu.c, ipc_commands.c, main.c, config.c, toolbar.c, keyboard_actions.c.
 
-### 5.3 Empty docs/user/ and docs/dev/ directories
-**Effort**: S | **Category**: Documentation | **Status**: Deferred
+### ~~5.3 Empty docs/user/ and docs/dev/ directories~~ DONE
+**Effort**: S | **Category**: Documentation
 
-Both directories are empty. With 8 man pages, QUICKSTART.md, ARCHITECTURE.md, and CONTRIBUTING.md, the documentation set is comprehensive. Consider removing empty directories or populating them in a future sprint.
+Resolved in sprint 5. Directories do not exist in the repository (git does not track empty directories). No references found in codebase. Documentation is comprehensive with 5 man pages, QUICKSTART.md, ARCHITECTURE.md, FLUXBOX-COMPAT.md, CONTRIBUTING.md, and DEBRIEF.md — no placeholder directories needed.
 
 ### ~~5.4 CONTRIBUTING.md improvements~~ DONE
 **Effort**: S | **Category**: Developer Experience
@@ -295,7 +305,7 @@ No known performance issues, but systematic profiling of:
 | 3.1 | IPC sprintf → snprintf | S | Medium | Security | **DONE** |
 | 3.2 | Consistent config parser error handling | M | Medium | Robustness | **DONE** |
 | 3.3 | Split menu.c | L | Medium | Code Quality | **DONE** |
-| 3.4 | Split view.c and cursor.c | M each | Medium | Code Quality | Deferred |
+| 3.4 | Split view.c and cursor.c | M each | Medium | Code Quality | **DONE** |
 | 4.1 | Test files for untested modules | XL | High | Testing | **DONE** |
 | 4.2 | Expand fuzz targets | M | High | Testing | **DONE** |
 | 4.3 | XWayland test coverage | L | Medium | Testing | **DONE** |
@@ -327,6 +337,6 @@ No known performance issues, but systematic profiling of:
 2. ~~**Sprint 2 — Medium/Low priority**: Items 1.3, 3.2, 3.3, 4.3, 4.4, 5.1, 5.2, 5.4, 5.5, 5.6~~ **DONE**
 3. ~~**Sprint 3 — Code quality**: Item 2.3~~ **DONE** — decomposed 4 mega-functions
 4. ~~**Sprint 4 — Test coverage**: Items 4.1, 4.2~~ **DONE** — 11 test files (157 tests), 3 fuzz targets
-5. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
-6. **Code quality**: Item 3.4 — split view.c and cursor.c
+5. ~~**Sprint 5 — Code quality**: Items 3.4, 5.3~~ **DONE** — split view.c and cursor.c, resolved empty docs dirs
+6. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
 7. **Features** (ongoing): Items from sections 6–7 based on user demand

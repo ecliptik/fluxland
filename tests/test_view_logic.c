@@ -83,6 +83,9 @@
 #define WM_LAYER_SHELL_H
 #define WM_MENU_H
 #define WM_SLIT_H
+#define WM_UTIL_H
+#define WM_VIEW_FOCUS_H
+#define WM_VIEW_GEOMETRY_H
 
 /* --- Stub wayland types --- */
 
@@ -1018,7 +1021,31 @@ static void wm_protocols_update_pointer_constraint(struct wm_server *s,
 static void wm_protocols_update_kb_shortcuts_inhibitor(struct wm_server *s,
 	struct wlr_surface *surf) { (void)s; (void)surf; }
 
-/* --- Forward declarations for view.c functions used before defined --- */
+/* --- Local wm_json_escape (replaces blocked util.h) --- */
+static void
+wm_json_escape(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) {
+		if (dst_size > 0)
+			dst[0] = '\0';
+		return;
+	}
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') {
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c < 0x20) {
+			continue;
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
+
+/* --- Forward declarations for functions used across included files --- */
 void wm_view_get_geometry(struct wm_view *view, struct wlr_box *box);
 struct wm_view *wm_view_at(struct wm_server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy);
@@ -1026,9 +1053,18 @@ void wm_focus_view(struct wm_view *view, struct wlr_surface *surface);
 void wm_unfocus_current(struct wm_server *server);
 void wm_view_raise(struct wm_view *view);
 void wm_view_set_opacity(struct wm_view *view, int alpha);
+void wm_view_toggle_maximize(struct wm_view *view);
+void wm_view_toggle_fullscreen(struct wm_view *view);
+void deiconify_view(struct wm_view *view);
+struct wlr_scene_tree *get_layer_tree(struct wm_server *server,
+	enum wm_view_layer layer);
+bool get_view_output_area(struct wm_view *view, struct wlr_box *area);
+void move_view_to_output(struct wm_view *view, struct wm_output *out);
 
-/* --- Include view source directly --- */
+/* --- Include view source files directly --- */
 
+#include "view_focus.c"
+#include "view_geometry.c"
 #include "view.c"
 
 /* --- Test helpers --- */
@@ -1181,7 +1217,7 @@ static void
 test_json_escape_normal(void)
 {
 	char buf[64];
-	json_escape(buf, sizeof(buf), "hello world");
+	wm_json_escape(buf, sizeof(buf), "hello world");
 	assert(strcmp(buf, "hello world") == 0);
 	printf("  PASS: json_escape_normal\n");
 }
@@ -1190,7 +1226,7 @@ static void
 test_json_escape_quotes(void)
 {
 	char buf[64];
-	json_escape(buf, sizeof(buf), "say \"hello\"");
+	wm_json_escape(buf, sizeof(buf), "say \"hello\"");
 	assert(strcmp(buf, "say \\\"hello\\\"") == 0);
 	printf("  PASS: json_escape_quotes\n");
 }
@@ -1199,7 +1235,7 @@ static void
 test_json_escape_backslash(void)
 {
 	char buf[64];
-	json_escape(buf, sizeof(buf), "path\\to\\file");
+	wm_json_escape(buf, sizeof(buf), "path\\to\\file");
 	assert(strcmp(buf, "path\\\\to\\\\file") == 0);
 	printf("  PASS: json_escape_backslash\n");
 }
@@ -1208,7 +1244,7 @@ static void
 test_json_escape_control_chars(void)
 {
 	char buf[64];
-	json_escape(buf, sizeof(buf), "line1\nline2\ttab");
+	wm_json_escape(buf, sizeof(buf), "line1\nline2\ttab");
 	assert(strcmp(buf, "line1line2tab") == 0);
 	printf("  PASS: json_escape_control_chars\n");
 }
@@ -1218,7 +1254,7 @@ test_json_escape_null(void)
 {
 	char buf[64];
 	buf[0] = 'x';
-	json_escape(buf, sizeof(buf), NULL);
+	wm_json_escape(buf, sizeof(buf), NULL);
 	assert(buf[0] == '\0');
 	printf("  PASS: json_escape_null\n");
 }
@@ -1227,7 +1263,7 @@ static void
 test_json_escape_empty(void)
 {
 	char buf[64];
-	json_escape(buf, sizeof(buf), "");
+	wm_json_escape(buf, sizeof(buf), "");
 	assert(buf[0] == '\0');
 	printf("  PASS: json_escape_empty\n");
 }
@@ -1236,7 +1272,7 @@ static void
 test_json_escape_long_truncates(void)
 {
 	char buf[16];
-	json_escape(buf, sizeof(buf), "this is a long string that should be truncated");
+	wm_json_escape(buf, sizeof(buf), "this is a long string that should be truncated");
 	/* Should not overflow, must be null-terminated */
 	assert(strlen(buf) < sizeof(buf));
 	assert(strncmp(buf, "this is a", 9) == 0);
@@ -2219,7 +2255,7 @@ test_json_escape_escape_at_boundary(void)
 	 * the loop won't even enter (0 + 6 < 5 is false).
 	 * This tests the boundary condition. */
 	char buf[5];
-	json_escape(buf, sizeof(buf), "abc");
+	wm_json_escape(buf, sizeof(buf), "abc");
 	/* j+6 < 5 => false, so nothing is written */
 	assert(buf[0] == '\0');
 	printf("  PASS: json_escape_escape_at_boundary\n");
@@ -2229,7 +2265,7 @@ static void
 test_json_escape_mixed_specials(void)
 {
 	char buf[128];
-	json_escape(buf, sizeof(buf), "tab\there\"back\\slash\nnewline");
+	wm_json_escape(buf, sizeof(buf), "tab\there\"back\\slash\nnewline");
 	/* \t and \n are control chars (< 0x20), they get skipped */
 	/* " becomes \" and \ becomes \\ */
 	assert(strcmp(buf, "tabhere\\\"back\\\\slashnewline") == 0);
@@ -3992,7 +4028,7 @@ test_json_escape_zero_buffer(void)
 	char buf[2];
 	buf[0] = 'x';
 	buf[1] = 'y';
-	json_escape(buf, 1, "test");
+	wm_json_escape(buf, 1, "test");
 	/* With dst_size == 1, only null terminator fits (j + 6 < 1 is false) */
 	assert(buf[0] == '\0');
 	printf("  PASS: json_escape_zero_buffer\n");

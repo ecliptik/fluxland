@@ -92,6 +92,8 @@
 #define WM_INPUT_H
 #define WM_KEYBOARD_H
 #define WM_LAYER_SHELL_H
+#define WM_CURSOR_SNAP_H
+#define WM_CURSOR_ACTIONS_H
 
 /* Block linux input event codes, cairo, and drm headers */
 #define _INPUT_EVENT_CODES_H
@@ -1406,8 +1408,10 @@ static bool wm_systray_handle_click(struct wm_systray *systray,
 #endif
 static void closefrom(int fd) { (void)fd; }
 
-/* --- Include cursor.c directly --- */
+/* --- Include cursor source files directly --- */
 
+#include "cursor_snap.c"
+#include "cursor_actions.c"
 #include "cursor.c"
 
 /* --- Signal init helper (mirrors wl_signal_init) --- */
