@@ -24,6 +24,7 @@
 #define WLR_TYPES_WLR_OUTPUT_LAYOUT_H
 #define WLR_TYPES_WLR_XDG_SHELL_H
 #define WM_CONFIG_H
+#define WM_WALLPAPER_H
 #define WM_IPC_H
 #define WM_OUTPUT_H
 #define WM_SERVER_H
@@ -254,6 +255,7 @@ struct wm_server {
 	void *seat;
 	struct wm_ws_transition *ws_transition;
 	struct wl_event_loop *wl_event_loop;
+	struct wm_wallpaper *wallpaper;
 };
 
 /* --- Tracking globals --- */
@@ -418,6 +420,15 @@ wm_server_get_focused_output(struct wm_server *server)
 {
 	(void)server;
 	return g_mock_focused_output;
+}
+
+struct wm_wallpaper { int dummy; };
+
+static void
+wm_wallpaper_switch(struct wm_wallpaper *wp, int index)
+{
+	(void)wp;
+	(void)index;
 }
 
 static struct wm_output *

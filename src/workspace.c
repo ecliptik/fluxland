@@ -20,6 +20,7 @@
 #include "server.h"
 #include "toolbar.h"
 #include "view.h"
+#include "wallpaper.h"
 #include "workspace.h"
 
 #define WS_ANIM_FRAME_MS 16 /* ~60fps */
@@ -401,6 +402,9 @@ wm_workspace_switch(struct wm_server *server, int index)
 
 	/* Update toolbar workspace buttons and icon bar */
 	wm_toolbar_update_workspace(server->toolbar);
+
+	/* Switch wallpaper for the new workspace */
+	wm_wallpaper_switch(server->wallpaper, target->index);
 
 	/* Broadcast workspace switch event via IPC */
 	{

@@ -52,6 +52,7 @@ struct wm_style;
 struct wm_menu;
 struct wm_toolbar;
 struct wm_slit;
+struct wm_wallpaper;
 struct wm_systray;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_primary_selection_v1_device_manager;
@@ -362,6 +363,9 @@ struct wm_server {
 
 	/* Slit (dockapp container) */
 	struct wm_slit *slit;
+
+	/* Per-workspace wallpaper (NULL if not configured) */
+	struct wm_wallpaper *wallpaper;
 
 #ifdef WM_HAS_SYSTRAY
 	/* System tray (StatusNotifierItem) */

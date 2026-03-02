@@ -40,6 +40,7 @@
 #include "screencopy.h"
 #include "session_lock.h"
 #include "slit.h"
+#include "wallpaper.h"
 #include "style.h"
 #ifdef WM_HAS_SYSTRAY
 #include "systray.h"
@@ -222,6 +223,14 @@ wm_server_reconfigure(struct wm_server *server)
 	/* 10. Refresh slit with new config and style */
 	if (server->slit) {
 		wm_slit_relayout(server->slit);
+	}
+
+	/* 10b. Reload wallpapers from updated config */
+	if (server->wallpaper) {
+		wm_wallpaper_reload(server->wallpaper);
+	} else {
+		/* Maybe wallpaper was newly configured */
+		server->wallpaper = wm_wallpaper_create(server);
 	}
 
 	/* 11. Refresh all view decorations with new style */
@@ -483,6 +492,9 @@ wm_server_init(struct wm_server *server)
 	/* Create toolbar (after workspaces so it can display them) */
 	server->toolbar = wm_toolbar_create(server);
 
+	/* Create per-workspace wallpapers (if configured) */
+	server->wallpaper = wm_wallpaper_create(server);
+
 	/* Create slit (dockapp container) */
 	server->slit = wm_slit_create(server);
 
@@ -558,6 +570,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_systray_destroy(server->systray);
 #endif
 	wm_slit_destroy(server->slit);
+	wm_wallpaper_destroy(server->wallpaper);
 	wm_toolbar_destroy(server->toolbar);
 	wm_ipc_destroy(&server->ipc);
 	wm_menu_destroy(server->root_menu);
