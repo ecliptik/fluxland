@@ -215,11 +215,9 @@ Created `SECURITY.md` (commit `99419de`) with vulnerability reporting process, s
 *Items in this section are deferred — they require dedicated development sprints.*
 
 ### 6.1 Workspace slide transitions
-**Effort**: L | **Category**: Feature | **Status**: Deferred
+**Effort**: L | **Category**: Feature | **Status**: DONE (Sprint 6)
 
-Known gap: only fade animations are implemented. Workspace slide transitions (horizontal slide between desktops) are not yet available.
-
-**Action**: Implement slide animation in `src/animation.c` using the existing timer-based animation framework. Add a config option for transition type (`fade`, `slide`, `none`).
+Implemented horizontal slide animation between workspaces using timer-based animation in `src/workspace.c`. Configurable via `session.screen0.workspaceTransition` (`none`, `fade`, `slide`) and `session.screen0.workspaceTransitionDuration` (ms). Uses ease-in-out cubic easing at ~60fps.
 
 ### 6.2 ext-image-capture-source / ext-image-copy-capture protocols
 **Effort**: L | **Category**: Feature/Protocol
@@ -234,21 +232,19 @@ These are the modern replacements for `wlr-screencopy`. Currently Fluxland suppo
 No color management support (`ext-color-management-v1`). Increasingly important for HDR displays and color-accurate workflows.
 
 ### 6.4 Native dockapp protocol for Slit
-**Effort**: L | **Category**: Feature
+**Effort**: L | **Category**: Feature | **Status**: DONE (Sprint 6)
 
-The Fluxbox compatibility matrix notes "native dockapp protocol TBD" for the slit. Currently relies on XWayland compatibility for Window Maker dockapps.
-
-**Action**: Design a Wayland-native protocol or use an existing one (e.g., layer-shell) for native dockapp support.
+Implemented native Wayland dockapp support via window rules. XDG toplevels matching `[Dock] {yes}` in the apps file are routed to the slit during map. Added `wm_slit_add_native_client()` API and `wm_slit_client_type` enum to `src/slit.c/h`.
 
 ### 6.5 Conditional keybindings (full support)
-**Effort**: M | **Category**: Feature
+**Effort**: M | **Category**: Feature | **Status**: DONE (Sprint 6)
 
-FLUXBOX-COMPAT.md lists "If/Then conditional bindings" as "Partial — basic conditions supported." Full Fluxbox-compatible conditional bindings would allow more complex keybinding configurations.
+Implemented per-binding conditions using `{condition}` syntax before `:Action` in keybind definitions. Supported conditions: `Maximized`, `Fullscreen`, `Shaded`, `Focused`. Conditions are evaluated at dispatch time in `src/keyboard.c` via `wm_keybind_check_condition()`.
 
 ### 6.6 Per-workspace wallpaper (native)
-**Effort**: M | **Category**: Feature
+**Effort**: M | **Category**: Feature | **Status**: DONE (Sprint 6)
 
-Currently delegated to external tools like `swaybg`. Native per-workspace wallpaper support would improve the out-of-box experience for Fluxbox migrants who are used to `fbsetroot` or `fbsetbg`.
+Implemented native wallpaper rendering in `src/wallpaper.c/h`. Supports PNG loading via Cairo with four display modes (stretch, center, tile, fill). Per-workspace wallpaper paths configurable via `session.screen0.workspaceN.wallpaper`. Scene buffer nodes under `layer_background` with automatic switching on workspace change.
 
 ---
 
@@ -316,12 +312,12 @@ No known performance issues, but systematic profiling of:
 | 5.4 | CONTRIBUTING.md improvements | S | Low | DX | **DONE** |
 | 5.5 | Packaging improvements | M | Medium | Packaging | **DONE** |
 | 5.6 | SECURITY.md | S | High | Docs | **DONE** |
-| 6.1 | Workspace slide transitions | L | Medium | Feature | Deferred |
+| 6.1 | Workspace slide transitions | L | Medium | Feature | DONE |
 | 6.2 | ext-image-capture protocols | L | Medium | Feature | Deferred |
 | 6.3 | Color management protocol | XL | Low | Feature | Deferred |
-| 6.4 | Native dockapp protocol | L | Low | Feature | Deferred |
-| 6.5 | Full conditional keybindings | M | Low | Feature | Deferred |
-| 6.6 | Native per-workspace wallpaper | M | Low | Feature | Deferred |
+| 6.4 | Native dockapp protocol | L | Low | Feature | DONE |
+| 6.5 | Full conditional keybindings | M | Low | Feature | DONE |
+| 6.6 | Native per-workspace wallpaper | M | Low | Feature | DONE |
 | 7.1 | Plugin/extension system | XL | Low | Architecture | Deferred |
 | 7.2 | WLCS integration | L | Medium | Testing | Deferred |
 | 7.3 | PipeWire screen recording | L | Low | Feature | Deferred |
