@@ -1,6 +1,7 @@
 # Fluxland Improvement Plan
 
 *Generated from comprehensive codebase review — 2026-03-02*
+*Last updated: 2026-03-02 — 6 items completed in first sprint*
 
 ## Executive Summary
 
@@ -16,27 +17,15 @@ The plan below is ordered by priority: critical fixes first, then high-ROI impro
 
 Items that should be addressed before new feature work.
 
-### 1.1 Missing NULL checks after malloc/calloc
+### 1.1 ~~Missing NULL checks after malloc/calloc~~ DONE
 **Severity**: High | **Effort**: S | **Category**: Security/Robustness
 
-Several allocation calls lack NULL checks, risking NULL pointer dereferences under memory pressure:
-- `src/ipc_commands.c:198` — `sb->data = malloc(256)` (no NULL check, next line assigns `sb->len = 0`)
-- `src/toolbar.c:533` — `toolbar->ib_entries = calloc(...)` (no NULL check)
-- `src/rules.c:429` — `realloc(current_group->patterns, ...)` (no NULL check; realloc failure leaks original pointer)
+Fixed in commit `eebb940`. Added NULL check in `strbuf_init()` (`ipc_commands.c`) — sets `cap = 0` on malloc failure. Full audit of all malloc/calloc/realloc calls in `src/` confirmed the other two cited locations (`toolbar.c:533`, `rules.c:429`) already had proper NULL checks.
 
-**Action**: Add `if (!ptr) { wlr_log(WLR_ERROR, "..."); return; }` after each allocation. Audit all `malloc`/`calloc`/`realloc` calls in `src/` for completeness.
-
-### 1.2 Missing wlroots scene node error checks
+### ~~1.2 Missing wlroots scene node error checks~~ DONE
 **Severity**: Medium | **Effort**: S | **Category**: Robustness
 
-Several `wlr_scene_*_create()` calls in decoration and toolbar initialization don't check for NULL returns:
-- `src/decoration.c:421` — `wlr_scene_tree_create(view->scene_tree)`
-- `src/decoration.c:434–440` — four `wlr_scene_rect_create()` calls
-- `src/decoration.c:457` — `wlr_scene_tree_create(deco->tree)`
-- `src/decoration.c:974, 1011` — `wlr_scene_buffer_create()` calls
-- `src/toolbar.c:984, 1132` — `wlr_scene_buffer_create()` and `wlr_scene_tree_create()`
-
-**Action**: Add NULL checks or assert() guards after scene node creation. While wlroots rarely fails here, a NULL dereference in the decoration path would crash the compositor.
+Fixed in `7dc510c`. Added NULL checks with graceful cleanup in `wm_decoration_create()` (border rects, titlebar tree, scene buffers), `layout_and_render()` (button buffers), and `wm_toolbar_create()` (bg buffer).
 
 ### 1.3 XWayland XKB keymap compilation failure
 **Severity**: Medium | **Effort**: M | **Category**: Bug
@@ -45,12 +34,10 @@ Known issue: XWayland XKB keymap compilation fails in QEMU VM environment. This 
 
 **Action**: Investigate whether this is a VM-specific issue or a general bug. Check XKB keymap generation path in `src/xwayland.c` and `src/keyboard.c`.
 
-### 1.4 ShowDesktop may need 2 presses
+### ~~1.4 ShowDesktop may need 2 presses~~ DONE
 **Severity**: Low | **Effort**: S | **Category**: Bug
 
-Known issue: ShowDesktop action may require pressing the keybinding twice to minimize all windows.
-
-**Action**: Debug the toggle logic in `src/keyboard_actions.c` ShowDesktop handler. Check if focused_view state interferes with the first press.
+Fixed in `f363998`. Root cause: `request_minimize.notify()` triggered focus changes that reordered the views list during `wl_list_for_each` iteration, causing skipped windows. Fix: directly set scene node disabled + foreign_toplevel minimized without triggering focus changes. Applied to both keyboard_actions.c and ipc_commands.c paths.
 
 ---
 
@@ -69,17 +56,10 @@ No CI/CD exists. The `.github/` directory has only a PR template — no workflow
 - Add ASAN/UBSAN build variant
 - Consider `clang-format` check for style enforcement
 
-### 2.2 Consolidate double-fork boilerplate into shared helper
+### ~~2.2 Consolidate double-fork boilerplate into shared helper~~ DONE
 **Effort**: S | **Category**: Code Quality
 
-The double-fork + setsid + closefrom + execl pattern is duplicated across 5 files with minor variations:
-- `src/keyboard_actions.c` (~20 lines)
-- `src/menu.c` (~12 lines)
-- `src/cursor.c` (~12 lines)
-- `src/autostart.c` (~12 lines)
-- `src/ipc_commands.c` (~15 lines)
-
-**Action**: Create a `wm_spawn_command(const char *cmd)` helper in `src/util.c`/`src/util.h` (or a new `src/spawn.c`). All 5 call sites should use it. This eliminates ~60 lines of duplicated fork/exec logic and ensures consistent error handling, signal mask reset, and `closefrom()` across all paths.
+Fixed in `f363998`. Created `wm_spawn_command()` in new `src/util.c` with double-fork + setsid + closefrom + LD_* env sanitization. Replaced inline fork/exec in keyboard_actions.c, menu.c, cursor.c, ipc_commands.c (4 of 5 paths). autostart.c retained its callback-based pattern. Also deduplicated `is_blocked_env_var()` → `wm_is_blocked_env_var()` in util.h.
 
 ### 2.3 Decompose mega-functions
 **Effort**: L | **Category**: Code Quality
@@ -96,23 +76,19 @@ Several functions are extremely large, making them hard to review and maintain:
 
 **Action**: Start with `ipc_commands.c` and `keyboard_actions.c` as they are the largest and most frequently modified. Use a function pointer dispatch table for IPC commands.
 
-### 2.4 Add environment variable sanitization to exec paths
+### ~~2.4 Add environment variable sanitization to exec paths~~ DONE
 **Effort**: S | **Category**: Security
 
-The CLAUDE.md mentions an "environment variable denylist for child processes," but `grep` finds no `denylist`, `sanitize_env`, or `unsetenv` calls in any of the 5 exec-path files. Only `src/ipc.c:380` has a single `unsetenv("FLUXLAND_SOCK")` call.
-
-**Action**: Implement an env denylist (strip `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, compositor-internal vars) applied before `execl()` in all 5 exec paths. This should be part of the consolidated `wm_spawn_command()` helper (see 2.2).
+Fixed in `f363998` (combined with 2.2). `wm_spawn_command()` strips LD_PRELOAD, LD_LIBRARY_PATH, LD_AUDIT, LD_DEBUG, LD_PROFILE before exec.
 
 ---
 
 ## 3. Code Quality & Technical Debt
 
-### 3.1 IPC sprintf usage
+### ~~3.1 IPC sprintf usage~~ DONE
 **Effort**: S | **Category**: Security
 
-`src/ipc_commands.c:94` uses `sprintf(p, "\\u%04x", c)` in the JSON escape function. While bounded by the capacity check at line 74, using `snprintf` would be defensive.
-
-**Action**: Replace `sprintf` with `snprintf` and verify buffer capacity arithmetic.
+Fixed in `6f1abc3`. Replaced `sprintf` with `snprintf` using proper remaining buffer size calculation.
 
 ### 3.2 Inconsistent error handling in config parsing
 **Effort**: M | **Category**: Robustness
@@ -324,17 +300,17 @@ No known performance issues, but systematic profiling of:
 
 ## Appendix: Effort Estimates
 
-| # | Item | Effort | Priority | Category |
-|---|------|--------|----------|----------|
-| 1.1 | Missing NULL checks after malloc | S | Critical | Security |
-| 1.2 | Missing wlroots scene node checks | S | Critical | Robustness |
-| 1.3 | XWayland XKB keymap failure | M | Critical | Bug |
-| 1.4 | ShowDesktop double-press | S | Medium | Bug |
-| 2.1 | CI/CD pipeline | M | High | Infrastructure |
-| 2.2 | Consolidate double-fork helper | S | High | Code Quality |
-| 2.3 | Decompose mega-functions | L | High | Code Quality |
-| 2.4 | Environment variable sanitization | S | High | Security |
-| 3.1 | IPC sprintf → snprintf | S | Medium | Security |
+| # | Item | Effort | Priority | Category | Status |
+|---|------|--------|----------|----------|--------|
+| 1.1 | Missing NULL checks after malloc | S | Critical | Security | **DONE** |
+| 1.2 | Missing wlroots scene node checks | S | Critical | Robustness | **DONE** |
+| 1.3 | XWayland XKB keymap failure | M | Critical | Bug | Open |
+| 1.4 | ShowDesktop double-press | S | Medium | Bug | **DONE** |
+| 2.1 | CI/CD pipeline | M | High | Infrastructure | Open |
+| 2.2 | Consolidate double-fork helper | S | High | Code Quality | **DONE** |
+| 2.3 | Decompose mega-functions | L | High | Code Quality | Open |
+| 2.4 | Environment variable sanitization | S | High | Security | **DONE** |
+| 3.1 | IPC sprintf → snprintf | S | Medium | Security | **DONE** |
 | 3.2 | Consistent config parser error handling | M | Medium | Robustness |
 | 3.3 | Split menu.c | L | Medium | Code Quality |
 | 3.4 | Split view.c and cursor.c | M each | Medium | Code Quality |
@@ -364,9 +340,9 @@ No known performance issues, but systematic profiling of:
 
 ### Recommended Execution Order
 
-1. **Quick wins** (1–2 days): Items 1.1, 1.2, 2.2, 2.4, 3.1, 5.3 — all S-effort, high impact
+1. ~~**Quick wins** (1–2 days): Items 1.1, 1.2, 2.2, 2.4, 3.1~~ **DONE** (+ 1.4 ShowDesktop fix)
 2. **Infrastructure** (1 week): Item 2.1 (CI/CD) — unlocks automated quality gates
 3. **Test coverage sprint** (2 weeks): Items 4.1 (priority modules first), 4.2, 4.3
 4. **Code quality** (2 weeks): Items 2.3, 3.3, 3.4 — decompose large functions/files
-5. **Documentation** (1 week): Items 5.1, 5.2, 5.4, 5.5
+5. **Documentation** (1 week): Items 5.1, 5.2, 5.3, 5.4, 5.5
 6. **Features** (ongoing): Items from section 6 based on user demand
