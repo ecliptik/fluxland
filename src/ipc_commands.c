@@ -197,8 +197,13 @@ strbuf_init(struct strbuf *sb)
 {
 	sb->data = malloc(256);
 	sb->len = 0;
+	if (!sb->data) {
+		sb->cap = 0;
+		wlr_log(WLR_ERROR, "%s", "allocation failed");
+		return;
+	}
 	sb->cap = 256;
-	if (sb->data) sb->data[0] = '\0';
+	sb->data[0] = '\0';
 }
 
 static void
