@@ -1,0 +1,4 @@
+OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnTitlebar Move1 :StartMoving
+OnDesktop Mouse3 :RootMenu
+OnDesktop Mouse1 :HideMenus

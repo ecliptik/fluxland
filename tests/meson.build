@@ -546,5 +546,123 @@ test_decorations = executable(
 )
 test('decorations', test_decorations, timeout: 30)
 
+# --- test_input: input device management tests ---
+# input.c is #included directly in the test to allow stubbing wlroots deps.
+test_input = executable(
+  'test_input',
+  files('test_input.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('input', test_input)
+
+# --- test_text_input: text input v3 protocol tests ---
+# text_input.c is #included directly in the test to allow stubbing wlroots deps.
+test_text_input = executable(
+  'test_text_input',
+  files('test_text_input.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('text_input', test_text_input)
+
+# --- test_tablet: tablet device support tests ---
+# tablet.c is #included directly in the test to allow stubbing wlroots deps.
+test_tablet = executable(
+  'test_tablet',
+  files('test_tablet.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('tablet', test_tablet)
+
+# --- test_render: text rendering and Pango/Cairo tests ---
+test_render = executable(
+  'test_render',
+  files('test_render.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, pangocairo, libdrm, math],
+  install: false,
+)
+test('render', test_render)
+
+# --- test_rcparser: RC config file parser tests ---
+test_rcparser = executable(
+  'test_rcparser',
+  files('test_rcparser.c'),
+  include_directories: test_inc,
+  dependencies: [],
+  install: false,
+)
+test('rcparser', test_rcparser)
+
+# --- test_util: utility function tests ---
+# util.c includes <wlr/util/log.h> — needs wlroots in include path even though guarded.
+test_util = executable(
+  'test_util',
+  files('test_util.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('util', test_util)
+
+# --- test_screencopy: screen capture protocol tests ---
+# screencopy.c is #included directly in the test to allow stubbing wlroots deps.
+test_screencopy = executable(
+  'test_screencopy',
+  files('test_screencopy.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('screencopy', test_screencopy)
+
+# --- test_drm_lease: DRM lease protocol tests ---
+# drm_lease.c is #included directly in the test to allow stubbing wlroots deps.
+test_drm_lease = executable(
+  'test_drm_lease',
+  files('test_drm_lease.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('drm_lease', test_drm_lease)
+
+# --- test_gamma_control: gamma control protocol tests ---
+# gamma_control.c is #included directly in the test to allow stubbing wlroots deps.
+test_gamma_control = executable(
+  'test_gamma_control',
+  files('test_gamma_control.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('gamma_control', test_gamma_control)
+
+# --- test_transient_seat: transient seat protocol tests ---
+# transient_seat.c is #included directly in the test to allow stubbing wlroots deps.
+test_transient_seat = executable(
+  'test_transient_seat',
+  files('test_transient_seat.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('transient_seat', test_transient_seat)
+
+# --- test_small_protocols: fractional_scale, presentation, viewporter, drm_syncobj tests ---
+test_small_protocols = executable(
+  'test_small_protocols',
+  files('test_small_protocols.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('small_protocols', test_small_protocols)
+
 # --- Fuzz targets (requires -fsanitize=fuzzer support) ---
 subdir('fuzz')

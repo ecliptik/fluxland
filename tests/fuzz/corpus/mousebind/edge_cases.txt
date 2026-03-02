@@ -1,0 +1,9 @@
+OnTitlebar Mod1 Shift Control Mouse1 :ToggleCmd {Maximize} {Restore}
+Mouse6 :Close
+OnDesktop Click1 :Exec
+OnWindow Move0 :StartMoving
+OnUnknown Mouse1 :Raise
+None Mouse1 :Focus
+OnTitlebar :Close
+Mouse1
+:Close

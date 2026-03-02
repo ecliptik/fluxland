@@ -1,0 +1,5 @@
+[app] (name=foot)
+  [Dimensions] {800 600}
+  [Position] {100 100}
+  [Workspace] {1}
+[end]

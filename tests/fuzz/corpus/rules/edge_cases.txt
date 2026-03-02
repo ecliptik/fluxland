@@ -1,0 +1,16 @@
+[app] (name=)
+[end]
+[app] (=value)
+[end]
+[app] (name!=)
+[end]
+[app]
+  [Dimensions] {-1 -1}
+  [Position] (UpperRight) {99999 99999}
+  [Workspace] {-100}
+  [Alpha] {0 0}
+  [Deco] {INVALID}
+  [FocusProtection] {Gain,Refuse,Deny,Lock,Unknown}
+[end]
+[group]
+[app] (class=.*)

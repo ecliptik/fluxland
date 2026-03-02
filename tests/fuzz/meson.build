@@ -57,6 +57,39 @@ if have_fuzzer
     dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
     install: false,
   )
+
+  # --- fuzz_ipc_command: IPC JSON command parser fuzzer ---
+  executable(
+    'fuzz_ipc_command',
+    files('fuzz_ipc_command.c'),
+    include_directories: fuzz_inc,
+    c_args: fuzz_args,
+    link_args: fuzz_link_args,
+    dependencies: [],
+    install: false,
+  )
+
+  # --- fuzz_rules: window rules/apps file parser fuzzer ---
+  executable(
+    'fuzz_rules',
+    files('fuzz_rules.c', '../../src/rules.c'),
+    include_directories: fuzz_inc,
+    c_args: fuzz_args,
+    link_args: fuzz_link_args,
+    dependencies: [wayland_server, wlroots],
+    install: false,
+  )
+
+  # --- fuzz_mousebind: mouse binding config parser fuzzer ---
+  executable(
+    'fuzz_mousebind',
+    files('fuzz_mousebind.c', '../../src/mousebind.c'),
+    include_directories: fuzz_inc,
+    c_args: fuzz_args,
+    link_args: fuzz_link_args,
+    dependencies: [wayland_server, wlroots, xkbcommon],
+    install: false,
+  )
 else
   message('Fuzz targets disabled: compiler does not support -fsanitize=fuzzer')
 endif
