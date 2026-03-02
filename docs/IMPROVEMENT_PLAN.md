@@ -1,7 +1,7 @@
 # Fluxland Improvement Plan
 
 *Generated from comprehensive codebase review — 2026-03-02*
-*Last updated: 2026-03-02 — 18 items completed across two sprints*
+*Last updated: 2026-03-02 — 19 items completed across three sprints*
 
 ## Executive Summary
 
@@ -59,20 +59,19 @@ No CI/CD exists. The `.github/` directory has only a PR template — no workflow
 
 Fixed in `f363998`. Created `wm_spawn_command()` in new `src/util.c` with double-fork + setsid + closefrom + LD_* env sanitization. Replaced inline fork/exec in keyboard_actions.c, menu.c, cursor.c, ipc_commands.c (4 of 5 paths). autostart.c retained its callback-based pattern. Also deduplicated `is_blocked_env_var()` → `wm_is_blocked_env_var()` in util.h.
 
-### 2.3 Decompose mega-functions
+### ~~2.3 Decompose mega-functions~~ DONE
 **Effort**: L | **Category**: Code Quality
 
-Several functions are extremely large, making them hard to review and maintain:
+Fixed in sprint 3. Decomposed 4 mega-functions (menu.c was already done in 3.3):
 
-| Function | File | Lines | Suggested decomposition |
-|----------|------|-------|------------------------|
-| IPC `command` handler | `ipc_commands.c:462` | 927 | Split into per-command handlers (one function per IPC command) with a dispatch table |
-| `wm_execute_action()` | `keyboard_actions.c:358` | 925 | Already a switch on action type — extract each case to a named handler function |
-| Decoration render | `decoration.c:747` | 580 | Split titlebar, borders, and button rendering into separate functions |
-| Config apply | `config.c:468` | 437 | Group by config category (window, toolbar, workspace, etc.) |
-| Menu parse | `menu.c:629` | 353 | Extract submenu parsing, pipe-menu handling, separator handling |
+| Function | File | Before | After | Extracted |
+|----------|------|--------|-------|-----------|
+| `ipc_execute_action()` | `ipc_commands.c` | 960 lines | 65-line dispatcher | 9 grouped handlers (`handle_action_process`, `_window_state`, `_focus`, `_movement`, `_workspace`, `_tabs`, `_menus`, `_layout`, `_config`) |
+| `wm_execute_action()` | `keyboard_actions.c` | 925 lines | clean dispatcher | ~24 action handlers (`handle_exec`, `handle_close`, `handle_maximize`, etc.) with trivial cases left inline |
+| `layout_and_render()` | `decoration.c` | 590 lines | 115-line dispatcher | 5 render functions + `struct decoration_layout` (`render_decoration_borders`, `_titlebar`, `_handle`, `_ext_tabs`, `_focus_border`) |
+| `apply_rc_to_config()` | `config.c` | 437 lines | 12-line dispatcher | 12 category helpers (`apply_workspace_config`, `_focus_config`, `_window_config`, `_toolbar_config`, `_iconbar_config`, `_tab_config`, `_slit_config`, `_menu_config`, `_xkb_config`, `_mouse_config`, `_misc_config`, `_file_paths_config`) |
 
-**Action**: Start with `ipc_commands.c` and `keyboard_actions.c` as they are the largest and most frequently modified. Use a function pointer dispatch table for IPC commands.
+Full QA pass (26/26 tests) confirmed no regressions. All 38 C unit tests pass.
 
 ### ~~2.4 Add environment variable sanitization to exec paths~~ DONE
 **Effort**: S | **Category**: Security
@@ -295,7 +294,7 @@ No known performance issues, but systematic profiling of:
 | 1.4 | ShowDesktop double-press | S | Medium | Bug | **DONE** |
 | 2.1 | CI/CD pipeline | M | High | Infrastructure | Open |
 | 2.2 | Consolidate double-fork helper | S | High | Code Quality | **DONE** |
-| 2.3 | Decompose mega-functions | L | High | Code Quality | Open |
+| 2.3 | Decompose mega-functions | L | High | Code Quality | **DONE** |
 | 2.4 | Environment variable sanitization | S | High | Security | **DONE** |
 | 3.1 | IPC sprintf → snprintf | S | Medium | Security | **DONE** |
 | 3.2 | Consistent config parser error handling | M | Medium | Robustness | **DONE** |
@@ -330,7 +329,8 @@ No known performance issues, but systematic profiling of:
 
 1. ~~**Sprint 1 — Quick wins**: Items 1.1, 1.2, 1.4, 2.2, 2.4, 3.1~~ **DONE**
 2. ~~**Sprint 2 — Medium/Low priority**: Items 1.3, 3.2, 3.3, 4.3, 4.4, 5.1, 5.2, 5.4, 5.5, 5.6~~ **DONE**
-3. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
-4. **Test coverage sprint**: Items 4.1 (priority modules first), 4.2
-5. **Code quality**: Items 2.3, 3.4 — decompose remaining large functions/files
-6. **Features** (ongoing): Items from sections 6–7 based on user demand
+3. ~~**Sprint 3 — Code quality**: Item 2.3~~ **DONE** — decomposed 4 mega-functions
+4. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
+5. **Test coverage sprint**: Items 4.1 (priority modules first), 4.2
+6. **Code quality**: Item 3.4 — split view.c and cursor.c
+7. **Features** (ongoing): Items from sections 6–7 based on user demand

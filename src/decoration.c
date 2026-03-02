@@ -760,114 +760,47 @@ render_ext_tab_bar(struct wm_decoration *deco, struct wm_style *style,
 	return wlr_buffer_from_cairo(surface);
 }
 
-/* --- Layout and render --- */
+/* --- Decoration layout state --- */
+
+/*
+ * Computed layout dimensions and style selections shared across
+ * the decoration render sub-functions.
+ */
+struct decoration_layout {
+	int bw;
+	int th;
+	int hh;
+	int cw;
+	int ch;
+	int gw;
+	bool has_titlebar;
+	bool has_handle;
+	bool has_borders;
+	int top_height;
+	int bottom_height;
+	int ext_top, ext_bottom, ext_left, ext_right;
+	bool has_ext_tabs;
+	int inner_width;
+	int outer_width;
+	const struct wm_texture *title_tex;
+	const struct wm_texture *label_tex;
+	const struct wm_font *label_font;
+	const struct wm_color *text_color;
+	const struct wm_texture *handle_tex;
+	const struct wm_texture *grip_tex;
+	const struct wm_texture *button_tex;
+	const struct wm_color *pic_color;
+	const struct wm_color *border_color;
+};
+
+/* --- Borders rendering --- */
 
 static void
-layout_and_render(struct wm_decoration *deco, struct wm_style *style)
+render_decoration_borders(struct wm_decoration *deco,
+	struct wm_style *style, const struct decoration_layout *l)
 {
-	int bw = deco->border_width;
-	int th = deco->titlebar_height;
-	int hh = deco->handle_height;
-	int cw = deco->content_width;
-	int ch = deco->content_height;
-	int gw = deco->grip_width;
-
-	bool has_titlebar = (deco->preset == WM_DECOR_NORMAL ||
-		deco->preset == WM_DECOR_TAB ||
-		deco->preset == WM_DECOR_TINY ||
-		deco->preset == WM_DECOR_TOOL);
-	bool has_handle = (deco->preset == WM_DECOR_NORMAL);
-	bool has_borders = (deco->preset == WM_DECOR_NORMAL ||
-		deco->preset == WM_DECOR_BORDER);
-
-	if (deco->preset == WM_DECOR_NONE) {
-		has_titlebar = false;
-		has_handle = false;
-		has_borders = false;
-	}
-
-	int top_height = has_titlebar ? th : 0;
-	int bottom_height = has_handle ? hh : 0;
-
-	/* External tab bar computation */
-	int ext_top = 0, ext_bottom = 0, ext_left = 0, ext_right = 0;
-	bool has_ext_tabs = false;
-	deco->tab_bar_size = 0;
-
-	bool use_intitlebar = true;
-	if (deco->server->config)
-		use_intitlebar = deco->server->config->tabs_intitlebar;
-
-	struct wm_tab_group *tg_check = deco->view->tab_group;
-	if (!use_intitlebar && tg_check && tg_check->count > 1) {
-		has_ext_tabs = true;
-
-		/* Compute tab bar size */
-		int cfg_tw = 0;
-		if (deco->server->config)
-			cfg_tw = deco->server->config->tab_width;
-		if (cfg_tw > 0) {
-			deco->tab_bar_size = cfg_tw;
-		} else {
-			/* Auto from font */
-			const struct wm_font *f = deco->focused ?
-				&style->window_label_focus_font :
-				&style->window_label_unfocus_font;
-			deco->tab_bar_size =
-				(f->size > 0 ? f->size : 12) + 8;
-		}
-
-		deco->tab_bar_placement =
-			(enum wm_tab_bar_placement)(deco->server->config ?
-				deco->server->config->tab_placement : 0);
-
-		switch (deco->tab_bar_placement) {
-		case WM_TAB_BAR_TOP:
-			ext_top = deco->tab_bar_size; break;
-		case WM_TAB_BAR_BOTTOM:
-			ext_bottom = deco->tab_bar_size; break;
-		case WM_TAB_BAR_LEFT:
-			ext_left = deco->tab_bar_size; break;
-		case WM_TAB_BAR_RIGHT:
-			ext_right = deco->tab_bar_size; break;
-		}
-	}
-
-	/* Total outer dimensions (including external tab bar) */
-	int inner_width = ext_left + cw + ext_right;
-	int outer_width = inner_width + 2 * bw;
-
-	/* Content area position within the decoration tree */
-	deco->content_area.x = bw + ext_left;
-	deco->content_area.y = bw + top_height + ext_top;
-	deco->content_area.width = cw;
-	deco->content_area.height = ch;
-
-	/* Select focused/unfocused textures */
-	const struct wm_texture *title_tex = deco->focused ?
-		&style->window_title_focus : &style->window_title_unfocus;
-	const struct wm_texture *label_tex = deco->focused ?
-		&style->window_label_focus : &style->window_label_unfocus;
-	const struct wm_font *label_font = deco->focused ?
-		&style->window_label_focus_font :
-		&style->window_label_unfocus_font;
-	const struct wm_color *text_color = deco->focused ?
-		&style->window_label_focus_text_color :
-		&style->window_label_unfocus_text_color;
-	const struct wm_texture *handle_tex = deco->focused ?
-		&style->window_handle_focus : &style->window_handle_unfocus;
-	const struct wm_texture *grip_tex = deco->focused ?
-		&style->window_grip_focus : &style->window_grip_unfocus;
-	const struct wm_texture *button_tex = deco->focused ?
-		&style->window_button_focus : &style->window_button_unfocus;
-	const struct wm_color *pic_color = deco->focused ?
-		&style->window_button_focus_pic_color :
-		&style->window_button_unfocus_pic_color;
-	const struct wm_color *border_color = &style->window_border_color;
-
-	/* --- Borders --- */
 	float bcol[4];
-	wm_color_to_float4(border_color, bcol);
+	wm_color_to_float4(l->border_color, bcol);
 
 	uint8_t round_corners = style->window_round_corners;
 	double corner_radius = (round_corners != 0) ?
@@ -875,15 +808,15 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 	if (corner_radius < 4.0 && round_corners != 0)
 		corner_radius = 4.0;
 
-	if (has_borders && bw > 0) {
-		int total_h = top_height + ext_top + ch + ext_bottom +
-			bottom_height + 2 * bw;
+	if (l->has_borders && l->bw > 0) {
+		int total_h = l->top_height + l->ext_top + l->ch +
+			l->ext_bottom + l->bottom_height + 2 * l->bw;
 
 		if (round_corners != 0 && deco->border_frame) {
 			/* Use rounded border frame buffer */
 			struct wlr_buffer *fb = render_rounded_border_frame(
-				outer_width, total_h, bw,
-				corner_radius, round_corners, border_color);
+				l->outer_width, total_h, l->bw,
+				corner_radius, round_corners, l->border_color);
 			wlr_scene_buffer_set_buffer(deco->border_frame, fb);
 			if (fb) {
 				wlr_buffer_drop(fb);
@@ -911,7 +844,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 
 			/* Top border */
 			wlr_scene_rect_set_size(deco->border_top,
-				outer_width, bw);
+				l->outer_width, l->bw);
 			wlr_scene_rect_set_color(deco->border_top, bcol);
 			wlr_scene_node_set_position(
 				&deco->border_top->node, 0, 0);
@@ -920,17 +853,17 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 
 			/* Bottom border */
 			wlr_scene_rect_set_size(deco->border_bottom,
-				outer_width, bw);
+				l->outer_width, l->bw);
 			wlr_scene_rect_set_color(deco->border_bottom, bcol);
 			wlr_scene_node_set_position(
 				&deco->border_bottom->node,
-				0, total_h - bw);
+				0, total_h - l->bw);
 			wlr_scene_node_set_enabled(
 				&deco->border_bottom->node, true);
 
 			/* Left border */
 			wlr_scene_rect_set_size(deco->border_left,
-				bw, total_h);
+				l->bw, total_h);
 			wlr_scene_rect_set_color(deco->border_left, bcol);
 			wlr_scene_node_set_position(
 				&deco->border_left->node, 0, 0);
@@ -939,11 +872,11 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 
 			/* Right border */
 			wlr_scene_rect_set_size(deco->border_right,
-				bw, total_h);
+				l->bw, total_h);
 			wlr_scene_rect_set_color(deco->border_right, bcol);
 			wlr_scene_node_set_position(
 				&deco->border_right->node,
-				outer_width - bw, 0);
+				l->outer_width - l->bw, 0);
 			wlr_scene_node_set_enabled(
 				&deco->border_right->node, true);
 		}
@@ -957,18 +890,25 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 				&deco->border_frame->node, false);
 		}
 	}
+}
 
-	/* --- Titlebar --- */
-	if (has_titlebar && th > 0) {
-		int titlebar_width = inner_width;
+/* --- Titlebar rendering --- */
+
+static void
+render_decoration_titlebar(struct wm_decoration *deco,
+	struct wm_style *style, const struct decoration_layout *l)
+{
+	if (l->has_titlebar && l->th > 0) {
+		int titlebar_width = l->inner_width;
 
 		wlr_scene_node_set_enabled(&deco->titlebar_tree->node, true);
 		wlr_scene_node_set_position(&deco->titlebar_tree->node,
-			bw, bw);
+			l->bw, l->bw);
 
 		/* Titlebar background */
 		struct wlr_buffer *tbg = wlr_buffer_from_cairo(
-			wm_render_texture(title_tex, titlebar_width, th, 1.0f));
+			wm_render_texture(l->title_tex, titlebar_width,
+				l->th, 1.0f));
 		wlr_scene_buffer_set_buffer(deco->title_bg, tbg);
 		if (tbg) {
 			wlr_buffer_drop(tbg);
@@ -976,7 +916,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		wlr_scene_node_set_position(&deco->title_bg->node, 0, 0);
 
 		/* Layout buttons and compute label area */
-		int button_size = th - 2 * BUTTON_PADDING;
+		int button_size = l->th - 2 * BUTTON_PADDING;
 		if (button_size < 6) {
 			button_size = 6;
 		}
@@ -987,8 +927,8 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		/* Render and position left buttons */
 		for (int i = 0; i < deco->buttons_left_count; i++) {
 			struct wm_decor_button *btn = &deco->buttons_left[i];
-			struct wlr_buffer *buf = render_button(button_tex,
-				pic_color, btn->type, button_size);
+			struct wlr_buffer *buf = render_button(l->button_tex,
+				l->pic_color, btn->type, button_size);
 
 			if (!btn->node) {
 				btn->node = wlr_scene_buffer_create(
@@ -1010,8 +950,8 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			int by = BUTTON_PADDING;
 			wlr_scene_node_set_position(&btn->node->node, bx, by);
 
-			btn->box.x = bw + bx;
-			btn->box.y = bw + by;
+			btn->box.x = l->bw + bx;
+			btn->box.y = l->bw + by;
 			btn->box.width = button_size;
 			btn->box.height = button_size;
 
@@ -1029,8 +969,8 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		int rx_start = titlebar_width - right_buttons_width;
 		for (int i = 0; i < deco->buttons_right_count; i++) {
 			struct wm_decor_button *btn = &deco->buttons_right[i];
-			struct wlr_buffer *buf = render_button(button_tex,
-				pic_color, btn->type, button_size);
+			struct wlr_buffer *buf = render_button(l->button_tex,
+				l->pic_color, btn->type, button_size);
 
 			if (!btn->node) {
 				btn->node = wlr_scene_buffer_create(
@@ -1052,8 +992,8 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			int by = BUTTON_PADDING;
 			wlr_scene_node_set_position(&btn->node->node, bx, by);
 
-			btn->box.x = bw + bx;
-			btn->box.y = bw + by;
+			btn->box.x = l->bw + bx;
+			btn->box.y = l->bw + by;
 			btn->box.width = button_size;
 			btn->box.height = button_size;
 		}
@@ -1079,7 +1019,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		 * active tab's title as a single label.
 		 */
 		struct wm_tab_group *tg = deco->view->tab_group;
-		if (tg && tg->count > 1 && !has_ext_tabs) {
+		if (tg && tg->count > 1 && !l->has_ext_tabs) {
 			/* Render composite tab label surface */
 			int tab_count = tg->count;
 			int tab_width = label_width / tab_count;
@@ -1088,7 +1028,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			cairo_surface_t *composite =
 				cairo_image_surface_create(
 					CAIRO_FORMAT_ARGB32,
-					label_width, th);
+					label_width, l->th);
 			cairo_t *cr = cairo_create(composite);
 
 			int tab_x = 0;
@@ -1121,12 +1061,12 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 
 				/* Render this tab segment */
 				cairo_surface_t *seg =
-					wm_render_texture(ttex, tw, th,
+					wm_render_texture(ttex, tw, l->th,
 						1.0f);
 				if (!seg) {
 					seg = cairo_image_surface_create(
 						CAIRO_FORMAT_ARGB32,
-						tw, th);
+						tw, l->th);
 				}
 
 				/* Render tab title text onto segment */
@@ -1137,7 +1077,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 					cairo_surface_t *ts =
 						wm_render_text(
 							tab_title,
-							label_font, tcol,
+							l->label_font, tcol,
 							tw - 4, &tw2,
 							&th2,
 							style->window_justify,
@@ -1146,7 +1086,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 						cairo_t *scr =
 							cairo_create(seg);
 						int tx = 2;
-						int ty = (th - th2) / 2;
+						int ty = (l->th - th2) / 2;
 						if (style->window_justify ==
 						    WM_JUSTIFY_CENTER) {
 							tx = (tw - tw2) / 2;
@@ -1185,9 +1125,10 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		} else {
 			/* Single view — render normal label */
 			const char *title = deco->view->title;
-			struct wlr_buffer *lbl = render_label(label_tex,
-				title ? title : "", label_font, text_color,
-				style->window_justify, label_width, th);
+			struct wlr_buffer *lbl = render_label(l->label_tex,
+				title ? title : "", l->label_font,
+				l->text_color,
+				style->window_justify, label_width, l->th);
 			wlr_scene_buffer_set_buffer(deco->label_buf, lbl);
 			if (lbl) {
 				wlr_buffer_drop(lbl);
@@ -1198,57 +1139,70 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 	} else {
 		wlr_scene_node_set_enabled(&deco->titlebar_tree->node, false);
 	}
+}
 
-	/* --- Handle and grips --- */
-	if (has_handle && hh > 0) {
-		int handle_iw = inner_width - 2 * gw;
+/* --- Handle and grips rendering --- */
+
+static void
+render_decoration_handle(struct wm_decoration *deco,
+	const struct decoration_layout *l)
+{
+	if (l->has_handle && l->hh > 0) {
+		int handle_iw = l->inner_width - 2 * l->gw;
 		if (handle_iw < 0) {
-			handle_iw = inner_width;
+			handle_iw = l->inner_width;
 		}
-		int handle_y = bw + top_height + ext_top + ch + ext_bottom;
+		int handle_y = l->bw + l->top_height + l->ext_top +
+			l->ch + l->ext_bottom;
 
 		/* Handle */
 		struct wlr_buffer *hbuf = wlr_buffer_from_cairo(
-			wm_render_texture(handle_tex,
-				handle_iw > 0 ? handle_iw : 1, hh,
+			wm_render_texture(l->handle_tex,
+				handle_iw > 0 ? handle_iw : 1, l->hh,
 				1.0f));
 		wlr_scene_buffer_set_buffer(deco->handle_buf, hbuf);
 		if (hbuf) {
 			wlr_buffer_drop(hbuf);
 		}
 		wlr_scene_node_set_position(&deco->handle_buf->node,
-			bw + gw, handle_y);
+			l->bw + l->gw, handle_y);
 		wlr_scene_node_set_enabled(&deco->handle_buf->node, true);
 
 		/* Left grip */
 		struct wlr_buffer *glbuf = wlr_buffer_from_cairo(
-			wm_render_texture(grip_tex, gw, hh, 1.0f));
+			wm_render_texture(l->grip_tex, l->gw, l->hh, 1.0f));
 		wlr_scene_buffer_set_buffer(deco->grip_left, glbuf);
 		if (glbuf) {
 			wlr_buffer_drop(glbuf);
 		}
 		wlr_scene_node_set_position(&deco->grip_left->node,
-			bw, handle_y);
+			l->bw, handle_y);
 		wlr_scene_node_set_enabled(&deco->grip_left->node, true);
 
 		/* Right grip */
 		struct wlr_buffer *grbuf = wlr_buffer_from_cairo(
-			wm_render_texture(grip_tex, gw, hh, 1.0f));
+			wm_render_texture(l->grip_tex, l->gw, l->hh, 1.0f));
 		wlr_scene_buffer_set_buffer(deco->grip_right, grbuf);
 		if (grbuf) {
 			wlr_buffer_drop(grbuf);
 		}
 		wlr_scene_node_set_position(&deco->grip_right->node,
-			bw + inner_width - gw, handle_y);
+			l->bw + l->inner_width - l->gw, handle_y);
 		wlr_scene_node_set_enabled(&deco->grip_right->node, true);
 	} else {
 		wlr_scene_node_set_enabled(&deco->handle_buf->node, false);
 		wlr_scene_node_set_enabled(&deco->grip_left->node, false);
 		wlr_scene_node_set_enabled(&deco->grip_right->node, false);
 	}
+}
 
-	/* --- External tab bar --- */
-	if (has_ext_tabs && deco->tab_bar_buf) {
+/* --- External tab bar layout --- */
+
+static void
+render_decoration_ext_tabs(struct wm_decoration *deco,
+	struct wm_style *style, const struct decoration_layout *l)
+{
+	if (l->has_ext_tabs && deco->tab_bar_buf) {
 		bool vert = (deco->tab_bar_placement == WM_TAB_BAR_LEFT ||
 			deco->tab_bar_placement == WM_TAB_BAR_RIGHT);
 		int bar_w, bar_h;
@@ -1256,22 +1210,23 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 
 		if (vert) {
 			bar_w = deco->tab_bar_size;
-			bar_h = ch;
-			bar_y = bw + top_height + ext_top;
+			bar_h = l->ch;
+			bar_y = l->bw + l->top_height + l->ext_top;
 			if (deco->tab_bar_placement == WM_TAB_BAR_LEFT) {
-				bar_x = bw;
+				bar_x = l->bw;
 			} else {
-				bar_x = bw + ext_left + cw;
+				bar_x = l->bw + l->ext_left + l->cw;
 			}
 		} else {
-			bar_w = cw;
+			bar_w = l->cw;
 			bar_h = deco->tab_bar_size;
 			if (deco->tab_bar_placement == WM_TAB_BAR_TOP) {
-				bar_x = bw + ext_left;
-				bar_y = bw + top_height;
+				bar_x = l->bw + l->ext_left;
+				bar_y = l->bw + l->top_height;
 			} else {
-				bar_x = bw + ext_left;
-				bar_y = bw + top_height + ext_top + ch;
+				bar_x = l->bw + l->ext_left;
+				bar_y = l->bw + l->top_height + l->ext_top +
+					l->ch;
 			}
 		}
 
@@ -1302,14 +1257,20 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			&deco->tab_bar_buf->node, false);
 		deco->tab_bar_box = (struct wlr_box){0};
 	}
+}
 
-	/* --- Focus border (accessibility highlight) --- */
+/* --- Focus border rendering --- */
+
+static void
+render_decoration_focus_border(struct wm_decoration *deco,
+	struct wm_style *style, const struct decoration_layout *l)
+{
 	if (deco->focus_border_buf && deco->focused &&
-	    style->window_focus_border_width > 0 && has_titlebar) {
+	    style->window_focus_border_width > 0 && l->has_titlebar) {
 		int fbw = style->window_focus_border_width;
-		int total_h = top_height + ext_top + ch + ext_bottom +
-			bottom_height + 2 * bw;
-		int fb_w = outer_width + 2 * fbw;
+		int total_h = l->top_height + l->ext_top + l->ch +
+			l->ext_bottom + l->bottom_height + 2 * l->bw;
+		int fb_w = l->outer_width + 2 * fbw;
 		int fb_h = total_h + 2 * fbw;
 
 		cairo_surface_t *fb_surface = cairo_image_surface_create(
@@ -1326,7 +1287,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			cairo_rectangle(fb_cr, 0, 0, fb_w, fb_h);
 			/* Inner cutout */
 			cairo_rectangle(fb_cr, fbw, fbw,
-				outer_width, total_h);
+				l->outer_width, total_h);
 			cairo_set_fill_rule(fb_cr,
 				CAIRO_FILL_RULE_EVEN_ODD);
 			cairo_fill(fb_cr);
@@ -1353,6 +1314,124 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		wlr_scene_node_set_enabled(
 			&deco->focus_border_buf->node, false);
 	}
+}
+
+/* --- Layout and render --- */
+
+static void
+layout_and_render(struct wm_decoration *deco, struct wm_style *style)
+{
+	struct decoration_layout l = {
+		.bw = deco->border_width,
+		.th = deco->titlebar_height,
+		.hh = deco->handle_height,
+		.cw = deco->content_width,
+		.ch = deco->content_height,
+		.gw = deco->grip_width,
+	};
+
+	l.has_titlebar = (deco->preset == WM_DECOR_NORMAL ||
+		deco->preset == WM_DECOR_TAB ||
+		deco->preset == WM_DECOR_TINY ||
+		deco->preset == WM_DECOR_TOOL);
+	l.has_handle = (deco->preset == WM_DECOR_NORMAL);
+	l.has_borders = (deco->preset == WM_DECOR_NORMAL ||
+		deco->preset == WM_DECOR_BORDER);
+
+	if (deco->preset == WM_DECOR_NONE) {
+		l.has_titlebar = false;
+		l.has_handle = false;
+		l.has_borders = false;
+	}
+
+	l.top_height = l.has_titlebar ? l.th : 0;
+	l.bottom_height = l.has_handle ? l.hh : 0;
+
+	/* External tab bar computation */
+	l.ext_top = 0;
+	l.ext_bottom = 0;
+	l.ext_left = 0;
+	l.ext_right = 0;
+	l.has_ext_tabs = false;
+	deco->tab_bar_size = 0;
+
+	bool use_intitlebar = true;
+	if (deco->server->config)
+		use_intitlebar = deco->server->config->tabs_intitlebar;
+
+	struct wm_tab_group *tg_check = deco->view->tab_group;
+	if (!use_intitlebar && tg_check && tg_check->count > 1) {
+		l.has_ext_tabs = true;
+
+		/* Compute tab bar size */
+		int cfg_tw = 0;
+		if (deco->server->config)
+			cfg_tw = deco->server->config->tab_width;
+		if (cfg_tw > 0) {
+			deco->tab_bar_size = cfg_tw;
+		} else {
+			/* Auto from font */
+			const struct wm_font *f = deco->focused ?
+				&style->window_label_focus_font :
+				&style->window_label_unfocus_font;
+			deco->tab_bar_size =
+				(f->size > 0 ? f->size : 12) + 8;
+		}
+
+		deco->tab_bar_placement =
+			(enum wm_tab_bar_placement)(deco->server->config ?
+				deco->server->config->tab_placement : 0);
+
+		switch (deco->tab_bar_placement) {
+		case WM_TAB_BAR_TOP:
+			l.ext_top = deco->tab_bar_size; break;
+		case WM_TAB_BAR_BOTTOM:
+			l.ext_bottom = deco->tab_bar_size; break;
+		case WM_TAB_BAR_LEFT:
+			l.ext_left = deco->tab_bar_size; break;
+		case WM_TAB_BAR_RIGHT:
+			l.ext_right = deco->tab_bar_size; break;
+		}
+	}
+
+	/* Total outer dimensions (including external tab bar) */
+	l.inner_width = l.ext_left + l.cw + l.ext_right;
+	l.outer_width = l.inner_width + 2 * l.bw;
+
+	/* Content area position within the decoration tree */
+	deco->content_area.x = l.bw + l.ext_left;
+	deco->content_area.y = l.bw + l.top_height + l.ext_top;
+	deco->content_area.width = l.cw;
+	deco->content_area.height = l.ch;
+
+	/* Select focused/unfocused textures */
+	l.title_tex = deco->focused ?
+		&style->window_title_focus : &style->window_title_unfocus;
+	l.label_tex = deco->focused ?
+		&style->window_label_focus : &style->window_label_unfocus;
+	l.label_font = deco->focused ?
+		&style->window_label_focus_font :
+		&style->window_label_unfocus_font;
+	l.text_color = deco->focused ?
+		&style->window_label_focus_text_color :
+		&style->window_label_unfocus_text_color;
+	l.handle_tex = deco->focused ?
+		&style->window_handle_focus : &style->window_handle_unfocus;
+	l.grip_tex = deco->focused ?
+		&style->window_grip_focus : &style->window_grip_unfocus;
+	l.button_tex = deco->focused ?
+		&style->window_button_focus : &style->window_button_unfocus;
+	l.pic_color = deco->focused ?
+		&style->window_button_focus_pic_color :
+		&style->window_button_unfocus_pic_color;
+	l.border_color = &style->window_border_color;
+
+	/* Render each decoration component */
+	render_decoration_borders(deco, style, &l);
+	render_decoration_titlebar(deco, style, &l);
+	render_decoration_handle(deco, &l);
+	render_decoration_ext_tabs(deco, style, &l);
+	render_decoration_focus_border(deco, style, &l);
 }
 
 /* --- Public API --- */

@@ -465,11 +465,10 @@ config_create(void)
 }
 
 static void
-apply_rc_to_config(struct wm_config *config, struct rc_database *db)
+apply_workspace_config(struct wm_config *config, struct rc_database *db)
 {
 	const char *val;
 
-	/* Workspaces */
 	config->workspace_count =
 		rc_get_int(db, "session.screen0.workspaces", 4);
 	if (config->workspace_count < 1)
@@ -491,8 +490,13 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		config->workspace_mode = WM_WORKSPACE_PER_OUTPUT;
 	else
 		config->workspace_mode = WM_WORKSPACE_GLOBAL;
+}
 
-	/* Focus */
+static void
+apply_focus_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
 	val = rc_get_string(db, "session.screen0.focusModel");
 	config->focus_policy = parse_focus_model(val);
 
@@ -504,8 +508,14 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		rc_get_bool(db, "session.screen0.clickRaises", true);
 	config->focus_new_windows =
 		rc_get_bool(db, "session.screen0.focusNewWindows", true);
+}
 
-	/* Window behavior */
+static void
+apply_window_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
+	/* Move/resize behavior */
 	config->opaque_move =
 		rc_get_bool(db, "session.screen0.opaqueMove", true);
 	config->opaque_resize =
@@ -517,7 +527,6 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	val = rc_get_string(db, "session.screen0.windowPlacement");
 	config->placement_policy = parse_placement(val);
 
-	/* Placement direction */
 	val = rc_get_string(db, "session.screen0.rowPlacementDirection");
 	config->row_right_to_left = (val &&
 		strcasecmp(val, "RightToLeft") == 0);
@@ -526,7 +535,67 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	config->col_bottom_to_top = (val &&
 		strcasecmp(val, "BottomToTop") == 0);
 
-	/* Toolbar */
+	/* Position overlay during move/resize */
+	config->show_window_position =
+		rc_get_bool(db, "session.screen0.showWindowPosition", false);
+
+	/* Maximization */
+	config->full_maximization =
+		rc_get_bool(db, "session.screen0.fullMaximization", false);
+
+	/* Opacity */
+	config->window_focus_alpha =
+		rc_get_int(db, "session.screen0.window.focus.alpha", 255);
+	if (config->window_focus_alpha < 0) config->window_focus_alpha = 0;
+	if (config->window_focus_alpha > 255) config->window_focus_alpha = 255;
+	config->window_unfocus_alpha =
+		rc_get_int(db, "session.screen0.window.unfocus.alpha", 255);
+	if (config->window_unfocus_alpha < 0) config->window_unfocus_alpha = 0;
+	if (config->window_unfocus_alpha > 255) config->window_unfocus_alpha = 255;
+
+	/* Animations */
+	config->animate_window_map =
+		rc_get_bool(db, "session.screen0.animateWindowMap", false);
+	config->animate_window_unmap =
+		rc_get_bool(db, "session.screen0.animateWindowUnmap", false);
+	config->animate_minimize =
+		rc_get_bool(db, "session.screen0.animateMinimize", false);
+	config->animation_duration_ms =
+		rc_get_int(db, "session.screen0.animationDuration", 300);
+	if (config->animation_duration_ms < 0)
+		config->animation_duration_ms = 0;
+	if (config->animation_duration_ms > 5000)
+		config->animation_duration_ms = 5000;
+
+	/* Snap zones */
+	config->enable_window_snapping =
+		rc_get_bool(db, "session.screen0.enableWindowSnapping", false);
+	config->snap_zone_threshold =
+		rc_get_int(db, "session.screen0.snapZoneThreshold", 10);
+	if (config->snap_zone_threshold < 1)
+		config->snap_zone_threshold = 1;
+	if (config->snap_zone_threshold > 100)
+		config->snap_zone_threshold = 100;
+
+	/* Edge resize snap */
+	config->edge_resize_snap_threshold =
+		rc_get_int(db, "session.screen0.edgeResizeSnapThreshold", 0);
+	if (config->edge_resize_snap_threshold < 0)
+		config->edge_resize_snap_threshold = 0;
+
+	/* Default decoration preset */
+	val = rc_get_string(db, "session.screen0.defaultDeco");
+	if (val) {
+		free(config->default_deco);
+		config->default_deco = strdup(val);
+	}
+}
+
+static void
+apply_toolbar_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
 	config->toolbar_visible =
 		rc_get_bool(db, "session.screen0.toolbar.visible", true);
 
@@ -575,6 +644,16 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		config->titlebar_right = strdup(val);
 	}
 
+	/* Maximize-over */
+	config->toolbar_max_over =
+		rc_get_bool(db, "session.screen0.toolbar.maxOver", false);
+}
+
+static void
+apply_iconbar_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
 	/* Clock format */
 	val = rc_get_string(db, "session.screen0.strftimeFormat");
 	if (val) {
@@ -586,7 +665,7 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	val = rc_get_string(db, "session.screen0.iconbar.mode");
 	config->iconbar_mode = parse_iconbar_mode(val);
 
-	/* Iconbar enhancements */
+	/* Iconbar alignment */
 	val = rc_get_string(db, "session.screen0.iconbar.alignment");
 	if (val) {
 		if (strcasecmp(val, "Left") == 0)
@@ -614,8 +693,13 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		free(config->iconbar_iconified_pattern);
 		config->iconbar_iconified_pattern = strdup(val);
 	}
+}
 
-	/* Auto-tab placement */
+static void
+apply_tab_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
 	config->auto_tab_placement =
 		rc_get_bool(db, "session.screen0.autoTabPlacement", false);
 
@@ -650,50 +734,13 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		rc_get_int(db, "session.screen0.tabPadding", 0);
 	if (config->tab_padding < 0)
 		config->tab_padding = 0;
+}
 
-	/* Show window position overlay during move/resize */
-	config->show_window_position =
-		rc_get_bool(db, "session.screen0.showWindowPosition", false);
+static void
+apply_slit_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
 
-	/* Full maximization */
-	config->full_maximization =
-		rc_get_bool(db, "session.screen0.fullMaximization", false);
-
-	/* Window opacity */
-	config->window_focus_alpha =
-		rc_get_int(db, "session.screen0.window.focus.alpha", 255);
-	if (config->window_focus_alpha < 0) config->window_focus_alpha = 0;
-	if (config->window_focus_alpha > 255) config->window_focus_alpha = 255;
-	config->window_unfocus_alpha =
-		rc_get_int(db, "session.screen0.window.unfocus.alpha", 255);
-	if (config->window_unfocus_alpha < 0) config->window_unfocus_alpha = 0;
-	if (config->window_unfocus_alpha > 255) config->window_unfocus_alpha = 255;
-
-	/* Window animations */
-	config->animate_window_map =
-		rc_get_bool(db, "session.screen0.animateWindowMap", false);
-	config->animate_window_unmap =
-		rc_get_bool(db, "session.screen0.animateWindowUnmap", false);
-	config->animate_minimize =
-		rc_get_bool(db, "session.screen0.animateMinimize", false);
-	config->animation_duration_ms =
-		rc_get_int(db, "session.screen0.animationDuration", 300);
-	if (config->animation_duration_ms < 0)
-		config->animation_duration_ms = 0;
-	if (config->animation_duration_ms > 5000)
-		config->animation_duration_ms = 5000;
-
-	/* Window snap zones */
-	config->enable_window_snapping =
-		rc_get_bool(db, "session.screen0.enableWindowSnapping", false);
-	config->snap_zone_threshold =
-		rc_get_int(db, "session.screen0.snapZoneThreshold", 10);
-	if (config->snap_zone_threshold < 1)
-		config->snap_zone_threshold = 1;
-	if (config->snap_zone_threshold > 100)
-		config->snap_zone_threshold = 100;
-
-	/* Slit configuration */
 	config->slit_auto_hide =
 		rc_get_bool(db, "session.screen0.slit.autoHide", false);
 	val = rc_get_string(db, "session.screen0.slit.placement");
@@ -722,29 +769,19 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		config->slitlist_file =
 			resolve_path(config->config_dir, val, "slitlist");
 	}
+}
 
-	/* Double-click interval */
-	config->double_click_interval =
-		rc_get_int(db, "session.doubleClickInterval", 300);
-	if (config->double_click_interval < 50)
-		config->double_click_interval = 50;
-	if (config->double_click_interval > 2000)
-		config->double_click_interval = 2000;
+static void
+apply_menu_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
 
-	/* Root command */
-	val = rc_get_string(db, "session.screen0.rootCommand");
-	if (val) {
-		free(config->root_command);
-		config->root_command = strdup(val);
-	}
-
-	/* Menu alpha */
 	config->menu_alpha =
 		rc_get_int(db, "session.screen0.menu.alpha", 255);
 	if (config->menu_alpha < 0) config->menu_alpha = 0;
 	if (config->menu_alpha > 255) config->menu_alpha = 255;
 
-	/* Menu type-ahead search */
+	/* Type-ahead search */
 	val = rc_get_string(db, "session.menuSearch");
 	if (val) {
 		if (strcasecmp(val, "itemstart") == 0)
@@ -767,33 +804,13 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		free(config->window_menu_file);
 		config->window_menu_file = strdup(val);
 	}
+}
 
-	/* Toolbar maximize-over */
-	config->toolbar_max_over =
-		rc_get_bool(db, "session.screen0.toolbar.maxOver", false);
+static void
+apply_xkb_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
 
-	/* Edge resize snap threshold */
-	config->edge_resize_snap_threshold =
-		rc_get_int(db, "session.screen0.edgeResizeSnapThreshold", 0);
-	if (config->edge_resize_snap_threshold < 0)
-		config->edge_resize_snap_threshold = 0;
-
-	/* Default decoration preset */
-	val = rc_get_string(db, "session.screen0.defaultDeco");
-	if (val) {
-		free(config->default_deco);
-		config->default_deco = strdup(val);
-	}
-
-	/* Manual struts [left right top bottom] */
-	val = rc_get_string(db, "session.screen0.struts");
-	if (val) {
-		sscanf(val, "%d %d %d %d",
-			&config->struts[0], &config->struts[1],
-			&config->struts[2], &config->struts[3]);
-	}
-
-	/* XKB keyboard layout */
 	val = rc_get_string(db, "session.xkb.rules");
 	if (val) {
 		char *dup = strdup(val);
@@ -834,40 +851,76 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 			config->xkb_options = dup;
 		}
 	}
+}
 
-	/* Mouse button remapping */
-	{
-		static const char *button_keys[5] = {
-			"session.mouse.button1.map",
-			"session.mouse.button2.map",
-			"session.mouse.button3.map",
-			"session.mouse.button4.map",
-			"session.mouse.button5.map",
-		};
-		static const uint32_t button_defaults[5] = {
-			BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA,
-		};
-		for (int i = 0; i < 5; i++) {
-			val = rc_get_string(db, button_keys[i]);
-			if (val) {
-				if (strcasecmp(val, "BTN_LEFT") == 0)
-					config->mouse_button_map[i + 1] = BTN_LEFT;
-				else if (strcasecmp(val, "BTN_MIDDLE") == 0)
-					config->mouse_button_map[i + 1] = BTN_MIDDLE;
-				else if (strcasecmp(val, "BTN_RIGHT") == 0)
-					config->mouse_button_map[i + 1] = BTN_RIGHT;
-				else if (strcasecmp(val, "BTN_SIDE") == 0)
-					config->mouse_button_map[i + 1] = BTN_SIDE;
-				else if (strcasecmp(val, "BTN_EXTRA") == 0)
-					config->mouse_button_map[i + 1] = BTN_EXTRA;
-				else
-					config->mouse_button_map[i + 1] =
-						button_defaults[i];
-			}
+static void
+apply_mouse_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+	static const char *button_keys[5] = {
+		"session.mouse.button1.map",
+		"session.mouse.button2.map",
+		"session.mouse.button3.map",
+		"session.mouse.button4.map",
+		"session.mouse.button5.map",
+	};
+	static const uint32_t button_defaults[5] = {
+		BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA,
+	};
+	for (int i = 0; i < 5; i++) {
+		val = rc_get_string(db, button_keys[i]);
+		if (val) {
+			if (strcasecmp(val, "BTN_LEFT") == 0)
+				config->mouse_button_map[i + 1] = BTN_LEFT;
+			else if (strcasecmp(val, "BTN_MIDDLE") == 0)
+				config->mouse_button_map[i + 1] = BTN_MIDDLE;
+			else if (strcasecmp(val, "BTN_RIGHT") == 0)
+				config->mouse_button_map[i + 1] = BTN_RIGHT;
+			else if (strcasecmp(val, "BTN_SIDE") == 0)
+				config->mouse_button_map[i + 1] = BTN_SIDE;
+			else if (strcasecmp(val, "BTN_EXTRA") == 0)
+				config->mouse_button_map[i + 1] = BTN_EXTRA;
+			else
+				config->mouse_button_map[i + 1] =
+					button_defaults[i];
 		}
 	}
+}
 
-	/* File paths */
+static void
+apply_misc_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
+	/* Double-click interval */
+	config->double_click_interval =
+		rc_get_int(db, "session.doubleClickInterval", 300);
+	if (config->double_click_interval < 50)
+		config->double_click_interval = 50;
+	if (config->double_click_interval > 2000)
+		config->double_click_interval = 2000;
+
+	/* Root command */
+	val = rc_get_string(db, "session.screen0.rootCommand");
+	if (val) {
+		free(config->root_command);
+		config->root_command = strdup(val);
+	}
+
+	/* Manual struts [left right top bottom] */
+	val = rc_get_string(db, "session.screen0.struts");
+	if (val) {
+		sscanf(val, "%d %d %d %d",
+			&config->struts[0], &config->struts[1],
+			&config->struts[2], &config->struts[3]);
+	}
+}
+
+static void
+apply_file_paths_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
 	val = rc_get_string(db, "session.keyFile");
 	if (val) {
 		free(config->keys_file);
@@ -902,6 +955,23 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 		config->style_overlay =
 			resolve_path(config->config_dir, val, "overlay");
 	}
+}
+
+static void
+apply_rc_to_config(struct wm_config *config, struct rc_database *db)
+{
+	apply_workspace_config(config, db);
+	apply_focus_config(config, db);
+	apply_window_config(config, db);
+	apply_toolbar_config(config, db);
+	apply_iconbar_config(config, db);
+	apply_tab_config(config, db);
+	apply_slit_config(config, db);
+	apply_menu_config(config, db);
+	apply_xkb_config(config, db);
+	apply_mouse_config(config, db);
+	apply_misc_config(config, db);
+	apply_file_paths_config(config, db);
 }
 
 int
