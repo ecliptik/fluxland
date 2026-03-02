@@ -91,7 +91,7 @@ json_escape(const char *s)
 		case '\t': *p++ = '\\'; *p++ = 't';  break;
 		default:
 			if (c < 0x20) {
-				p += sprintf(p, "\\u%04x", c);
+				p += snprintf(p, cap - (size_t)(p - out), "\\u%04x", c);
 			} else {
 				*p++ = (char)c;
 			}
