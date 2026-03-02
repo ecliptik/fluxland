@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "config.h"
+#include "i18n.h"
 #include "rcparser.h"
 #include <linux/input-event-codes.h>
 #include <stdio.h>
@@ -43,7 +44,7 @@ set_default_workspace_names(struct wm_config *config)
 	}
 	for (int i = 0; i < config->workspace_count; i++) {
 		char buf[32];
-		snprintf(buf, sizeof(buf), "Workspace %d", i + 1);
+		snprintf(buf, sizeof(buf), _("Workspace %d"), i + 1);
 		config->workspace_names[i] = strdup(buf);
 		if (!config->workspace_names[i]) {
 			config->workspace_name_count = i;
@@ -245,7 +246,7 @@ validate_config_dir(const char *path, bool from_env)
 	/* Reject path traversal components */
 	if (strstr(path, "..")) {
 		fprintf(stderr,
-			"[fluxland] config directory path contains '..': %s\n",
+			_("[fluxland] config directory path contains '..': %s\n"),
 			path);
 		return false;
 	}
@@ -258,7 +259,7 @@ validate_config_dir(const char *path, bool from_env)
 
 	if (!S_ISDIR(st.st_mode)) {
 		fprintf(stderr,
-			"[fluxland] config path is not a directory: %s\n",
+			_("[fluxland] config path is not a directory: %s\n"),
 			path);
 		return false;
 	}
@@ -267,8 +268,8 @@ validate_config_dir(const char *path, bool from_env)
 
 	if (st.st_uid != getuid()) {
 		fprintf(stderr,
-			"[fluxland] config directory not owned by current "
-			"user: %s (owned by uid %d, current uid %d)\n",
+			_("[fluxland] config directory not owned by current "
+			"user: %s (owned by uid %d, current uid %d)\n"),
 			path, (int)st.st_uid, (int)getuid());
 		if (from_env)
 			safe = false;
@@ -276,8 +277,8 @@ validate_config_dir(const char *path, bool from_env)
 
 	if (st.st_mode & (S_IWGRP | S_IWOTH)) {
 		fprintf(stderr,
-			"[fluxland] config directory has insecure permissions "
-			"(group/world writable): %s\n", path);
+			_("[fluxland] config directory has insecure permissions "
+			"(group/world writable): %s\n"), path);
 		if (from_env)
 			safe = false;
 	}
@@ -301,10 +302,10 @@ find_config_dir(void)
 	env = getenv("FLUXLAND_CONFIG_DIR");
 	if (env) {
 		if (!validate_config_dir(env, true)) {
-			fprintf(stderr,
-				"[fluxland] FLUXLAND_CONFIG_DIR failed "
+			fprintf(stderr, "%s",
+				_("[fluxland] FLUXLAND_CONFIG_DIR failed "
 				"validation, falling back to default "
-				"config path\n");
+				"config path\n"));
 		} else if (dir_exists(env)) {
 			return strdup(env);
 		}

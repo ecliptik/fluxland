@@ -22,6 +22,7 @@
 #include "output.h"
 #include "server.h"
 #include "style.h"
+#include "util.h"
 
 #ifdef WM_HAS_XWAYLAND
 #include <wlr/xwayland.h>
@@ -243,7 +244,7 @@ slit_load_slitlist(struct wm_slit *slit, const char *path)
 	if (!path)
 		return;
 
-	FILE *fp = fopen(path, "r");
+	FILE *fp = fopen_nofollow(path, "r");
 	if (!fp)
 		return;
 
@@ -295,7 +296,7 @@ slit_save_slitlist(struct wm_slit *slit, const char *path)
 	if (!path)
 		return;
 
-	FILE *fp = fopen(path, "w");
+	FILE *fp = fopen_nofollow(path, "w");
 	if (!fp) {
 		wlr_log(WLR_ERROR, "slit: failed to save slitlist to %s",
 			path);

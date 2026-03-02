@@ -22,6 +22,7 @@
 
 #include "animation.h"
 #include "foreign_toplevel.h"
+#include "i18n.h"
 #include "keyboard_actions.h"
 #include "keyboard.h"
 #include "server.h"

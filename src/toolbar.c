@@ -20,6 +20,7 @@
 
 #include "toolbar.h"
 #include "config.h"
+#include "i18n.h"
 #include "focus_nav.h"
 #include "output.h"
 #include "render.h"
@@ -753,7 +754,7 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 		/* Build display title */
 		const char *raw_title = entry->view->title;
 		if (!raw_title || !*raw_title) {
-			raw_title = "(untitled)";
+			raw_title = _("(untitled)");
 		}
 
 		char title_buf[256];

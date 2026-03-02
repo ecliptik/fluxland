@@ -70,6 +70,12 @@ if have_gettext
   add_project_arguments('-DLOCALEDIR="@0@"'.format(localedir), language: 'c')
 endif
 
+# --- Gettext catalog generation ---
+
+if have_gettext
+  subdir('po')
+endif
+
 # --- Core dependencies ---
 
 wlroots = dependency(

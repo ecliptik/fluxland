@@ -1,4 +1,7 @@
+src/config.c
 src/ipc_commands.c
+src/keyboard_actions.c
 src/main.c
 src/menu.c
+src/toolbar.c
 src/validate.c
