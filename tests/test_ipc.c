@@ -126,6 +126,8 @@ int style_load(struct wm_style *s, const char *p)
 void wm_toolbar_relayout(struct wm_toolbar *t) { (void)t; }
 void wm_toolbar_toggle_above(struct wm_toolbar *t) { (void)t; }
 void wm_toolbar_toggle_visible(struct wm_toolbar *t) { (void)t; }
+void wm_toolbar_update_iconbar(struct wm_toolbar *t) { (void)t; }
+void wm_spawn_command(const char *cmd) { (void)cmd; }
 void wm_slit_toggle_above(struct wm_slit *s) { (void)s; }
 void wm_slit_toggle_hidden(struct wm_slit *s) { (void)s; }
 
@@ -193,6 +195,12 @@ uint32_t wlr_xdg_toplevel_set_size(struct wlr_xdg_toplevel *t, int w, int h)
 static int stub_set_pos_x, stub_set_pos_y;
 void wlr_scene_node_set_position(struct wlr_scene_node *n, int x, int y)
 	{ (void)n; stub_set_pos_x = x; stub_set_pos_y = y; }
+
+void wlr_scene_node_set_enabled(struct wlr_scene_node *n, bool enabled)
+	{ n->enabled = enabled; }
+
+void wlr_seat_keyboard_notify_clear_focus(struct wlr_seat *seat)
+	{ (void)seat; }
 
 static int stub_terminate_called;
 void wl_display_terminate(struct wl_display *d)
@@ -2595,13 +2603,16 @@ static void
 test_action_show_desktop_with_views(void)
 {
 	setup_with_view_list();
-	stub_minimize_called = 0;
+	/* Enable scene nodes so ShowDesktop sees them as visible */
+	for (int i = 0; i < 3; i++)
+		mock_scene_trees[i].node.enabled = true;
 	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
 		"{\"command\":\"command\",\"action\":\"ShowDesktop\"}");
 	assert(r != NULL);
 	assert(response_is_success(r));
-	/* All 3 views are on the mock workspace; minimize should be called 3x */
-	assert(stub_minimize_called == 3);
+	/* All 3 views should now have scene nodes disabled */
+	for (int i = 0; i < 3; i++)
+		assert(mock_scene_trees[i].node.enabled == false);
 	free(r);
 	printf("  PASS: test_action_show_desktop_with_views\n");
 }

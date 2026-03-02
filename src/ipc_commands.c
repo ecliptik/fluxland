@@ -11,12 +11,10 @@
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <fnmatch.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
@@ -28,6 +26,7 @@
 #include "ipc.h"
 #include "config.h"
 #include "decoration.h"
+#include "foreign_toplevel.h"
 #include "keybind.h"
 #include "keyboard.h"
 #include "menu.h"
@@ -43,24 +42,7 @@
 #include "view.h"
 #include "workspace.h"
 
-/* ---------- security helpers ---------- */
-
-/* Environment variables that must not be set via IPC or keybinds */
-static bool
-is_blocked_env_var(const char *name)
-{
-	static const char *blocked[] = {
-		"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
-		"LD_DEBUG", "LD_PROFILE",
-		"PATH", "IFS", "SHELL", "HOME",
-		"XDG_RUNTIME_DIR", "WAYLAND_DISPLAY",
-	};
-	for (size_t i = 0; i < sizeof(blocked) / sizeof(blocked[0]); i++) {
-		if (strcasecmp(name, blocked[i]) == 0)
-			return true;
-	}
-	return false;
-}
+/* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
 
 /* ---------- minimal JSON helpers ---------- */
 
@@ -435,29 +417,6 @@ parse_action(const char *cmd_str, enum wm_action *action, const char **arg)
 	return false;
 }
 
-/* ---------- action execution (simplified from keyboard.c) ---------- */
-
-static void
-exec_command(const char *cmd)
-{
-	if (!cmd || !*cmd) return;
-	pid_t pid = fork();
-	if (pid < 0) return;
-	if (pid == 0) {
-		sigset_t set;
-		sigemptyset(&set);
-		sigprocmask(SIG_SETMASK, &set, NULL);
-		pid_t g = fork();
-		if (g < 0) _exit(1);
-		if (g > 0) _exit(0);
-		setsid();
-		closefrom(STDERR_FILENO + 1);
-		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
-		_exit(1);
-	}
-	waitpid(pid, NULL, 0);
-}
-
 static bool
 ipc_execute_action(struct wm_server *server, enum wm_action action,
 	const char *argument)
@@ -471,7 +430,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 				"IPC Exec blocked by --ipc-no-exec");
 			return true;
 		}
-		exec_command(argument);
+		wm_spawn_command(argument);
 		return true;
 
 	case WM_ACTION_EXIT:
@@ -713,12 +672,37 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 		return true;
 
 	case WM_ACTION_SHOW_DESKTOP: {
+		struct wm_workspace *ws = wm_workspace_get_active(server);
 		struct wm_view *v;
+		bool any_visible = false;
+
 		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace == wm_workspace_get_active(server)) {
-				v->request_minimize.notify(
-					&v->request_minimize, NULL);
+			if (v->workspace == ws &&
+			    v->scene_tree->node.enabled) {
+				any_visible = true;
+				break;
 			}
+		}
+
+		if (any_visible) {
+			wl_list_for_each(v, &server->views, link) {
+				if (v->workspace == ws &&
+				    v->scene_tree->node.enabled) {
+					wm_foreign_toplevel_set_minimized(
+						v, true);
+					wlr_scene_node_set_enabled(
+						&v->scene_tree->node, false);
+				}
+			}
+			if (server->seat) {
+				wlr_seat_keyboard_notify_clear_focus(server->seat);
+			}
+			server->focused_view = NULL;
+			if (server->toolbar) {
+				wm_toolbar_update_iconbar(server->toolbar);
+			}
+		} else {
+			wm_view_deiconify_all_workspace(server);
 		}
 		return true;
 	}
@@ -1232,7 +1216,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 				char *eq = strchr(buf, '=');
 				if (eq) {
 					*eq = '\0';
-					if (is_blocked_env_var(buf)) {
+					if (wm_is_blocked_env_var(buf)) {
 						wlr_log(WLR_ERROR,
 							"SetEnv: blocked security-sensitive "
 							"variable: %s", buf);
@@ -1246,7 +1230,7 @@ ipc_execute_action(struct wm_server *server, enum wm_action action,
 						sp++;
 						while (*sp == ' ' || *sp == '\t')
 							sp++;
-						if (is_blocked_env_var(buf)) {
+						if (wm_is_blocked_env_var(buf)) {
 							wlr_log(WLR_ERROR,
 								"SetEnv: blocked security-sensitive "
 								"variable: %s", buf);

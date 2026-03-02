@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 /* Safe integer parsing — returns false on overflow, non-numeric input, or empty string */
@@ -29,6 +30,26 @@ static inline bool safe_atoi(const char *s, int *out) {
 	*out = (int)val;
 	return true;
 }
+
+/* Check whether an environment variable name is on the security denylist.
+ * Used by SetEnv action handlers to block modification of dangerous vars. */
+static inline bool wm_is_blocked_env_var(const char *name) {
+	static const char *blocked[] = {
+		"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
+		"LD_DEBUG", "LD_PROFILE",
+		"PATH", "IFS", "SHELL", "HOME",
+		"XDG_RUNTIME_DIR", "WAYLAND_DISPLAY",
+	};
+	for (size_t i = 0; i < sizeof(blocked) / sizeof(blocked[0]); i++) {
+		if (strcasecmp(name, blocked[i]) == 0)
+			return true;
+	}
+	return false;
+}
+
+/* Spawn a command using double-fork to avoid SIGCHLD racing with wlroots.
+ * Sanitizes LD_* environment variables before exec. */
+void wm_spawn_command(const char *cmd);
 
 /*
  * Open a file with O_NOFOLLOW to reject symlinks.

@@ -49,6 +49,8 @@
 #define WM_WORKSPACE_H
 #define WM_KEYBOARD_H
 #define WM_KEYBOARD_ACTIONS_H
+#define WM_ANIMATION_H
+#define WM_FOREIGN_TOPLEVEL_H
 
 /* Block real xkbcommon header */
 #define _XKBCOMMON_H_
@@ -342,6 +344,25 @@ wlr_scene_node_set_position(struct wlr_scene_node *n, int x, int y)
 	stub_set_pos_x = x;
 	stub_set_pos_y = y;
 	stub_set_pos_called++;
+}
+
+static void
+wlr_scene_node_set_enabled(struct wlr_scene_node *n, bool enabled)
+{
+	n->enabled = enabled;
+}
+
+static void
+wlr_seat_keyboard_notify_clear_focus(struct wlr_seat *seat)
+{
+	(void)seat;
+}
+
+struct wm_animation;
+static void
+wm_animation_cancel(struct wm_animation *anim)
+{
+	(void)anim;
 }
 
 static int stub_vt_switch_called;
@@ -1077,6 +1098,7 @@ int style_load(struct wm_style *s, const char *p) { (void)s; (void)p; stub_style
 void wm_toolbar_relayout(struct wm_toolbar *t) { (void)t; stub_toolbar_relayout_count++; }
 void wm_toolbar_toggle_above(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_above_count++; }
 void wm_toolbar_toggle_visible(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_visible_count++; }
+void wm_toolbar_update_iconbar(struct wm_toolbar *t) { (void)t; }
 void wm_slit_toggle_above(struct wm_slit *s) { (void)s; stub_slit_toggle_above_count++; }
 void wm_slit_toggle_hidden(struct wm_slit *s) { (void)s; stub_slit_toggle_hidden_count++; }
 
@@ -1129,6 +1151,8 @@ void wm_keyboard_setup(struct wm_server *server,
 /* --- Include keyboard source directly (uses our stubs) --- */
 
 #include "util.h"
+
+void wm_spawn_command(const char *cmd) { (void)cmd; }
 
 /* Forward declarations for functions shared between keyboard.c and
  * keyboard_actions.c (needed because we include both source files
@@ -1378,44 +1402,44 @@ setup_with_tabbed_view(void)
  * Group A: Pure logic tests (no stubs needed)
  * ==================================================================== */
 
-/* Test is_blocked_env_var: LD_PRELOAD is blocked */
+/* Test wm_is_blocked_env_var: LD_PRELOAD is blocked */
 static void
 test_blocked_env_ld_preload(void)
 {
-	assert(is_blocked_env_var("LD_PRELOAD") == true);
+	assert(wm_is_blocked_env_var("LD_PRELOAD") == true);
 	printf("  PASS: test_blocked_env_ld_preload\n");
 }
 
-/* Test is_blocked_env_var: PATH is blocked */
+/* Test wm_is_blocked_env_var: PATH is blocked */
 static void
 test_blocked_env_path(void)
 {
-	assert(is_blocked_env_var("PATH") == true);
+	assert(wm_is_blocked_env_var("PATH") == true);
 	printf("  PASS: test_blocked_env_path\n");
 }
 
-/* Test is_blocked_env_var: normal var is allowed */
+/* Test wm_is_blocked_env_var: normal var is allowed */
 static void
 test_blocked_env_normal(void)
 {
-	assert(is_blocked_env_var("MY_APP_VAR") == false);
+	assert(wm_is_blocked_env_var("MY_APP_VAR") == false);
 	printf("  PASS: test_blocked_env_normal\n");
 }
 
-/* Test is_blocked_env_var: case insensitive match */
+/* Test wm_is_blocked_env_var: case insensitive match */
 static void
 test_blocked_env_case_insensitive(void)
 {
-	assert(is_blocked_env_var("ld_preload") == true);
-	assert(is_blocked_env_var("Ld_Preload") == true);
+	assert(wm_is_blocked_env_var("ld_preload") == true);
+	assert(wm_is_blocked_env_var("Ld_Preload") == true);
 	printf("  PASS: test_blocked_env_case_insensitive\n");
 }
 
-/* Test is_blocked_env_var: WAYLAND_DISPLAY is blocked */
+/* Test wm_is_blocked_env_var: WAYLAND_DISPLAY is blocked */
 static void
 test_blocked_env_wayland_display(void)
 {
-	assert(is_blocked_env_var("WAYLAND_DISPLAY") == true);
+	assert(wm_is_blocked_env_var("WAYLAND_DISPLAY") == true);
 	printf("  PASS: test_blocked_env_wayland_display\n");
 }
 
@@ -2148,7 +2172,8 @@ test_action_show_desktop(void)
 	wl_list_insert(&test_server.views, &test_view.link);
 
 	assert(wm_execute_action(&test_server, WM_ACTION_SHOW_DESKTOP, NULL) == true);
-	assert(stub_minimize_listener_count == 1);
+	/* New ShowDesktop directly disables scene node instead of calling minimize listener */
+	assert(test_scene_tree.node.enabled == false);
 
 	wl_list_remove(&test_view.link);
 	printf("  PASS: test_action_show_desktop\n");

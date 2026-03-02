@@ -11,9 +11,7 @@
 
 #define _GNU_SOURCE
 #include <math.h>
-#include <signal.h>
 #include <stdlib.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
 #include <strings.h>
@@ -329,27 +327,9 @@ execute_mouse_action(struct wm_server *server,
 		}
 		break;
 
-	case WM_ACTION_EXEC: {
-		if (argument && *argument) {
-			pid_t pid = fork();
-			if (pid < 0) break;
-			if (pid == 0) {
-				sigset_t set;
-				sigemptyset(&set);
-				sigprocmask(SIG_SETMASK, &set, NULL);
-				pid_t g = fork();
-				if (g < 0) _exit(1);
-				if (g > 0) _exit(0);
-				setsid();
-				closefrom(STDERR_FILENO + 1);
-				execl("/bin/sh", "/bin/sh", "-c",
-					argument, (char *)NULL);
-				_exit(1);
-			}
-			waitpid(pid, NULL, 0);
-		}
+	case WM_ACTION_EXEC:
+		wm_spawn_command(argument);
 		break;
-	}
 
 	case WM_ACTION_ROOT_MENU:
 		wm_menu_show_root(server,

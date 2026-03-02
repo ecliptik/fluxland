@@ -864,6 +864,8 @@ typedef uint32_t xkb_keysym_t;
 /* iconv stub: just return label unchanged */
 #include <iconv.h>
 
+void wm_spawn_command(const char *cmd) { (void)cmd; }
+
 #include "menu.c"
 
 /* ===================== Test helpers ===================== */

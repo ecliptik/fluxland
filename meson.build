@@ -206,6 +206,7 @@ wm_sources = files(
   'src/slit.c',
   'src/tablet.c',
   'src/toolbar.c',
+  'src/util.c',
   'src/validate.c',
   'src/xwayland.c',
 )
@@ -276,6 +277,7 @@ if get_option('wlcs')
     'src/slit.c',
     'src/tablet.c',
     'src/toolbar.c',
+    'src/util.c',
     'src/validate.c',
     'src/xwayland.c',
   )

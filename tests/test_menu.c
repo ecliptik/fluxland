@@ -49,6 +49,7 @@ struct wm_workspace *wm_workspace_get_active(struct wm_server *s)
 	{ (void)s; return NULL; }
 void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
 	{ (void)v; (void)m; }
+void wm_spawn_command(const char *cmd) { (void)cmd; }
 void wm_focus_view(struct wm_view *v, struct wlr_surface *s)
 	{ (void)v; (void)s; }
 int wm_rules_remember_window(struct wm_view *v, const char *p)

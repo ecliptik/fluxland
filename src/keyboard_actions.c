@@ -11,16 +11,17 @@
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <fnmatch.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <signal.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
+#include "animation.h"
+#include "foreign_toplevel.h"
 #include "keyboard_actions.h"
 #include "keyboard.h"
 #include "server.h"
@@ -40,24 +41,7 @@
 #include "view.h"
 #include "workspace.h"
 
-/* --- Security helpers --- */
-
-/* Environment variables that must not be set via keybinds */
-static bool
-is_blocked_env_var(const char *name)
-{
-	static const char *blocked[] = {
-		"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
-		"LD_DEBUG", "LD_PROFILE",
-		"PATH", "IFS", "SHELL", "HOME",
-		"XDG_RUNTIME_DIR", "WAYLAND_DISPLAY",
-	};
-	for (size_t i = 0; i < sizeof(blocked) / sizeof(blocked[0]); i++) {
-		if (strcasecmp(name, blocked[i]) == 0)
-			return true;
-	}
-	return false;
-}
+/* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
 
 /* --- Condition evaluation for If/ForEach --- */
 
@@ -188,42 +172,6 @@ evaluate_condition(struct wm_server *server,
 	}
 
 	return false;
-}
-
-static void
-exec_command(const char *cmd)
-{
-	if (!cmd || !*cmd) {
-		return;
-	}
-	/*
-	 * Double-fork so the compositor doesn't need to reap the child.
-	 * The grandchild is adopted by init.
-	 */
-	pid_t pid = fork();
-	if (pid < 0) {
-		wlr_log(WLR_ERROR, "fork failed for: %s", cmd);
-		return;
-	}
-	if (pid == 0) {
-		sigset_t set;
-		sigemptyset(&set);
-		sigprocmask(SIG_SETMASK, &set, NULL);
-
-		pid_t grandchild = fork();
-		if (grandchild < 0) {
-			_exit(1);
-		}
-		if (grandchild > 0) {
-			_exit(0);
-		}
-		/* Grandchild */
-		setsid();
-		closefrom(STDERR_FILENO + 1);
-		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
-		_exit(1);
-	}
-	waitpid(pid, NULL, 0);
 }
 
 /* --- Delay timer callback data --- */
@@ -360,7 +308,7 @@ wm_execute_action(struct wm_server *server,
 
 	switch (action) {
 	case WM_ACTION_EXEC:
-		exec_command(argument);
+		wm_spawn_command(argument);
 		return true;
 
 	case WM_ACTION_EXIT:
@@ -653,13 +601,45 @@ wm_execute_action(struct wm_server *server,
 		return true;
 
 	case WM_ACTION_SHOW_DESKTOP: {
+		struct wm_workspace *ws = wm_workspace_get_active(server);
 		struct wm_view *v;
+		bool any_visible = false;
+
+		/* Check if any non-minimized views exist on workspace */
 		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace == wm_workspace_get_active(server)) {
-				struct wl_listener *listener =
-					&v->request_minimize;
-				listener->notify(listener, NULL);
+			if (v->workspace == ws &&
+			    v->scene_tree->node.enabled) {
+				any_visible = true;
+				break;
 			}
+		}
+
+		if (any_visible) {
+			/* Minimize all visible views without triggering
+			 * focus changes (which reorder the view list and
+			 * corrupt the iteration) */
+			wl_list_for_each(v, &server->views, link) {
+				if (v->workspace == ws &&
+				    v->scene_tree->node.enabled) {
+					if (v->animation)
+						wm_animation_cancel(
+							v->animation);
+					wm_foreign_toplevel_set_minimized(
+						v, true);
+					wlr_scene_node_set_enabled(
+						&v->scene_tree->node, false);
+				}
+			}
+			if (server->seat) {
+				wlr_seat_keyboard_notify_clear_focus(server->seat);
+			}
+			server->focused_view = NULL;
+			if (server->toolbar) {
+				wm_toolbar_update_iconbar(server->toolbar);
+			}
+		} else {
+			/* Restore all minimized views on workspace */
+			wm_view_deiconify_all_workspace(server);
 		}
 		return true;
 	}
@@ -1092,7 +1072,7 @@ wm_execute_action(struct wm_server *server,
 				char *eq = strchr(buf, '=');
 				if (eq) {
 					*eq = '\0';
-					if (is_blocked_env_var(buf)) {
+					if (wm_is_blocked_env_var(buf)) {
 						wlr_log(WLR_ERROR,
 							"SetEnv: blocked security-sensitive "
 							"variable: %s", buf);
@@ -1107,7 +1087,7 @@ wm_execute_action(struct wm_server *server,
 						sp++;
 						while (*sp == ' ' || *sp == '\t')
 							sp++;
-						if (is_blocked_env_var(buf)) {
+						if (wm_is_blocked_env_var(buf)) {
 							wlr_log(WLR_ERROR,
 								"SetEnv: blocked security-sensitive "
 								"variable: %s", buf);

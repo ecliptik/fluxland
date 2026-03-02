@@ -1317,6 +1317,8 @@ wlr_relative_pointer_manager_v1_send_relative_motion(void *mgr,
 
 /* --- Stub fluxland functions used by cursor.c --- */
 
+void wm_spawn_command(const char *cmd) { (void)cmd; }
+
 static void wm_view_raise(struct wm_view *view)
 	{ (void)view; g_view_raise_count++; }
 static void wm_view_lower(struct wm_view *view)
