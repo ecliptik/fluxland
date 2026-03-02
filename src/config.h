@@ -67,6 +67,21 @@ enum wm_snap_zone {
 	WM_SNAP_ZONE_BOTTOMRIGHT,
 };
 
+/* Workspace transition type */
+enum wm_workspace_transition {
+	WM_TRANSITION_NONE,      /* instant switch (default) */
+	WM_TRANSITION_FADE,      /* cross-fade between workspaces */
+	WM_TRANSITION_SLIDE,     /* horizontal slide animation */
+};
+
+/* Wallpaper display mode */
+enum wm_wallpaper_mode {
+	WM_WALLPAPER_STRETCH,    /* stretch to fill (default) */
+	WM_WALLPAPER_CENTER,     /* center at original size */
+	WM_WALLPAPER_TILE,       /* tile to fill */
+	WM_WALLPAPER_FILL,       /* scale to fill, maintain aspect ratio */
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -151,6 +166,10 @@ struct wm_config {
 	bool animate_minimize;
 	int animation_duration_ms;
 
+	/* Workspace transitions */
+	enum wm_workspace_transition workspace_transition;
+	int workspace_transition_duration_ms;
+
 	/* Slit configuration */
 	bool slit_auto_hide;
 	int slit_placement;
@@ -203,6 +222,13 @@ struct wm_config {
 
 	/* Mouse button remapping (index 0 unused, 1-5 = button mappings) */
 	uint32_t mouse_button_map[6];
+
+	/* Per-workspace wallpaper */
+	char *wallpaper;            /* default wallpaper image path */
+	enum wm_wallpaper_mode wallpaper_mode;
+	char *wallpaper_color;      /* fallback solid color (#RRGGBB) */
+	char **wallpaper_paths;     /* per-workspace overrides (indexed by ws) */
+	int wallpaper_path_count;
 
 	/* Paths */
 	char *config_dir;

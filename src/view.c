@@ -24,6 +24,7 @@
 #include "placement.h"
 #include "rules.h"
 #include "server.h"
+#include "slit.h"
 #include "tabgroup.h"
 #include "text_input.h"
 #include "toolbar.h"
@@ -166,6 +167,19 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, map);
 
+	/* Check if this view should be docked into the slit */
+	if (view->server->slit &&
+	    wm_rules_should_dock(&view->server->rules, view)) {
+		wm_slit_add_native_client(view->server->slit,
+			view->xdg_toplevel, view->scene_tree);
+		view->docked = true;
+		wlr_scene_node_set_enabled(
+			&view->scene_tree->node, true);
+		wlr_log(WLR_INFO, "view docked to slit: %s",
+			view->app_id ? view->app_id : "(null)");
+		return;
+	}
+
 	/* Create server-side decorations */
 	if (!view->decoration && view->server->style) {
 		view->decoration = wm_decoration_create(view,
@@ -288,6 +302,11 @@ handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, unmap);
 
+	/* Docked views: slit handles unmap via its own listener */
+	if (view->docked) {
+		return;
+	}
+
 	/* Cancel any running fade-in animation */
 	if (view->animation)
 		wm_animation_cancel(view->animation);
@@ -377,26 +396,29 @@ handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, destroy);
 
-	/* Cancel any running animation before destroying */
-	if (view->animation) {
-		/* Prevent done callback from using the view after free */
-		struct wm_animation *anim = view->animation;
-		anim->done_fn = NULL;
-		wm_animation_cancel(anim);
-	}
+	if (!view->docked) {
+		/* Cancel any running animation before destroying */
+		if (view->animation) {
+			/* Prevent done callback from using the view
+			 * after free */
+			struct wm_animation *anim = view->animation;
+			anim->done_fn = NULL;
+			wm_animation_cancel(anim);
+		}
 
-	/* Destroy foreign toplevel handle if still alive */
-	wm_foreign_toplevel_handle_destroy(view);
+		/* Destroy foreign toplevel handle if still alive */
+		wm_foreign_toplevel_handle_destroy(view);
 
-	/* Destroy decorations */
-	if (view->decoration) {
-		wm_decoration_destroy(view->decoration);
-		view->decoration = NULL;
-	}
+		/* Destroy decorations */
+		if (view->decoration) {
+			wm_decoration_destroy(view->decoration);
+			view->decoration = NULL;
+		}
 
-	/* Remove from tab group if grouped */
-	if (view->tab_group) {
-		wm_tab_group_remove(view);
+		/* Remove from tab group if grouped */
+		if (view->tab_group) {
+			wm_tab_group_remove(view);
+		}
 	}
 
 	wl_list_remove(&view->map.link);
@@ -414,7 +436,9 @@ handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->link);
 
 	/* Update toolbar icon bar (view removed from list) */
-	wm_toolbar_update_iconbar(view->server->toolbar);
+	if (!view->docked) {
+		wm_toolbar_update_iconbar(view->server->toolbar);
+	}
 
 	free(view->title);
 	free(view->app_id);

@@ -82,6 +82,9 @@ struct wm_view {
 	/* Ignore size hints from xdg_toplevel min/max constraints */
 	bool ignore_size_hints;
 
+	/* True if this view is docked into the slit (skip normal WM handling) */
+	bool docked;
+
 	/* Foreign toplevel handle (for external taskbars) */
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener foreign_toplevel_request_activate;

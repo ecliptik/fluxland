@@ -220,6 +220,7 @@ wm_sources = files(
   'src/toolbar.c',
   'src/util.c',
   'src/validate.c',
+  'src/wallpaper.c',
   'src/xwayland.c',
 )
 
@@ -293,6 +294,7 @@ if get_option('wlcs')
     'src/toolbar.c',
     'src/util.c',
     'src/validate.c',
+    'src/wallpaper.c',
     'src/xwayland.c',
   )
 

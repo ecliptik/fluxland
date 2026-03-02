@@ -20,7 +20,14 @@
 #include "server.h"
 #include "toolbar.h"
 #include "view.h"
+#include "wallpaper.h"
 #include "workspace.h"
+
+#define WS_ANIM_FRAME_MS 16 /* ~60fps */
+
+/* Forward declarations for workspace transition */
+static void ws_transition_cancel(struct wm_server *server);
+static void ws_transition_finish(struct wm_ws_transition *trans);
 
 /* Escape a string for safe inclusion in JSON (writes into dst). */
 static void
@@ -185,6 +192,8 @@ wm_workspaces_init(struct wm_server *server, int count)
 void
 wm_workspaces_finish(struct wm_server *server)
 {
+	ws_transition_cancel(server);
+
 	struct wm_workspace *ws, *tmp;
 	wl_list_for_each_safe(ws, tmp, &server->workspaces, link) {
 		workspace_destroy(ws);
@@ -202,6 +211,136 @@ wm_workspace_get(struct wm_server *server, int index)
 		}
 	}
 	return NULL;
+}
+
+/* Ease-in-out cubic for smooth animation */
+static float
+ease_in_out_cubic(float t)
+{
+	if (t < 0.5f)
+		return 4.0f * t * t * t;
+	float f = 2.0f * t - 2.0f;
+	return 0.5f * f * f * f + 1.0f;
+}
+
+static void
+ws_transition_finish(struct wm_ws_transition *trans)
+{
+	/* Snap to final positions */
+	wlr_scene_node_set_position(&trans->new_ws->tree->node, 0, 0);
+	wlr_scene_node_set_enabled(&trans->old_ws->tree->node, false);
+	wlr_scene_node_set_position(&trans->old_ws->tree->node, 0, 0);
+
+	wl_event_source_remove(trans->timer);
+	trans->server->ws_transition = NULL;
+	free(trans);
+}
+
+static int
+ws_transition_timer_callback(void *data)
+{
+	struct wm_ws_transition *trans = data;
+
+	trans->elapsed_ms += WS_ANIM_FRAME_MS;
+
+	if (trans->elapsed_ms >= trans->duration_ms) {
+		ws_transition_finish(trans);
+		return 0;
+	}
+
+	float t = (float)trans->elapsed_ms / (float)trans->duration_ms;
+	float eased = ease_in_out_cubic(t);
+
+	/* Old workspace slides out, new workspace slides in */
+	int offset = (int)((float)trans->output_width * eased);
+	int old_x = -trans->direction * offset;
+	int new_x = trans->direction * (trans->output_width - offset);
+
+	wlr_scene_node_set_position(&trans->old_ws->tree->node,
+		old_x, 0);
+	wlr_scene_node_set_position(&trans->new_ws->tree->node,
+		new_x, 0);
+
+	wl_event_source_timer_update(trans->timer, WS_ANIM_FRAME_MS);
+	return 0;
+}
+
+/* Cancel any in-progress workspace transition immediately */
+static void
+ws_transition_cancel(struct wm_server *server)
+{
+	struct wm_ws_transition *trans = server->ws_transition;
+	if (!trans)
+		return;
+	ws_transition_finish(trans);
+}
+
+static void
+ws_transition_start_slide(struct wm_server *server,
+	struct wm_workspace *old_ws, struct wm_workspace *new_ws)
+{
+	/* Cancel any existing transition */
+	ws_transition_cancel(server);
+
+	int duration = server->config->workspace_transition_duration_ms;
+	if (duration <= 0) {
+		/* No animation, instant switch */
+		wlr_scene_node_set_enabled(&old_ws->tree->node, false);
+		wlr_scene_node_set_enabled(&new_ws->tree->node, true);
+		return;
+	}
+
+	/* Determine slide direction based on workspace index */
+	int direction = (new_ws->index > old_ws->index) ? 1 : -1;
+
+	/* Get output width for slide distance */
+	struct wm_output *output = wm_server_get_focused_output(server);
+	int output_width = 1920; /* fallback */
+	if (output) {
+		struct wlr_box box;
+		wlr_output_layout_get_box(server->output_layout,
+			output->wlr_output, &box);
+		if (box.width > 0)
+			output_width = box.width;
+	}
+
+	struct wm_ws_transition *trans = calloc(1, sizeof(*trans));
+	if (!trans) {
+		/* Fallback to instant switch */
+		wlr_scene_node_set_enabled(&old_ws->tree->node, false);
+		wlr_scene_node_set_enabled(&new_ws->tree->node, true);
+		return;
+	}
+
+	trans->server = server;
+	trans->old_ws = old_ws;
+	trans->new_ws = new_ws;
+	trans->direction = direction;
+	trans->output_width = output_width;
+	trans->duration_ms = duration;
+	trans->elapsed_ms = 0;
+
+	trans->timer = wl_event_loop_add_timer(server->wl_event_loop,
+		ws_transition_timer_callback, trans);
+	if (!trans->timer) {
+		free(trans);
+		wlr_scene_node_set_enabled(&old_ws->tree->node, false);
+		wlr_scene_node_set_enabled(&new_ws->tree->node, true);
+		return;
+	}
+
+	server->ws_transition = trans;
+
+	/* Enable both trees for the duration of the transition */
+	wlr_scene_node_set_enabled(&old_ws->tree->node, true);
+	wlr_scene_node_set_enabled(&new_ws->tree->node, true);
+
+	/* Position new workspace off-screen */
+	wlr_scene_node_set_position(&new_ws->tree->node,
+		direction * output_width, 0);
+
+	/* Start animation */
+	wl_event_source_timer_update(trans->timer, WS_ANIM_FRAME_MS);
 }
 
 void
@@ -237,19 +376,25 @@ wm_workspace_switch(struct wm_server *server, int index)
 			focused->wlr_output->name,
 			old->name, target->name);
 	} else {
-		/* Global mode: original behavior */
+		/* Global mode */
 		if (target == server->current_workspace)
 			return;
 
 		struct wm_workspace *old = server->current_workspace;
-
-		/* Disable old workspace scene tree */
-		wlr_scene_node_set_enabled(&old->tree->node, false);
-
-		/* Enable new workspace scene tree */
-		wlr_scene_node_set_enabled(&target->tree->node, true);
-
 		server->current_workspace = target;
+
+		/* Check for animated transition */
+		if (server->config &&
+		    server->config->workspace_transition ==
+		    WM_TRANSITION_SLIDE) {
+			ws_transition_start_slide(server, old, target);
+		} else {
+			/* Cancel any in-progress transition first */
+			ws_transition_cancel(server);
+			/* Instant switch */
+			wlr_scene_node_set_enabled(&old->tree->node, false);
+			wlr_scene_node_set_enabled(&target->tree->node, true);
+		}
 
 		wlr_log(WLR_DEBUG, "workspace switch: %s -> %s",
 			old->name, target->name);
@@ -257,6 +402,9 @@ wm_workspace_switch(struct wm_server *server, int index)
 
 	/* Update toolbar workspace buttons and icon bar */
 	wm_toolbar_update_workspace(server->toolbar);
+
+	/* Switch wallpaper for the new workspace */
+	wm_wallpaper_switch(server->wallpaper, target->index);
 
 	/* Broadcast workspace switch event via IPC */
 	{

@@ -77,10 +77,17 @@ layer_name(enum wm_view_layer layer)
  * Match a view property against a fnmatch pattern.
  */
 static bool
-match_property(struct wm_view *view, const char *property,
-	       const char *pattern)
+match_property(struct wm_server *server, struct wm_view *view,
+	       const char *property, const char *pattern)
 {
-	if (!view || !property || !pattern)
+	if (!property || !pattern)
+		return false;
+
+	/* "focused" can be checked even when view is NULL */
+	if (strcasecmp(property, "focused") == 0)
+		return bool_match(pattern, view != NULL);
+
+	if (!view)
 		return false;
 
 	if (strcasecmp(property, "title") == 0) {
@@ -119,6 +126,33 @@ match_property(struct wm_view *view, const char *property,
 		return bool_match(pattern, view->sticky);
 	if (strcasecmp(property, "layer") == 0)
 		return fnmatch(pattern, layer_name(view->layer), 0) == 0;
+	if (strcasecmp(property, "output") == 0 ||
+	    strcasecmp(property, "head") == 0) {
+		/* Find which output this view is on */
+		int idx = 0;
+		struct wm_output *o;
+		wl_list_for_each(o, &server->outputs, link) {
+			if (o->wlr_output && view->x >= o->usable_area.x &&
+			    view->x < o->usable_area.x + o->usable_area.width &&
+			    view->y >= o->usable_area.y &&
+			    view->y < o->usable_area.y + o->usable_area.height) {
+				if (strcasecmp(property, "output") == 0) {
+					return o->wlr_output->name &&
+					       fnmatch(pattern,
+						       o->wlr_output->name,
+						       0) == 0;
+				} else {
+					char idx_str[16];
+					snprintf(idx_str, sizeof(idx_str),
+						 "%d", idx);
+					return fnmatch(pattern, idx_str,
+						       0) == 0;
+				}
+			}
+			idx++;
+		}
+		return false;
+	}
 
 	wlr_log(WLR_ERROR, "unknown condition property: %s", property);
 	return false;
@@ -136,12 +170,14 @@ evaluate_condition(struct wm_server *server,
 
 	switch (cond->type) {
 	case WM_COND_MATCHES:
-		return match_property(view, cond->property, cond->pattern);
+		return match_property(server, view, cond->property,
+				      cond->pattern);
 
 	case WM_COND_SOME: {
 		struct wm_view *v;
 		wl_list_for_each(v, &server->views, link) {
-			if (match_property(v, cond->property, cond->pattern))
+			if (match_property(server, v, cond->property,
+					   cond->pattern))
 				return true;
 		}
 		return false;
@@ -150,7 +186,8 @@ evaluate_condition(struct wm_server *server,
 	case WM_COND_EVERY: {
 		struct wm_view *v;
 		wl_list_for_each(v, &server->views, link) {
-			if (!match_property(v, cond->property, cond->pattern))
+			if (!match_property(server, v, cond->property,
+					    cond->pattern))
 				return false;
 		}
 		return true;
@@ -299,6 +336,28 @@ wm_execute_keybind_action(struct wm_server *server,
 	}
 
 	return wm_execute_action(server, bind->action, bind->argument);
+}
+
+/*
+ * Check a keybind's guard condition against the focused view.
+ * Returns true if the condition passes or the binding has no guard.
+ * Guard conditions only apply to non-conditional actions (not If/ForEach/
+ * Map/Delay, which use the condition field for their own purposes).
+ */
+bool
+wm_keybind_check_condition(struct wm_server *server,
+	struct wm_keybind *bind)
+{
+	if (!bind->condition)
+		return true;
+	/* Don't treat as guard for actions that use conditions internally */
+	if (bind->action == WM_ACTION_IF ||
+	    bind->action == WM_ACTION_FOREACH ||
+	    bind->action == WM_ACTION_MAP ||
+	    bind->action == WM_ACTION_DELAY)
+		return true;
+	return evaluate_condition(server, bind->condition,
+		server->focused_view);
 }
 
 /* --- Action handler functions --- */

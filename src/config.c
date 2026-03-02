@@ -215,6 +215,44 @@ parse_slit_layer(const char *value)
 	return 4; /* Dock (Top layer) */
 }
 
+static enum wm_workspace_transition
+parse_workspace_transition(const char *value)
+{
+	if (!value)
+		return WM_TRANSITION_NONE;
+	if (strcasecmp(value, "Fade") == 0)
+		return WM_TRANSITION_FADE;
+	if (strcasecmp(value, "Slide") == 0)
+		return WM_TRANSITION_SLIDE;
+	return WM_TRANSITION_NONE;
+}
+
+static enum wm_wallpaper_mode
+parse_wallpaper_mode(const char *value)
+{
+	if (!value)
+		return WM_WALLPAPER_STRETCH;
+	if (strcasecmp(value, "Center") == 0)
+		return WM_WALLPAPER_CENTER;
+	if (strcasecmp(value, "Tile") == 0)
+		return WM_WALLPAPER_TILE;
+	if (strcasecmp(value, "Fill") == 0)
+		return WM_WALLPAPER_FILL;
+	return WM_WALLPAPER_STRETCH;
+}
+
+static void
+free_wallpaper_paths(struct wm_config *config)
+{
+	if (config->wallpaper_paths) {
+		for (int i = 0; i < config->wallpaper_path_count; i++)
+			free(config->wallpaper_paths[i]);
+		free(config->wallpaper_paths);
+		config->wallpaper_paths = NULL;
+		config->wallpaper_path_count = 0;
+	}
+}
+
 static bool
 path_exists(const char *path)
 {
@@ -419,6 +457,8 @@ config_create(void)
 	config->animate_window_unmap = false;
 	config->animate_minimize = false;
 	config->animation_duration_ms = 300;
+	config->workspace_transition = WM_TRANSITION_NONE;
+	config->workspace_transition_duration_ms = 300;
 
 	config->slit_auto_hide = false;
 	config->slit_placement = 4; /* RightCenter */
@@ -490,6 +530,17 @@ apply_workspace_config(struct wm_config *config, struct rc_database *db)
 		config->workspace_mode = WM_WORKSPACE_PER_OUTPUT;
 	else
 		config->workspace_mode = WM_WORKSPACE_GLOBAL;
+
+	val = rc_get_string(db, "session.screen0.workspaceTransition");
+	config->workspace_transition = parse_workspace_transition(val);
+
+	config->workspace_transition_duration_ms =
+		rc_get_int(db, "session.screen0.workspaceTransitionDuration",
+			   300);
+	if (config->workspace_transition_duration_ms < 0)
+		config->workspace_transition_duration_ms = 0;
+	if (config->workspace_transition_duration_ms > 5000)
+		config->workspace_transition_duration_ms = 5000;
 }
 
 static void
@@ -958,6 +1009,51 @@ apply_file_paths_config(struct wm_config *config, struct rc_database *db)
 }
 
 static void
+apply_wallpaper_config(struct wm_config *config, struct rc_database *db)
+{
+	const char *val;
+
+	val = rc_get_string(db, "session.screen0.wallpaper");
+	if (val) {
+		free(config->wallpaper);
+		config->wallpaper = resolve_path(config->config_dir,
+						 val, "wallpaper.png");
+	}
+
+	val = rc_get_string(db, "session.screen0.wallpaperMode");
+	config->wallpaper_mode = parse_wallpaper_mode(val);
+
+	val = rc_get_string(db, "session.screen0.wallpaperColor");
+	if (val) {
+		free(config->wallpaper_color);
+		config->wallpaper_color = strdup(val);
+	}
+
+	/* Per-workspace wallpaper overrides */
+	free_wallpaper_paths(config);
+	if (config->workspace_count > 0) {
+		config->wallpaper_paths =
+			calloc(config->workspace_count, sizeof(char *));
+		if (config->wallpaper_paths) {
+			config->wallpaper_path_count = config->workspace_count;
+			for (int i = 0; i < config->workspace_count; i++) {
+				char key[128];
+				snprintf(key, sizeof(key),
+					"session.screen0.workspace%d.wallpaper",
+					i);
+				val = rc_get_string(db, key);
+				if (val) {
+					config->wallpaper_paths[i] =
+						resolve_path(
+							config->config_dir,
+							val, "wallpaper.png");
+				}
+			}
+		}
+	}
+}
+
+static void
 apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 {
 	apply_workspace_config(config, db);
@@ -971,6 +1067,7 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	apply_xkb_config(config, db);
 	apply_mouse_config(config, db);
 	apply_misc_config(config, db);
+	apply_wallpaper_config(config, db);
 	apply_file_paths_config(config, db);
 }
 
@@ -1021,6 +1118,9 @@ config_destroy(struct wm_config *config)
 		return;
 
 	free_workspace_names(config);
+	free_wallpaper_paths(config);
+	free(config->wallpaper);
+	free(config->wallpaper_color);
 	free(config->titlebar_left);
 	free(config->titlebar_right);
 	free(config->clock_format);

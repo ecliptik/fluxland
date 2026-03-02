@@ -25,6 +25,18 @@ struct wm_workspace {
 	int index;
 };
 
+/* Active workspace slide/fade transition state */
+struct wm_ws_transition {
+	struct wm_server *server;
+	struct wl_event_source *timer;
+	struct wm_workspace *old_ws;
+	struct wm_workspace *new_ws;
+	int direction;      /* -1 = slide left, +1 = slide right */
+	int output_width;   /* width of output for slide distance */
+	int duration_ms;
+	int elapsed_ms;
+};
+
 /*
  * Initialize workspaces. Creates workspace_count workspaces
  * under server->view_tree, sets the first one as active.

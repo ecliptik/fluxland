@@ -90,6 +90,7 @@
 #define WM_ANIMATION_H
 #define WM_TABGROUP_H
 #define WM_PLACEMENT_H
+#define WM_WALLPAPER_H
 
 /* --- Stub wayland types --- */
 
@@ -393,6 +394,8 @@ struct wm_menu { int dummy; };
 struct wm_toolbar { int dummy; };
 struct wm_slit { int dummy; };
 struct wm_systray { int dummy; };
+struct wm_wallpaper { int dummy; };
+struct wm_ws_transition { int dummy; };
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -498,6 +501,7 @@ struct wm_server {
 	struct wm_workspace *current_workspace;
 	int workspace_count;
 	struct wlr_scene_tree *sticky_tree;
+	struct wm_ws_transition *ws_transition;
 
 	struct wl_list keyboards;
 
@@ -599,6 +603,7 @@ struct wm_server {
 
 	struct wm_toolbar *toolbar;
 	struct wm_slit *slit;
+	struct wm_wallpaper *wallpaper;
 
 	struct wm_menu *root_menu;
 	struct wm_menu *window_menu;
@@ -1159,6 +1164,9 @@ static void wm_drm_syncobj_init(struct wm_server *s) { (void)s; }
 static void wm_drm_syncobj_finish(struct wm_server *s) { (void)s; }
 static void wm_xwayland_init(struct wm_server *s) { (void)s; }
 static void wm_xwayland_finish(struct wm_server *s) { (void)s; }
+static struct wm_wallpaper *wm_wallpaper_create(struct wm_server *s) { (void)s; return NULL; }
+static void wm_wallpaper_destroy(struct wm_wallpaper *wp) { (void)wp; }
+static void wm_wallpaper_reload(struct wm_wallpaper *wp) { (void)wp; }
 static void wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *s)
 {
 	(void)ipc; (void)s;

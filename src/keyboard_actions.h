@@ -26,6 +26,11 @@ bool wm_execute_action(struct wm_server *server,
 bool wm_execute_keybind_action(struct wm_server *server,
 	struct wm_keybind *bind);
 
+/* Check a keybind's guard condition against the focused view.
+ * Returns true if the condition passes (or binding has no condition). */
+bool wm_keybind_check_condition(struct wm_server *server,
+	struct wm_keybind *bind);
+
 /* Reset chain state back to root level (shared: called from both sides) */
 void wm_chain_reset(struct wm_server *server);
 
