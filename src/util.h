@@ -51,6 +51,11 @@ static inline bool wm_is_blocked_env_var(const char *name) {
  * Sanitizes LD_* environment variables before exec. */
 void wm_spawn_command(const char *cmd);
 
+/* Escape a string for safe inclusion in JSON.
+ * Writes into dst (up to dst_size bytes including NUL).
+ * Escapes backslash, double-quote, and control characters. */
+void wm_json_escape(char *dst, size_t dst_size, const char *src);
+
 /*
  * Open a file with O_NOFOLLOW to reject symlinks.
  * Defense against symlink attacks on config file reload paths
