@@ -136,12 +136,20 @@ enum wm_workspace_mode {
 	WM_WORKSPACE_PER_OUTPUT,
 };
 
+enum wm_workspace_transition {
+	WM_TRANSITION_NONE = 0,
+	WM_TRANSITION_FADE,
+	WM_TRANSITION_SLIDE,
+};
+
 struct wm_config {
 	int workspace_count;
 	char **workspace_names;
 	int workspace_name_count;
 	bool workspace_warping;
 	enum wm_workspace_mode workspace_mode;
+	enum wm_workspace_transition workspace_transition;
+	int workspace_transition_duration_ms;
 };
 
 /* IPC event types */
@@ -185,6 +193,18 @@ struct wm_workspace {
 	struct wlr_scene_tree *tree;
 	char *name;
 	int index;
+};
+
+/* Workspace transition state */
+struct wm_ws_transition {
+	struct wm_server *server;
+	struct wl_event_source *timer;
+	struct wm_workspace *old_ws;
+	struct wm_workspace *new_ws;
+	int direction;
+	int output_width;
+	int duration_ms;
+	int elapsed_ms;
 };
 
 #define WM_DEFAULT_WORKSPACE_COUNT 4
@@ -232,6 +252,8 @@ struct wm_server {
 	struct wlr_scene_tree *sticky_tree;
 	struct wm_style *style;
 	void *seat;
+	struct wm_ws_transition *ws_transition;
+	struct wl_event_loop *wl_event_loop;
 };
 
 /* --- Tracking globals --- */
@@ -261,6 +283,56 @@ wlr_scene_tree_create(struct wlr_scene_tree *parent)
 	memset(t, 0, sizeof(*t));
 	wl_list_init(&t->children);
 	return t;
+}
+
+static void
+wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y)
+{
+	if (node) {
+		node->x = x;
+		node->y = y;
+	}
+}
+
+struct wl_event_loop { int dummy; };
+struct wl_event_source { int dummy; };
+
+static struct wl_event_source g_stub_event_source;
+
+static struct wl_event_source *
+wl_event_loop_add_timer(struct wl_event_loop *loop,
+	int (*callback)(void *), void *data)
+{
+	(void)loop;
+	(void)callback;
+	(void)data;
+	return &g_stub_event_source;
+}
+
+static int
+wl_event_source_timer_update(struct wl_event_source *source, int ms)
+{
+	(void)source;
+	(void)ms;
+	return 0;
+}
+
+static void
+wl_event_source_remove(struct wl_event_source *source)
+{
+	(void)source;
+}
+
+static void
+wlr_output_layout_get_box(struct wlr_output_layout *layout,
+	struct wlr_output *output, struct wlr_box *box)
+{
+	(void)layout;
+	(void)output;
+	box->x = 0;
+	box->y = 0;
+	box->width = 1920;
+	box->height = 1080;
 }
 
 static void

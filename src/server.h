@@ -212,6 +212,7 @@ struct wm_server {
 	struct wm_workspace *current_workspace;
 	int workspace_count;
 	struct wlr_scene_tree *sticky_tree; /* always-visible views */
+	struct wm_ws_transition *ws_transition; /* active slide/fade, or NULL */
 
 	/* Input devices */
 	struct wl_list keyboards; /* wm_keyboard.link */
