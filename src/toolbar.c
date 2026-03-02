@@ -1137,6 +1137,12 @@ wm_toolbar_create(struct wm_server *server)
 
 	/* Create background buffer */
 	toolbar->bg_buf = wlr_scene_buffer_create(toolbar->scene_tree, NULL);
+	if (!toolbar->bg_buf) {
+		wlr_log(WLR_ERROR, "%s", "Failed to create toolbar background buffer");
+		wlr_scene_node_destroy(&toolbar->scene_tree->node);
+		free(toolbar);
+		return NULL;
+	}
 
 	/* Parse toolbar tools from config */
 	const char *tools_str = NULL;

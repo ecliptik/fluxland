@@ -439,6 +439,13 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 		border_color);
 	deco->border_right = wlr_scene_rect_create(deco->tree, 1, 1,
 		border_color);
+	if (!deco->border_top || !deco->border_bottom ||
+		!deco->border_left || !deco->border_right) {
+		wlr_log(WLR_ERROR, "%s", "Failed to create decoration border rects");
+		wlr_scene_node_destroy(&deco->tree->node);
+		free(deco);
+		return NULL;
+	}
 
 	/* Rounded border frame (initially disabled) */
 	deco->border_frame = wlr_scene_buffer_create(deco->tree, NULL);
@@ -455,6 +462,12 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 
 	/* Create titlebar tree */
 	deco->titlebar_tree = wlr_scene_tree_create(deco->tree);
+	if (!deco->titlebar_tree) {
+		wlr_log(WLR_ERROR, "%s", "Failed to create titlebar scene tree");
+		wlr_scene_node_destroy(&deco->tree->node);
+		free(deco);
+		return NULL;
+	}
 
 	/* Create scene buffer nodes (initially empty) */
 	deco->title_bg = wlr_scene_buffer_create(deco->titlebar_tree, NULL);
@@ -462,6 +475,13 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 	deco->handle_buf = wlr_scene_buffer_create(deco->tree, NULL);
 	deco->grip_left = wlr_scene_buffer_create(deco->tree, NULL);
 	deco->grip_right = wlr_scene_buffer_create(deco->tree, NULL);
+	if (!deco->title_bg || !deco->label_buf || !deco->handle_buf ||
+		!deco->grip_left || !deco->grip_right) {
+		wlr_log(WLR_ERROR, "%s", "Failed to create decoration scene buffers");
+		wlr_scene_node_destroy(&deco->tree->node);
+		free(deco);
+		return NULL;
+	}
 
 	/* External tab bar buffer (initially hidden) */
 	deco->tab_bar_buf = wlr_scene_buffer_create(deco->tree, NULL);
@@ -979,6 +999,11 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			if (buf) {
 				wlr_buffer_drop(buf);
 			}
+			if (!btn->node) {
+				wlr_log(WLR_ERROR, "%s",
+					"Failed to create left button scene buffer");
+				continue;
+			}
 
 			int bx = BUTTON_PADDING +
 				i * (button_size + BUTTON_PADDING);
@@ -1015,6 +1040,11 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 			}
 			if (buf) {
 				wlr_buffer_drop(buf);
+			}
+			if (!btn->node) {
+				wlr_log(WLR_ERROR, "%s",
+					"Failed to create right button scene buffer");
+				continue;
 			}
 
 			int bx = rx_start + BUTTON_PADDING +
