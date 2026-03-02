@@ -60,6 +60,7 @@ struct wm_window_rule {
 	bool has_head;          int head;
 	bool has_focus_protection; int focus_protection;
 	bool has_ignore_size_hints; bool ignore_size_hints;
+	bool has_dock;          bool dock; /* route to slit instead of workspace */
 
 	struct wl_list link;    /* wm_rules.window_rules */
 };
@@ -112,6 +113,12 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view);
  */
 struct wm_view *wm_rules_find_group(struct wm_rules *rules,
 	struct wm_view *view, struct wm_server *server);
+
+/*
+ * Check whether a newly-mapped view should be routed to the slit (dockapp).
+ * Returns true if a matching window rule has [Dock] {yes}.
+ */
+bool wm_rules_should_dock(struct wm_rules *rules, struct wm_view *view);
 
 /*
  * Save the current window properties to the apps file.

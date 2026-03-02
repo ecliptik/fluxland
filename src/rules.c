@@ -343,6 +343,9 @@ static void parse_rule_setting(const char *line, struct wm_window_rule *rule) {
 	} else if (streqi(name, "IgnoreSizeHints")) {
 		rule->has_ignore_size_hints = true;
 		rule->ignore_size_hints = parse_bool(val);
+	} else if (streqi(name, "Dock")) {
+		rule->has_dock = true;
+		rule->dock = parse_bool(val);
 	}
 }
 
@@ -534,6 +537,19 @@ static bool rule_matches(struct wm_match_pattern *patterns, int count,
 			return false;
 	}
 	return count > 0;
+}
+
+bool wm_rules_should_dock(struct wm_rules *rules, struct wm_view *view) {
+	struct wm_window_rule *rule;
+	wl_list_for_each(rule, &rules->window_rules, link) {
+		if (!rule_matches(rule->patterns, rule->pattern_count, view))
+			continue;
+		if (rule->has_dock && rule->dock)
+			return true;
+		/* First match wins — if it doesn't have [Dock], stop */
+		return false;
+	}
+	return false;
 }
 
 void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
