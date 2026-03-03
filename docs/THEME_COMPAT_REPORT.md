@@ -5,7 +5,7 @@ Tested 10 community Fluxbox themes from [box-look.org](https://www.box-look.org/
 
 ## Test Environment
 
-- **Compositor:** Fluxland v1.0.0 + 3 compat fixes (branch `test/fluxbox-theme-compat`)
+- **Compositor:** Fluxland v1.0.0 + 5 compat fixes
 - **Display:** 1280x720 headless Wayland session via lightdm
 - **Test method:** IPC `SetStyle` + `RootMenu`, screenshot via `grim`
 - **Comparison:** Side-by-side with box-look.org preview screenshots
@@ -30,7 +30,7 @@ Tested 10 community Fluxbox themes from [box-look.org](https://www.box-look.org/
 
 ## Bugs Found and Fixed
 
-Three compatibility issues were discovered and fixed during testing:
+Five compatibility issues were discovered and fixed during testing:
 
 ### 1. No XPM/multi-format pixmap support (commit 83e833f)
 
@@ -77,6 +77,38 @@ automatically switch to pixmap fill.
 Raven, and Black Glass rendered with solid black instead of their designed
 pixmap textures for titlebars, toolbars, and menu elements.
 
+### 4. Pixmap subdirectory not searched (commit TBD)
+
+**Problem:** Many Fluxbox themes store pixmap files in a `pixmaps/`
+subdirectory within the theme directory, but reference them by bare filename
+in theme.cfg (e.g. `toolbar.pixmap: toolbar.xpm`). Fluxbox automatically
+checks both `style_dir/filename` and `style_dir/pixmaps/filename`. Fluxland
+only tried the direct path, so themes like Plastick and Coffee Dream loaded
+menus correctly (solid colors) but rendered titlebars and toolbars as plain
+black — all their pixmap textures were silently missing.
+
+**Fix:** Added `resolve_pixmap_file()` helper in style.c that tries the
+direct path first, then falls back to `style_dir/pixmaps/filename`. Both
+`load_texture()` and `load_pixmap_path()` use this helper.
+
+**Impact:** High. Affected 8 of 10 pixmap-based themes — titlebars, toolbars,
+and button icons all failed to load their designed textures.
+
+### 5. X11 greyNN/grayNN named colors not parsed (commit TBD)
+
+**Problem:** The X11 color database includes `grey0` through `grey100` (and
+`gray0`–`gray100`) as named colors representing percent brightness. Themes
+like blackdelux use `grey80`, `grey40`, `grey20` for text and background
+colors. Fluxland's `style_parse_color()` only supported 6 basic named colors
+(black, white, red, green, blue, yellow), so greyNN values fell through to
+the default black — making light-grey-on-black text invisible.
+
+**Fix:** Added `greyNN`/`grayNN` parsing in `style_parse_color()` that
+converts the 0–100 percent value to an RGB grey level.
+
+**Impact:** Medium. Affected themes using X11 grey shades for text colors,
+causing invisible or wrong-colored text.
+
 ## Rendering Comparison Details
 
 ### Fully Matched Elements
@@ -96,7 +128,7 @@ These elements render identically or near-identically to Fluxbox:
 - **Toolbar iconbar**: Focused/unfocused colors and text colors
 - **Fonts**: Wildcard `*font`/`*Font` and per-component font settings
 - **Round corners**: `window.roundCorners` bitmask
-- **Color formats**: `#RRGGBB`, `#RGB`, `rgb:R/G/B`, named colors
+- **Color formats**: `#RRGGBB`, `#RGB`, `rgb:R/G/B`, named colors, X11 `greyNN`/`grayNN`
 
 ### Known Limitations (Minor)
 
@@ -134,7 +166,7 @@ so the visual difference is minimal.
 ## Conclusion
 
 **Confidence: High.** Standard Fluxbox themes from box-look.org will work
-correctly in Fluxland after the three compatibility fixes in this branch. The
+correctly in Fluxland after the five compatibility fixes. The
 core rendering engine handles all 8 gradient types, bevel effects, pixmap
 textures (via GdkPixbuf), font styling, and the full window/menu style
 property set. The only gaps are in fine-grained toolbar sub-component styling

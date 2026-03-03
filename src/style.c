@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
 
 #define MAX_FONT_SIZE 200
 
@@ -120,7 +121,7 @@ style_parse_color(const char *value)
 		return make_color(0, 0, 0);
 	}
 
-	/* Named colors - support a few basics */
+	/* Named colors */
 	if (strcasecmp(value, "white") == 0)
 		return make_color(255, 255, 255);
 	if (strcasecmp(value, "black") == 0)
@@ -133,6 +134,16 @@ style_parse_color(const char *value)
 		return make_color(0, 0, 255);
 	if (strcasecmp(value, "grey") == 0 || strcasecmp(value, "gray") == 0)
 		return make_color(190, 190, 190);
+
+	/* X11 greyNN/grayNN colors (0-100 percent brightness) */
+	if (strncasecmp(value, "grey", 4) == 0 ||
+	    strncasecmp(value, "gray", 4) == 0) {
+		int pct;
+		if (safe_atoi(value + 4, &pct) && pct >= 0 && pct <= 100) {
+			uint8_t v = (uint8_t)((pct * 255 + 50) / 100);
+			return make_color(v, v, v);
+		}
+	}
 
 	return make_color(0, 0, 0);
 }
@@ -390,6 +401,48 @@ style_get_int(struct rc_database *db, const char *key, int default_val)
 	return (int)result;
 }
 
+/*
+ * Resolve a relative pixmap filename to a full path.
+ * Tries style_dir/filename first, then style_dir/pixmaps/filename
+ * as a fallback (standard Fluxbox theme convention).
+ */
+static char *
+resolve_pixmap_file(const char *style_dir, const char *filename)
+{
+	if (!style_dir || !filename || *filename == '\0')
+		return NULL;
+	if (filename[0] == '/')
+		return strdup(filename);
+
+	/* Try style_dir/filename */
+	size_t dir_len = strlen(style_dir);
+	size_t name_len = strlen(filename);
+	size_t len = dir_len + 1 + name_len + 1;
+	char *path = malloc(len);
+	if (!path)
+		return NULL;
+	snprintf(path, len, "%s/%s", style_dir, filename);
+	if (access(path, R_OK) == 0)
+		return path;
+
+	/* Try style_dir/pixmaps/filename */
+	size_t plen = dir_len + 9 + name_len + 1; /* "/pixmaps/" = 9 */
+	char *ppath = malloc(plen);
+	if (!ppath) {
+		free(path);
+		return NULL;
+	}
+	snprintf(ppath, plen, "%s/pixmaps/%s", style_dir, filename);
+	if (access(ppath, R_OK) == 0) {
+		free(path);
+		return ppath;
+	}
+
+	/* Neither exists; return the first path and let loader handle error */
+	free(ppath);
+	return path;
+}
+
 static void
 load_texture(struct rc_database *db, const char *base_key,
 	struct wm_texture *tex, const char *style_dir)
@@ -420,16 +473,7 @@ load_texture(struct rc_database *db, const char *base_key,
 	const char *pixmap_str = style_get(db, key);
 	if (pixmap_str && *pixmap_str != '\0') {
 		safe_free(&tex->pixmap_path);
-		if (pixmap_str[0] == '/' || !style_dir) {
-			tex->pixmap_path = strdup(pixmap_str);
-		} else {
-			/* Resolve relative to style directory */
-			size_t len = strlen(style_dir) + 1 + strlen(pixmap_str) + 1;
-			tex->pixmap_path = malloc(len);
-			if (tex->pixmap_path)
-				snprintf(tex->pixmap_path, len, "%s/%s",
-					style_dir, pixmap_str);
-		}
+		tex->pixmap_path = resolve_pixmap_file(style_dir, pixmap_str);
 		/*
 		 * Fluxbox compat: if a pixmap path is set but the texture type
 		 * was empty or non-pixmap, implicitly switch to pixmap fill.
@@ -510,13 +554,7 @@ load_pixmap_path(struct rc_database *db, const char *key,
 	const char *val = style_get(db, key);
 	if (!val || *val == '\0')
 		return NULL;
-	if (val[0] == '/' || !style_dir)
-		return strdup(val);
-	size_t len = strlen(style_dir) + 1 + strlen(val) + 1;
-	char *path = malloc(len);
-	if (path)
-		snprintf(path, len, "%s/%s", style_dir, val);
-	return path;
+	return resolve_pixmap_file(style_dir, val);
 }
 
 static enum wm_justify
