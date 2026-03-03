@@ -101,11 +101,16 @@ Mod1 Shift Tab :PrevWindow
 # Mod4 k :FocusPrev
 
 # -------------------------------------------------------------------
+# Window half-tiling (snap to screen halves)
+# -------------------------------------------------------------------
+
+Mod4 Left :LHalf
+Mod4 Right :RHalf
+
+# -------------------------------------------------------------------
 # Window movement (keyboard)
 # -------------------------------------------------------------------
 
-Mod4 Left :MoveLeft 20
-Mod4 Right :MoveRight 20
 Mod4 Up :MoveUp 20
 Mod4 Down :MoveDown 20
 
