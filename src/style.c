@@ -430,6 +430,17 @@ load_texture(struct rc_database *db, const char *base_key,
 				snprintf(tex->pixmap_path, len, "%s/%s",
 					style_dir, pixmap_str);
 		}
+		/*
+		 * Fluxbox compat: if a pixmap path is set but the texture type
+		 * was empty or non-pixmap, implicitly switch to pixmap fill.
+		 * Many community themes set e.g. "window.title.focus:" (empty)
+		 * with "window.title.focus.pixmap: title.xpm" and expect the
+		 * pixmap to be used.
+		 */
+		if (tex->pixmap_path && tex->fill != WM_TEX_PIXMAP &&
+		    tex->fill != WM_TEX_PARENT_RELATIVE) {
+			tex->fill = WM_TEX_PIXMAP;
+		}
 	}
 }
 
