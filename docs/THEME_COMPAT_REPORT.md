@@ -5,7 +5,7 @@ Tested 10 community Fluxbox themes from [box-look.org](https://www.box-look.org/
 
 ## Test Environment
 
-- **Compositor:** Fluxland v1.0.0 + 5 compat fixes
+- **Compositor:** Fluxland v1.0.0 + 6 compat fixes
 - **Display:** 1280x720 headless Wayland session via lightdm
 - **Test method:** IPC `SetStyle` + `RootMenu`, screenshot via `grim`
 - **Comparison:** Side-by-side with box-look.org preview screenshots
@@ -30,7 +30,7 @@ Tested 10 community Fluxbox themes from [box-look.org](https://www.box-look.org/
 
 ## Bugs Found and Fixed
 
-Five compatibility issues were discovered and fixed during testing:
+Six compatibility issues were discovered and fixed during testing:
 
 ### 1. No XPM/multi-format pixmap support (commit 83e833f)
 
@@ -109,6 +109,25 @@ converts the 0–100 percent value to an RGB grey level.
 **Impact:** Medium. Affected themes using X11 grey shades for text colors,
 causing invisible or wrong-colored text.
 
+### 6. Per-button pixmaps not used in decoration rendering (commit TBD)
+
+**Problem:** Fluxbox themes define per-button pixmap images for close,
+maximize, minimize, shade, and stick buttons (e.g.
+`window.close.pixmap: close_focus.xpm`). These were correctly parsed by
+style.c into the `wm_style` struct, but `render_button()` in decoration.c
+never consulted them — it only rendered the generic `window.button.focus`
+texture with a vector glyph overlay. Themes that relied on per-button pixmaps
+(leaving generic button colors empty) rendered as solid black boxes.
+
+**Fix:** Added `get_button_pixmap()` lookup in decoration.c and extended
+`render_button()` to try the per-button pixmap first via `wm_load_pixmap()`.
+Falls back to the generic texture + glyph when no pixmap is configured.
+Exposed `load_pixmap()` from render.c as public `wm_load_pixmap()`.
+
+**Impact:** High. 6 of 10 themes (Carbonit, Neon, Soft White, Raven, Black
+Glass, Coffee Dream) showed featureless black boxes instead of their designed
+button icons.
+
 ## Rendering Comparison Details
 
 ### Fully Matched Elements
@@ -166,7 +185,7 @@ so the visual difference is minimal.
 ## Conclusion
 
 **Confidence: High.** Standard Fluxbox themes from box-look.org will work
-correctly in Fluxland after the five compatibility fixes. The
+correctly in Fluxland after the six compatibility fixes. The
 core rendering engine handles all 8 gradient types, bevel effects, pixmap
 textures (via GdkPixbuf), font styling, and the full window/menu style
 property set. The only gaps are in fine-grained toolbar sub-component styling

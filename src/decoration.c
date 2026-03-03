@@ -144,14 +144,52 @@ parse_button_layout(const char *str, int *out_count)
 /* --- Rendering helpers --- */
 
 /*
- * Render a single button: background texture + glyph overlay.
+ * Look up the per-button pixmap path from the style for the given button type
+ * and focus state.  Returns NULL if no per-button pixmap is configured.
+ */
+static const char *
+get_button_pixmap(const struct wm_style *style, enum wm_button_type type,
+	bool focused)
+{
+	switch (type) {
+	case WM_BUTTON_CLOSE:
+		return focused ? style->window_close_pixmap
+			: style->window_close_unfocus_pixmap;
+	case WM_BUTTON_MAXIMIZE:
+		return focused ? style->window_maximize_pixmap
+			: style->window_maximize_unfocus_pixmap;
+	case WM_BUTTON_ICONIFY:
+		return focused ? style->window_iconify_pixmap
+			: style->window_iconify_unfocus_pixmap;
+	case WM_BUTTON_SHADE:
+		return focused ? style->window_shade_pixmap
+			: style->window_shade_unfocus_pixmap;
+	case WM_BUTTON_STICK:
+		return focused ? style->window_stick_pixmap
+			: style->window_stick_unfocus_pixmap;
+	}
+	return NULL;
+}
+
+/*
+ * Render a single button.  If a per-button pixmap path is set, use it as the
+ * entire button image.  Otherwise fall back to background texture + glyph.
  * Returns a wlr_buffer or NULL on error.
  */
 static struct wlr_buffer *
 render_button(const struct wm_texture *bg_tex,
 	const struct wm_color *pic_color, enum wm_button_type type,
-	int size)
+	int size, const char *pixmap_path)
 {
+	/* Per-button pixmap: use it as the entire button image */
+	if (pixmap_path && *pixmap_path != '\0') {
+		cairo_surface_t *img = wm_load_pixmap(pixmap_path,
+			size, size);
+		if (img)
+			return wlr_buffer_from_cairo(img);
+		/* Fall through to generic rendering on load failure */
+	}
+
 	/* Render background */
 	cairo_surface_t *bg = wm_render_texture(bg_tex, size, size, 1.0f);
 	if (!bg) {
@@ -701,6 +739,8 @@ struct decoration_layout {
 	const struct wm_texture *button_tex;
 	const struct wm_color *pic_color;
 	const struct wm_color *border_color;
+	const struct wm_style *style;
+	bool focused;
 };
 
 /* --- Borders rendering --- */
@@ -844,8 +884,10 @@ render_decoration_titlebar(struct wm_decoration *deco,
 		/* Render and position left buttons */
 		for (int i = 0; i < deco->buttons_left_count; i++) {
 			struct wm_decor_button *btn = &deco->buttons_left[i];
+			const char *bpix = get_button_pixmap(l->style,
+				btn->type, l->focused);
 			struct wlr_buffer *buf = render_button(l->button_tex,
-				l->pic_color, btn->type, button_size);
+				l->pic_color, btn->type, button_size, bpix);
 
 			if (!btn->node) {
 				btn->node = wlr_scene_buffer_create(
@@ -887,8 +929,10 @@ render_decoration_titlebar(struct wm_decoration *deco,
 		int rx_start = titlebar_width - right_buttons_width;
 		for (int i = 0; i < deco->buttons_right_count; i++) {
 			struct wm_decor_button *btn = &deco->buttons_right[i];
+			const char *bpix = get_button_pixmap(l->style,
+				btn->type, l->focused);
 			struct wlr_buffer *buf = render_button(l->button_tex,
-				l->pic_color, btn->type, button_size);
+				l->pic_color, btn->type, button_size, bpix);
 
 			if (!btn->node) {
 				btn->node = wlr_scene_buffer_create(
@@ -1350,6 +1394,8 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		&style->window_button_focus_pic_color :
 		&style->window_button_unfocus_pic_color;
 	l.border_color = &style->window_border_color;
+	l.style = style;
+	l.focused = deco->focused;
 
 	/* Render each decoration component */
 	render_decoration_borders(deco, style, &l);

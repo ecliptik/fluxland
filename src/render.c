@@ -436,8 +436,8 @@ pixbuf_to_cairo(GdkPixbuf *pixbuf)
 }
 #endif
 
-static cairo_surface_t *
-load_pixmap(const char *path, int width, int height)
+cairo_surface_t *
+wm_load_pixmap(const char *path, int width, int height)
 {
 	if (!path || *path == '\0')
 		return NULL;
@@ -520,7 +520,7 @@ wm_render_texture(const struct wm_texture *texture, int width, int height,
 
 	/* Pixmap fill */
 	if (texture->fill == WM_TEX_PIXMAP)
-		return load_pixmap(texture->pixmap_path, w, h);
+		return wm_load_pixmap(texture->pixmap_path, w, h);
 
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);

@@ -67,6 +67,16 @@ cairo_surface_t *wm_render_text(const char *text, const struct wm_font *font,
 int wm_measure_text_width(const char *text, const struct wm_font *font,
 	float scale);
 
+/* --- Pixmap loading --- */
+
+/*
+ * Load an image file (PNG, XPM, JPEG, BMP) and scale it to the given
+ * dimensions.  Returns a Cairo surface or NULL on error.
+ *
+ * Caller is responsible for calling cairo_surface_destroy() on the result.
+ */
+cairo_surface_t *wm_load_pixmap(const char *path, int width, int height);
+
 /* --- Button glyph rendering --- */
 
 /*
