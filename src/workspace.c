@@ -19,6 +19,7 @@
 #include "output.h"
 #include "server.h"
 #include "toolbar.h"
+#include "util.h"
 #include "view.h"
 #include "wallpaper.h"
 #include "workspace.h"
@@ -28,29 +29,6 @@
 /* Forward declarations for workspace transition */
 static void ws_transition_cancel(struct wm_server *server);
 static void ws_transition_finish(struct wm_ws_transition *trans);
-
-/* Escape a string for safe inclusion in JSON (writes into dst). */
-static void
-json_escape_buf(char *dst, size_t dst_size, const char *src)
-{
-	if (!src) {
-		if (dst_size > 0) dst[0] = '\0';
-		return;
-	}
-	size_t j = 0;
-	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
-		unsigned char c = (unsigned char)src[i];
-		if (c == '"' || c == '\\') {
-			dst[j++] = '\\';
-			dst[j++] = c;
-		} else if (c < 0x20) {
-			continue;
-		} else {
-			dst[j++] = c;
-		}
-	}
-	dst[j] = '\0';
-}
 
 /* Check if per-output workspace mode is active */
 static bool
@@ -409,7 +387,7 @@ wm_workspace_switch(struct wm_server *server, int index)
 	/* Broadcast workspace switch event via IPC */
 	{
 		char esc_name[128], buf[256];
-		json_escape_buf(esc_name, sizeof(esc_name), target->name);
+		wm_json_escape(esc_name, sizeof(esc_name), target->name);
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"workspace\","
 			"\"index\":%d,"

@@ -19,31 +19,9 @@
 #include "server.h"
 #include "slit.h"
 #include "toolbar.h"
+#include "util.h"
 #include "workspace.h"
 #include "view.h"
-
-/* Escape a string for safe inclusion in JSON (writes into dst). */
-static void
-json_escape_buf(char *dst, size_t dst_size, const char *src)
-{
-	if (!src) {
-		if (dst_size > 0) dst[0] = '\0';
-		return;
-	}
-	size_t j = 0;
-	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
-		unsigned char c = (unsigned char)src[i];
-		if (c == '"' || c == '\\') {
-			dst[j++] = '\\';
-			dst[j++] = c;
-		} else if (c < 0x20) {
-			continue;
-		} else {
-			dst[j++] = c;
-		}
-	}
-	dst[j] = '\0';
-}
 
 void
 wm_focus_nav_init(struct wm_focus_nav *nav)
@@ -111,9 +89,9 @@ wm_focus_nav_return_to_windows(struct wm_server *server)
 	/* Re-announce the focused window for screen readers */
 	if (server->focused_view) {
 		char esc_app[256], esc_title[256], buf[1024];
-		json_escape_buf(esc_app, sizeof(esc_app),
+		wm_json_escape(esc_app, sizeof(esc_app),
 			server->focused_view->app_id);
-		json_escape_buf(esc_title, sizeof(esc_title),
+		wm_json_escape(esc_title, sizeof(esc_title),
 			server->focused_view->title);
 
 		snprintf(buf, sizeof(buf),

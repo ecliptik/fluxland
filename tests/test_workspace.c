@@ -447,6 +447,31 @@ void wm_workspace_switch(struct wm_server *server, int index);
 void wm_view_move_to_workspace(struct wm_view *view,
 	struct wm_workspace *workspace);
 
+/* --- Stubs for util.h functions --- */
+
+void wm_spawn_command(const char *cmd) { (void)cmd; }
+
+void wm_json_escape(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) {
+		if (dst_size > 0) dst[0] = '\0';
+		return;
+	}
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') {
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c < 0x20) {
+			continue;
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
+
 /* --- Include workspace source directly --- */
 
 #include "workspace.c"
@@ -539,72 +564,72 @@ setup_mock_view(int idx, struct wm_workspace *ws)
 	wl_list_insert(test_server.views.prev, &test_views[idx].link);
 }
 
-/* ===== json_escape_buf tests ===== */
+/* ===== wm_json_escape tests ===== */
 
 static void
-test_json_escape_buf_normal(void)
+test_wm_json_escape_normal(void)
 {
 	char buf[64];
-	json_escape_buf(buf, sizeof(buf), "hello world");
+	wm_json_escape(buf, sizeof(buf), "hello world");
 	assert(strcmp(buf, "hello world") == 0);
-	printf("  PASS: json_escape_buf_normal\n");
+	printf("  PASS: wm_json_escape_normal\n");
 }
 
 static void
-test_json_escape_buf_quotes(void)
+test_wm_json_escape_quotes(void)
 {
 	char buf[64];
-	json_escape_buf(buf, sizeof(buf), "say \"hello\"");
+	wm_json_escape(buf, sizeof(buf), "say \"hello\"");
 	assert(strcmp(buf, "say \\\"hello\\\"") == 0);
-	printf("  PASS: json_escape_buf_quotes\n");
+	printf("  PASS: wm_json_escape_quotes\n");
 }
 
 static void
-test_json_escape_buf_backslash(void)
+test_wm_json_escape_backslash(void)
 {
 	char buf[64];
-	json_escape_buf(buf, sizeof(buf), "path\\to\\file");
+	wm_json_escape(buf, sizeof(buf), "path\\to\\file");
 	assert(strcmp(buf, "path\\\\to\\\\file") == 0);
-	printf("  PASS: json_escape_buf_backslash\n");
+	printf("  PASS: wm_json_escape_backslash\n");
 }
 
 static void
-test_json_escape_buf_control_chars(void)
+test_wm_json_escape_control_chars(void)
 {
 	char buf[64];
-	json_escape_buf(buf, sizeof(buf), "line1\nline2\ttab");
+	wm_json_escape(buf, sizeof(buf), "line1\nline2\ttab");
 	/* Control chars (< 0x20) are skipped */
 	assert(strcmp(buf, "line1line2tab") == 0);
-	printf("  PASS: json_escape_buf_control_chars\n");
+	printf("  PASS: wm_json_escape_control_chars\n");
 }
 
 static void
-test_json_escape_buf_null(void)
+test_wm_json_escape_null(void)
 {
 	char buf[64];
 	buf[0] = 'x';
-	json_escape_buf(buf, sizeof(buf), NULL);
+	wm_json_escape(buf, sizeof(buf), NULL);
 	assert(buf[0] == '\0');
-	printf("  PASS: json_escape_buf_null\n");
+	printf("  PASS: wm_json_escape_null\n");
 }
 
 static void
-test_json_escape_buf_empty(void)
+test_wm_json_escape_empty(void)
 {
 	char buf[64];
-	json_escape_buf(buf, sizeof(buf), "");
+	wm_json_escape(buf, sizeof(buf), "");
 	assert(buf[0] == '\0');
-	printf("  PASS: json_escape_buf_empty\n");
+	printf("  PASS: wm_json_escape_empty\n");
 }
 
 static void
-test_json_escape_buf_mixed(void)
+test_wm_json_escape_mixed(void)
 {
 	char buf[64];
-	json_escape_buf(buf, sizeof(buf), "a\"b\\c\nd");
+	wm_json_escape(buf, sizeof(buf), "a\"b\\c\nd");
 	/* quote escaped, backslash escaped, newline skipped */
 	assert(strcmp(buf, "a\\\"b\\\\cd") == 0);
-	printf("  PASS: json_escape_buf_mixed\n");
+	printf("  PASS: wm_json_escape_mixed\n");
 }
 
 /* ===== wm_workspace_get tests ===== */
@@ -1470,17 +1495,17 @@ test_workspace_custom_names(void)
 	printf("  PASS: workspace_custom_names\n");
 }
 
-/* ===== json_escape_buf truncation test ===== */
+/* ===== wm_json_escape truncation test ===== */
 
 static void
-test_json_escape_buf_truncation(void)
+test_wm_json_escape_truncation(void)
 {
 	char buf[8];
-	json_escape_buf(buf, sizeof(buf), "abcdefghijklmnop");
+	wm_json_escape(buf, sizeof(buf), "abcdefghijklmnop");
 	/* Should be truncated but null-terminated */
 	assert(strlen(buf) < sizeof(buf));
 	assert(buf[sizeof(buf) - 1] == '\0' || strlen(buf) < sizeof(buf));
-	printf("  PASS: json_escape_buf_truncation\n");
+	printf("  PASS: wm_json_escape_truncation\n");
 }
 
 /* ===== per-output mode init enables all trees ===== */
@@ -1813,15 +1838,15 @@ main(void)
 {
 	printf("test_workspace:\n");
 
-	/* json_escape_buf */
-	test_json_escape_buf_normal();
-	test_json_escape_buf_quotes();
-	test_json_escape_buf_backslash();
-	test_json_escape_buf_control_chars();
-	test_json_escape_buf_null();
-	test_json_escape_buf_empty();
-	test_json_escape_buf_mixed();
-	test_json_escape_buf_truncation();
+	/* wm_json_escape */
+	test_wm_json_escape_normal();
+	test_wm_json_escape_quotes();
+	test_wm_json_escape_backslash();
+	test_wm_json_escape_control_chars();
+	test_wm_json_escape_null();
+	test_wm_json_escape_empty();
+	test_wm_json_escape_mixed();
+	test_wm_json_escape_truncation();
 
 	/* workspace_get */
 	test_workspace_get_valid();

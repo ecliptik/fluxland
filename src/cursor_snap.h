@@ -19,9 +19,6 @@
 struct wm_server;
 struct wlr_box;
 
-/* Convert a Cairo surface to a wlr_buffer (transfers ownership of surface) */
-struct wlr_buffer *cursor_wlr_buffer_from_cairo(cairo_surface_t *surface);
-
 /* Position overlay (shows window coordinates during move/resize) */
 void position_overlay_destroy(struct wm_server *server);
 void position_overlay_update(struct wm_server *server, const char *text);

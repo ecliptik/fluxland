@@ -21,98 +21,12 @@
 
 #include "config.h"
 #include "cursor_snap.h"
+#include "pixel_buffer.h"
 #include "server.h"
 #include "output.h"
 #include "render.h"
 #include "style.h"
 #include "view.h"
-
-/* --- Position overlay (pixel buffer bridge, same as menu.c) --- */
-
-struct wm_cursor_pixel_buffer {
-	struct wlr_buffer base;
-	void *data;
-	uint32_t format;
-	size_t stride;
-};
-
-static void cursor_pixel_buffer_destroy(struct wlr_buffer *wlr_buffer)
-{
-	struct wm_cursor_pixel_buffer *buffer =
-		wl_container_of(wlr_buffer, buffer, base);
-	free(buffer->data);
-	free(buffer);
-}
-
-static bool cursor_pixel_buffer_begin_data_ptr_access(
-	struct wlr_buffer *wlr_buffer, uint32_t flags,
-	void **data, uint32_t *format, size_t *stride)
-{
-	struct wm_cursor_pixel_buffer *buffer =
-		wl_container_of(wlr_buffer, buffer, base);
-	if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE)
-		return false;
-	*data = buffer->data;
-	*format = buffer->format;
-	*stride = buffer->stride;
-	return true;
-}
-
-static void cursor_pixel_buffer_end_data_ptr_access(
-	struct wlr_buffer *wlr_buffer)
-{
-	/* nothing */
-}
-
-static const struct wlr_buffer_impl cursor_pixel_buffer_impl = {
-	.destroy = cursor_pixel_buffer_destroy,
-	.begin_data_ptr_access = cursor_pixel_buffer_begin_data_ptr_access,
-	.end_data_ptr_access = cursor_pixel_buffer_end_data_ptr_access,
-};
-
-struct wlr_buffer *
-cursor_wlr_buffer_from_cairo(cairo_surface_t *surface)
-{
-	if (!surface)
-		return NULL;
-
-	cairo_surface_flush(surface);
-
-	int width = cairo_image_surface_get_width(surface);
-	int height = cairo_image_surface_get_height(surface);
-	int stride = cairo_image_surface_get_stride(surface);
-	unsigned char *src = cairo_image_surface_get_data(surface);
-
-	if (width <= 0 || height <= 0 || stride <= 0 || !src) {
-		cairo_surface_destroy(surface);
-		return NULL;
-	}
-
-	size_t size = (size_t)stride * (size_t)height;
-	void *data = malloc(size);
-	if (!data) {
-		cairo_surface_destroy(surface);
-		return NULL;
-	}
-	memcpy(data, src, size);
-
-	struct wm_cursor_pixel_buffer *buffer =
-		calloc(1, sizeof(*buffer));
-	if (!buffer) {
-		free(data);
-		cairo_surface_destroy(surface);
-		return NULL;
-	}
-
-	wlr_buffer_init(&buffer->base, &cursor_pixel_buffer_impl,
-		width, height);
-	buffer->data = data;
-	buffer->format = DRM_FORMAT_ARGB8888;
-	buffer->stride = stride;
-
-	cairo_surface_destroy(surface);
-	return &buffer->base;
-}
 
 void
 position_overlay_destroy(struct wm_server *server)
@@ -172,7 +86,7 @@ position_overlay_update(struct wm_server *server, const char *text)
 	cairo_destroy(cr);
 	cairo_surface_destroy(text_surf);
 
-	struct wlr_buffer *buf = cursor_wlr_buffer_from_cairo(surf);
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surf);
 	if (!buf)
 		return;
 
@@ -415,7 +329,7 @@ snap_preview_update(struct wm_server *server, struct wlr_box *box)
 
 	cairo_destroy(cr);
 
-	struct wlr_buffer *buf = cursor_wlr_buffer_from_cairo(surf);
+	struct wlr_buffer *buf = wlr_buffer_from_cairo(surf);
 	if (!buf)
 		return;
 

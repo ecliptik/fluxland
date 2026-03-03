@@ -31,6 +31,22 @@ static int stub_focus_prev_count;
 static int stub_focus_view_count;
 static char last_broadcast_event[1024];
 
+/* --- Stubs for util.h functions --- */
+
+void wm_spawn_command(const char *cmd) { (void)cmd; }
+void wm_json_escape(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) { if (dst_size > 0) dst[0] = '\0'; return; }
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') { dst[j++] = '\\'; dst[j++] = c; }
+		else if (c < 0x20) { continue; }
+		else { dst[j++] = c; }
+	}
+	dst[j] = '\0';
+}
+
 /* --- Stubs for functions called by focus_nav.c --- */
 
 void wm_toolbar_update_iconbar(struct wm_toolbar *t)

@@ -671,6 +671,7 @@ bool wm_systray_handle_click(struct wm_systray *systray,
 	double local_x, double local_y, uint32_t button);
 
 /* --- Include systray.c source directly --- */
+#include "pixel_buffer.c"
 #include "../src/systray.c"
 
 /* --- Test helpers --- */

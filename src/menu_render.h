@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "menu.h"
+#include "pixel_buffer.h"
 #include "style.h"
 
 /* --- Layout constants --- */
@@ -27,13 +28,6 @@
 #define MENU_TITLE_PADDING 6
 #define MENU_SEPARATOR_HEIGHT 7
 #define MENU_ARROW_SIZE    8
-
-/*
- * Convert a Cairo image surface to a wlr_buffer.
- * Takes ownership of the surface (destroys it).
- * Returns NULL on failure.
- */
-struct wlr_buffer *wlr_buffer_from_cairo(cairo_surface_t *surface);
 
 /*
  * Convert a wm_color to a float[4] array (RGBA, 0.0-1.0).

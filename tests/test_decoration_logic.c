@@ -622,6 +622,7 @@ void wm_perf_probe_reset(struct wm_perf_probe *probe) {
 /* --- Include decoration.c --- */
 
 /* We need decoration.h declarations before including .c */
+#include "pixel_buffer.c"
 #include "decoration.c"
 
 /* ===================== Test helpers ===================== */

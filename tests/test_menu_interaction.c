@@ -939,6 +939,24 @@ void wm_perf_probe_reset(struct wm_perf_probe *probe) {
 }
 #endif
 
+/* find_base_dir is now extern in render.h — provide stub using test's pango stubs */
+PangoDirection find_base_dir(const char *text)
+{
+	if (!text)
+		return PANGO_DIRECTION_NEUTRAL;
+	const char *p = text;
+	while (*p) {
+		gunichar ch = g_utf8_get_char(p);
+		PangoDirection dir = pango_unichar_direction(ch);
+		if (dir == PANGO_DIRECTION_LTR ||
+		    dir == PANGO_DIRECTION_RTL)
+			return dir;
+		p = g_utf8_next_char(p);
+	}
+	return PANGO_DIRECTION_NEUTRAL;
+}
+
+#include "pixel_buffer.c"
 #include "menu_parse.c"
 #include "menu_render.c"
 #include "menu.c"

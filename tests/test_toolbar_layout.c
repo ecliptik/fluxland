@@ -651,6 +651,7 @@ deiconify_view(struct wm_view *view)
 /* --- Include toolbar source directly --- */
 
 #include "toolbar.h"
+#include "pixel_buffer.c"
 #include "toolbar.c"
 
 /* --- Test helpers --- */

@@ -25,6 +25,8 @@
 #include "workspace.h"
 #include "foreign_toplevel.h"
 
+PangoDirection find_base_dir(const char *text)
+	{ (void)text; return PANGO_DIRECTION_LTR; }
 cairo_surface_t *wm_render_texture(const struct wm_texture *t,
 	int w, int h, float s)
 	{ (void)t; (void)w; (void)h; (void)s; return NULL; }

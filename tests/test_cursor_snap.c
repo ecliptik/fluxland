@@ -1459,6 +1459,7 @@ static void closefrom(int fd) { (void)fd; }
 
 /* --- Include cursor source files directly --- */
 
+#include "pixel_buffer.c"
 #include "cursor_snap.c"
 #include "cursor_actions.c"
 #include "cursor.c"
@@ -2520,12 +2521,12 @@ test_snap_preview_destroy(void)
 }
 
 /*
- * Test 44: cursor_pixel_buffer_begin_data_ptr_access denies write access.
+ * Test 44: pixel_buffer_begin_data_ptr_access denies write access.
  */
 static void
 test_pixel_buffer_write_denied(void)
 {
-	struct wm_cursor_pixel_buffer buf = {0};
+	struct wm_pixel_buffer buf = {0};
 	buf.data = (void *)0x1234;
 	buf.format = DRM_FORMAT_ARGB8888;
 	buf.stride = 100;
@@ -2533,7 +2534,7 @@ test_pixel_buffer_write_denied(void)
 	void *data;
 	uint32_t format;
 	size_t stride;
-	bool ok = cursor_pixel_buffer_begin_data_ptr_access(
+	bool ok = pixel_buffer_begin_data_ptr_access(
 		&buf.base, WLR_BUFFER_DATA_PTR_ACCESS_WRITE,
 		&data, &format, &stride);
 	assert(!ok);
@@ -2541,12 +2542,12 @@ test_pixel_buffer_write_denied(void)
 }
 
 /*
- * Test 45: cursor_pixel_buffer_begin_data_ptr_access allows read access.
+ * Test 45: pixel_buffer_begin_data_ptr_access allows read access.
  */
 static void
 test_pixel_buffer_read_allowed(void)
 {
-	struct wm_cursor_pixel_buffer buf = {0};
+	struct wm_pixel_buffer buf = {0};
 	buf.data = (void *)0x5678;
 	buf.format = DRM_FORMAT_ARGB8888;
 	buf.stride = 256;
@@ -2554,7 +2555,7 @@ test_pixel_buffer_read_allowed(void)
 	void *data;
 	uint32_t format;
 	size_t stride;
-	bool ok = cursor_pixel_buffer_begin_data_ptr_access(
+	bool ok = pixel_buffer_begin_data_ptr_access(
 		&buf.base, 0, &data, &format, &stride);
 	assert(ok);
 	assert(data == (void *)0x5678);
@@ -2564,12 +2565,12 @@ test_pixel_buffer_read_allowed(void)
 }
 
 /*
- * Test 46: cursor_wlr_buffer_from_cairo returns NULL for NULL surface.
+ * Test 46: wlr_buffer_from_cairo returns NULL for NULL surface.
  */
 static void
 test_cursor_wlr_buffer_from_cairo_null(void)
 {
-	struct wlr_buffer *result = cursor_wlr_buffer_from_cairo(NULL);
+	struct wlr_buffer *result = wlr_buffer_from_cairo(NULL);
 	assert(result == NULL);
 	printf("  PASS: cursor_wlr_buffer_from_cairo_null\n");
 }
@@ -3868,12 +3869,12 @@ test_wireframe_show_reuse(void)
 }
 
 /*
- * Test 96: cursor_pixel_buffer_destroy frees memory (exercise code path).
+ * Test 96: pixel_buffer_destroy frees memory (exercise code path).
  */
 static void
 test_pixel_buffer_destroy(void)
 {
-	struct wm_cursor_pixel_buffer *buf =
+	struct wm_pixel_buffer *buf =
 		calloc(1, sizeof(*buf));
 	assert(buf);
 	buf->data = malloc(256);
@@ -3882,7 +3883,7 @@ test_pixel_buffer_destroy(void)
 	buf->stride = 16;
 
 	/* Call destroy - should free data and the buffer struct */
-	cursor_pixel_buffer_destroy(&buf->base);
+	pixel_buffer_destroy(&buf->base);
 	/* No crash or leak */
 	printf("  PASS: pixel_buffer_destroy\n");
 }

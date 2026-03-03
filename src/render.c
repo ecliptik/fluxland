@@ -57,7 +57,7 @@ ensure_measurement_context(void)
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-static PangoDirection
+PangoDirection
 find_base_dir(const char *text)
 {
 	if (!text)
