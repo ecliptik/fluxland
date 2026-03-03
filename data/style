@@ -116,12 +116,8 @@ menu.borderWidth:                   1
 
 toolbar:                            Flat Solid
 toolbar.color:                      #0f2440
-toolbar.textColor:                  #f0e6d3
+toolbar.textColor:                  #d4c8b0
 toolbar.font:                       sans-10
-
-toolbar.workspace:                   Flat Solid
-toolbar.workspace.color:             #081a30
-toolbar.workspace.textColor:         #ffffff
 
 toolbar.iconbar.focused.color:      #2a6b8a
 toolbar.iconbar.focused.textColor:  #f0e6d3

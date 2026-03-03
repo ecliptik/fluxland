@@ -393,10 +393,15 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 	/* Render background */
 	cairo_surface_t *bg = wm_render_texture(ws_tex, width, height, 1.0f);
 	if (bg) {
-		cairo_t *bcr = cairo_create(bg);
-		cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
-		cairo_paint(bcr);
-		cairo_destroy(bcr);
+		if (!style->toolbar_has_workspace_texture &&
+		    !style->toolbar_has_label_texture) {
+			/* Light overlay only when using base toolbar texture
+			 * to visually differentiate the workspace tool */
+			cairo_t *bcr = cairo_create(bg);
+			cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
+			cairo_paint(bcr);
+			cairo_destroy(bcr);
+		}
 		cairo_set_source_surface(cr, bg, 0, 0);
 		cairo_paint(cr);
 		cairo_surface_destroy(bg);
