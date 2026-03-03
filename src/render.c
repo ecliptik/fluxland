@@ -519,21 +519,15 @@ wm_render_text(const char *text, const struct wm_font *font,
 		pango_layout_context_changed(layout);
 	}
 
-	/* Alignment — for RTL text, mirror left/right when using
-	 * the default (left) justification. */
-	switch (justify) {
-	case WM_JUSTIFY_CENTER:
-		pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-		break;
-	case WM_JUSTIFY_RIGHT:
-		pango_layout_set_alignment(layout,
-			is_rtl ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
-		break;
-	default:
-		pango_layout_set_alignment(layout,
-			is_rtl ? PANGO_ALIGN_RIGHT : PANGO_ALIGN_LEFT);
-		break;
-	}
+	/*
+	 * Always render left-aligned so the returned surface is
+	 * tightly cropped to the ink extents.  Callers handle
+	 * centering / right-alignment using the returned width.
+	 * RTL base direction is already set above for correct
+	 * glyph ordering and ellipsis placement.
+	 */
+	(void)justify;
+	pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
 
 	/*
 	 * Use ink extents for accurate rendered bounds.  The ink rectangle
