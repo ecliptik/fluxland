@@ -391,6 +391,7 @@ struct wm_tab_group {
 struct wm_decoration {
 	int dummy;
 	int content_height;
+	bool shaded;
 };
 
 struct wm_view {

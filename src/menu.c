@@ -279,11 +279,22 @@ wm_menu_create_config_menu(struct wm_server *server)
 		{N_("Full Maximization"),  "config:full_maximization 0"},
 	};
 
+	/* Current config state for toggle indicators */
+	struct wm_config *cfg = server->config;
+	bool checked[] = {
+		cfg ? cfg->focus_new_windows : false,
+		cfg ? cfg->opaque_move : false,
+		cfg ? cfg->opaque_resize : false,
+		cfg ? cfg->workspace_warping : false,
+		cfg ? cfg->full_maximization : false,
+	};
+
 	for (size_t i = 0; i < sizeof(toggles) / sizeof(toggles[0]); i++) {
 		struct wm_menu_item *item = menu_item_create(
 			WM_MENU_COMMAND, _(toggles[i].label));
 		if (item) {
 			item->command = strdup(toggles[i].cmd);
+			item->checked = checked[i];
 			wl_list_insert(menu->items.prev, &item->link);
 		}
 	}
@@ -898,6 +909,8 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 			if (strncmp(item->command, "config:", 7) == 0) {
 				handle_config_command(server,
 					item->command + 7);
+				/* Toggle the checked indicator */
+				item->checked = !item->checked;
 				break;
 			}
 			/* Parse "ActionName argument" and dispatch */
@@ -1633,6 +1646,32 @@ wm_menu_show_window(struct wm_server *server, int x, int y)
 
 	if (!server->window_menu) {
 		return;
+	}
+
+	/* Update checked state from focused view */
+	struct wm_view *view = server->focused_view;
+	if (view) {
+		struct wm_menu_item *item;
+		wl_list_for_each(item, &server->window_menu->items, link) {
+			switch (item->type) {
+			case WM_MENU_SHADE:
+				item->checked = view->decoration &&
+					view->decoration->shaded;
+				break;
+			case WM_MENU_STICK:
+				item->checked = view->sticky;
+				break;
+			case WM_MENU_MAXIMIZE:
+				item->checked = view->maximized;
+				break;
+			case WM_MENU_ICONIFY:
+				item->checked = view->scene_tree &&
+					!view->scene_tree->node.enabled;
+				break;
+			default:
+				break;
+			}
+		}
 	}
 
 	wm_menu_show(server->window_menu, x, y);

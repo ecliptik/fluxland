@@ -452,10 +452,33 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 			}
 		}
 
+		/* Draw checked state dot (Fluxbox-style indicator) */
+		if (item->checked) {
+			double dot_size = 6.0;
+			double dot_x = MENU_ITEM_PADDING + icon_col_w;
+			double dot_y = y + (item_h - dot_size) / 2.0;
+			cairo_set_source_rgba(cr,
+				text_color->r / 255.0,
+				text_color->g / 255.0,
+				text_color->b / 255.0,
+				text_color->a / 255.0);
+			/* Filled diamond (Fluxbox-style bullet) */
+			double cx = dot_x + dot_size / 2.0;
+			double cy = dot_y + dot_size / 2.0;
+			double r = dot_size / 2.0;
+			cairo_move_to(cr, cx, dot_y);
+			cairo_line_to(cr, cx + r, cy);
+			cairo_line_to(cr, cx, dot_y + dot_size);
+			cairo_line_to(cr, cx - r, cy);
+			cairo_close_path(cr);
+			cairo_fill(cr);
+		}
+
 		if (item->label) {
 			int tw, th;
+			int check_pad = item->checked ? 12 : 0;
 			int max_w = inner_w - 2 * MENU_ITEM_PADDING -
-				icon_col_w;
+				icon_col_w - check_pad;
 			bool has_arrow = (item->type == WM_MENU_SUBMENU ||
 				item->type == WM_MENU_SENDTO ||
 				item->type == WM_MENU_LAYER ||
@@ -480,7 +503,8 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 					if (has_arrow)
 						tx -= MENU_ARROW_SIZE + 4;
 				} else {
-					tx = MENU_ITEM_PADDING + icon_col_w;
+					tx = MENU_ITEM_PADDING + icon_col_w +
+						check_pad;
 				}
 				int ty = y + (item_h - th) / 2;
 				if (ty < y) {

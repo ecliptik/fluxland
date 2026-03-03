@@ -68,6 +68,7 @@ struct wm_menu_item {
 	char *icon_path;	/* optional icon */
 	struct wm_menu *submenu;	/* for submenu type */
 	void *data;		/* opaque data (e.g. view ptr for window list) */
+	bool checked;		/* Fluxbox-style state dot indicator */
 	struct wl_list link;	/* wm_menu.items */
 };
 
