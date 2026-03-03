@@ -731,8 +731,9 @@ render_decoration_borders(struct wm_decoration *deco,
 			if (fb) {
 				wlr_buffer_drop(fb);
 			}
-			wlr_scene_node_set_position(
-				&deco->border_frame->node, 0, 0);
+			if (deco->border_frame->node.x != 0 || deco->border_frame->node.y != 0)
+				wlr_scene_node_set_position(
+					&deco->border_frame->node, 0, 0);
 			wlr_scene_node_set_enabled(
 				&deco->border_frame->node, true);
 
@@ -756,8 +757,9 @@ render_decoration_borders(struct wm_decoration *deco,
 			wlr_scene_rect_set_size(deco->border_top,
 				l->outer_width, l->bw);
 			wlr_scene_rect_set_color(deco->border_top, bcol);
-			wlr_scene_node_set_position(
-				&deco->border_top->node, 0, 0);
+			if (deco->border_top->node.x != 0 || deco->border_top->node.y != 0)
+				wlr_scene_node_set_position(
+					&deco->border_top->node, 0, 0);
 			wlr_scene_node_set_enabled(
 				&deco->border_top->node, true);
 
@@ -765,9 +767,10 @@ render_decoration_borders(struct wm_decoration *deco,
 			wlr_scene_rect_set_size(deco->border_bottom,
 				l->outer_width, l->bw);
 			wlr_scene_rect_set_color(deco->border_bottom, bcol);
-			wlr_scene_node_set_position(
-				&deco->border_bottom->node,
-				0, total_h - l->bw);
+			if (deco->border_bottom->node.x != 0 || deco->border_bottom->node.y != total_h - l->bw)
+				wlr_scene_node_set_position(
+					&deco->border_bottom->node,
+					0, total_h - l->bw);
 			wlr_scene_node_set_enabled(
 				&deco->border_bottom->node, true);
 
@@ -775,8 +778,9 @@ render_decoration_borders(struct wm_decoration *deco,
 			wlr_scene_rect_set_size(deco->border_left,
 				l->bw, total_h);
 			wlr_scene_rect_set_color(deco->border_left, bcol);
-			wlr_scene_node_set_position(
-				&deco->border_left->node, 0, 0);
+			if (deco->border_left->node.x != 0 || deco->border_left->node.y != 0)
+				wlr_scene_node_set_position(
+					&deco->border_left->node, 0, 0);
 			wlr_scene_node_set_enabled(
 				&deco->border_left->node, true);
 
@@ -784,9 +788,10 @@ render_decoration_borders(struct wm_decoration *deco,
 			wlr_scene_rect_set_size(deco->border_right,
 				l->bw, total_h);
 			wlr_scene_rect_set_color(deco->border_right, bcol);
-			wlr_scene_node_set_position(
-				&deco->border_right->node,
-				l->outer_width - l->bw, 0);
+			if (deco->border_right->node.x != l->outer_width - l->bw || deco->border_right->node.y != 0)
+				wlr_scene_node_set_position(
+					&deco->border_right->node,
+					l->outer_width - l->bw, 0);
 			wlr_scene_node_set_enabled(
 				&deco->border_right->node, true);
 		}
@@ -812,8 +817,9 @@ render_decoration_titlebar(struct wm_decoration *deco,
 		int titlebar_width = l->inner_width;
 
 		wlr_scene_node_set_enabled(&deco->titlebar_tree->node, true);
-		wlr_scene_node_set_position(&deco->titlebar_tree->node,
-			l->bw, l->bw);
+		if (deco->titlebar_tree->node.x != l->bw || deco->titlebar_tree->node.y != l->bw)
+			wlr_scene_node_set_position(&deco->titlebar_tree->node,
+				l->bw, l->bw);
 
 		/* Titlebar background */
 		struct wlr_buffer *tbg = wlr_buffer_from_cairo(
@@ -823,7 +829,8 @@ render_decoration_titlebar(struct wm_decoration *deco,
 		if (tbg) {
 			wlr_buffer_drop(tbg);
 		}
-		wlr_scene_node_set_position(&deco->title_bg->node, 0, 0);
+		if (deco->title_bg->node.x != 0 || deco->title_bg->node.y != 0)
+			wlr_scene_node_set_position(&deco->title_bg->node, 0, 0);
 
 		/* Layout buttons and compute label area */
 		int button_size = l->th - 2 * BUTTON_PADDING;
@@ -858,7 +865,8 @@ render_decoration_titlebar(struct wm_decoration *deco,
 			int bx = BUTTON_PADDING +
 				i * (button_size + BUTTON_PADDING);
 			int by = BUTTON_PADDING;
-			wlr_scene_node_set_position(&btn->node->node, bx, by);
+			if (btn->node->node.x != bx || btn->node->node.y != by)
+				wlr_scene_node_set_position(&btn->node->node, bx, by);
 
 			btn->box.x = l->bw + bx;
 			btn->box.y = l->bw + by;
@@ -900,7 +908,8 @@ render_decoration_titlebar(struct wm_decoration *deco,
 			int bx = rx_start + BUTTON_PADDING +
 				i * (button_size + BUTTON_PADDING);
 			int by = BUTTON_PADDING;
-			wlr_scene_node_set_position(&btn->node->node, bx, by);
+			if (btn->node->node.x != bx || btn->node->node.y != by)
+				wlr_scene_node_set_position(&btn->node->node, bx, by);
 
 			btn->box.x = l->bw + bx;
 			btn->box.y = l->bw + by;
@@ -1044,8 +1053,9 @@ render_decoration_titlebar(struct wm_decoration *deco,
 				wlr_buffer_drop(lbl);
 			}
 		}
-		wlr_scene_node_set_position(&deco->label_buf->node,
-			label_x, 0);
+		if (deco->label_buf->node.x != label_x || deco->label_buf->node.y != 0)
+			wlr_scene_node_set_position(&deco->label_buf->node,
+				label_x, 0);
 	} else {
 		wlr_scene_node_set_enabled(&deco->titlebar_tree->node, false);
 	}
@@ -1074,8 +1084,9 @@ render_decoration_handle(struct wm_decoration *deco,
 		if (hbuf) {
 			wlr_buffer_drop(hbuf);
 		}
-		wlr_scene_node_set_position(&deco->handle_buf->node,
-			l->bw + l->gw, handle_y);
+		if (deco->handle_buf->node.x != l->bw + l->gw || deco->handle_buf->node.y != handle_y)
+			wlr_scene_node_set_position(&deco->handle_buf->node,
+				l->bw + l->gw, handle_y);
 		wlr_scene_node_set_enabled(&deco->handle_buf->node, true);
 
 		/* Left grip */
@@ -1085,8 +1096,9 @@ render_decoration_handle(struct wm_decoration *deco,
 		if (glbuf) {
 			wlr_buffer_drop(glbuf);
 		}
-		wlr_scene_node_set_position(&deco->grip_left->node,
-			l->bw, handle_y);
+		if (deco->grip_left->node.x != l->bw || deco->grip_left->node.y != handle_y)
+			wlr_scene_node_set_position(&deco->grip_left->node,
+				l->bw, handle_y);
 		wlr_scene_node_set_enabled(&deco->grip_left->node, true);
 
 		/* Right grip */
@@ -1096,8 +1108,9 @@ render_decoration_handle(struct wm_decoration *deco,
 		if (grbuf) {
 			wlr_buffer_drop(grbuf);
 		}
-		wlr_scene_node_set_position(&deco->grip_right->node,
-			l->bw + l->inner_width - l->gw, handle_y);
+		if (deco->grip_right->node.x != l->bw + l->inner_width - l->gw || deco->grip_right->node.y != handle_y)
+			wlr_scene_node_set_position(&deco->grip_right->node,
+				l->bw + l->inner_width - l->gw, handle_y);
 		wlr_scene_node_set_enabled(&deco->grip_right->node, true);
 	} else {
 		wlr_scene_node_set_enabled(&deco->handle_buf->node, false);
@@ -1148,8 +1161,9 @@ render_decoration_ext_tabs(struct wm_decoration *deco,
 			if (tbb) {
 				wlr_buffer_drop(tbb);
 			}
-			wlr_scene_node_set_position(
-				&deco->tab_bar_buf->node, bar_x, bar_y);
+			if (deco->tab_bar_buf->node.x != bar_x || deco->tab_bar_buf->node.y != bar_y)
+				wlr_scene_node_set_position(
+					&deco->tab_bar_buf->node, bar_x, bar_y);
 			wlr_scene_node_set_enabled(
 				&deco->tab_bar_buf->node, true);
 
@@ -1213,8 +1227,9 @@ render_decoration_focus_border(struct wm_decoration *deco,
 			cairo_surface_destroy(fb_surface);
 		}
 
-		wlr_scene_node_set_position(
-			&deco->focus_border_buf->node, -fbw, -fbw);
+		if (deco->focus_border_buf->node.x != -fbw || deco->focus_border_buf->node.y != -fbw)
+			wlr_scene_node_set_position(
+				&deco->focus_border_buf->node, -fbw, -fbw);
 		wlr_scene_node_set_enabled(
 			&deco->focus_border_buf->node, true);
 		/* Raise focus border above other decoration elements */
