@@ -7,8 +7,8 @@ Fluxbox-inspired Wayland compositor built on wlroots 0.18. C17, Meson, MIT licen
 ```sh
 meson setup build
 ninja -C build
-meson test -C build --print-errorlogs   # 38 C unit tests
-python3 -m pytest tests/ui/ --timeout=30 # 137 Python UI tests
+meson test -C build --print-errorlogs   # 53 C unit tests
+python3 -m pytest tests/ui/ --timeout=30 # 154 Python UI tests
 sudo ninja -C build install
 ```
 
@@ -17,9 +17,9 @@ Build options: `-Dxwayland=enabled`, `-Dasan=true`, `-Dubsan=true`
 ## Project Layout
 
 ```
-src/           93 files (47 .c + 46 .h), ~35K lines — compositor source
-tests/         37 C test files, 4 fuzz targets — 81.2% line coverage
-tests/ui/      19 Python pytest files — 137 end-to-end UI tests via IPC
+src/           114 files (58 .c + 56 .h), ~35K lines — compositor source
+tests/         52 C test files, 7 fuzz targets — 81.2% line coverage
+tests/ui/      20 Python pytest files — 154 end-to-end UI tests via IPC
 data/          Default configs (init, keys, apps, menu, style, startup) + themes
 examples/      Complete example configs (wave-desktop, minimal, sloppy-focus)
 docs/          QUICKSTART.md, design/ARCHITECTURE.md, design/FLUXBOX-COMPAT.md
@@ -79,7 +79,7 @@ Call `wm_toolbar_update_iconbar()` in BOTH `unmap` and `destroy` handlers.
 
 - Tests use `#include "source.c"` with header guards + local stubs
 - When adding new public API, add stubs to ALL test files that `#include` that module
-- Fuzz targets (4) use libFuzzer, require Clang: `fuzz_rcparser`, `fuzz_keybind`, `fuzz_style`, `fuzz_menu`
+- Fuzz targets (7) use libFuzzer, require Clang: `fuzz_rcparser`, `fuzz_keybind`, `fuzz_style`, `fuzz_menu`, `fuzz_ipc_command`, `fuzz_rules`, `fuzz_mousebind`
 - UI tests connect via `FLUXLAND_SOCK` env var; support headless and live session modes
 - Tests needing `/tmp/fluxland-test/` fail under sandbox
 
