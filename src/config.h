@@ -230,6 +230,12 @@ struct wm_config {
 	char **wallpaper_paths;     /* per-workspace overrides (indexed by ws) */
 	int wallpaper_path_count;
 
+	/* Touchpad gesture settings */
+	bool gesture_workspace_switch;     /* default: true */
+	bool gesture_overview;             /* default: false */
+	int gesture_workspace_fingers;     /* default: 3 */
+	double gesture_swipe_threshold;    /* default: 100.0 pixels */
+
 	/* Paths */
 	char *config_dir;
 	char *keys_file;

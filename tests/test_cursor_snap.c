@@ -550,6 +550,10 @@ struct wm_config {
 	bool click_raises;
 	bool focus_new_windows;
 	int tab_focus_model;
+	bool gesture_workspace_switch;
+	bool gesture_overview;
+	int gesture_workspace_fingers;
+	double gesture_swipe_threshold;
 };
 
 /* From decoration.h */
@@ -770,7 +774,7 @@ enum wm_ipc_event { WM_IPC_EVENT_DUMMY };
 struct wm_idle { int dummy; };
 
 /* From focus_nav.h */
-struct wm_focus_nav { int zone; int toolbar_index; };
+struct wm_focus_nav { int zone; int toolbar_index; int slit_index; };
 
 /* From output_management.h */
 struct wm_output_management { int dummy; };
@@ -807,6 +811,9 @@ struct wm_slit {
 
 /* From systray.h */
 struct wm_systray;
+
+/* From atspi_bridge.h */
+struct wm_atspi_bridge;
 
 /* From menu.h */
 struct wm_menu;
@@ -938,6 +945,7 @@ struct wm_server {
 	struct wm_rules rules;
 	struct wm_ipc_server ipc;
 	struct wm_focus_nav focus_nav;
+	struct wm_atspi_bridge *atspi_bridge;
 
 	void *foreign_toplevel_manager;
 	struct wm_output_management output_mgmt;
@@ -962,6 +970,14 @@ struct wm_server {
 	struct wl_listener cursor_pinch_end;
 	struct wl_listener cursor_hold_begin;
 	struct wl_listener cursor_hold_end;
+
+	/* Compositor gesture interception state */
+	struct {
+		bool active;
+		uint32_t fingers;
+		double dx_accum, dy_accum;
+		bool consumed;
+	} gesture_state;
 
 	void *fractional_scale_mgr;
 	void *cursor_shape_mgr;
@@ -1367,6 +1383,8 @@ static bool wm_menu_handle_button(struct wm_server *s, double x, double y,
 static void wm_menu_show_root(struct wm_server *s, int x, int y)
 	{ (void)s; (void)x; (void)y; }
 static void wm_menu_show_window(struct wm_server *s, int x, int y)
+	{ (void)s; (void)x; (void)y; }
+static void wm_menu_show_window_list(struct wm_server *s, int x, int y)
 	{ (void)s; (void)x; (void)y; }
 static void wm_menu_hide_all(struct wm_server *s) { (void)s; }
 static struct wm_mousebind *mousebind_find(struct wl_list *bindings,

@@ -799,6 +799,18 @@ handle_cursor_swipe_begin(struct wl_listener *listener, void *data)
 		wl_container_of(listener, server, cursor_swipe_begin);
 	struct wlr_pointer_swipe_begin_event *event = data;
 
+	/* Check if this gesture should be intercepted by the compositor */
+	if (server->config &&
+	    server->config->gesture_workspace_switch &&
+	    (int)event->fingers == server->config->gesture_workspace_fingers) {
+		server->gesture_state.active = true;
+		server->gesture_state.fingers = event->fingers;
+		server->gesture_state.dx_accum = 0;
+		server->gesture_state.dy_accum = 0;
+		server->gesture_state.consumed = false;
+		return; /* don't forward to clients */
+	}
+
 	wlr_pointer_gestures_v1_send_swipe_begin(
 		server->pointer_gestures, server->seat,
 		event->time_msec, event->fingers);
@@ -811,6 +823,38 @@ handle_cursor_swipe_update(struct wl_listener *listener, void *data)
 		wl_container_of(listener, server, cursor_swipe_update);
 	struct wlr_pointer_swipe_update_event *event = data;
 
+	if (server->gesture_state.active) {
+		if (server->gesture_state.consumed)
+			return; /* already triggered action */
+
+		server->gesture_state.dx_accum += event->dx;
+		server->gesture_state.dy_accum += event->dy;
+
+		double threshold = server->config
+			? server->config->gesture_swipe_threshold : 100.0;
+		double dx = server->gesture_state.dx_accum;
+		double dy = server->gesture_state.dy_accum;
+
+		/* Check if threshold crossed */
+		if (dx > threshold) {
+			/* Swipe right -> next workspace */
+			wm_workspace_switch_next(server);
+			server->gesture_state.consumed = true;
+		} else if (dx < -threshold) {
+			/* Swipe left -> previous workspace */
+			wm_workspace_switch_prev(server);
+			server->gesture_state.consumed = true;
+		} else if (dy < -threshold && server->config &&
+			   server->config->gesture_overview) {
+			/* Swipe up -> show window list */
+			wm_menu_show_window_list(server,
+				(int)server->cursor->x,
+				(int)server->cursor->y);
+			server->gesture_state.consumed = true;
+		}
+		return;
+	}
+
 	wlr_pointer_gestures_v1_send_swipe_update(
 		server->pointer_gestures, server->seat,
 		event->time_msec, event->dx, event->dy);
@@ -822,6 +866,12 @@ handle_cursor_swipe_end(struct wl_listener *listener, void *data)
 	struct wm_server *server =
 		wl_container_of(listener, server, cursor_swipe_end);
 	struct wlr_pointer_swipe_end_event *event = data;
+
+	if (server->gesture_state.active) {
+		server->gesture_state.active = false;
+		server->gesture_state.consumed = false;
+		return; /* don't forward to clients */
+	}
 
 	wlr_pointer_gestures_v1_send_swipe_end(
 		server->pointer_gestures, server->seat,
