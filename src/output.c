@@ -23,31 +23,9 @@
 #include "output.h"
 #include "server.h"
 #include "toolbar.h"
+#include "util.h"
 #include "view.h"
 #include "workspace.h"
-
-/* Escape a string for safe inclusion in JSON (writes into dst). */
-static void
-json_escape_buf(char *dst, size_t dst_size, const char *src)
-{
-	if (!src) {
-		if (dst_size > 0) dst[0] = '\0';
-		return;
-	}
-	size_t j = 0;
-	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
-		unsigned char c = (unsigned char)src[i];
-		if (c == '"' || c == '\\') {
-			dst[j++] = '\\';
-			dst[j++] = c;
-		} else if (c < 0x20) {
-			continue;
-		} else {
-			dst[j++] = c;
-		}
-	}
-	dst[j] = '\0';
-}
 
 static void
 handle_output_frame(struct wl_listener *listener, void *data)
@@ -80,7 +58,7 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 	/* Broadcast output remove event via IPC */
 	{
 		char esc_name[128], buf[256];
-		json_escape_buf(esc_name, sizeof(esc_name),
+		wm_json_escape(esc_name, sizeof(esc_name),
 			output->wlr_output->name);
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"output_remove\","
@@ -166,7 +144,7 @@ handle_new_output(struct wl_listener *listener, void *data)
 	/* Broadcast output add event via IPC */
 	{
 		char esc_name[128], buf[256];
-		json_escape_buf(esc_name, sizeof(esc_name),
+		wm_json_escape(esc_name, sizeof(esc_name),
 			wlr_output->name);
 		snprintf(buf, sizeof(buf),
 			"{\"event\":\"output_add\","

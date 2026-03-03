@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 enum wm_focus_policy {
 	WM_FOCUS_CLICK,
@@ -243,6 +244,12 @@ struct wm_config {
 	char *menu_file;
 	char *style_file;
 	char *style_overlay;
+
+	/* Cached mtimes for conditional reload */
+	time_t keys_file_mtime;
+	time_t style_file_mtime;
+	time_t menu_file_mtime;
+	time_t apps_file_mtime;
 };
 
 /* Create a config struct with sensible defaults */
@@ -257,5 +264,9 @@ int config_reload(struct wm_config *config);
 
 /* Free all resources */
 void config_destroy(struct wm_config *config);
+
+/* Check if a config file's mtime has changed since last check.
+ * Updates *cached_mtime on change. Returns true if changed or on error. */
+bool config_file_changed(const char *path, time_t *cached_mtime);
 
 #endif /* WM_CONFIG_H */

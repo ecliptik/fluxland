@@ -100,6 +100,10 @@ struct wm_toolbar {
 	struct wm_iconbar_entry *ib_entries;
 	int ib_count;
 
+	/* Cached iconbar state for dirty-checking */
+	struct wm_iconbar_entry *ib_cached_entries;
+	int ib_cached_count;
+
 	/* Clock timer */
 	struct wl_event_source *clock_timer;
 
@@ -107,6 +111,7 @@ struct wm_toolbar {
 	int cached_ws_index;
 	char *cached_title;
 	char cached_clock[64];
+	int cached_ws_name_max_width; /* -1 = needs recalc */
 
 	/* Keyboard focus indicator overlay */
 	struct wlr_scene_buffer *focus_indicator;

@@ -26,6 +26,28 @@ static struct wm_perf_probe perf_render_text;
 static bool perf_render_text_inited;
 #endif
 
+/* --- Cached measurement context --- */
+
+/*
+ * Persistent Pango measurement context backed by a tiny 1×1 Cairo surface.
+ * Avoids creating and destroying a full Cairo surface + PangoLayout on
+ * every call to wm_measure_text_width() and wm_render_text().
+ */
+static cairo_surface_t *measure_surface;
+static cairo_t *measure_cr;
+static PangoLayout *measure_layout;
+
+static void
+ensure_measurement_context(void)
+{
+	if (measure_layout)
+		return;
+	measure_surface = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, 1, 1);
+	measure_cr = cairo_create(measure_surface);
+	measure_layout = pango_cairo_create_layout(measure_cr);
+}
+
 /* --- RTL detection helper --- */
 
 /*
@@ -35,7 +57,7 @@ static bool perf_render_text_inited;
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-static PangoDirection
+PangoDirection
 find_base_dir(const char *text)
 {
 	if (!text)
@@ -473,24 +495,66 @@ wm_render_text(const char *text, const struct wm_font *font,
 	int shadow_offset_y = abs(font->shadow_y);
 
 	/*
-	 * Allocate the surface at max_width and render the text directly.
-	 * pango_layout_get_pixel_size() can underestimate the actual
-	 * rendered width, so we size the surface to the layout constraint
-	 * (max_width) to avoid clipping.
+	 * Phase 1: Measure text using the cached measurement context.
+	 * This avoids allocating an oversized surface just to determine
+	 * the actual rendered extent.
 	 */
-	int surf_w = scaled_max_width + shadow_offset_x;
-	int est_h = (int)(font->size * scale * 3 + 0.5f) +
-		shadow_offset_y;
-	if (est_h < 32) est_h = 32;
+	ensure_measurement_context();
 
+	PangoFontDescription *desc = pango_font_description_new();
+	pango_font_description_set_family(desc,
+		font->family ? font->family : "sans");
+	pango_font_description_set_size(desc,
+		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	if (font->bold)
+		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
+	if (font->italic)
+		pango_font_description_set_style(desc, PANGO_STYLE_ITALIC);
+	pango_layout_set_font_description(measure_layout, desc);
+	pango_font_description_free(desc);
+
+	pango_layout_set_text(measure_layout, text, -1);
+	pango_layout_set_width(measure_layout,
+		scaled_max_width * PANGO_SCALE);
+	pango_layout_set_ellipsize(measure_layout, PANGO_ELLIPSIZE_END);
+	pango_layout_set_single_paragraph_mode(measure_layout, TRUE);
+
+	/* RTL auto-detection */
+	PangoDirection base_dir = find_base_dir(text);
+	bool is_rtl = (base_dir == PANGO_DIRECTION_RTL);
+	PangoContext *m_ctx = pango_layout_get_context(measure_layout);
+	pango_context_set_base_dir(m_ctx,
+		is_rtl ? PANGO_DIRECTION_RTL : PANGO_DIRECTION_LTR);
+	pango_layout_context_changed(measure_layout);
+
+	(void)justify;
+	pango_layout_set_alignment(measure_layout, PANGO_ALIGN_LEFT);
+
+	PangoRectangle ink_rect, logical_rect;
+	pango_layout_get_pixel_extents(measure_layout,
+		&ink_rect, &logical_rect);
+
+	int text_w = ink_rect.x + ink_rect.width;
+	int text_h = logical_rect.height;
+	if (text_w <= 0) text_w = 1;
+	if (text_h <= 0) text_h = 1;
+
+	int final_w = text_w + shadow_offset_x;
+	int final_h = text_h + shadow_offset_y;
+
+	/*
+	 * Phase 2: Create a surface at the exact measured size and render.
+	 * This eliminates the previous double-surface pattern (oversized
+	 * render + crop copy) that allocated ~2x the needed memory.
+	 */
 	cairo_surface_t *surface = cairo_image_surface_create(
-		CAIRO_FORMAT_ARGB32, surf_w, est_h);
+		CAIRO_FORMAT_ARGB32, final_w, final_h);
 	cairo_t *cr = cairo_create(surface);
 
 	PangoLayout *layout = pango_cairo_create_layout(cr);
 
-	/* Build font description */
-	PangoFontDescription *desc = pango_font_description_new();
+	/* Re-apply layout properties for rendering context */
+	desc = pango_font_description_new();
 	pango_font_description_set_family(desc,
 		font->family ? font->family : "sans");
 	pango_font_description_set_size(desc,
@@ -502,49 +566,17 @@ wm_render_text(const char *text, const struct wm_font *font,
 	pango_layout_set_font_description(layout, desc);
 	pango_font_description_free(desc);
 
-	/* Set text and constraints */
 	pango_layout_set_text(layout, text, -1);
 	pango_layout_set_width(layout, scaled_max_width * PANGO_SCALE);
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
 	pango_layout_set_single_paragraph_mode(layout, TRUE);
 
-	/* RTL auto-detection: detect base direction of the text and
-	 * set Pango context direction accordingly so that RTL scripts
-	 * (Arabic, Hebrew, etc.) render correctly. */
-	PangoDirection base_dir = find_base_dir(text);
-	bool is_rtl = (base_dir == PANGO_DIRECTION_RTL);
 	if (is_rtl) {
 		PangoContext *pango_ctx = pango_layout_get_context(layout);
 		pango_context_set_base_dir(pango_ctx, PANGO_DIRECTION_RTL);
 		pango_layout_context_changed(layout);
 	}
-
-	/*
-	 * Always render left-aligned so the returned surface is
-	 * tightly cropped to the ink extents.  Callers handle
-	 * centering / right-alignment using the returned width.
-	 * RTL base direction is already set above for correct
-	 * glyph ordering and ellipsis placement.
-	 */
-	(void)justify;
 	pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
-
-	/*
-	 * Use ink extents for accurate rendered bounds.  The ink rectangle
-	 * reflects the actual pixels drawn, which can exceed the logical
-	 * size returned by pango_layout_get_pixel_size().
-	 */
-	PangoRectangle ink_rect, logical_rect;
-	pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
-
-	int text_w = ink_rect.x + ink_rect.width;
-	int text_h = logical_rect.height;
-	if (text_w <= 0) text_w = 1;
-	if (text_h <= 0) text_h = 1;
-
-	/* Final surface: ink width + shadow, logical height + shadow */
-	int final_w = text_w + shadow_offset_x;
-	int final_h = text_h + shadow_offset_y;
 
 	/* Draw shadow if enabled */
 	if (font->shadow_x != 0 || font->shadow_y != 0) {
@@ -586,20 +618,6 @@ wm_render_text(const char *text, const struct wm_font *font,
 	g_object_unref(layout);
 	cairo_destroy(cr);
 
-	/*
-	 * Crop to the actual rendered extent so the caller gets a
-	 * tightly-fitting surface for compositing.
-	 */
-	if (final_w > surf_w) final_w = surf_w;
-	if (final_h > est_h) final_h = est_h;
-	cairo_surface_t *cropped = cairo_image_surface_create(
-		CAIRO_FORMAT_ARGB32, final_w, final_h);
-	cairo_t *crop_cr = cairo_create(cropped);
-	cairo_set_source_surface(crop_cr, surface, 0, 0);
-	cairo_paint(crop_cr);
-	cairo_destroy(crop_cr);
-	cairo_surface_destroy(surface);
-
 	if (out_width)
 		*out_width = final_w;
 	if (out_height)
@@ -609,7 +627,7 @@ wm_render_text(const char *text, const struct wm_font *font,
 	WM_PERF_END(rtext, &perf_render_text);
 #endif
 
-	return cropped;
+	return surface;
 }
 
 /* --- Public API: text measurement --- */
@@ -622,15 +640,11 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 		return 0;
 
 	/*
-	 * Use a reasonably sized surface for consistent font metrics
-	 * and ink extents for accurate width measurement.
+	 * Use the cached measurement context (1×1 surface + persistent
+	 * PangoLayout) instead of creating a fresh 512×N surface per call.
+	 * This is called frequently from toolbar layout computation.
 	 */
-	int est_h = (int)(font->size * scale * 3 + 0.5f);
-	if (est_h < 32) est_h = 32;
-	cairo_surface_t *tmp =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 512, est_h);
-	cairo_t *cr = cairo_create(tmp);
-	PangoLayout *layout = pango_cairo_create_layout(cr);
+	ensure_measurement_context();
 
 	PangoFontDescription *desc = pango_font_description_new();
 	pango_font_description_set_family(desc,
@@ -641,20 +655,34 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
 	if (font->italic)
 		pango_font_description_set_style(desc, PANGO_STYLE_ITALIC);
-	pango_layout_set_font_description(layout, desc);
+	pango_layout_set_font_description(measure_layout, desc);
 	pango_font_description_free(desc);
 
-	pango_layout_set_text(layout, text, -1);
+	pango_layout_set_text(measure_layout, text, -1);
+	pango_layout_set_width(measure_layout, -1);
+	pango_layout_set_ellipsize(measure_layout, PANGO_ELLIPSIZE_NONE);
 
 	PangoRectangle ink_rect;
-	pango_layout_get_pixel_extents(layout, &ink_rect, NULL);
-	int text_w = ink_rect.x + ink_rect.width;
+	pango_layout_get_pixel_extents(measure_layout, &ink_rect, NULL);
 
-	g_object_unref(layout);
-	cairo_destroy(cr);
-	cairo_surface_destroy(tmp);
+	return ink_rect.x + ink_rect.width;
+}
 
-	return text_w;
+void
+wm_render_cleanup(void)
+{
+	if (measure_layout) {
+		g_object_unref(measure_layout);
+		measure_layout = NULL;
+	}
+	if (measure_cr) {
+		cairo_destroy(measure_cr);
+		measure_cr = NULL;
+	}
+	if (measure_surface) {
+		cairo_surface_destroy(measure_surface);
+		measure_surface = NULL;
+	}
 }
 
 /* --- Public API: button glyph rendering --- */

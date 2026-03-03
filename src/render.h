@@ -14,6 +14,7 @@
 
 #include "style.h"
 #include <cairo.h>
+#include <pango/pango.h>
 #include <stdbool.h>
 
 /* --- Button types for glyph rendering --- */
@@ -78,6 +79,23 @@ int wm_measure_text_width(const char *text, const struct wm_font *font,
  */
 cairo_surface_t *wm_render_button_glyph(enum wm_button_type type,
 	const struct wm_color *pic_color, int size, float scale);
+
+/* --- RTL text direction detection --- */
+
+/*
+ * Determine the base text direction by scanning for the first character
+ * with a strong directionality. Returns PANGO_DIRECTION_LTR,
+ * PANGO_DIRECTION_RTL, or PANGO_DIRECTION_NEUTRAL.
+ */
+PangoDirection find_base_dir(const char *text);
+
+/* --- Cleanup --- */
+
+/*
+ * Free the cached measurement context used by text rendering.
+ * Call during compositor shutdown.
+ */
+void wm_render_cleanup(void);
 
 /* --- Rounded rectangle path --- */
 

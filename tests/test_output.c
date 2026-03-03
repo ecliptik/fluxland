@@ -356,6 +356,31 @@ static void
 wm_toolbar_relayout(struct wm_toolbar *t)
 { (void)t; }
 
+/* --- Stubs for util.h functions --- */
+
+void wm_spawn_command(const char *cmd) { (void)cmd; }
+
+void wm_json_escape(char *dst, size_t dst_size, const char *src)
+{
+	if (!src) {
+		if (dst_size > 0) dst[0] = '\0';
+		return;
+	}
+	size_t j = 0;
+	for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
+		unsigned char c = (unsigned char)src[i];
+		if (c == '"' || c == '\\') {
+			dst[j++] = '\\';
+			dst[j++] = c;
+		} else if (c < 0x20) {
+			continue;
+		} else {
+			dst[j++] = c;
+		}
+	}
+	dst[j] = '\0';
+}
+
 /* --- Include output.c source directly --- */
 
 #include "output.c"
@@ -370,58 +395,58 @@ reset_globals(void)
 
 /* ===== Tests ===== */
 
-/* Test 1: json_escape_buf with a normal string (no special chars) */
+/* Test 1: wm_json_escape with a normal string (no special chars) */
 static void
 test_json_escape_normal(void)
 {
 	char buf[128];
-	json_escape_buf(buf, sizeof(buf), "hello world");
+	wm_json_escape(buf, sizeof(buf), "hello world");
 	assert(strcmp(buf, "hello world") == 0);
 
 	printf("  PASS: test_json_escape_normal\n");
 }
 
-/* Test 2: json_escape_buf with double quotes and backslash */
+/* Test 2: wm_json_escape with double quotes and backslash */
 static void
 test_json_escape_special_chars(void)
 {
 	char buf[128];
-	json_escape_buf(buf, sizeof(buf), "say \"hello\\world\"");
+	wm_json_escape(buf, sizeof(buf), "say \"hello\\world\"");
 	assert(strcmp(buf, "say \\\"hello\\\\world\\\"") == 0);
 
 	printf("  PASS: test_json_escape_special_chars\n");
 }
 
-/* Test 3: json_escape_buf strips control characters (newline, tab) */
+/* Test 3: wm_json_escape strips control characters (newline, tab) */
 static void
 test_json_escape_control_chars(void)
 {
 	char buf[128];
-	json_escape_buf(buf, sizeof(buf), "line1\nline2\ttab");
+	wm_json_escape(buf, sizeof(buf), "line1\nline2\ttab");
 	/* Control chars < 0x20 are skipped */
 	assert(strcmp(buf, "line1line2tab") == 0);
 
 	printf("  PASS: test_json_escape_control_chars\n");
 }
 
-/* Test 4: json_escape_buf with NULL input */
+/* Test 4: wm_json_escape with NULL input */
 static void
 test_json_escape_null(void)
 {
 	char buf[128];
 	buf[0] = 'X'; /* set a sentinel */
-	json_escape_buf(buf, sizeof(buf), NULL);
+	wm_json_escape(buf, sizeof(buf), NULL);
 	assert(buf[0] == '\0');
 
 	printf("  PASS: test_json_escape_null\n");
 }
 
-/* Test 5: json_escape_buf truncation when buffer is too small */
+/* Test 5: wm_json_escape truncation when buffer is too small */
 static void
 test_json_escape_truncation(void)
 {
 	char buf[8];
-	json_escape_buf(buf, sizeof(buf), "abcdefghijklmnop");
+	wm_json_escape(buf, sizeof(buf), "abcdefghijklmnop");
 	/*
 	 * Buffer is 8 bytes. The loop condition is j + 6 < dst_size,
 	 * so j < 2 for regular chars. Effectively only 1 char fits
@@ -435,13 +460,13 @@ test_json_escape_truncation(void)
 	printf("  PASS: test_json_escape_truncation\n");
 }
 
-/* Test 6: json_escape_buf with empty string */
+/* Test 6: wm_json_escape with empty string */
 static void
 test_json_escape_empty(void)
 {
 	char buf[128];
 	buf[0] = 'X';
-	json_escape_buf(buf, sizeof(buf), "");
+	wm_json_escape(buf, sizeof(buf), "");
 	assert(buf[0] == '\0');
 
 	printf("  PASS: test_json_escape_empty\n");
