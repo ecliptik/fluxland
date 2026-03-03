@@ -28,6 +28,10 @@ void wm_decoration_set_preset(struct wm_decoration *d,
 	{ (void)d; (void)p; (void)s; }
 void wm_view_set_sticky(struct wm_view *v, bool s)
 	{ (void)v; (void)s; }
+void wm_view_set_layer(struct wm_view *v, enum wm_view_layer l)
+	{ (void)v; (void)l; }
+void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
+	{ (void)v; (void)m; }
 void wm_decoration_set_shaded(struct wm_decoration *d, bool s,
 	struct wm_style *st)
 	{ (void)d; (void)s; (void)st; }
@@ -2028,11 +2032,12 @@ test_head_non_integer(void)
 
 /* Test: Layer with non-integer value is ignored */
 static void
-test_layer_non_integer(void)
+test_layer_string_names(void)
 {
+	/* Layer names should now be parsed correctly */
 	write_file(TEST_APPS,
 		"[app] (class=test)\n"
-		"  [Layer] {above}\n"
+		"  [Layer] {Above}\n"
 		"[end]\n"
 	);
 
@@ -2042,10 +2047,47 @@ test_layer_non_integer(void)
 
 	struct wm_window_rule *wr = first_window_rule(&rules);
 	assert(wr != NULL);
-	assert(wr->has_layer == false);
+	assert(wr->has_layer == true);
+	assert(wr->layer == WM_LAYER_ABOVE);
 
 	wm_rules_finish(&rules);
-	printf("  PASS: test_layer_non_integer\n");
+
+	/* Test all layer name variants */
+	const char *names[] = {"Desktop", "Below", "Normal", "Above"};
+	int expected[] = {WM_LAYER_DESKTOP, WM_LAYER_BELOW,
+		WM_LAYER_NORMAL, WM_LAYER_ABOVE};
+
+	for (int i = 0; i < 4; i++) {
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"[app] (class=test)\n"
+			"  [Layer] {%s}\n"
+			"[end]\n", names[i]);
+		write_file(TEST_APPS, buf);
+
+		wm_rules_init(&rules);
+		wm_rules_load(&rules, TEST_APPS);
+		wr = first_window_rule(&rules);
+		assert(wr != NULL);
+		assert(wr->has_layer == true);
+		assert(wr->layer == expected[i]);
+		wm_rules_finish(&rules);
+	}
+
+	/* Unknown layer names should still fail */
+	write_file(TEST_APPS,
+		"[app] (class=test)\n"
+		"  [Layer] {bogus}\n"
+		"[end]\n"
+	);
+	wm_rules_init(&rules);
+	wm_rules_load(&rules, TEST_APPS);
+	wr = first_window_rule(&rules);
+	assert(wr != NULL);
+	assert(wr->has_layer == false);
+	wm_rules_finish(&rules);
+
+	printf("  PASS: test_layer_string_names\n");
 }
 
 /* ---- ANCHOR POSITION + APPLY PROPERTY TESTS ---- */
@@ -2425,7 +2467,7 @@ main(void)
 	test_group_header_case();
 	test_apply_fullscreen();
 	test_head_non_integer();
-	test_layer_non_integer();
+	test_layer_string_names();
 
 	/* Anchor position + apply property tests */
 	test_apply_anchor_center();

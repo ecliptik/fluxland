@@ -362,6 +362,7 @@ struct wm_config {
 	bool opaque_resize;
 	bool workspace_warping;
 	bool full_maximization;
+	char *style_file;
 };
 
 /* --- Stub server types --- */
@@ -416,6 +417,8 @@ struct wm_ipc {
 enum wm_ipc_event_type {
 	WM_IPC_EVENT_MENU = 0,
 	WM_IPC_EVENT_FOCUS_CHANGED = 1,
+	WM_IPC_EVENT_CONFIG_RELOADED = 2,
+	WM_IPC_EVENT_STYLE_CHANGED = 3,
 };
 
 struct wm_server {
@@ -910,6 +913,12 @@ struct wm_toolbar;
 static void wm_toolbar_relayout(struct wm_toolbar *toolbar)
 {
 	(void)toolbar;
+}
+
+static void wm_decoration_update(struct wm_decoration *deco,
+	struct wm_style *style)
+{
+	(void)deco; (void)style;
 }
 
 /* --- Perf stubs (menu_render.c includes perf.h) --- */

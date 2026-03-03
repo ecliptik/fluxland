@@ -20,6 +20,7 @@
 
 #include "rules.h"
 #include "decoration.h"
+#include "foreign_toplevel.h"
 #include "util.h"
 #include "output.h"
 #include "view.h"
@@ -287,6 +288,19 @@ static void parse_rule_setting(const char *line, struct wm_window_rule *rule) {
 		if (safe_atoi(val, &layer)) {
 			rule->has_layer = true;
 			rule->layer = layer;
+		} else if (strcasecmp(val, "Desktop") == 0) {
+			rule->has_layer = true;
+			rule->layer = WM_LAYER_DESKTOP;
+		} else if (strcasecmp(val, "Below") == 0) {
+			rule->has_layer = true;
+			rule->layer = WM_LAYER_BELOW;
+		} else if (strcasecmp(val, "Normal") == 0) {
+			rule->has_layer = true;
+			rule->layer = WM_LAYER_NORMAL;
+		} else if (strcasecmp(val, "Above") == 0 ||
+			   strcasecmp(val, "Above Dock") == 0) {
+			rule->has_layer = true;
+			rule->layer = WM_LAYER_ABOVE;
 		}
 	} else if (streqi(name, "Alpha")) {
 		int fa = 255, ua = 255;
@@ -674,6 +688,11 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 				rule->deco, view->server->style);
 		}
 
+		/* Apply layer */
+		if (rule->has_layer) {
+			wm_view_set_layer(view, rule->layer);
+		}
+
 		/* Apply sticky */
 		if (rule->has_sticky) {
 			wm_view_set_sticky(view, rule->sticky);
@@ -721,6 +740,14 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 		if (rule->has_shaded && rule->shaded && view->decoration) {
 			wm_decoration_set_shaded(view->decoration, true,
 				view->server->style);
+		}
+
+		/* Apply minimized */
+		if (rule->has_minimized && rule->minimized &&
+		    view->scene_tree) {
+			wlr_scene_node_set_enabled(
+				&view->scene_tree->node, false);
+			wm_foreign_toplevel_set_minimized(view, true);
 		}
 
 		/* Apply alpha/opacity */
@@ -797,6 +824,8 @@ format_remember_block(struct wm_view *view)
 	fprintf(mem, "  [Maximized] {%s}\n", view->maximized ? "yes" : "no");
 	fprintf(mem, "  [Fullscreen] {%s}\n", view->fullscreen ? "yes" : "no");
 	if (view->decoration) {
+		fprintf(mem, "  [Shaded] {%s}\n",
+			view->decoration->shaded ? "yes" : "no");
 		fprintf(mem, "  [Deco] {%s}\n",
 			deco_preset_name(view->decoration->preset));
 	}

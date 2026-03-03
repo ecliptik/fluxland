@@ -68,6 +68,9 @@ void wm_server_reconfigure(struct wm_server *s)
 #include "toolbar.h"
 void wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	{ (void)toolbar; }
+#include "decoration.h"
+void wm_decoration_update(struct wm_decoration *deco, struct wm_style *style)
+	{ (void)deco; (void)style; }
 #include "keybind.h"
 enum wm_action wm_action_from_name(const char *name)
 	{ (void)name; return WM_ACTION_NOP; }

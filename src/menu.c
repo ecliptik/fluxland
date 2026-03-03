@@ -811,7 +811,29 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		if (item->command && server->style) {
 			wlr_log(WLR_INFO, "menu: load style %s",
 				item->command);
+			/* Update config path so reconfigure preserves
+			 * the choice */
+			if (server->config) {
+				free(server->config->style_file);
+				server->config->style_file =
+					strdup(item->command);
+			}
 			style_load(server->style, item->command);
+			/* Refresh toolbar */
+			if (server->toolbar)
+				wm_toolbar_relayout(server->toolbar);
+			/* Update all existing window decorations */
+			struct wm_view *v;
+			wl_list_for_each(v, &server->views, link) {
+				if (v->decoration)
+					wm_decoration_update(
+						v->decoration,
+						server->style);
+			}
+			/* Broadcast style_changed event */
+			wm_ipc_broadcast_event(&server->ipc,
+				WM_IPC_EVENT_STYLE_CHANGED,
+				"{\"event\":\"style_changed\"}");
 		}
 		break;
 
