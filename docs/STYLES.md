@@ -69,14 +69,187 @@ Minimal dark style with thin borders and teal menu title accent.
 
 ![blackdelux](screenshots/styles/blackdelux.png)
 
+## Upstream Styles
+
+27 styles bundled with the original Fluxbox window manager, imported from the
+[Fluxbox repository](https://github.com/fluxbox/fluxbox). These styles are
+included in [`examples/styles/upstream/`](../examples/styles/upstream/).
+
+### Directory-based styles (with pixmaps)
+
+#### arch
+
+Light grey pixmap style with blue accents by tenner.
+
+![arch](screenshots/styles/arch.png)
+
+#### bloe
+
+Soft lavender-grey pixmap style with purple title text by tenner.
+
+![bloe](screenshots/styles/bloe.png)
+
+#### BlueFlux
+
+Blue gradient style with XPM pixmap titlebars and toolbar by BioNiK.
+
+![BlueFlux](screenshots/styles/BlueFlux.png)
+
+#### bora_black
+
+Dark grey pixmap style with monochrome gradients by tenner.
+
+![bora_black](screenshots/styles/bora_black.png)
+
+#### bora_blue
+
+Deep blue pixmap style with steel blue borders by tenner.
+
+![bora_blue](screenshots/styles/bora_blue.png)
+
+#### bora_green
+
+Forest green pixmap style with bright green borders by tenner.
+
+![bora_green](screenshots/styles/bora_green.png)
+
+#### carp
+
+Compact dark pixmap style with small fonts and black borders by tenner.
+
+![carp](screenshots/styles/carp.png)
+
+#### Emerge
+
+Clean white/light grey style with raised bevels and crossdiagonal gradients by ikaro.
+
+![Emerge](screenshots/styles/Emerge.png)
+
+#### green_tea
+
+Dark style with muted green borders and pixmap textures by tenner.
+
+![green_tea](screenshots/styles/green_tea.png)
+
+#### ostrich
+
+Dark grey style with warm brown/sienna accents by tenner.
+
+![ostrich](screenshots/styles/ostrich.png)
+
+#### zimek_bisque
+
+Warm bisque/tan style with olive borders and red title text by tenner.
+
+![zimek_bisque](screenshots/styles/zimek_bisque.png)
+
+#### zimek_darkblue
+
+Dark navy blue style with slate grey menus and muted text by tenner.
+
+![zimek_darkblue](screenshots/styles/zimek_darkblue.png)
+
+#### zimek_green
+
+Olive green style with bright green menu titles by tenner.
+
+![zimek_green](screenshots/styles/zimek_green.png)
+
+### Single-file styles (gradient/solid only)
+
+#### Artwiz
+
+Dark steel grey style with diagonal gradients and sunken toolbar elements.
+
+![Artwiz](screenshots/styles/Artwiz.png)
+
+#### BlueNight
+
+Dark blue-tinted style with solid black titlebars and grey-blue menus by mack@incise.org.
+
+![BlueNight](screenshots/styles/BlueNight.png)
+
+#### Flux
+
+Deep indigo/navy style with crossdiagonal cream gradients on menus and labels.
+
+![Flux](screenshots/styles/Flux.png)
+
+#### LemonSpace
+
+Warm lemon-gold style with raised vertical gradients by xlife@zuavra.net.
+
+![LemonSpace](screenshots/styles/LemonSpace.png)
+
+#### Makro
+
+Muted gold/khaki style with sunken vertical gradients by skypher.
+
+![Makro](screenshots/styles/Makro.png)
+
+#### MerleyKay
+
+Slate blue interlaced style with raised gradients by skypher.
+
+![MerleyKay](screenshots/styles/MerleyKay.png)
+
+#### Meta
+
+Soft blue gradient style with parentrelative toolbar elements by joel carlbark.
+
+![Meta](screenshots/styles/Meta.png)
+
+#### Nyz
+
+Dark teal-blue style with diagonal gradients and grey labels.
+
+![Nyz](screenshots/styles/Nyz.png)
+
+#### Operation
+
+Dark blue style with parentrelative toolbar and crossdiagonal gradients.
+
+![Operation](screenshots/styles/Operation.png)
+
+#### Outcomes
+
+Dark charcoal style with raised bevel gradients and interlaced labels.
+
+![Outcomes](screenshots/styles/Outcomes.png)
+
+#### qnx-photon
+
+Light grey QNX Photon-inspired style with blue gradient menu titles by skypher.
+
+![qnx-photon](screenshots/styles/qnx-photon.png)
+
+#### Results
+
+Dark charcoal/indigo style with raised bevel gradients and interlaced labels.
+
+![Results](screenshots/styles/Results.png)
+
+#### Shade
+
+Minimal dark style with flat solid titlebars and cream crossdiagonal menus.
+
+![Shade](screenshots/styles/Shade.png)
+
+#### Twice
+
+Dark red/maroon style with diagonal gradients and grey labels.
+
+![Twice](screenshots/styles/Twice.png)
+
 ## Using Styles
 
-### Install a community style
+### Install a bundled style
 
-Copy a style directory to your styles path:
+Copy a community or upstream style directory to your styles path:
 
 ```sh
 cp -r examples/styles/community/Graphite ~/.config/fluxland/styles/
+cp -r examples/styles/upstream/BlueFlux ~/.config/fluxland/styles/
 ```
 
 ### Apply at runtime
