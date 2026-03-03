@@ -21,6 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef WM_HAS_PIXBUF
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#endif
+
 #ifdef WM_PERF_ENABLE
 static struct wm_perf_probe perf_render_text;
 static bool perf_render_text_inited;
@@ -378,18 +382,96 @@ apply_bevel(cairo_surface_t *surface, int w, int h,
 
 /* --- Pixmap loading --- */
 
+#ifdef WM_HAS_PIXBUF
+/*
+ * Convert a GdkPixbuf to a Cairo ARGB32 surface.
+ * GdkPixbuf stores pixels in straight-alpha RGBA order, while Cairo uses
+ * premultiplied-alpha BGRA (on little-endian).  We do the conversion manually.
+ */
+static cairo_surface_t *
+pixbuf_to_cairo(GdkPixbuf *pixbuf)
+{
+	int pw = gdk_pixbuf_get_width(pixbuf);
+	int ph = gdk_pixbuf_get_height(pixbuf);
+	int src_stride = gdk_pixbuf_get_rowstride(pixbuf);
+	int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
+	const guchar *src_data = gdk_pixbuf_get_pixels(pixbuf);
+	bool has_alpha = gdk_pixbuf_get_has_alpha(pixbuf);
+
+	cairo_surface_t *surface =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw, ph);
+	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS)
+		return surface;
+
+	cairo_surface_flush(surface);
+	uint32_t *dst = (uint32_t *)cairo_image_surface_get_data(surface);
+	int dst_stride = cairo_image_surface_get_stride(surface) / 4;
+
+	for (int y = 0; y < ph; y++) {
+		const guchar *row = src_data + y * src_stride;
+		uint32_t *dst_row = dst + y * dst_stride;
+		for (int x = 0; x < pw; x++) {
+			uint8_t r = row[x * n_channels + 0];
+			uint8_t g = row[x * n_channels + 1];
+			uint8_t b = row[x * n_channels + 2];
+			uint8_t a = has_alpha ? row[x * n_channels + 3] : 255;
+
+			/* Premultiply alpha for Cairo */
+			if (a == 0) {
+				dst_row[x] = 0;
+			} else if (a == 255) {
+				dst_row[x] = (255u << 24) | (r << 16) |
+					(g << 8) | b;
+			} else {
+				dst_row[x] = ((uint32_t)a << 24) |
+					((r * a / 255) << 16) |
+					((g * a / 255) << 8) |
+					(b * a / 255);
+			}
+		}
+	}
+
+	cairo_surface_mark_dirty(surface);
+	return surface;
+}
+#endif
+
 static cairo_surface_t *
 load_pixmap(const char *path, int width, int height)
 {
 	if (!path || *path == '\0')
 		return NULL;
 
-	cairo_surface_t *img = cairo_image_surface_create_from_png(path);
+	cairo_surface_t *img = NULL;
+
+	/* Fast path: try native Cairo PNG loading first */
+	img = cairo_image_surface_create_from_png(path);
+	if (cairo_surface_status(img) == CAIRO_STATUS_SUCCESS)
+		goto scale;
+	cairo_surface_destroy(img);
+	img = NULL;
+
+#ifdef WM_HAS_PIXBUF
+	/* Fallback: use GdkPixbuf for XPM, JPEG, BMP, and other formats */
+	GError *err = NULL;
+	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(path, &err);
+	if (!pixbuf) {
+		if (err)
+			g_error_free(err);
+		return NULL;
+	}
+	img = pixbuf_to_cairo(pixbuf);
+	g_object_unref(pixbuf);
 	if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
 		cairo_surface_destroy(img);
 		return NULL;
 	}
+#else
+	return NULL;
+#endif
 
+scale:
+	;
 	/* Scale to fill the requested dimensions */
 	int img_w = cairo_image_surface_get_width(img);
 	int img_h = cairo_image_surface_get_height(img);

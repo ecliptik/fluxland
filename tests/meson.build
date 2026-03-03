@@ -546,12 +546,16 @@ image_compare_dep = declare_dependency(
   include_directories: [visual_inc],
 )
 
+test_deco_deps = [wlroots, pangocairo, math, image_compare_dep]
+if have_pixbuf
+  test_deco_deps += [pixbuf_dep]
+endif
 test_decorations = executable(
   'test_decorations',
   files('visual/test_decorations.c', '../src/render.c', '../src/style.c',
         '../src/rcparser.c', '../src/perf.c'),
   include_directories: [test_inc, visual_inc],
-  dependencies: [wlroots, pangocairo, math, image_compare_dep],
+  dependencies: test_deco_deps,
   install: false,
 )
 test('decorations', test_decorations, timeout: 30)
@@ -590,11 +594,15 @@ test_tablet = executable(
 test('tablet', test_tablet)
 
 # --- test_render: text rendering and Pango/Cairo tests ---
+test_render_deps = [wlroots, pangocairo, libdrm, math]
+if have_pixbuf
+  test_render_deps += [pixbuf_dep]
+endif
 test_render = executable(
   'test_render',
   files('test_render.c'),
   include_directories: test_inc,
-  dependencies: [wlroots, pangocairo, libdrm, math],
+  dependencies: test_render_deps,
   install: false,
 )
 test('render', test_render)
