@@ -107,7 +107,7 @@ menu.borderWidth:                   1
 
 toolbar:                            Flat Solid
 toolbar.color:                      #0f2440
-toolbar.textColor:                  #d4c8b0
+toolbar.textColor:                  #f0e6d3
 toolbar.font:                       sans-10
 
 toolbar.iconbar.focused.color:      #2a6b8a
