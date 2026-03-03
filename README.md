@@ -37,12 +37,12 @@ the benefits of a modern Wayland session.
 
 ## Screenshots
 
-*[Great Wave](https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa) style with ocean blue decorations and [Hokusai](https://en.wikipedia.org/wiki/Hokusai) wallpaper.*
+*[Great Wave](https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa) style with ocean blue decorations.*
 
 | | |
 |---|---|
 | ![Desktop](docs/screenshots/desktop_wave.png) | ![Single Window](docs/screenshots/01_single_window.png) |
-| Desktop with wallpaper | Single window with [gkrellm](http://gkrellm.srcbox.net/) in slit (XWayland) |
+| Desktop with toolbar | Single window |
 | ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
 | Root menu | Grid arrangement (4 windows) |
 
