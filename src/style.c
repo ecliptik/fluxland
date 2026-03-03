@@ -345,12 +345,33 @@ style_get(struct rc_database *db, const char *key)
 	if (!last_dot)
 		return NULL;
 
+	/* Try "*.component" (e.g. "*.font") */
 	char wildcard[256];
 	int written = snprintf(wildcard, sizeof(wildcard), "*%s", last_dot);
-	if (written < 0 || (size_t)written >= sizeof(wildcard))
-		return NULL;
+	if (written >= 0 && (size_t)written < sizeof(wildcard)) {
+		val = rc_get_string(db, wildcard);
+		if (val)
+			return val;
+	}
 
-	return rc_get_string(db, wildcard);
+	/* Try "*component" without dot (Fluxbox compat: *font, *Font) */
+	written = snprintf(wildcard, sizeof(wildcard), "*%s", last_dot + 1);
+	if (written >= 0 && (size_t)written < sizeof(wildcard)) {
+		val = rc_get_string(db, wildcard);
+		if (val)
+			return val;
+		/* Try capitalized variant (*Font vs *font) */
+		if (wildcard[1] >= 'a' && wildcard[1] <= 'z') {
+			wildcard[1] = wildcard[1] - 'a' + 'A';
+			val = rc_get_string(db, wildcard);
+			if (val)
+				return val;
+		}
+	}
+
+	/* Try bare key without prefix (Fluxbox compat: borderColor) */
+	val = rc_get_string(db, last_dot + 1);
+	return val;
 }
 
 static int
