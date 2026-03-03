@@ -1132,6 +1132,24 @@ config_reload(struct wm_config *config)
 	return config_load(config, NULL);
 }
 
+bool
+config_file_changed(const char *path, time_t *cached_mtime)
+{
+	if (!path)
+		return true;
+
+	struct stat st;
+	if (stat(path, &st) != 0)
+		return true; /* force reload on error */
+
+	if (st.st_mtime != *cached_mtime) {
+		*cached_mtime = st.st_mtime;
+		return true;
+	}
+
+	return false;
+}
+
 void
 config_destroy(struct wm_config *config)
 {

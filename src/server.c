@@ -97,7 +97,7 @@ handle_sigchld(int signal_number, void *data)
 void
 wm_server_reconfigure(struct wm_server *server)
 {
-	/* 1. Reload config file */
+	/* 1. Always reload init file (cheap, contains misc settings) */
 	if (server->config) {
 		config_reload(server->config);
 		server->focus_policy = server->config->focus_policy;
@@ -109,52 +109,76 @@ wm_server_reconfigure(struct wm_server *server)
 		WM_IPC_EVENT_CONFIG_RELOADED,
 		"{\"event\":\"config_reloaded\"}");
 
-	/* 2. Reload keymodes and keybindings */
-	keybind_destroy_all(&server->keymodes);
-	wl_list_init(&server->keymodes);
-	keybind_destroy_list(&server->keybindings);
-	wl_list_init(&server->keybindings);
-	if (server->config && server->config->keys_file) {
-		keybind_load(&server->keymodes,
-			server->config->keys_file);
-	}
+	/* Check which subsystem config files have changed */
+	bool keys_changed = !server->config ||
+		!server->config->keys_file ||
+		config_file_changed(server->config->keys_file,
+			&server->config->keys_file_mtime);
+	bool style_changed = !server->config ||
+		!server->config->style_file ||
+		config_file_changed(server->config->style_file,
+			&server->config->style_file_mtime);
+	bool menu_changed = !server->config ||
+		!server->config->menu_file ||
+		config_file_changed(server->config->menu_file,
+			&server->config->menu_file_mtime);
+	bool apps_changed = !server->config ||
+		!server->config->apps_file ||
+		config_file_changed(server->config->apps_file,
+			&server->config->apps_file_mtime);
 
-	/* Reset chain and keymode */
-	server->chain_state.in_chain = false;
-	server->chain_state.current_level = NULL;
-	if (server->chain_state.timeout) {
-		wl_event_source_remove(server->chain_state.timeout);
-		server->chain_state.timeout = NULL;
-	}
-	free(server->current_keymode);
-	server->current_keymode = strdup("default");
-	if (!server->current_keymode)
-		return;
-
-	/* 3. Reload mouse bindings */
-	mousebind_destroy_list(&server->mousebindings);
-	wl_list_init(&server->mousebindings);
-	if (server->config && server->config->keys_file) {
-		mousebind_load(&server->mousebindings,
-			server->config->keys_file,
-			server->config->mouse_button_map);
-	}
-
-	/* 4. Reload style */
-	if (server->style && server->config && server->config->style_file) {
-		style_load(server->style, server->config->style_file);
-		if (server->config->style_overlay) {
-			style_load_overlay(server->style,
-				server->config->style_overlay);
+	/* 2. Reload keymodes and keybindings (if keys file changed) */
+	if (keys_changed) {
+		keybind_destroy_all(&server->keymodes);
+		wl_list_init(&server->keymodes);
+		keybind_destroy_list(&server->keybindings);
+		wl_list_init(&server->keybindings);
+		if (server->config && server->config->keys_file) {
+			keybind_load(&server->keymodes,
+				server->config->keys_file);
 		}
 
-		/* Broadcast style_changed event to IPC subscribers */
-		wm_ipc_broadcast_event(&server->ipc,
-			WM_IPC_EVENT_STYLE_CHANGED,
-			"{\"event\":\"style_changed\"}");
+		/* Reset chain and keymode */
+		server->chain_state.in_chain = false;
+		server->chain_state.current_level = NULL;
+		if (server->chain_state.timeout) {
+			wl_event_source_remove(server->chain_state.timeout);
+			server->chain_state.timeout = NULL;
+		}
+		free(server->current_keymode);
+		server->current_keymode = strdup("default");
+		if (!server->current_keymode)
+			return;
+
+		/* 3. Reload mouse bindings (same keys file) */
+		mousebind_destroy_list(&server->mousebindings);
+		wl_list_init(&server->mousebindings);
+		if (server->config && server->config->keys_file) {
+			mousebind_load(&server->mousebindings,
+				server->config->keys_file,
+				server->config->mouse_button_map);
+		}
 	}
 
-	/* 5. Update workspace names from config */
+	/* 4. Reload style (if style file changed) */
+	if (style_changed) {
+		if (server->style && server->config &&
+		    server->config->style_file) {
+			style_load(server->style,
+				server->config->style_file);
+			if (server->config->style_overlay) {
+				style_load_overlay(server->style,
+					server->config->style_overlay);
+			}
+
+			/* Broadcast style_changed event to IPC subscribers */
+			wm_ipc_broadcast_event(&server->ipc,
+				WM_IPC_EVENT_STYLE_CHANGED,
+				"{\"event\":\"style_changed\"}");
+		}
+	}
+
+	/* 5. Update workspace names from config (always — from init file) */
 	if (server->config) {
 		struct wm_workspace *ws;
 		wl_list_for_each(ws, &server->workspaces, link) {
@@ -170,7 +194,7 @@ wm_server_reconfigure(struct wm_server *server)
 		}
 	}
 
-	/* 5b. Handle workspace mode change */
+	/* 5b. Handle workspace mode change (always — from init file) */
 	if (server->config) {
 		bool per_output =
 			server->config->workspace_mode == WM_WORKSPACE_PER_OUTPUT;
@@ -191,44 +215,48 @@ wm_server_reconfigure(struct wm_server *server)
 		}
 	}
 
-	/* 6. Reload menus (after workspace names so submenus reflect changes) */
-	wm_menu_hide_all(server);
-	if (server->root_menu) {
-		wm_menu_destroy(server->root_menu);
-		server->root_menu = NULL;
-	}
-	if (server->window_menu) {
-		wm_menu_destroy(server->window_menu);
-		server->window_menu = NULL;
-	}
-	if (server->config && server->config->menu_file) {
-		server->root_menu = wm_menu_load(server,
-			server->config->menu_file);
-	}
-	server->window_menu = wm_menu_create_window_menu(server);
-
-	/* 7. Reload rules */
-	wm_rules_finish(&server->rules);
-	wm_rules_init(&server->rules);
-	if (server->config && server->config->apps_file) {
-		wm_rules_load(&server->rules,
-			server->config->apps_file);
+	/* 6. Reload menus (if menu file changed) */
+	if (menu_changed) {
+		wm_menu_hide_all(server);
+		if (server->root_menu) {
+			wm_menu_destroy(server->root_menu);
+			server->root_menu = NULL;
+		}
+		if (server->window_menu) {
+			wm_menu_destroy(server->window_menu);
+			server->window_menu = NULL;
+		}
+		if (server->config && server->config->menu_file) {
+			server->root_menu = wm_menu_load(server,
+				server->config->menu_file);
+		}
+		server->window_menu = wm_menu_create_window_menu(server);
 	}
 
-	/* 8. Reapply XKB keyboard layout from config */
+	/* 7. Reload rules (if apps file changed) */
+	if (apps_changed) {
+		wm_rules_finish(&server->rules);
+		wm_rules_init(&server->rules);
+		if (server->config && server->config->apps_file) {
+			wm_rules_load(&server->rules,
+				server->config->apps_file);
+		}
+	}
+
+	/* 8. Reapply XKB keyboard layout (always — from init file) */
 	wm_keyboard_apply_config(server);
 
-	/* 9. Refresh toolbar with new config and style */
-	if (server->toolbar) {
+	/* 9. Refresh toolbar (if style changed) */
+	if (style_changed && server->toolbar) {
 		wm_toolbar_relayout(server->toolbar);
 	}
 
-	/* 10. Refresh slit with new config and style */
-	if (server->slit) {
+	/* 10. Refresh slit (if style changed) */
+	if (style_changed && server->slit) {
 		wm_slit_relayout(server->slit);
 	}
 
-	/* 10b. Reload wallpapers from updated config */
+	/* 10b. Reload wallpapers (always — from init file) */
 	if (server->wallpaper) {
 		wm_wallpaper_reload(server->wallpaper);
 	} else {
@@ -236,8 +264,8 @@ wm_server_reconfigure(struct wm_server *server)
 		server->wallpaper = wm_wallpaper_create(server);
 	}
 
-	/* 11. Refresh all view decorations with new style */
-	if (server->style) {
+	/* 11. Refresh all view decorations (if style changed) */
+	if (style_changed && server->style) {
 		struct wm_view *view;
 		wl_list_for_each(view, &server->views, link) {
 			if (view->decoration) {

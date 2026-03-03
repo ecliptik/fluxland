@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <time.h>
 
 /* --- Block real headers via their include guards --- */
 #ifndef WLR_USE_UNSTABLE
@@ -365,6 +366,10 @@ struct wm_config {
 	char *menu_file;
 	char *config_dir;
 	int workspace_count;
+	time_t keys_file_mtime;
+	time_t style_file_mtime;
+	time_t menu_file_mtime;
+	time_t apps_file_mtime;
 };
 
 /* workspace.h types */
@@ -974,6 +979,12 @@ static void config_destroy(struct wm_config *config)
 		}
 		free(config);
 	}
+}
+
+static bool config_file_changed(const char *path, time_t *cached_mtime)
+{
+	(void)path; (void)cached_mtime;
+	return true; /* always reload in tests */
 }
 
 static void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
