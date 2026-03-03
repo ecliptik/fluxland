@@ -293,16 +293,34 @@ render_button_tool(struct wm_toolbar *toolbar, const char *label,
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-	/* Slightly darker background for buttons */
-	cairo_set_source_rgba(cr, 0, 0, 0, 0.15);
-	cairo_rectangle(cr, 0, 0, width, height);
-	cairo_fill(cr);
+	/* Use per-component button texture if available */
+	if (style->toolbar_has_button_texture) {
+		cairo_surface_t *bg = wm_render_texture(
+			&style->toolbar_button_texture,
+			width, height, 1.0f);
+		if (bg) {
+			cairo_set_source_surface(cr, bg, 0, 0);
+			cairo_paint(cr);
+			cairo_surface_destroy(bg);
+		}
+	} else {
+		/* Slightly darker background for buttons */
+		cairo_set_source_rgba(cr, 0, 0, 0, 0.15);
+		cairo_rectangle(cr, 0, 0, width, height);
+		cairo_fill(cr);
+	}
+
+	/* Pick per-component text/pic color */
+	const struct wm_color *btn_color =
+		style->toolbar_has_button_pic_color ?
+			&style->toolbar_button_pic_color :
+			&style->toolbar_text_color;
 
 	/* Draw separator on left edge */
 	cairo_set_source_rgba(cr,
-		style->toolbar_text_color.r / 255.0,
-		style->toolbar_text_color.g / 255.0,
-		style->toolbar_text_color.b / 255.0, 0.3);
+		btn_color->r / 255.0,
+		btn_color->g / 255.0,
+		btn_color->b / 255.0, 0.3);
 	cairo_set_line_width(cr, 1.0);
 	cairo_move_to(cr, 0.5, 2);
 	cairo_line_to(cr, 0.5, height - 2);
@@ -311,7 +329,7 @@ render_button_tool(struct wm_toolbar *toolbar, const char *label,
 	/* Draw label centered */
 	int tw, th;
 	cairo_surface_t *text = wm_render_text(label,
-		&style->toolbar_font, &style->toolbar_text_color,
+		&style->toolbar_font, btn_color,
 		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
 	if (text) {
 		int tx = (width - tw) / 2;
@@ -365,10 +383,15 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 	tool->hit_boxes[0].width = width;
 	tool->hit_boxes[0].height = height;
 
-	/* Render background with toolbar texture */
-	cairo_surface_t *bg =
-		wm_render_texture(&style->toolbar_texture,
-			width, height, 1.0f);
+	/* Pick per-component texture or fall back to toolbar texture */
+	const struct wm_texture *ws_tex = style->toolbar_has_workspace_texture ?
+		&style->toolbar_workspace_texture :
+		(style->toolbar_has_label_texture ?
+			&style->toolbar_label_texture :
+			&style->toolbar_texture);
+
+	/* Render background */
+	cairo_surface_t *bg = wm_render_texture(ws_tex, width, height, 1.0f);
 	if (bg) {
 		cairo_t *bcr = cairo_create(bg);
 		cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
@@ -383,6 +406,14 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 		cairo_fill(cr);
 	}
 
+	/* Pick per-component text color or fall back */
+	const struct wm_color *ws_text_color =
+		style->toolbar_has_workspace_text_color ?
+			&style->toolbar_workspace_text_color :
+		style->toolbar_has_label_text_color ?
+			&style->toolbar_label_text_color :
+			&style->toolbar_text_color;
+
 	/* Draw active workspace name centered */
 	const char *name = active_ws ? active_ws->name : NULL;
 	char fallback[16];
@@ -394,7 +425,7 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 
 	int tw, th;
 	cairo_surface_t *text = wm_render_text(name,
-		&style->toolbar_font, &style->toolbar_text_color,
+		&style->toolbar_font, ws_text_color,
 		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
 	if (text) {
 		int tx = (width - tw) / 2;
@@ -568,6 +599,8 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	}
 	if (style->toolbar_iconbar_focused_text_color.a > 0) {
 		focused_text_color = style->toolbar_iconbar_focused_text_color;
+	} else if (style->toolbar_has_window_label_text_color) {
+		focused_text_color = style->toolbar_window_label_text_color;
 	} else {
 		focused_text_color = style->toolbar_text_color;
 	}
@@ -748,9 +781,30 @@ render_clock(struct wm_toolbar *toolbar, int width, int height)
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
+	/* Render per-component clock background if available */
+	const struct wm_texture *clock_tex =
+		style->toolbar_has_clock_texture ?
+			&style->toolbar_clock_texture :
+			NULL;
+	if (clock_tex) {
+		cairo_surface_t *bg = wm_render_texture(clock_tex,
+			width, height, 1.0f);
+		if (bg) {
+			cairo_set_source_surface(cr, bg, 0, 0);
+			cairo_paint(cr);
+			cairo_surface_destroy(bg);
+		}
+	}
+
+	/* Pick per-component text color */
+	const struct wm_color *clock_text_color =
+		style->toolbar_has_clock_text_color ?
+			&style->toolbar_clock_text_color :
+			&style->toolbar_text_color;
+
 	int tw, th;
 	cairo_surface_t *text = wm_render_text(timebuf,
-		&style->toolbar_font, &style->toolbar_text_color,
+		&style->toolbar_font, clock_text_color,
 		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
 	if (text) {
 		int tx = (width - tw) / 2;

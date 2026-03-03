@@ -170,6 +170,94 @@ test_color_rgb_format(void)
 	printf("  PASS: test_color_rgb_format\n");
 }
 
+/* Test: color parsing - rgb: with X11 digit scaling */
+static void
+test_color_rgb_scaling(void)
+{
+	struct wm_color c;
+
+	/* 1 hex digit: value * 17 (0xC -> 0xCC) */
+	c = style_parse_color("rgb:c/6/6");
+	assert(c.r == 0xCC && c.g == 0x66 && c.b == 0x66);
+
+	/* 1 hex digit: 0xF -> 0xFF */
+	c = style_parse_color("rgb:f/f/f");
+	assert(c.r == 255 && c.g == 255 && c.b == 255);
+
+	/* 1 hex digit: 0x0 -> 0x00 */
+	c = style_parse_color("rgb:0/0/0");
+	assert(c.r == 0 && c.g == 0 && c.b == 0);
+
+	/* 2 hex digits: as-is */
+	c = style_parse_color("rgb:FF/00/FF");
+	assert(c.r == 255 && c.g == 0 && c.b == 255);
+
+	c = style_parse_color("rgb:AB/CD/EF");
+	assert(c.r == 0xAB && c.g == 0xCD && c.b == 0xEF);
+
+	/* 3 hex digits: value >> 4 */
+	c = style_parse_color("rgb:CCC/666/000");
+	assert(c.r == 0xCC && c.g == 0x66 && c.b == 0x00);
+
+	/* 4 hex digits: value >> 8 */
+	c = style_parse_color("rgb:CCCC/6666/0000");
+	assert(c.r == 0xCC && c.g == 0x66 && c.b == 0x00);
+
+	/* Mixed digit counts */
+	c = style_parse_color("rgb:f/FF/FFF");
+	assert(c.r == 0xFF && c.g == 0xFF && c.b == 0xFF);
+
+	printf("  PASS: test_color_rgb_scaling\n");
+}
+
+/* Test: toolbar per-component style loading */
+static void
+test_toolbar_component_styles(void)
+{
+	write_file(TEST_STYLE,
+		"toolbar: Flat Solid\n"
+		"toolbar.textColor: #AAAAAA\n"
+		"toolbar.label: Raised Gradient Vertical\n"
+		"toolbar.label.textColor: #FFFFFF\n"
+		"toolbar.clock: Flat Solid\n"
+		"toolbar.clock.textColor: #00FF00\n"
+		"toolbar.workspace: Sunken Solid\n"
+		"toolbar.workspace.textColor: #FF0000\n"
+		"toolbar.button: Raised Solid\n"
+		"toolbar.button.picColor: #0000FF\n"
+		"toolbar.windowLabel.textColor: #FFFF00\n"
+	);
+
+	struct wm_style *s = style_create();
+	int ret = style_load(s, TEST_STYLE);
+	assert(ret == 0);
+
+	/* Verify sub-component textures loaded */
+	assert(s->toolbar_has_label_texture == true);
+	assert(s->toolbar_label_texture.appearance == WM_TEX_RAISED);
+	assert(s->toolbar_has_clock_texture == true);
+	assert(s->toolbar_clock_texture.appearance == WM_TEX_FLAT);
+	assert(s->toolbar_has_workspace_texture == true);
+	assert(s->toolbar_workspace_texture.appearance == WM_TEX_SUNKEN);
+	assert(s->toolbar_has_button_texture == true);
+
+	/* Verify per-component text colors */
+	assert(s->toolbar_has_label_text_color == true);
+	assert(s->toolbar_label_text_color.r == 0xFF);
+	assert(s->toolbar_has_clock_text_color == true);
+	assert(s->toolbar_clock_text_color.g == 0xFF);
+	assert(s->toolbar_has_workspace_text_color == true);
+	assert(s->toolbar_workspace_text_color.r == 0xFF);
+	assert(s->toolbar_has_button_pic_color == true);
+	assert(s->toolbar_button_pic_color.b == 0xFF);
+	assert(s->toolbar_has_window_label_text_color == true);
+	assert(s->toolbar_window_label_text_color.r == 0xFF);
+	assert(s->toolbar_window_label_text_color.g == 0xFF);
+
+	style_destroy(s);
+	printf("  PASS: test_toolbar_component_styles\n");
+}
+
 /* Test: texture parsing - Flat Solid */
 static void
 test_texture_flat_solid(void)
@@ -472,10 +560,10 @@ test_color_invalid_formats(void)
 	c = style_parse_color("#");
 	assert(c.r == 0 && c.g == 0 && c.b == 0);
 
-	/* rgb: with invalid format */
+	/* rgb: with partially invalid hex (Z not valid hex digit) */
 	c = style_parse_color("rgb:ZZ/AA/BB");
-	/* sscanf %x will fail on ZZ so returns black */
-	assert(c.r == 0 && c.g == 0 && c.b == 0);
+	/* strtoul("ZZ", NULL, 16) returns 0; AA/BB parse as hex */
+	assert(c.r == 0 && c.g == 0xAA && c.b == 0xBB);
 
 	/* Unrecognized named color */
 	c = style_parse_color("magenta");
@@ -935,6 +1023,8 @@ main(void)
 	test_menu_title_justify();
 	test_texture_pixmap();
 	test_texture_parent_relative_alt();
+	test_color_rgb_scaling();
+	test_toolbar_component_styles();
 
 	cleanup();
 	printf("All style tests passed.\n");

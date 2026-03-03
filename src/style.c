@@ -81,6 +81,23 @@ argb_from_color(struct wm_color c)
 
 /* --- Color parsing --- */
 
+/*
+ * Scale an rgb: component value based on its hex digit count per X11 spec.
+ * X11's XParseColor defines rgb:R/G/B where each component is 1-4 hex digits,
+ * scaled to 8-bit by repeating (1 digit), identity (2), or shifting (3-4).
+ */
+static unsigned int
+scale_rgb_component(unsigned int val, size_t digits)
+{
+	switch (digits) {
+	case 1: return val * 17;	/* 0xC -> 0xCC */
+	case 2: return val;		/* 0xCC -> 0xCC */
+	case 3: return val >> 4;	/* 0xCCC -> 0xCC */
+	case 4: return val >> 8;	/* 0xCCCC -> 0xCC */
+	default: return val > 255 ? 255 : val;
+	}
+}
+
 struct wm_color
 style_parse_color(const char *value)
 {
@@ -102,17 +119,17 @@ style_parse_color(const char *value)
 		return make_color(0, 0, 0);
 	}
 
-	/* rgb:R/G/B format (values 0-255) */
+	/* rgb:R/G/B format per X11 spec — components are hex, scaled by
+	 * digit count: 1→×17, 2→as-is, 3→>>4, 4→>>8 */
 	if (strncasecmp(value, "rgb:", 4) == 0) {
-		unsigned int r = 0, g = 0, b = 0;
-		if (sscanf(value + 4, "%u/%u/%u", &r, &g, &b) == 3) {
-			if (r > 255) r = 255;
-			if (g > 255) g = 255;
-			if (b > 255) b = 255;
-			return make_color(r, g, b);
-		}
-		/* Try hex components: rgb:RR/GG/BB */
-		if (sscanf(value + 4, "%x/%x/%x", &r, &g, &b) == 3) {
+		char rs[8], gs[8], bs[8];
+		if (sscanf(value + 4, "%7[^/]/%7[^/]/%7s", rs, gs, bs) == 3) {
+			unsigned int r = strtoul(rs, NULL, 16);
+			unsigned int g = strtoul(gs, NULL, 16);
+			unsigned int b = strtoul(bs, NULL, 16);
+			r = scale_rgb_component(r, strlen(rs));
+			g = scale_rgb_component(g, strlen(gs));
+			b = scale_rgb_component(b, strlen(bs));
 			if (r > 255) r = 255;
 			if (g > 255) g = 255;
 			if (b > 255) b = 255;
@@ -890,6 +907,55 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 	load_color(db, "toolbar.textColor", &s->toolbar_text_color);
 	load_font(db, "toolbar.font", &s->toolbar_font);
 
+	/* --- Toolbar sub-components --- */
+	if (style_get(db, "toolbar.label")) {
+		load_texture(db, "toolbar.label",
+			&s->toolbar_label_texture, sd);
+		s->toolbar_has_label_texture = true;
+	}
+	if (style_get(db, "toolbar.clock")) {
+		load_texture(db, "toolbar.clock",
+			&s->toolbar_clock_texture, sd);
+		s->toolbar_has_clock_texture = true;
+	}
+	if (style_get(db, "toolbar.workspace")) {
+		load_texture(db, "toolbar.workspace",
+			&s->toolbar_workspace_texture, sd);
+		s->toolbar_has_workspace_texture = true;
+	}
+	if (style_get(db, "toolbar.button")) {
+		load_texture(db, "toolbar.button",
+			&s->toolbar_button_texture, sd);
+		s->toolbar_has_button_texture = true;
+	}
+
+	/* Per-component text colors */
+	if (style_get(db, "toolbar.label.textColor")) {
+		s->toolbar_label_text_color = style_parse_color(
+			style_get(db, "toolbar.label.textColor"));
+		s->toolbar_has_label_text_color = true;
+	}
+	if (style_get(db, "toolbar.clock.textColor")) {
+		s->toolbar_clock_text_color = style_parse_color(
+			style_get(db, "toolbar.clock.textColor"));
+		s->toolbar_has_clock_text_color = true;
+	}
+	if (style_get(db, "toolbar.workspace.textColor")) {
+		s->toolbar_workspace_text_color = style_parse_color(
+			style_get(db, "toolbar.workspace.textColor"));
+		s->toolbar_has_workspace_text_color = true;
+	}
+	if (style_get(db, "toolbar.windowLabel.textColor")) {
+		s->toolbar_window_label_text_color = style_parse_color(
+			style_get(db, "toolbar.windowLabel.textColor"));
+		s->toolbar_has_window_label_text_color = true;
+	}
+	if (style_get(db, "toolbar.button.picColor")) {
+		s->toolbar_button_pic_color = style_parse_color(
+			style_get(db, "toolbar.button.picColor"));
+		s->toolbar_has_button_pic_color = true;
+	}
+
 	/* --- Toolbar icon bar --- */
 	if (style_get(db, "toolbar.iconbar.focused.color")) {
 		s->toolbar_iconbar_focused_color =
@@ -1104,6 +1170,10 @@ style_clear(struct wm_style *s)
 	texture_finish(&s->menu_hilite);
 	texture_finish(&s->slit_texture);
 	texture_finish(&s->toolbar_texture);
+	texture_finish(&s->toolbar_label_texture);
+	texture_finish(&s->toolbar_clock_texture);
+	texture_finish(&s->toolbar_workspace_texture);
+	texture_finish(&s->toolbar_button_texture);
 
 	/* Fonts */
 	font_finish(&s->window_label_focus_font);

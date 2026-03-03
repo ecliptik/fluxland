@@ -200,6 +200,30 @@ struct wm_style {
 	struct wm_color toolbar_text_color;
 	struct wm_font toolbar_font;
 
+	/* Toolbar sub-component textures */
+	struct wm_texture toolbar_label_texture;
+	struct wm_texture toolbar_clock_texture;
+	struct wm_texture toolbar_workspace_texture;
+	struct wm_texture toolbar_button_texture;
+	bool toolbar_has_label_texture;
+	bool toolbar_has_clock_texture;
+	bool toolbar_has_workspace_texture;
+	bool toolbar_has_button_texture;
+
+	/* Toolbar sub-component text colors */
+	struct wm_color toolbar_label_text_color;
+	struct wm_color toolbar_clock_text_color;
+	struct wm_color toolbar_workspace_text_color;
+	struct wm_color toolbar_window_label_text_color;
+	bool toolbar_has_label_text_color;
+	bool toolbar_has_clock_text_color;
+	bool toolbar_has_workspace_text_color;
+	bool toolbar_has_window_label_text_color;
+
+	/* Toolbar button pic color (arrows) */
+	struct wm_color toolbar_button_pic_color;
+	bool toolbar_has_button_pic_color;
+
 	/* Toolbar icon bar (window list) */
 	struct wm_color toolbar_iconbar_focused_color;
 	struct wm_color toolbar_iconbar_focused_text_color;

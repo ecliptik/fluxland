@@ -172,14 +172,34 @@ get_button_pixmap(const struct wm_style *style, enum wm_button_type type,
 }
 
 /*
+ * Check if a texture color is near-black (all RGB channels sum < threshold).
+ * Used to detect buttons that would be invisible against a dark background.
+ */
+static bool
+texture_is_near_black(const struct wm_texture *tex)
+{
+	uint8_t r = (tex->color >> 16) & 0xFF;
+	uint8_t g = (tex->color >> 8) & 0xFF;
+	uint8_t b = tex->color & 0xFF;
+	return (r + g + b) < 15;
+}
+
+/*
  * Render a single button.  If a per-button pixmap path is set, use it as the
  * entire button image.  Otherwise fall back to background texture + glyph.
+ *
+ * fallback_tex: titlebar texture used when bg_tex is near-black and no pixmap
+ *   exists, matching Fluxbox's ParentRelative behavior.
+ * title_text_color: fallback for pic_color when both bg and pic are near-black.
+ *
  * Returns a wlr_buffer or NULL on error.
  */
 static struct wlr_buffer *
 render_button(const struct wm_texture *bg_tex,
 	const struct wm_color *pic_color, enum wm_button_type type,
-	int size, const char *pixmap_path)
+	int size, const char *pixmap_path,
+	const struct wm_texture *fallback_tex,
+	const struct wm_color *title_text_color)
 {
 	/* Per-button pixmap: use it as the entire button image */
 	if (pixmap_path && *pixmap_path != '\0') {
@@ -190,8 +210,24 @@ render_button(const struct wm_texture *bg_tex,
 		/* Fall through to generic rendering on load failure */
 	}
 
+	/* When button bg is near-black and no pixmap, use titlebar texture
+	 * as fallback (matches Fluxbox ParentRelative behavior) */
+	const struct wm_texture *effective_tex = bg_tex;
+	if (texture_is_near_black(bg_tex) && fallback_tex) {
+		effective_tex = fallback_tex;
+	}
+
+	/* If both pic_color and bg are near-black, derive glyph color from
+	 * the titlebar text color so the glyph is visible */
+	const struct wm_color *effective_pic = pic_color;
+	if (pic_color->r + pic_color->g + pic_color->b < 15 &&
+	    texture_is_near_black(bg_tex) && title_text_color) {
+		effective_pic = title_text_color;
+	}
+
 	/* Render background */
-	cairo_surface_t *bg = wm_render_texture(bg_tex, size, size, 1.0f);
+	cairo_surface_t *bg = wm_render_texture(effective_tex, size, size,
+		1.0f);
 	if (!bg) {
 		/* Fallback: solid background */
 		bg = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
@@ -201,9 +237,9 @@ render_button(const struct wm_texture *bg_tex,
 		}
 		cairo_t *cr = cairo_create(bg);
 		cairo_set_source_rgba(cr,
-			((bg_tex->color >> 16) & 0xFF) / 255.0,
-			((bg_tex->color >> 8) & 0xFF) / 255.0,
-			(bg_tex->color & 0xFF) / 255.0,
+			((effective_tex->color >> 16) & 0xFF) / 255.0,
+			((effective_tex->color >> 8) & 0xFF) / 255.0,
+			(effective_tex->color & 0xFF) / 255.0,
 			1.0);
 		cairo_paint(cr);
 		cairo_destroy(cr);
@@ -214,7 +250,7 @@ render_button(const struct wm_texture *bg_tex,
 	if (glyph_size < 4) {
 		glyph_size = size;
 	}
-	cairo_surface_t *glyph = wm_render_button_glyph(type, pic_color,
+	cairo_surface_t *glyph = wm_render_button_glyph(type, effective_pic,
 		glyph_size, 1.0f);
 
 	/* Composite glyph onto background */
@@ -887,7 +923,8 @@ render_decoration_titlebar(struct wm_decoration *deco,
 			const char *bpix = get_button_pixmap(l->style,
 				btn->type, l->focused);
 			struct wlr_buffer *buf = render_button(l->button_tex,
-				l->pic_color, btn->type, button_size, bpix);
+				l->pic_color, btn->type, button_size, bpix,
+				l->title_tex, l->text_color);
 
 			if (!btn->node) {
 				btn->node = wlr_scene_buffer_create(
@@ -932,7 +969,8 @@ render_decoration_titlebar(struct wm_decoration *deco,
 			const char *bpix = get_button_pixmap(l->style,
 				btn->type, l->focused);
 			struct wlr_buffer *buf = render_button(l->button_tex,
-				l->pic_color, btn->type, button_size, bpix);
+				l->pic_color, btn->type, button_size, bpix,
+				l->title_tex, l->text_color);
 
 			if (!btn->node) {
 				btn->node = wlr_scene_buffer_create(

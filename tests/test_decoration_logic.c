@@ -288,6 +288,24 @@ struct wm_style {
 	struct wm_texture toolbar_texture;
 	struct wm_color toolbar_text_color;
 	struct wm_font toolbar_font;
+	struct wm_texture toolbar_label_texture;
+	struct wm_texture toolbar_clock_texture;
+	struct wm_texture toolbar_workspace_texture;
+	struct wm_texture toolbar_button_texture;
+	bool toolbar_has_label_texture;
+	bool toolbar_has_clock_texture;
+	bool toolbar_has_workspace_texture;
+	bool toolbar_has_button_texture;
+	struct wm_color toolbar_label_text_color;
+	struct wm_color toolbar_clock_text_color;
+	struct wm_color toolbar_workspace_text_color;
+	struct wm_color toolbar_window_label_text_color;
+	bool toolbar_has_label_text_color;
+	bool toolbar_has_clock_text_color;
+	bool toolbar_has_workspace_text_color;
+	bool toolbar_has_window_label_text_color;
+	struct wm_color toolbar_button_pic_color;
+	bool toolbar_has_button_pic_color;
 	struct wm_color toolbar_iconbar_focused_color;
 	struct wm_color toolbar_iconbar_focused_text_color;
 	struct wm_color toolbar_iconbar_unfocused_color;
@@ -2959,7 +2977,7 @@ test_render_button_fallback_bg(void)
 
 	/* wm_render_texture returns NULL, so render_button uses fallback path */
 	struct wlr_buffer *buf = render_button(&bg_tex, &pic_color,
-		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE, NULL);
+		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 	printf("  PASS: render_button_fallback_bg\n");
@@ -2973,7 +2991,7 @@ test_render_button_small_glyph(void)
 
 	/* size=6: glyph_size = 6-4 = 2, which is < 4, so glyph_size = size */
 	struct wlr_buffer *buf = render_button(&bg_tex, &pic_color,
-		WM_BUTTON_MAXIMIZE, 6, NULL);
+		WM_BUTTON_MAXIMIZE, 6, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 	printf("  PASS: render_button_small_glyph\n");
@@ -3356,31 +3374,31 @@ test_render_button_all_types(void)
 
 	/* Close */
 	struct wlr_buffer *buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE, NULL);
+		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 
 	/* Maximize */
 	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_MAXIMIZE, DEFAULT_BUTTON_SIZE, NULL);
+		WM_BUTTON_MAXIMIZE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 
 	/* Iconify */
 	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_ICONIFY, DEFAULT_BUTTON_SIZE, NULL);
+		WM_BUTTON_ICONIFY, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 
 	/* Shade */
 	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_SHADE, DEFAULT_BUTTON_SIZE, NULL);
+		WM_BUTTON_SHADE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 
 	/* Stick */
 	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_STICK, DEFAULT_BUTTON_SIZE, NULL);
+		WM_BUTTON_STICK, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
 
@@ -3559,7 +3577,7 @@ test_render_button_zero_size(void)
 
 	/* Zero size: glyph_size logic (0 - 4 < 4 => glyph_size = size = 0) */
 	struct wlr_buffer *buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_CLOSE, 0, NULL);
+		WM_BUTTON_CLOSE, 0, NULL, NULL, NULL);
 	/* May return NULL or empty buffer; main thing is no crash */
 	if (buf) wlr_buffer_drop(buf);
 	printf("  PASS: render_button_zero_size\n");

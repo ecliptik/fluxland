@@ -5,7 +5,7 @@ Tested 10 community Fluxbox styles from [box-look.org](https://www.box-look.org/
 
 ## Test Environment
 
-- **Compositor:** Fluxland v1.0.0 + 6 compat fixes
+- **Compositor:** Fluxland v1.0.0 + 9 compat fixes
 - **Display:** 1280x720 headless Wayland session via lightdm
 - **Test method:** IPC `SetStyle` + `RootMenu`, screenshot via `grim`
 - **Comparison:** Side-by-side with box-look.org preview screenshots
@@ -30,7 +30,7 @@ Tested 10 community Fluxbox styles from [box-look.org](https://www.box-look.org/
 
 ## Bugs Found and Fixed
 
-Six compatibility issues were discovered and fixed during testing:
+Nine compatibility issues were discovered and fixed during testing:
 
 ### 1. No XPM/multi-format pixmap support (commit 83e833f)
 
@@ -128,6 +128,54 @@ Exposed `load_pixmap()` from render.c as public `wm_load_pixmap()`.
 Glass, Coffee Dream) showed featureless black boxes instead of their designed
 button icons.
 
+### 7. Black shade buttons — missing ParentRelative fallback
+
+**Problem:** Styles like Carbonit, Soft White, Raven, Plastick, Black Glass,
+and Coffee Dream define per-button pixmaps for Close/Max/Min/Stick but leave
+Shade empty. The generic `window.button.focus` texture also parses to black.
+In Fluxbox, an empty button texture inherits from the titlebar
+(ParentRelative). Fluxland rendered these as solid black squares.
+
+**Fix:** When `render_button()` detects that the button background texture is
+near-black (RGB sum < 15) and no per-button pixmap exists, it falls back to
+the titlebar texture. When both the glyph color and background are near-black,
+the glyph color is derived from the titlebar text color for visibility.
+
+**Impact:** Medium. Affected the shade button on 6 styles.
+
+### 8. `rgb:` single-hex-digit color components not scaled per X11 spec
+
+**Problem:** X11's `XParseColor` defines `rgb:R/G/B` where each component is
+1-4 hex digits, scaled to 8-bit: 1 digit is repeated (C→CC), 2 as-is, 3
+right-shifted by 4, 4 right-shifted by 8. Fluxland parsed them as plain
+decimal first, then hex — so `rgb:c/6/6` became (12,6,6) instead of the
+correct (204,102,102). Styles like Twice had near-black buttons.
+
+**Fix:** Replaced the `rgb:` parser with proper hex-only parsing and
+`scale_rgb_component()` that scales based on digit count.
+
+**Impact:** Medium. Affected styles using short-form `rgb:` color values.
+
+### 9. Missing per-component toolbar text colors and textures
+
+**Problem:** Fluxbox styles define separate text colors and textures for each
+toolbar element: `toolbar.label.textColor`, `toolbar.clock.textColor`,
+`toolbar.workspace.textColor`, `toolbar.button`, `toolbar.clock`, etc.
+Fluxland only parsed `toolbar.textColor` and used it everywhere. Styles like
+Artwiz, BlueNight, Flux, qnx-photon, Shade, bora_black, and zimek_darkblue
+had unreadable toolbar text because the single color didn't match all
+component backgrounds. Styles like carp, green_tea, and ostrich lost their
+distinct per-component backgrounds entirely.
+
+**Fix:** Added 21 new fields to `wm_style` for per-component toolbar textures
+(`toolbar.label`, `toolbar.clock`, `toolbar.workspace`, `toolbar.button`) and
+text colors (`toolbar.label.textColor`, `toolbar.clock.textColor`,
+`toolbar.workspace.textColor`, `toolbar.windowLabel.textColor`,
+`toolbar.button.picColor`). Toolbar rendering functions now use per-component
+styles with fallback chain: component-specific → `toolbar.textColor`.
+
+**Impact:** High. Affected toolbar readability on 10+ upstream Fluxbox styles.
+
 ## Rendering Comparison Details
 
 ### Fully Matched Elements
@@ -147,7 +195,7 @@ These elements render identically or near-identically to Fluxbox:
 - **Toolbar iconbar**: Focused/unfocused colors and text colors
 - **Fonts**: Wildcard `*font`/`*Font` and per-component font settings
 - **Round corners**: `window.roundCorners` bitmask
-- **Color formats**: `#RRGGBB`, `#RGB`, `rgb:R/G/B`, named colors, X11 `greyNN`/`grayNN`
+- **Color formats**: `#RRGGBB`, `#RGB`, `rgb:R/G/B` (1-4 hex digit scaling), named colors, X11 `greyNN`/`grayNN`
 
 ### Known Limitations (Minor)
 
@@ -155,7 +203,7 @@ These Fluxbox features are not fully implemented but have minimal visual impact:
 
 | Feature | Fluxbox | Fluxland | Impact |
 |---------|---------|----------|--------|
-| Toolbar sub-component pixmaps | Per-component pixmaps for clock, workspace, buttons | Uses base toolbar texture | Low - most styles use matching textures |
+| Toolbar sub-component pixmaps | Per-component pixmaps for clock, workspace, buttons | Uses per-component textures and text colors | Low - most styles use matching textures |
 | Toolbar height | Explicit `toolbar.height` | Derived from font + padding | Low - heights are usually similar |
 | Menu checkbox/radio pixmaps | `menu.selected.pixmap` etc. | Built-in check/radio marks | Low - rarely used in styles |
 | Menu icons | Inline XPM icons next to items | Not supported | Low - a menu config feature, not style |
@@ -173,19 +221,18 @@ Tested styles collectively use 120+ unique style keys. Coverage by category:
 | Window handle/grip | 8 | 8 | 100% |
 | Window border/bevel | 6 | 6 | 100% |
 | Menu | 16 | 13 | 81% |
-| Toolbar | 30 | 8 | 27% |
+| Toolbar | 30 | 19 | 63% |
 | Slit | 3 | 3 | 100% |
 | Font/wildcard | 4 | 4 | 100% |
 
-The low toolbar coverage is because Fluxland uses a simplified toolbar model
-(single texture + iconbar colors) rather than Fluxbox's per-component styling.
-In practice, most styles use matching colors/pixmaps across toolbar components,
-so the visual difference is minimal.
+Toolbar coverage increased from 27% to 63% with per-component texture and
+text color support. Remaining unsupported toolbar keys are mostly for
+niche features (shaped toolbar, alpha, explicit height).
 
 ## Conclusion
 
 **Confidence: High.** Standard Fluxbox styles from box-look.org will work
-correctly in Fluxland after the six compatibility fixes. The
+correctly in Fluxland after the nine compatibility fixes. The
 core rendering engine handles all 8 gradient types, bevel effects, pixmap
 textures (via GdkPixbuf), font styling, and the full window/menu style
 property set. The only gaps are in fine-grained toolbar sub-component styling
