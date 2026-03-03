@@ -140,11 +140,20 @@ if have_pipewire
   add_project_arguments('-DWM_HAS_PIPEWIRE', language: 'c')
 endif
 
+# GdkPixbuf for XPM/JPEG/BMP theme pixmap support
+pixbuf_opt = get_option('pixbuf')
+pixbuf_dep = dependency('gdk-pixbuf-2.0', version: '>=2.36.0', required: pixbuf_opt)
+have_pixbuf = pixbuf_dep.found()
+if have_pixbuf
+  add_project_arguments('-DWM_HAS_PIXBUF', language: 'c')
+endif
+
 conf_data = configuration_data()
 conf_data.set10('HAVE_XWAYLAND', have_xwayland)
 conf_data.set10('WM_HAS_SYSTRAY', have_systray)
 conf_data.set10('WM_HAS_ATSPI', have_atspi)
 conf_data.set10('WM_HAS_PIPEWIRE', have_pipewire)
+conf_data.set10('WM_HAS_PIXBUF', have_pixbuf)
 
 configure_file(
   output: 'config.h',
@@ -267,6 +276,10 @@ endif
 
 if have_pipewire
   wm_deps += [pipewire_dep]
+endif
+
+if have_pixbuf
+  wm_deps += [pixbuf_dep]
 endif
 
 # --- Build executable ---

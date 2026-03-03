@@ -46,7 +46,7 @@ the benefits of a modern Wayland session.
 | ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
 | Root menu | Grid arrangement (4 windows) |
 
-See [`examples/`](examples/) for themes and complete configuration examples.
+See [`examples/`](examples/) for themes and complete configuration examples, and the [theme gallery](docs/THEMES.md) for Fluxbox theme compatibility screenshots.
 
 ## Quick Start
 
@@ -99,7 +99,7 @@ See [`examples/`](examples/) for themes and complete configuration examples.
 
 ## Features
 
-- **Server-side decorations** with full Fluxbox theme/style support (gradients, textures, fonts, colors)
+- **Server-side decorations** with full [Fluxbox theme/style support](docs/THEMES.md) (gradients, textures, fonts, colors)
 - **Key chains** -- multi-key sequences (e.g. `Mod4+x Mod4+t` to launch a terminal)
 - **Keymodes** -- modal keybinding sets (e.g. a resize mode with vim-style movement keys)
 - **Window tabbing** -- group windows into tabbed containers, drag-to-tab from titlebars
@@ -226,7 +226,7 @@ See the man pages below for detailed format documentation.
 - **Key binding format** -- modifier and key names, action names, key chains, and keymodes are compatible.
 - **Mouse bindings** -- same context names (OnTitlebar, OnDesktop, OnWindowBorder, etc.) and button syntax.
 - **Per-window rules** -- same `[app]`/`[end]` block syntax with property matching and settings.
-- **Themes** -- Fluxbox style files work directly; texture syntax (Raised, Flat, Gradient, etc.) is preserved.
+- **Themes** -- Fluxbox style files [work directly](docs/THEMES.md); texture syntax (Raised, Flat, Gradient, etc.) is preserved.
 - **Menu format** -- `[exec]`, `[submenu]`, `[separator]`, `[stylesdir]`, `[reconfig]`, `[exit]` entries.
 - **Config directory** -- fluxland falls back to `~/.fluxbox/` if no fluxland config directory exists.
 
