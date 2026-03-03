@@ -43,6 +43,7 @@
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
+#include "xwayland.h"
 
 /* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
 
@@ -1635,6 +1636,41 @@ cmd_get_windows(struct wm_server *server)
 		free(title_esc);
 		free(app_id_esc);
 	}
+
+#ifdef WM_HAS_XWAYLAND
+	/* Include XWayland views */
+	struct wm_xwayland_view *xview;
+	wl_list_for_each(xview, &server->xwayland_views, link) {
+		if (!xview->mapped)
+			continue;
+		if (!first) strbuf_append(&sb, ",");
+		first = false;
+
+		char *title_esc = json_escape(xview->title);
+		char *app_id_esc = json_escape(xview->app_id);
+
+		pid_t pid = xview->xsurface->pid;
+
+		strbuf_appendf(&sb,
+			"{\"id\":%u,\"app_id\":%s,\"title\":%s,"
+			"\"workspace\":-1,\"focused\":false,"
+			"\"maximized\":%s,\"fullscreen\":%s,"
+			"\"minimized\":false,\"shaded\":false,\"sticky\":false,"
+			"\"layer\":\"Normal\",\"decorated\":false,"
+			"\"role\":\"window\",\"pid\":%d,"
+			"\"xwayland\":true,"
+			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
+			(uint32_t)xview->xsurface->window_id,
+			app_id_esc, title_esc,
+			xview->maximized ? "true" : "false",
+			xview->fullscreen ? "true" : "false",
+			(int)pid,
+			xview->x, xview->y,
+			xview->xsurface->width, xview->xsurface->height);
+		free(title_esc);
+		free(app_id_esc);
+	}
+#endif
 
 	strbuf_append(&sb, "]}");
 	return strbuf_finish(&sb);

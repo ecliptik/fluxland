@@ -245,6 +245,9 @@ setup(void)
 	wl_list_init(&test_server.workspaces);
 	wl_list_init(&test_server.keybindings);
 	wl_list_init(&test_server.keymodes);
+#ifdef WM_HAS_XWAYLAND
+	wl_list_init(&test_server.xwayland_views);
+#endif
 	wl_list_init(&test_ipc.clients);
 
 	test_ipc.server = &test_server;

@@ -8,9 +8,7 @@ Applications are grouped by category matching data/menu structure.
 Each test launches the app, waits for a window to appear, then closes it.
 """
 
-import os
 import shutil
-import subprocess
 import time
 
 import pytest
@@ -23,17 +21,6 @@ APP_TIMEOUT = 5.0  # max seconds to wait for slow apps (e.g. firefox)
 def app_installed(binary):
     """Check if a binary is available in $PATH."""
     return shutil.which(binary) is not None
-
-
-def xwayland_available():
-    """Check if XWayland is running (needed for X11-only apps)."""
-    try:
-        result = subprocess.run(
-            ["pgrep", "-x", "Xwayland"],
-            capture_output=True, timeout=2)
-        return result.returncode == 0
-    except Exception:
-        return False
 
 
 def launch_and_verify(ipc, command, app_id=None, timeout=APP_TIMEOUT):
@@ -72,9 +59,16 @@ def close_window(ipc, window):
     if window is None:
         return
     try:
-        ipc.command(f"FocusWindow {window['id']}")
-        time.sleep(0.1)
-        ipc.command("Close")
+        if window.get("xwayland"):
+            # XWayland views: kill by app_id since FocusWindow
+            # may not support X11 window IDs
+            app_id = window.get("app_id", "")
+            if app_id:
+                ipc.command(f"Exec pkill -x {app_id}")
+        else:
+            ipc.command(f"FocusWindow {window['id']}")
+            time.sleep(0.1)
+            ipc.command("Close")
         time.sleep(SETTLE)
     except Exception:
         pass
@@ -114,12 +108,11 @@ class TestTerminalLaunch:
 
     @pytest.mark.skipif(not app_installed("xterm"),
                         reason="xterm not installed")
-    @pytest.mark.skipif(not xwayland_available(),
-                        reason="XWayland not running (xterm is X11-only)")
     def test_launch_xterm(self, ipc):
-        """xterm should launch and create a window (requires XWayland)."""
-        win = launch_and_verify(ipc, "xterm")
+        """xterm should launch via XWayland and create a window."""
+        win = launch_and_verify(ipc, "xterm", timeout=10.0)
         assert win is not None, "xterm did not create a window"
+        assert win.get("xwayland") is True
         close_window(ipc, win)
 
 
@@ -242,13 +235,13 @@ class TestMultimediaLaunch:
 
     @pytest.mark.skipif(not app_installed("vlc"),
                         reason="vlc not installed")
-    @pytest.mark.skipif(not xwayland_available(),
-                        reason="XWayland not running (VLC 3.x uses X11 GUI)")
     def test_launch_vlc(self, ipc):
-        """VLC should launch and create a window (requires XWayland)."""
+        """VLC should launch via XWayland and create a window."""
         win = launch_and_verify(ipc, "vlc", timeout=10.0)
         assert win is not None, "vlc did not create a window"
         close_window(ipc, win)
+        ipc.command("Exec pkill vlc")
+        time.sleep(0.5)
 
     @pytest.mark.skipif(not app_installed("gimp"),
                         reason="gimp not installed")
