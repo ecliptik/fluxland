@@ -110,6 +110,10 @@ toolbar.color:                      #0f2440
 toolbar.textColor:                  #f0e6d3
 toolbar.font:                       sans-10
 
+toolbar.workspace:                   Flat Solid
+toolbar.workspace.color:             #081a30
+toolbar.workspace.textColor:         #ffffff
+
 toolbar.iconbar.focused.color:      #2a6b8a
 toolbar.iconbar.focused.textColor:  #f0e6d3
 toolbar.iconbar.unfocused.color:    #1b3a5c
