@@ -62,6 +62,9 @@ void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 bool wm_execute_action(struct wm_server *s, enum wm_action a,
 	const char *arg)
 	{ (void)s; (void)a; (void)arg; return true; }
+#include "server.h"
+void wm_server_reconfigure(struct wm_server *s)
+	{ (void)s; }
 #include "keybind.h"
 enum wm_action wm_action_from_name(const char *name)
 	{ (void)name; return WM_ACTION_NOP; }

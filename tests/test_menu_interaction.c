@@ -356,6 +356,12 @@ struct wm_config {
 	char *config_dir;
 	char *apps_file;
 	char *window_menu_file;
+	int focus_policy;
+	bool focus_new_windows;
+	bool opaque_move;
+	bool opaque_resize;
+	bool workspace_warping;
+	bool full_maximization;
 };
 
 /* --- Stub server types --- */
@@ -383,6 +389,7 @@ struct wm_tab_group {
 
 struct wm_decoration {
 	int dummy;
+	int content_height;
 };
 
 struct wm_view {
@@ -393,6 +400,7 @@ struct wm_view {
 	uint32_t id;
 	int x, y;
 	bool sticky;
+	bool maximized;
 	char *title;
 	char *app_id;
 	struct wm_workspace *workspace;
@@ -429,6 +437,7 @@ struct wm_server {
 	struct wm_menu *client_menu;
 	struct wm_menu *custom_menu;
 	struct wl_listener new_xdg_decoration;
+	int focus_policy;
 };
 
 /* --- Render stubs --- */
@@ -889,6 +898,11 @@ static bool wm_execute_action(struct wm_server *server,
 {
 	(void)server; (void)action; (void)argument;
 	return true;
+}
+
+static void wm_server_reconfigure(struct wm_server *server)
+{
+	(void)server;
 }
 
 /* --- Perf stubs (menu_render.c includes perf.h) --- */

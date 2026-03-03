@@ -30,6 +30,7 @@
 #include "systray.h"
 #endif
 #include "view.h"
+#include "view_focus.h"
 #include "workspace.h"
 
 /* --- Cairo-to-wlr_buffer bridge (same as decoration.c) --- */
@@ -1448,8 +1449,12 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 					struct wm_view *view =
 						toolbar->ib_entries[j].view;
 					if (view) {
-						wm_focus_view(view, NULL);
-						wm_view_raise(view);
+						if (!view->scene_tree->node.enabled) {
+							deiconify_view(view);
+						} else {
+							wm_focus_view(view, NULL);
+							wm_view_raise(view);
+						}
 					}
 					return true;
 				}

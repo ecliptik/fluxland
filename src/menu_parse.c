@@ -795,6 +795,17 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 							item->submenu->parent =
 								menu;
 					}
+					/* Attach config submenu for
+					 * [config] directive */
+					if (simple_tags[i].type ==
+					    WM_MENU_CONFIG && server) {
+						item->submenu =
+						    wm_menu_create_config_menu(
+							server);
+						if (item->submenu)
+							item->submenu->parent =
+								menu;
+					}
 					wl_list_insert(menu->items.prev,
 						&item->link);
 				}

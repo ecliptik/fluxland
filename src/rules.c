@@ -766,44 +766,140 @@ layer_name(enum wm_view_layer layer) {
 	}
 }
 
-int wm_rules_remember_window(struct wm_view *view, const char *apps_path) {
-	if (!view || !apps_path)
-		return -1;
-
-	FILE *f = fopen_nofollow(apps_path, "a");
-	if (!f) {
-		wlr_log(WLR_ERROR, "rules: cannot open %s for appending",
-			apps_path);
-		return -1;
-	}
-
+/*
+ * Format a remembered [app] block into a buffer.
+ * Returns allocated string or NULL on failure.
+ */
+static char *
+format_remember_block(struct wm_view *view)
+{
 	const char *app_id = view->app_id ? view->app_id : "unknown";
 
-	/* Get current geometry */
 	struct wlr_box geo;
 	wm_view_get_geometry(view, &geo);
 
 	int ws_index = view->workspace ? view->workspace->index : 0;
 
-	fprintf(f, "\n[app] (class=%s)\n", app_id);
-	fprintf(f, "  [Workspace] {%d}\n", ws_index);
-	fprintf(f, "  [Position] {%d %d}\n", geo.x, geo.y);
-	fprintf(f, "  [Dimensions] {%d %d}\n", geo.width, geo.height);
-	fprintf(f, "  [Layer] {%s}\n", layer_name(view->layer));
-	fprintf(f, "  [Alpha] {%d %d}\n",
-		view->focus_alpha, view->unfocus_alpha);
-	fprintf(f, "  [Sticky] {%s}\n", view->sticky ? "yes" : "no");
-	fprintf(f, "  [Maximized] {%s}\n", view->maximized ? "yes" : "no");
-	fprintf(f, "  [Fullscreen] {%s}\n", view->fullscreen ? "yes" : "no");
+	char *buf = NULL;
+	size_t len = 0;
+	FILE *mem = open_memstream(&buf, &len);
+	if (!mem)
+		return NULL;
 
-	/* Decoration preset */
+	fprintf(mem, "[app] (class=%s)\n", app_id);
+	fprintf(mem, "  [Workspace] {%d}\n", ws_index);
+	fprintf(mem, "  [Position] {%d %d}\n", geo.x, geo.y);
+	fprintf(mem, "  [Dimensions] {%d %d}\n", geo.width, geo.height);
+	fprintf(mem, "  [Layer] {%s}\n", layer_name(view->layer));
+	fprintf(mem, "  [Alpha] {%d %d}\n",
+		view->focus_alpha, view->unfocus_alpha);
+	fprintf(mem, "  [Sticky] {%s}\n", view->sticky ? "yes" : "no");
+	fprintf(mem, "  [Maximized] {%s}\n", view->maximized ? "yes" : "no");
+	fprintf(mem, "  [Fullscreen] {%s}\n", view->fullscreen ? "yes" : "no");
 	if (view->decoration) {
-		fprintf(f, "  [Deco] {%s}\n",
+		fprintf(mem, "  [Deco] {%s}\n",
 			deco_preset_name(view->decoration->preset));
 	}
+	fprintf(mem, "[end]\n");
 
-	fprintf(f, "[end]\n");
+	fclose(mem);
+	return buf;
+}
+
+int wm_rules_remember_window(struct wm_view *view, const char *apps_path) {
+	if (!view || !apps_path)
+		return -1;
+
+	const char *app_id = view->app_id ? view->app_id : "unknown";
+
+	/* Format the new rule block */
+	char *new_block = format_remember_block(view);
+	if (!new_block)
+		return -1;
+
+	/* Read existing file to check for duplicate app_id */
+	FILE *rf = fopen_nofollow(apps_path, "r");
+	if (rf) {
+		char *content = NULL;
+		size_t content_len = 0;
+		FILE *cmem = open_memstream(&content, &content_len);
+		if (!cmem) {
+			fclose(rf);
+			free(new_block);
+			return -1;
+		}
+
+		/* Scan for matching [app] (class=APP_ID) block */
+		char line[1024];
+		bool replaced = false;
+		bool skipping = false;
+
+		/* Build match pattern: "[app] (class=APP_ID" */
+		char match_pat[256];
+		snprintf(match_pat, sizeof(match_pat),
+			"(class=%s)", app_id);
+
+		while (fgets(line, sizeof(line), rf)) {
+			if (skipping) {
+				/* Inside a block being replaced — skip until
+				 * [end] */
+				char *trimmed = line;
+				while (*trimmed == ' ' || *trimmed == '\t')
+					trimmed++;
+				if (strncasecmp(trimmed, "[end]", 5) == 0)
+					skipping = false;
+				continue;
+			}
+
+			/* Check if this line starts a matching [app] block */
+			char *trimmed = line;
+			while (*trimmed == ' ' || *trimmed == '\t')
+				trimmed++;
+			if (strncasecmp(trimmed, "[app]", 5) == 0 &&
+			    strstr(trimmed, match_pat)) {
+				/* Replace this block with the new one */
+				fputs(new_block, cmem);
+				skipping = true;
+				replaced = true;
+				continue;
+			}
+
+			fputs(line, cmem);
+		}
+
+		fclose(rf);
+		fclose(cmem);
+
+		if (replaced) {
+			/* Write the modified content back */
+			FILE *wf = fopen_nofollow(apps_path, "w");
+			if (wf) {
+				fwrite(content, 1, content_len, wf);
+				fclose(wf);
+			}
+			free(content);
+			free(new_block);
+			wlr_log(WLR_INFO,
+				"rules: updated existing rule for '%s' in %s",
+				app_id, apps_path);
+			return 0;
+		}
+		free(content);
+	}
+
+	/* No existing rule found — append */
+	FILE *f = fopen_nofollow(apps_path, "a");
+	if (!f) {
+		wlr_log(WLR_ERROR, "rules: cannot open %s for appending",
+			apps_path);
+		free(new_block);
+		return -1;
+	}
+
+	fprintf(f, "\n");
+	fputs(new_block, f);
 	fclose(f);
+	free(new_block);
 
 	wlr_log(WLR_INFO, "rules: remembered window '%s' to %s",
 		app_id, apps_path);

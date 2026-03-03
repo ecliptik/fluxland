@@ -128,6 +128,12 @@ struct wm_menu *wm_menu_create_workspace_menu(struct wm_server *server);
 struct wm_menu *wm_menu_create_window_list(struct wm_server *server);
 
 /*
+ * Create a configuration submenu (for [config] directive).
+ * Exposes runtime-toggleable settings like focus model, opaque move, etc.
+ */
+struct wm_menu *wm_menu_create_config_menu(struct wm_server *server);
+
+/*
  * Create a workspace switching menu (for [workspaces] directive).
  * Items use "Workspace N" commands for switching.
  */

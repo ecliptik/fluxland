@@ -34,6 +34,7 @@
 #define WM_OUTPUT_H
 #define WM_WORKSPACE_H
 #define WM_FOCUS_NAV_H
+#define WM_VIEW_FOCUS_H
 #define WM_SYSTRAY_H
 #define DRM_FOURCC_H
 
@@ -639,6 +640,12 @@ wm_view_raise(struct wm_view *view)
 {
 	(void)view;
 	g_view_raise_count++;
+}
+
+static void
+deiconify_view(struct wm_view *view)
+{
+	(void)view;
 }
 
 /* --- Include toolbar source directly --- */

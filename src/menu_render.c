@@ -222,7 +222,9 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 			/* Add space for submenu arrow */
 			if (item->type == WM_MENU_SUBMENU ||
 			    item->type == WM_MENU_SENDTO ||
-			    item->type == WM_MENU_LAYER) {
+			    item->type == WM_MENU_LAYER ||
+			    item->type == WM_MENU_WORKSPACES ||
+			    item->type == WM_MENU_CONFIG) {
 				text_w += MENU_ARROW_SIZE + 4;
 			}
 			int needed = text_w + 2 * MENU_ITEM_PADDING +
@@ -456,7 +458,9 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 				icon_col_w;
 			bool has_arrow = (item->type == WM_MENU_SUBMENU ||
 				item->type == WM_MENU_SENDTO ||
-				item->type == WM_MENU_LAYER);
+				item->type == WM_MENU_LAYER ||
+				item->type == WM_MENU_WORKSPACES ||
+				item->type == WM_MENU_CONFIG);
 			if (has_arrow) {
 				max_w -= MENU_ARROW_SIZE + 4;
 			}
@@ -491,7 +495,9 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 		/* Draw submenu bullet indicator */
 		bool has_submenu = (item->type == WM_MENU_SUBMENU ||
 			item->type == WM_MENU_SENDTO ||
-			item->type == WM_MENU_LAYER);
+			item->type == WM_MENU_LAYER ||
+			item->type == WM_MENU_WORKSPACES ||
+			item->type == WM_MENU_CONFIG);
 		if (has_submenu) {
 			const char *bullet = style->menu_bullet;
 			if (!bullet)

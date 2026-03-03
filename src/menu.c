@@ -21,6 +21,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "config.h"
+#include "decoration.h"
 #include "foreign_toplevel.h"
 #include "i18n.h"
 #include "ipc.h"
@@ -144,6 +145,163 @@ wm_menu_create_workspace_menu(struct wm_server *server)
 	return menu;
 }
 
+/* --- Configuration submenu --- */
+
+/*
+ * Handle a "config:key value" command from the config submenu.
+ * Modifies the in-memory config and triggers a reconfigure.
+ */
+static void
+handle_config_command(struct wm_server *server, const char *cmd)
+{
+	if (!server->config || !cmd)
+		return;
+
+	/* Parse "key value" */
+	char key[64];
+	int value = 0;
+	const char *space = strchr(cmd, ' ');
+	if (!space)
+		return;
+	size_t klen = (size_t)(space - cmd);
+	if (klen >= sizeof(key))
+		klen = sizeof(key) - 1;
+	memcpy(key, cmd, klen);
+	key[klen] = '\0';
+	if (!safe_atoi(space + 1, &value))
+		return;
+
+	struct wm_config *cfg = server->config;
+
+	if (strcmp(key, "focus_policy") == 0) {
+		cfg->focus_policy = value;
+	} else if (strcmp(key, "focus_new_windows") == 0) {
+		cfg->focus_new_windows = !cfg->focus_new_windows;
+	} else if (strcmp(key, "opaque_move") == 0) {
+		cfg->opaque_move = !cfg->opaque_move;
+	} else if (strcmp(key, "opaque_resize") == 0) {
+		cfg->opaque_resize = !cfg->opaque_resize;
+	} else if (strcmp(key, "workspace_warping") == 0) {
+		cfg->workspace_warping = !cfg->workspace_warping;
+	} else if (strcmp(key, "full_maximization") == 0) {
+		cfg->full_maximization = !cfg->full_maximization;
+	} else if (strcmp(key, "tab_placement") == 0) {
+		cfg->tab_placement = value;
+	} else {
+		wlr_log(WLR_ERROR, "config menu: unknown key '%s'", key);
+		return;
+	}
+
+	/* Apply changes */
+	server->focus_policy = cfg->focus_policy;
+	wm_server_reconfigure(server);
+}
+
+static struct wm_menu *
+create_focus_submenu(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, _("Focus Model"));
+	if (!menu)
+		return NULL;
+
+	struct { const char *label; const char *cmd; } items[] = {
+		{N_("Click To Focus"),    "config:focus_policy 0"},
+		{N_("Sloppy Focus"),      "config:focus_policy 1"},
+		{N_("Strict Mouse Focus"),"config:focus_policy 2"},
+	};
+
+	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
+		struct wm_menu_item *item = menu_item_create(
+			WM_MENU_COMMAND, _(items[i].label));
+		if (item) {
+			item->command = strdup(items[i].cmd);
+			wl_list_insert(menu->items.prev, &item->link);
+		}
+	}
+
+	return menu;
+}
+
+static struct wm_menu *
+create_tab_placement_submenu(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, _("Tab Placement"));
+	if (!menu)
+		return NULL;
+
+	struct { const char *label; const char *cmd; } items[] = {
+		{N_("Top"),    "config:tab_placement 0"},
+		{N_("Bottom"), "config:tab_placement 1"},
+		{N_("Left"),   "config:tab_placement 2"},
+		{N_("Right"),  "config:tab_placement 3"},
+	};
+
+	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
+		struct wm_menu_item *item = menu_item_create(
+			WM_MENU_COMMAND, _(items[i].label));
+		if (item) {
+			item->command = strdup(items[i].cmd);
+			wl_list_insert(menu->items.prev, &item->link);
+		}
+	}
+
+	return menu;
+}
+
+struct wm_menu *
+wm_menu_create_config_menu(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, _("Configuration"));
+	if (!menu)
+		return NULL;
+
+	/* Focus Model submenu */
+	struct wm_menu_item *focus_item = menu_item_create(
+		WM_MENU_SUBMENU, _("Focus Model"));
+	if (focus_item) {
+		focus_item->submenu = create_focus_submenu(server);
+		if (focus_item->submenu)
+			focus_item->submenu->parent = menu;
+		wl_list_insert(menu->items.prev, &focus_item->link);
+	}
+
+	/* Boolean toggles */
+	struct { const char *label; const char *cmd; } toggles[] = {
+		{N_("Focus New Windows"),  "config:focus_new_windows 0"},
+		{N_("Opaque Move"),        "config:opaque_move 0"},
+		{N_("Opaque Resize"),      "config:opaque_resize 0"},
+		{N_("Workspace Warping"),  "config:workspace_warping 0"},
+		{N_("Full Maximization"),  "config:full_maximization 0"},
+	};
+
+	for (size_t i = 0; i < sizeof(toggles) / sizeof(toggles[0]); i++) {
+		struct wm_menu_item *item = menu_item_create(
+			WM_MENU_COMMAND, _(toggles[i].label));
+		if (item) {
+			item->command = strdup(toggles[i].cmd);
+			wl_list_insert(menu->items.prev, &item->link);
+		}
+	}
+
+	/* Separator */
+	struct wm_menu_item *sep = menu_item_create(
+		WM_MENU_SEPARATOR, NULL);
+	if (sep)
+		wl_list_insert(menu->items.prev, &sep->link);
+
+	/* Tab Placement submenu */
+	struct wm_menu_item *tab_item = menu_item_create(
+		WM_MENU_SUBMENU, _("Tab Placement"));
+	if (tab_item) {
+		tab_item->submenu = create_tab_placement_submenu(server);
+		if (tab_item->submenu)
+			tab_item->submenu->parent = menu;
+		wl_list_insert(menu->items.prev, &tab_item->link);
+	}
+
+	return menu;
+}
+
 /* --- Workspace switching menu (for [workspaces] directive) --- */
 
 struct wm_menu *
@@ -224,17 +382,32 @@ wm_menu_create_window_list(struct wm_server *server)
 				!view->scene_tree->node.enabled;
 			bool is_focused =
 				(view == server->focused_view);
+			bool is_shaded = view->decoration &&
+				view->decoration->content_height == 0;
+
+			/* Build state indicator suffix */
+			char suffix[16] = "";
+			size_t spos = 0;
+			if (view->sticky)
+				spos += snprintf(suffix + spos,
+					sizeof(suffix) - spos, " [s]");
+			if (view->maximized)
+				spos += snprintf(suffix + spos,
+					sizeof(suffix) - spos, " [M]");
+			if (is_shaded)
+				snprintf(suffix + spos,
+					sizeof(suffix) - spos, " [S]");
 
 			char entry_label[256];
 			if (is_iconified) {
 				snprintf(entry_label, sizeof(entry_label),
-					"[%s]", title);
+					"[%s]%s", title, suffix);
 			} else if (is_focused) {
 				snprintf(entry_label, sizeof(entry_label),
-					"* %s", title);
+					"* %s%s", title, suffix);
 			} else {
 				snprintf(entry_label, sizeof(entry_label),
-					"  %s", title);
+					"  %s%s", title, suffix);
 			}
 
 			struct wm_menu_item *item = menu_item_create(
@@ -694,6 +867,12 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 	case WM_MENU_COMMAND:
 		if (item->command) {
 			wlr_log(WLR_INFO, "menu command: %s", item->command);
+			/* Config submenu commands use "config:" prefix */
+			if (strncmp(item->command, "config:", 7) == 0) {
+				handle_config_command(server,
+					item->command + 7);
+				break;
+			}
 			/* Parse "ActionName argument" and dispatch */
 			char action_name[64];
 			const char *arg = NULL;
@@ -1516,17 +1695,32 @@ wm_menu_show_client_menu(struct wm_server *server, const char *pattern,
 
 		bool is_iconified = !view->scene_tree->node.enabled;
 		bool is_focused = (view == server->focused_view);
+		bool is_shaded = view->decoration &&
+			view->decoration->content_height == 0;
+
+		/* Build state indicator suffix */
+		char suffix[16] = "";
+		size_t spos = 0;
+		if (view->sticky)
+			spos += snprintf(suffix + spos,
+				sizeof(suffix) - spos, " [s]");
+		if (view->maximized)
+			spos += snprintf(suffix + spos,
+				sizeof(suffix) - spos, " [M]");
+		if (is_shaded)
+			snprintf(suffix + spos,
+				sizeof(suffix) - spos, " [S]");
 
 		char entry_label[256];
 		if (is_iconified) {
 			snprintf(entry_label, sizeof(entry_label),
-				"[%s]", title);
+				"[%s]%s", title, suffix);
 		} else if (is_focused) {
 			snprintf(entry_label, sizeof(entry_label),
-				"* %s", title);
+				"* %s%s", title, suffix);
 		} else {
 			snprintf(entry_label, sizeof(entry_label),
-				"  %s", title);
+				"  %s%s", title, suffix);
 		}
 
 		struct wm_menu_item *item = menu_item_create(
