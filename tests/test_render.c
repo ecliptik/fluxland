@@ -22,6 +22,24 @@
 /* render.c includes render.h (which includes style.h + cairo.h) and
  * pango/pangocairo.h — all resolved by the real system headers. No
  * wayland/wlroots stubs needed since render.c has no wlr dependencies. */
+
+/* --- Perf stubs (render.c includes perf.h) --- */
+#include "perf.h"
+#ifdef WM_PERF_ENABLE
+void wm_perf_probe_init(struct wm_perf_probe *probe, const char *label) {
+	(void)probe; (void)label;
+}
+void wm_perf_probe_record(struct wm_perf_probe *probe, uint64_t ns) {
+	(void)probe; (void)ns;
+}
+void wm_perf_probe_report(struct wm_perf_probe *probe) {
+	(void)probe;
+}
+void wm_perf_probe_reset(struct wm_perf_probe *probe) {
+	(void)probe;
+}
+#endif
+
 #include "render.c"
 
 /* ------------------------------------------------------------------ */

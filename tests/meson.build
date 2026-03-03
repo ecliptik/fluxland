@@ -57,7 +57,7 @@ test('placement', test_placement)
 # --- test_menu: menu parser tests ---
 test_menu = executable(
   'test_menu',
-  files('test_menu.c', '../src/menu.c', '../src/menu_parse.c', '../src/menu_render.c'),
+  files('test_menu.c', '../src/menu.c', '../src/menu_parse.c', '../src/menu_render.c', '../src/perf.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
   install: false,
@@ -113,7 +113,7 @@ test('view_logic', test_view_logic)
 # --- test_ipc: IPC command dispatch and subscription tests ---
 test_ipc = executable(
   'test_ipc',
-  files('test_ipc.c', '../src/ipc_commands.c', '../src/ipc.c'),
+  files('test_ipc.c', '../src/ipc_commands.c', '../src/ipc.c', '../src/perf.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
   install: false,
@@ -129,6 +129,16 @@ test_focus_nav = executable(
   install: false,
 )
 test('focus_nav', test_focus_nav)
+
+# --- test_atspi_bridge: AT-SPI accessibility bridge tests ---
+test_atspi_bridge = executable(
+  'test_atspi_bridge',
+  files('test_atspi_bridge.c', '../src/atspi_bridge.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('atspi_bridge', test_atspi_bridge)
 
 # --- test_validate: config validation tests ---
 test_validate = executable(
@@ -539,9 +549,9 @@ image_compare_dep = declare_dependency(
 test_decorations = executable(
   'test_decorations',
   files('visual/test_decorations.c', '../src/render.c', '../src/style.c',
-        '../src/rcparser.c'),
+        '../src/rcparser.c', '../src/perf.c'),
   include_directories: [test_inc, visual_inc],
-  dependencies: [pangocairo, math, image_compare_dep],
+  dependencies: [wlroots, pangocairo, math, image_compare_dep],
   install: false,
 )
 test('decorations', test_decorations, timeout: 30)
@@ -663,6 +673,38 @@ test_small_protocols = executable(
   install: false,
 )
 test('small_protocols', test_small_protocols)
+
+# --- test_perf: performance profiling infrastructure tests ---
+# perf.c is #included directly in the test with WM_PERF_ENABLE defined.
+test_perf = executable(
+  'test_perf',
+  files('test_perf.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('perf', test_perf)
+
+# --- test_gesture: touchpad gesture state machine tests ---
+test_gesture = executable(
+  'test_gesture',
+  files('test_gesture.c'),
+  include_directories: test_inc,
+  dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+  install: false,
+)
+test('gesture', test_gesture)
+
+# --- test_screen_cast: screen cast module unit tests ---
+# screen_cast.c is #included directly in the test to test stub path.
+test_screen_cast = executable(
+  'test_screen_cast',
+  files('test_screen_cast.c'),
+  include_directories: test_inc,
+  dependencies: [],
+  install: false,
+)
+test('screen_cast_unit', test_screen_cast)
 
 # --- Fuzz targets (requires -fsanitize=fuzzer support) ---
 subdir('fuzz')

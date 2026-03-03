@@ -11,6 +11,7 @@
 
 #define _GNU_SOURCE
 
+#include "perf.h"
 #include "render.h"
 #include "style.h"
 #include <cairo.h>
@@ -19,6 +20,11 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef WM_PERF_ENABLE
+static struct wm_perf_probe perf_render_text;
+static bool perf_render_text_inited;
+#endif
 
 /* --- RTL detection helper --- */
 
@@ -451,6 +457,14 @@ wm_render_text(const char *text, const struct wm_font *font,
 	if (!text || !font || !color)
 		return NULL;
 
+#ifdef WM_PERF_ENABLE
+	if (!perf_render_text_inited) {
+		wm_perf_probe_init(&perf_render_text, "render_text");
+		perf_render_text_inited = true;
+	}
+	WM_PERF_BEGIN(rtext);
+#endif
+
 	int scaled_max_width = (int)(max_width * scale + 0.5f);
 	if (scaled_max_width <= 0)
 		scaled_max_width = 1;
@@ -596,6 +610,10 @@ wm_render_text(const char *text, const struct wm_font *font,
 		*out_width = final_w;
 	if (out_height)
 		*out_height = final_h;
+
+#ifdef WM_PERF_ENABLE
+	WM_PERF_END(rtext, &perf_render_text);
+#endif
 
 	return cropped;
 }

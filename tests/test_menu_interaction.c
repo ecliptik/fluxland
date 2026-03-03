@@ -406,6 +406,7 @@ struct wm_ipc {
 
 enum wm_ipc_event_type {
 	WM_IPC_EVENT_MENU = 0,
+	WM_IPC_EVENT_FOCUS_CHANGED = 1,
 };
 
 struct wm_server {
@@ -865,6 +866,23 @@ typedef uint32_t xkb_keysym_t;
 #include <iconv.h>
 
 void wm_spawn_command(const char *cmd) { (void)cmd; }
+
+/* --- Perf stubs (menu_render.c includes perf.h) --- */
+#include "perf.h"
+#ifdef WM_PERF_ENABLE
+void wm_perf_probe_init(struct wm_perf_probe *probe, const char *label) {
+	(void)probe; (void)label;
+}
+void wm_perf_probe_record(struct wm_perf_probe *probe, uint64_t ns) {
+	(void)probe; (void)ns;
+}
+void wm_perf_probe_report(struct wm_perf_probe *probe) {
+	(void)probe;
+}
+void wm_perf_probe_reset(struct wm_perf_probe *probe) {
+	(void)probe;
+}
+#endif
 
 #include "menu_parse.c"
 #include "menu_render.c"

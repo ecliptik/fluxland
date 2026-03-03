@@ -121,9 +121,30 @@ if have_systray
   add_project_arguments('-DWM_HAS_SYSTRAY', language: 'c')
 endif
 
+# AT-SPI accessibility bridge (optional, uses sd-bus)
+have_atspi = false
+if get_option('atspi')
+  if sdbus_dep.found()
+    have_atspi = true
+    add_project_arguments('-DWM_HAS_ATSPI', language: 'c')
+  else
+    error('AT-SPI bridge requested but no sd-bus library found')
+  endif
+endif
+
+# PipeWire screen recording
+pipewire_opt = get_option('pipewire')
+pipewire_dep = dependency('libpipewire-0.3', version: '>=0.3.0', required: pipewire_opt)
+have_pipewire = pipewire_dep.found()
+if have_pipewire
+  add_project_arguments('-DWM_HAS_PIPEWIRE', language: 'c')
+endif
+
 conf_data = configuration_data()
 conf_data.set10('HAVE_XWAYLAND', have_xwayland)
 conf_data.set10('WM_HAS_SYSTRAY', have_systray)
+conf_data.set10('WM_HAS_ATSPI', have_atspi)
+conf_data.set10('WM_HAS_PIPEWIRE', have_pipewire)
 
 configure_file(
   output: 'config.h',
@@ -140,6 +161,10 @@ endif
 if get_option('ubsan')
   add_project_arguments(['-fsanitize=undefined'], language: 'c')
   add_project_link_arguments(['-fsanitize=undefined'], language: 'c')
+endif
+
+if get_option('perf')
+  add_project_arguments('-DWM_PERF_ENABLE', language: 'c')
 endif
 
 # --- Protocol generation ---
@@ -171,6 +196,7 @@ endif
 wm_sources = files(
   'src/main.c',
   'src/animation.c',
+  'src/atspi_bridge.c',
   'src/autostart.c',
   'src/server.c',
   'src/output.c',
@@ -206,6 +232,7 @@ wm_sources = files(
   'src/protocols.c',
   'src/presentation.c',
   'src/screencopy.c',
+  'src/screen_cast.c',
   'src/session_lock.c',
   'src/text_input.c',
   'src/transient_seat.c',
@@ -219,6 +246,7 @@ wm_sources = files(
   'src/tablet.c',
   'src/toolbar.c',
   'src/util.c',
+  'src/perf.c',
   'src/validate.c',
   'src/wallpaper.c',
   'src/xwayland.c',
@@ -231,6 +259,13 @@ endif
 if have_systray
   wm_sources += files('src/systray.c')
   wm_deps += [sdbus_dep]
+elif have_atspi
+  # AT-SPI uses sd-bus but systray already added it if both are enabled
+  wm_deps += [sdbus_dep]
+endif
+
+if have_pipewire
+  wm_deps += [pipewire_dep]
 endif
 
 # --- Build executable ---
@@ -249,6 +284,7 @@ if get_option('wlcs')
   # All compositor sources except main.c (rebuilt for shared library)
   wlcs_compositor_sources = files(
     'src/animation.c',
+    'src/atspi_bridge.c',
     'src/autostart.c',
     'src/server.c',
     'src/output.c',
@@ -259,6 +295,8 @@ if get_option('wlcs')
     'src/cursor_actions.c',
     'src/cursor_snap.c',
     'src/view.c',
+    'src/view_focus.c',
+    'src/view_geometry.c',
     'src/workspace.c',
     'src/config.c',
     'src/rcparser.c',
@@ -282,6 +320,7 @@ if get_option('wlcs')
     'src/protocols.c',
     'src/presentation.c',
     'src/screencopy.c',
+    'src/screen_cast.c',
     'src/session_lock.c',
     'src/text_input.c',
     'src/transient_seat.c',
@@ -289,10 +328,13 @@ if get_option('wlcs')
     'src/drm_syncobj.c',
     'src/viewporter.c',
     'src/menu.c',
+    'src/menu_parse.c',
+    'src/menu_render.c',
     'src/slit.c',
     'src/tablet.c',
     'src/toolbar.c',
     'src/util.c',
+    'src/perf.c',
     'src/validate.c',
     'src/wallpaper.c',
     'src/xwayland.c',
