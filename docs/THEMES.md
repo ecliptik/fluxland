@@ -9,61 +9,61 @@ Fluxbox theme archives work without modification.
 10 community themes from box-look.org tested and verified on fluxland. These
 themes are included in [`examples/themes/community/`](../examples/themes/community/).
 
-### Carbonit
+### [Carbonit](https://www.box-look.org/p/1016944/)
 
 Dark theme with subtle pixmap textures on titlebars and buttons.
 
 ![Carbonit](screenshots/themes/Carbonit.png)
 
-### Neon
+### [Neon](https://www.box-look.org/p/1016708/)
 
 Dark theme with neon-accented window decorations and black menus.
 
 ![Neon](screenshots/themes/Neon.png)
 
-### Soft White
+### [Soft White](https://www.box-look.org/p/1017014/)
 
 Light theme with white/grey pixmap titlebar and warm grey menus.
 
 ![Soft White](screenshots/themes/Soft_White.png)
 
-### Raven
+### [Raven](https://www.box-look.org/p/1017008/)
 
 Dark theme with bold white text, black menus, and beveled decorations.
 
 ![Raven](screenshots/themes/Raven.png)
 
-### Graphite
+### [Graphite](https://www.box-look.org/p/1016816/)
 
 Clean gradient-based theme with diamond bullet markers and styled window buttons.
 
 ![Graphite](screenshots/themes/Graphite.png)
 
-### Clear
+### [Clear](https://www.box-look.org/p/1016899/)
 
 Light blue/cream theme with raised bevels, triangle bullet markers, and styled buttons.
 
 ![Clear](screenshots/themes/Clear.png)
 
-### Plastick
+### [Plastick](https://www.box-look.org/p/1016818/)
 
 Green/olive theme with distinctive pixmap titlebar textures and button icons.
 
 ![Plastick](screenshots/themes/Plastick.png)
 
-### Black Glass
+### [Black Glass](https://www.box-look.org/p/1017007/)
 
 Dark glass theme with gradient titlebars, styled handles, and wide borders.
 
 ![Black Glass](screenshots/themes/Black_Glass.png)
 
-### Coffee Dream
+### [Coffee Dream](https://www.box-look.org/p/1016989/)
 
 Warm brown/coffee palette with left-aligned title text and muted tones.
 
 ![Coffee Dream](screenshots/themes/CoffeeDream.png)
 
-### blackdelux
+### [blackdelux](https://www.box-look.org/p/1016962/)
 
 Minimal dark theme with thin borders and teal menu title accent.
 
