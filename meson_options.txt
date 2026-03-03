@@ -3,3 +3,6 @@ option('asan', type: 'boolean', value: false, description: 'Enable address sanit
 option('ubsan', type: 'boolean', value: false, description: 'Enable undefined behavior sanitizer')
 option('man-pages', type: 'feature', value: 'auto', description: 'Generate and install man pages')
 option('wlcs', type: 'boolean', value: false, description: 'Build WLCS (Wayland Conformance Test Suite) integration module')
+option('perf', type: 'boolean', value: false, description: 'Enable compile-time performance profiling')
+option('atspi', type: 'boolean', value: false, description: 'Enable AT-SPI accessibility bridge (requires sd-bus)')
+option('pipewire', type: 'feature', value: 'auto', description: 'Enable PipeWire screen recording support')

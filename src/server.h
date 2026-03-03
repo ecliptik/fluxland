@@ -54,6 +54,8 @@ struct wm_toolbar;
 struct wm_slit;
 struct wm_wallpaper;
 struct wm_systray;
+struct wm_atspi_bridge;
+struct wm_screen_cast;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_primary_selection_v1_device_manager;
 struct wlr_pointer_constraints_v1;
@@ -238,6 +240,12 @@ struct wm_server {
 	/* Keyboard focus navigation (accessibility) */
 	struct wm_focus_nav focus_nav;
 
+	/* AT-SPI accessibility bridge (NULL when disabled) */
+	struct wm_atspi_bridge *atspi_bridge;
+
+	/* PipeWire screen recording (NULL if not enabled) */
+	struct wm_screen_cast *screen_cast;
+
 	/* Foreign toplevel management (taskbar support) */
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 
@@ -273,6 +281,14 @@ struct wm_server {
 	struct wl_listener cursor_pinch_end;
 	struct wl_listener cursor_hold_begin;
 	struct wl_listener cursor_hold_end;
+
+	/* Compositor gesture interception state */
+	struct {
+		bool active;
+		uint32_t fingers;
+		double dx_accum, dy_accum;
+		bool consumed;
+	} gesture_state;
 
 	/* Fractional scale (wp-fractional-scale-v1 for HiDPI) */
 	struct wlr_fractional_scale_manager_v1 *fractional_scale_mgr;

@@ -21,6 +21,7 @@
  * Only the command dispatch paths exercised below need stubs.
  */
 #include "config.h"
+#include "screen_cast.h"
 #include "decoration.h"
 #include "keybind.h"
 #include "keyboard.h"
@@ -37,6 +38,20 @@
 #include "view.h"
 #include "workspace.h"
 #include "foreign_toplevel.h"
+
+/* --- Screen cast stubs (referenced by ipc_commands.c) --- */
+
+struct wm_screen_cast *wm_screen_cast_init(struct wm_server *s)
+	{ (void)s; return NULL; }
+void wm_screen_cast_destroy(struct wm_screen_cast *sc) { (void)sc; }
+bool wm_screen_cast_start(struct wm_screen_cast *sc, const char *o)
+	{ (void)sc; (void)o; return false; }
+void wm_screen_cast_stop(struct wm_screen_cast *sc) { (void)sc; }
+enum wm_screen_cast_state wm_screen_cast_get_state(
+	const struct wm_screen_cast *sc)
+	{ (void)sc; return WM_SCREEN_CAST_STOPPED; }
+uint32_t wm_screen_cast_get_node_id(const struct wm_screen_cast *sc)
+	{ (void)sc; return 0; }
 
 /* --- Stubs for functions called by ipc_commands.c --- */
 

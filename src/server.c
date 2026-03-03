@@ -21,6 +21,8 @@
 #include <wlr/util/log.h>
 
 #include "server.h"
+#include "atspi_bridge.h"
+#include "screen_cast.h"
 #include "config.h"
 #include "decoration.h"
 #include "keyboard.h"
@@ -489,6 +491,12 @@ wm_server_init(struct wm_server *server)
 	/* Initialize keyboard focus navigation (accessibility) */
 	wm_focus_nav_init(&server->focus_nav);
 
+	/* Initialize AT-SPI accessibility bridge (NULL when disabled) */
+	server->atspi_bridge = wm_atspi_bridge_create(server);
+
+	/* Initialize PipeWire screen recording (NULL if not available) */
+	server->screen_cast = wm_screen_cast_init(server);
+
 	/* Create toolbar (after workspaces so it can display them) */
 	server->toolbar = wm_toolbar_create(server);
 
@@ -569,6 +577,8 @@ wm_server_destroy(struct wm_server *server)
 #ifdef WM_HAS_SYSTRAY
 	wm_systray_destroy(server->systray);
 #endif
+	wm_screen_cast_destroy(server->screen_cast);
+	wm_atspi_bridge_destroy(server->atspi_bridge);
 	wm_slit_destroy(server->slit);
 	wm_wallpaper_destroy(server->wallpaper);
 	wm_toolbar_destroy(server->toolbar);

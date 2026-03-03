@@ -91,6 +91,7 @@
 #define WM_TABGROUP_H
 #define WM_PLACEMENT_H
 #define WM_WALLPAPER_H
+#define WM_SCREEN_CAST_H
 
 /* --- Stub wayland types --- */
 
@@ -328,11 +329,13 @@ struct wm_text_input_relay {
 enum wm_focus_zone {
 	WM_FOCUS_ZONE_WINDOWS = 0,
 	WM_FOCUS_ZONE_TOOLBAR,
+	WM_FOCUS_ZONE_SLIT,
 };
 
 struct wm_focus_nav {
 	enum wm_focus_zone zone;
 	int toolbar_index;
+	int slit_index;
 };
 
 /* config.h types */
@@ -396,6 +399,8 @@ struct wm_slit { int dummy; };
 struct wm_systray { int dummy; };
 struct wm_wallpaper { int dummy; };
 struct wm_ws_transition { int dummy; };
+struct wm_atspi_bridge { int dummy; };
+struct wm_screen_cast { int dummy; };
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -518,6 +523,8 @@ struct wm_server {
 	struct wm_ipc_server ipc;
 
 	struct wm_focus_nav focus_nav;
+	struct wm_atspi_bridge *atspi_bridge;
+	struct wm_screen_cast *screen_cast;
 
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 	struct wm_output_management output_mgmt;
@@ -1177,7 +1184,22 @@ static void wm_focus_nav_init(struct wm_focus_nav *nav)
 {
 	nav->zone = WM_FOCUS_ZONE_WINDOWS;
 	nav->toolbar_index = -1;
+	nav->slit_index = -1;
 }
+
+static struct wm_atspi_bridge *wm_atspi_bridge_create(struct wm_server *s)
+{
+	(void)s;
+	return NULL;
+}
+static void wm_atspi_bridge_destroy(struct wm_atspi_bridge *b) { (void)b; }
+
+static struct wm_screen_cast *wm_screen_cast_init(struct wm_server *s)
+{
+	(void)s;
+	return NULL;
+}
+static void wm_screen_cast_destroy(struct wm_screen_cast *sc) { (void)sc; }
 
 static void wm_workspaces_init(struct wm_server *server, int count)
 {

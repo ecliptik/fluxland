@@ -15,6 +15,7 @@
 
 #include "ipc.h"
 #include "server.h"
+#include "slit.h"
 #include "toolbar.h"
 #include "view.h"
 #include "workspace.h"
@@ -108,6 +109,7 @@ test_init(void)
 	wm_focus_nav_init(&nav);
 	assert(nav.zone == WM_FOCUS_ZONE_WINDOWS);
 	assert(nav.toolbar_index == -1);
+	assert(nav.slit_index == -1);
 	printf("  PASS: test_init\n");
 }
 
@@ -387,6 +389,150 @@ test_get_toolbar_index(void)
 	printf("  PASS: test_get_toolbar_index\n");
 }
 
+/* --- Slit test helpers --- */
+
+static struct wm_slit test_slit;
+static struct wm_slit_client test_slit_clients[3];
+
+static void
+setup_slit(void)
+{
+	setup();
+	memset(&test_slit, 0, sizeof(test_slit));
+	memset(test_slit_clients, 0, sizeof(test_slit_clients));
+
+	test_slit.server = &test_server;
+	test_slit.client_count = 3;
+	wl_list_init(&test_slit.clients);
+
+	for (int i = 0; i < 3; i++) {
+		test_slit_clients[i].slit = &test_slit;
+		wl_list_insert(test_slit.clients.prev,
+			&test_slit_clients[i].link);
+	}
+
+	test_server.slit = &test_slit;
+}
+
+/* Test: enter_slit switches zone and sets index=0 */
+static void
+test_enter_slit(void)
+{
+	setup_slit();
+	wm_focus_nav_enter_slit(&test_server);
+
+	assert(test_server.focus_nav.zone == WM_FOCUS_ZONE_SLIT);
+	assert(test_server.focus_nav.slit_index == 0);
+	assert(stub_broadcast_count == 1);
+	assert(strstr(last_broadcast_event,
+		"\"target\":\"slit\"") != NULL);
+	assert(strstr(last_broadcast_event,
+		"\"index\":0") != NULL);
+	printf("  PASS: test_enter_slit\n");
+}
+
+/* Test: enter_slit guards (NULL slit, empty slit) */
+static void
+test_enter_slit_guards(void)
+{
+	/* NULL slit */
+	setup();
+	test_server.slit = NULL;
+	wm_focus_nav_enter_slit(&test_server);
+	assert(test_server.focus_nav.zone == WM_FOCUS_ZONE_WINDOWS);
+	assert(stub_broadcast_count == 0);
+
+	/* Empty slit (0 clients) */
+	setup();
+	memset(&test_slit, 0, sizeof(test_slit));
+	test_slit.client_count = 0;
+	test_server.slit = &test_slit;
+	wm_focus_nav_enter_slit(&test_server);
+	assert(test_server.focus_nav.zone == WM_FOCUS_ZONE_WINDOWS);
+	assert(stub_broadcast_count == 0);
+	printf("  PASS: test_enter_slit_guards\n");
+}
+
+/* Test: return_from_slit resets zone to WINDOWS */
+static void
+test_return_from_slit(void)
+{
+	setup_slit();
+	wm_focus_nav_enter_slit(&test_server);
+	reset_counters();
+
+	wm_focus_nav_return_from_slit(&test_server);
+
+	assert(test_server.focus_nav.zone == WM_FOCUS_ZONE_WINDOWS);
+	assert(test_server.focus_nav.slit_index == -1);
+	assert(stub_broadcast_count == 1);
+	assert(strstr(last_broadcast_event,
+		"\"target\":\"windows\"") != NULL);
+	printf("  PASS: test_return_from_slit\n");
+}
+
+/* Test: slit_next cycles through clients and wraps */
+static void
+test_slit_next(void)
+{
+	setup_slit();
+	wm_focus_nav_enter_slit(&test_server);
+	reset_counters();
+
+	/* 0 -> 1 */
+	wm_focus_nav_slit_next(&test_server);
+	assert(test_server.focus_nav.slit_index == 1);
+	assert(stub_broadcast_count == 1);
+
+	/* 1 -> 2 */
+	wm_focus_nav_slit_next(&test_server);
+	assert(test_server.focus_nav.slit_index == 2);
+
+	/* 2 -> 0 (wrap) */
+	wm_focus_nav_slit_next(&test_server);
+	assert(test_server.focus_nav.slit_index == 0);
+	printf("  PASS: test_slit_next\n");
+}
+
+/* Test: slit_prev cycles backward and wraps */
+static void
+test_slit_prev(void)
+{
+	setup_slit();
+	wm_focus_nav_enter_slit(&test_server);
+	reset_counters();
+
+	/* 0 -> 2 (wrap backward) */
+	wm_focus_nav_slit_prev(&test_server);
+	assert(test_server.focus_nav.slit_index == 2);
+	assert(stub_broadcast_count == 1);
+
+	/* 2 -> 1 */
+	wm_focus_nav_slit_prev(&test_server);
+	assert(test_server.focus_nav.slit_index == 1);
+
+	/* 1 -> 0 */
+	wm_focus_nav_slit_prev(&test_server);
+	assert(test_server.focus_nav.slit_index == 0);
+	printf("  PASS: test_slit_prev\n");
+}
+
+/* Test: slit_next/prev no-op when not in slit zone */
+static void
+test_slit_nav_not_in_slit(void)
+{
+	setup_slit();
+	/* Zone is WINDOWS, not SLIT */
+	wm_focus_nav_slit_next(&test_server);
+	assert(test_server.focus_nav.slit_index == -1);
+	assert(stub_broadcast_count == 0);
+
+	wm_focus_nav_slit_prev(&test_server);
+	assert(test_server.focus_nav.slit_index == -1);
+	assert(stub_broadcast_count == 0);
+	printf("  PASS: test_slit_nav_not_in_slit\n");
+}
+
 int
 main(void)
 {
@@ -406,6 +552,14 @@ main(void)
 	test_activate_window_tools();
 	test_activate_not_in_toolbar();
 	test_get_toolbar_index();
+
+	/* Slit navigation tests */
+	test_enter_slit();
+	test_enter_slit_guards();
+	test_return_from_slit();
+	test_slit_next();
+	test_slit_prev();
+	test_slit_nav_not_in_slit();
 
 	printf("All focus_nav tests passed.\n");
 	return 0;

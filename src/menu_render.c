@@ -24,9 +24,15 @@
 
 #include "menu.h"
 #include "menu_render.h"
+#include "perf.h"
 #include "render.h"
 #include "server.h"
 #include "style.h"
+
+#ifdef WM_PERF_ENABLE
+static struct wm_perf_probe perf_menu_render;
+static bool perf_menu_render_inited;
+#endif
 
 /*
  * Determine the base text direction by scanning for the first character
@@ -583,6 +589,14 @@ menu_update_render(struct wm_menu *menu)
 		return;
 	}
 
+#ifdef WM_PERF_ENABLE
+	if (!perf_menu_render_inited) {
+		wm_perf_probe_init(&perf_menu_render, "menu_render");
+		perf_menu_render_inited = true;
+	}
+	WM_PERF_BEGIN(mrender);
+#endif
+
 	struct wm_style *style = menu->server->style;
 
 	cairo_surface_t *items_surf = render_menu_items(menu, style);
@@ -593,4 +607,8 @@ menu_update_render(struct wm_menu *menu)
 	if (items_buf) {
 		wlr_buffer_drop(items_buf);
 	}
+
+#ifdef WM_PERF_ENABLE
+	WM_PERF_END(mrender, &perf_menu_render);
+#endif
 }

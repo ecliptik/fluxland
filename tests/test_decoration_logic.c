@@ -602,6 +602,23 @@ wm_render_rounded_rect_path(cairo_t *cr, double x, double y,
 	(void)cr; (void)x; (void)y; (void)w; (void)h; (void)r; (void)corners;
 }
 
+/* --- Perf stubs (decoration.c includes perf.h) --- */
+#include "perf.h"
+#ifdef WM_PERF_ENABLE
+void wm_perf_probe_init(struct wm_perf_probe *probe, const char *label) {
+	(void)probe; (void)label;
+}
+void wm_perf_probe_record(struct wm_perf_probe *probe, uint64_t ns) {
+	(void)probe; (void)ns;
+}
+void wm_perf_probe_report(struct wm_perf_probe *probe) {
+	(void)probe;
+}
+void wm_perf_probe_reset(struct wm_perf_probe *probe) {
+	(void)probe;
+}
+#endif
+
 /* --- Include decoration.c --- */
 
 /* We need decoration.h declarations before including .c */

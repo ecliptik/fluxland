@@ -17,6 +17,7 @@
 #include "focus_nav.h"
 #include "ipc.h"
 #include "server.h"
+#include "slit.h"
 #include "toolbar.h"
 #include "workspace.h"
 #include "view.h"
@@ -49,6 +50,7 @@ wm_focus_nav_init(struct wm_focus_nav *nav)
 {
 	nav->zone = WM_FOCUS_ZONE_WINDOWS;
 	nav->toolbar_index = -1;
+	nav->slit_index = -1;
 }
 
 void
@@ -284,4 +286,111 @@ wm_focus_nav_get_toolbar_index(struct wm_server *server)
 		return -1;
 	}
 	return server->focus_nav.toolbar_index;
+}
+
+/* --- Slit focus navigation --- */
+
+void
+wm_focus_nav_enter_slit(struct wm_server *server)
+{
+	if (!server->slit || server->slit->client_count == 0)
+		return;
+
+	server->focus_nav.zone = WM_FOCUS_ZONE_SLIT;
+	server->focus_nav.slit_index = 0;
+
+	/* Broadcast focus change event */
+	char buf[256];
+	snprintf(buf, sizeof(buf),
+		"{\"event\":\"focus_changed\",\"data\":{"
+		"\"target\":\"slit\",\"index\":%d,\"count\":%d}}",
+		0, server->slit->client_count);
+	wm_ipc_broadcast_event(&server->ipc,
+		WM_IPC_EVENT_FOCUS_CHANGED, buf);
+}
+
+void
+wm_focus_nav_return_from_slit(struct wm_server *server)
+{
+	server->focus_nav.zone = WM_FOCUS_ZONE_WINDOWS;
+	server->focus_nav.slit_index = -1;
+
+	char buf[128];
+	snprintf(buf, sizeof(buf),
+		"{\"event\":\"focus_changed\",\"data\":{"
+		"\"target\":\"windows\"}}");
+	wm_ipc_broadcast_event(&server->ipc,
+		WM_IPC_EVENT_FOCUS_CHANGED, buf);
+}
+
+void
+wm_focus_nav_slit_next(struct wm_server *server)
+{
+	if (server->focus_nav.zone != WM_FOCUS_ZONE_SLIT || !server->slit)
+		return;
+	if (server->slit->client_count == 0)
+		return;
+
+	server->focus_nav.slit_index =
+		(server->focus_nav.slit_index + 1) % server->slit->client_count;
+
+	char buf[256];
+	snprintf(buf, sizeof(buf),
+		"{\"event\":\"focus_changed\",\"data\":{"
+		"\"target\":\"slit\",\"index\":%d,\"count\":%d}}",
+		server->focus_nav.slit_index, server->slit->client_count);
+	wm_ipc_broadcast_event(&server->ipc,
+		WM_IPC_EVENT_FOCUS_CHANGED, buf);
+}
+
+void
+wm_focus_nav_slit_prev(struct wm_server *server)
+{
+	if (server->focus_nav.zone != WM_FOCUS_ZONE_SLIT || !server->slit)
+		return;
+	if (server->slit->client_count == 0)
+		return;
+
+	server->focus_nav.slit_index--;
+	if (server->focus_nav.slit_index < 0)
+		server->focus_nav.slit_index = server->slit->client_count - 1;
+
+	char buf[256];
+	snprintf(buf, sizeof(buf),
+		"{\"event\":\"focus_changed\",\"data\":{"
+		"\"target\":\"slit\",\"index\":%d,\"count\":%d}}",
+		server->focus_nav.slit_index, server->slit->client_count);
+	wm_ipc_broadcast_event(&server->ipc,
+		WM_IPC_EVENT_FOCUS_CHANGED, buf);
+}
+
+void
+wm_focus_nav_slit_activate(struct wm_server *server)
+{
+	if (server->focus_nav.zone != WM_FOCUS_ZONE_SLIT || !server->slit)
+		return;
+
+	/* Find the slit client at the current index */
+	int i = 0;
+	struct wm_slit_client *client;
+	wl_list_for_each(client, &server->slit->clients, link) {
+		if (i == server->focus_nav.slit_index) {
+			/* Give keyboard focus to the slit client's surface */
+			if (client->type == WM_SLIT_CLIENT_NATIVE &&
+			    client->xdg_toplevel &&
+			    client->xdg_toplevel->base->surface) {
+				struct wlr_seat *seat = server->seat;
+				struct wlr_keyboard *kb =
+					wlr_seat_get_keyboard(seat);
+				if (kb) {
+					wlr_seat_keyboard_notify_enter(seat,
+						client->xdg_toplevel->base->surface,
+						kb->keycodes, kb->num_keycodes,
+						&kb->modifiers);
+				}
+			}
+			break;
+		}
+		i++;
+	}
 }

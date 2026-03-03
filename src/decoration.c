@@ -28,11 +28,17 @@
 
 #include "config.h"
 #include "decoration.h"
+#include "perf.h"
 #include "render.h"
 #include "server.h"
 #include "style.h"
 #include "tabgroup.h"
 #include "view.h"
+
+#ifdef WM_PERF_ENABLE
+static struct wm_perf_probe perf_decoration_update;
+static bool perf_decoration_inited;
+#endif
 
 /* --- Default dimensions --- */
 
@@ -1444,11 +1450,23 @@ wm_decoration_update(struct wm_decoration *decoration,
 		return;
 	}
 
+#ifdef WM_PERF_ENABLE
+	if (!perf_decoration_inited) {
+		wm_perf_probe_init(&perf_decoration_update, "decoration_update");
+		perf_decoration_inited = true;
+	}
+	WM_PERF_BEGIN(decor);
+#endif
+
 	decoration->titlebar_height = style_titlebar_height(style);
 	decoration->handle_height = style_handle_height(style);
 	decoration->border_width = style_border_width(style);
 
 	layout_and_render(decoration, style);
+
+#ifdef WM_PERF_ENABLE
+	WM_PERF_END(decor, &perf_decoration_update);
+#endif
 }
 
 void

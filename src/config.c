@@ -483,6 +483,11 @@ config_create(void)
 	config->mouse_button_map[4] = BTN_SIDE;
 	config->mouse_button_map[5] = BTN_EXTRA;
 
+	config->gesture_workspace_switch = true;
+	config->gesture_overview = false;
+	config->gesture_workspace_fingers = 3;
+	config->gesture_swipe_threshold = 100.0;
+
 	config->config_dir = find_config_dir();
 
 	set_default_workspace_names(config);
@@ -965,6 +970,22 @@ apply_misc_config(struct wm_config *config, struct rc_database *db)
 			&config->struts[0], &config->struts[1],
 			&config->struts[2], &config->struts[3]);
 	}
+
+	/* Gesture settings */
+	config->gesture_workspace_switch =
+		rc_get_bool(db, "session.screen0.gestureWorkspaceSwitch", true);
+	config->gesture_overview =
+		rc_get_bool(db, "session.screen0.gestureOverview", false);
+	config->gesture_workspace_fingers =
+		rc_get_int(db, "session.screen0.gestureWorkspaceFingers", 3);
+	if (config->gesture_workspace_fingers < 2)
+		config->gesture_workspace_fingers = 2;
+	if (config->gesture_workspace_fingers > 5)
+		config->gesture_workspace_fingers = 5;
+	double thresh = rc_get_int(db, "session.screen0.gestureSwipeThreshold", 100);
+	if (thresh < 10) thresh = 10;
+	if (thresh > 1000) thresh = 1000;
+	config->gesture_swipe_threshold = thresh;
 }
 
 static void

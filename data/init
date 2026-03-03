@@ -109,6 +109,22 @@ session.screen0.toolbar.widthPercent: 100
 # session.mouse.button3.map: BTN_LEFT
 
 # -------------------------------------------------------------------
+# Touchpad gesture settings
+# -------------------------------------------------------------------
+
+# Swipe to switch workspaces (3-finger horizontal swipe)
+# session.screen0.gestureWorkspaceSwitch: true
+
+# Swipe up to show window list overview
+# session.screen0.gestureOverview:        false
+
+# Number of fingers for workspace gesture (2-5)
+# session.screen0.gestureWorkspaceFingers: 3
+
+# Pixel distance to trigger a swipe action (10-1000)
+# session.screen0.gestureSwipeThreshold:  100
+
+# -------------------------------------------------------------------
 # File paths (usually auto-detected; override if needed)
 # -------------------------------------------------------------------
 

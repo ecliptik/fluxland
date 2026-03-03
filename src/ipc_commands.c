@@ -25,6 +25,8 @@
 #include "i18n.h"
 #include "ipc.h"
 #include "config.h"
+#include "perf.h"
+#include "screen_cast.h"
 #include "decoration.h"
 #include "foreign_toplevel.h"
 #include "keybind.h"
@@ -43,6 +45,11 @@
 #include "workspace.h"
 
 /* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
+
+#ifdef WM_PERF_ENABLE
+static struct wm_perf_probe perf_ipc_command;
+static bool perf_ipc_inited;
+#endif
 
 /* ---------- minimal JSON helpers ---------- */
 
@@ -381,6 +388,7 @@ static const struct action_entry action_table[] = {
 	{"ForEach",          WM_ACTION_FOREACH},
 	{"Map",              WM_ACTION_MAP},
 	{"Delay",            WM_ACTION_DELAY},
+	{"FocusSlit",        WM_ACTION_FOCUS_SLIT},
 	{"FocusToolbar",     WM_ACTION_FOCUS_TOOLBAR},
 	{"FocusNextElement", WM_ACTION_FOCUS_NEXT_ELEMENT},
 	{"FocusPrevElement", WM_ACTION_FOCUS_PREV_ELEMENT},
@@ -1542,6 +1550,18 @@ cmd_get_workspaces(struct wm_server *server)
 	return strbuf_finish(&sb);
 }
 
+static const char *
+view_layer_str(enum wm_view_layer layer)
+{
+	switch (layer) {
+	case WM_LAYER_DESKTOP: return "Desktop";
+	case WM_LAYER_BELOW: return "Below";
+	case WM_LAYER_NORMAL: return "Normal";
+	case WM_LAYER_ABOVE: return "Above";
+	default: return "Normal";
+	}
+}
+
 static char *
 cmd_get_windows(struct wm_server *server)
 {
@@ -1558,23 +1578,44 @@ cmd_get_windows(struct wm_server *server)
 		char *title_esc = json_escape(view->title);
 		char *app_id_esc = json_escape(view->app_id);
 		bool focused = (view == server->focused_view);
+		bool minimized = !view->scene_tree->node.enabled;
 
 		struct wlr_box geo;
 		wm_view_get_geometry(view, &geo);
 
 		int ws_index = view->workspace ? view->workspace->index : -1;
 
+		/* Determine role: dialog if has parent, window otherwise */
+		const char *role = "window";
+		if (view->xdg_toplevel->parent)
+			role = "dialog";
+
+		/* Get PID via wl_client_get_credentials */
+		pid_t pid = -1;
+		struct wl_client *client = view->xdg_toplevel->base->resource ?
+			wl_resource_get_client(view->xdg_toplevel->base->resource) : NULL;
+		if (client) {
+			wl_client_get_credentials(client, &pid, NULL, NULL);
+		}
+
 		strbuf_appendf(&sb,
-			"{\"app_id\":%s,\"title\":%s,"
+			"{\"id\":%u,\"app_id\":%s,\"title\":%s,"
 			"\"workspace\":%d,\"focused\":%s,"
 			"\"maximized\":%s,\"fullscreen\":%s,"
-			"\"sticky\":%s,"
+			"\"minimized\":%s,\"sticky\":%s,"
+			"\"layer\":\"%s\",\"decorated\":%s,"
+			"\"role\":\"%s\",\"pid\":%d,"
 			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
+			view->id,
 			app_id_esc, title_esc,
 			ws_index, focused ? "true" : "false",
 			view->maximized ? "true" : "false",
 			view->fullscreen ? "true" : "false",
+			minimized ? "true" : "false",
 			view->sticky ? "true" : "false",
+			view_layer_str(view->layer),
+			view->show_decoration ? "true" : "false",
+			role, (int)pid,
 			geo.x, geo.y, geo.width, geo.height);
 		free(title_esc);
 		free(app_id_esc);
@@ -1741,6 +1782,102 @@ cmd_subscribe(struct wm_ipc_client *client, const char *events_str)
 	return make_ok();
 }
 
+#ifdef WM_PERF_ENABLE
+static char *
+cmd_get_perf(void)
+{
+	struct strbuf sb;
+	strbuf_init(&sb);
+	strbuf_append(&sb, "{\"success\":true,\"data\":{\"probes\":[");
+
+	if (!perf_ipc_inited) {
+		strbuf_append(&sb, "]}}");
+		return strbuf_finish(&sb);
+	}
+
+	uint64_t avg_ns = perf_ipc_command.total_count > 0
+		? perf_ipc_command.sum_ns / perf_ipc_command.total_count : 0;
+	uint64_t min_ns = perf_ipc_command.min_ns == UINT64_MAX
+		? 0 : perf_ipc_command.min_ns;
+
+	strbuf_appendf(&sb,
+		"{\"name\":\"ipc_command\",\"count\":%lu,"
+		"\"min_ns\":%lu,\"max_ns\":%lu,\"avg_ns\":%lu}",
+		(unsigned long)perf_ipc_command.total_count,
+		(unsigned long)min_ns,
+		(unsigned long)perf_ipc_command.max_ns,
+		(unsigned long)avg_ns);
+
+	strbuf_append(&sb, "]}}");
+	return strbuf_finish(&sb);
+}
+#endif
+
+/* ---------- screen cast commands ---------- */
+
+static char *
+cmd_screen_cast_start(struct wm_server *server, const char *json)
+{
+	if (!server->screen_cast) {
+		return strdup("{\"success\":false,\"error\":\"screen cast not available (built without PipeWire)\"}");
+	}
+
+	char *out_str = json_get_string(json, "output");
+
+	bool ok = wm_screen_cast_start(server->screen_cast, out_str);
+	free(out_str);
+
+	if (!ok) {
+		return strdup("{\"success\":false,\"error\":\"failed to start screen cast\"}");
+	}
+
+	uint32_t node_id = wm_screen_cast_get_node_id(server->screen_cast);
+	char buf[128];
+	snprintf(buf, sizeof(buf),
+		"{\"success\":true,\"data\":{\"node_id\":%u}}", node_id);
+	return strdup(buf);
+}
+
+static char *
+cmd_screen_cast_stop(struct wm_server *server)
+{
+	if (!server->screen_cast) {
+		return strdup("{\"success\":false,\"error\":\"screen cast not available\"}");
+	}
+
+	wm_screen_cast_stop(server->screen_cast);
+	return strdup("{\"success\":true}");
+}
+
+static char *
+cmd_get_screen_cast(struct wm_server *server)
+{
+	if (!server->screen_cast) {
+		return strdup("{\"success\":true,\"data\":{\"available\":false}}");
+	}
+
+	enum wm_screen_cast_state state = wm_screen_cast_get_state(
+		server->screen_cast);
+
+	const char *state_str;
+	switch (state) {
+	case WM_SCREEN_CAST_STOPPED: state_str = "stopped"; break;
+	case WM_SCREEN_CAST_STARTING: state_str = "starting"; break;
+	case WM_SCREEN_CAST_STREAMING: state_str = "streaming"; break;
+	case WM_SCREEN_CAST_ERROR: state_str = "error"; break;
+	default: state_str = "unknown"; break;
+	}
+
+	uint32_t node_id = wm_screen_cast_get_node_id(server->screen_cast);
+
+	char buf[256];
+	snprintf(buf, sizeof(buf),
+		"{\"success\":true,\"data\":{\"available\":true,"
+		"\"state\":\"%s\",\"node_id\":%u}}",
+		state_str, node_id);
+	return strdup(buf);
+}
+
 /* ---------- main dispatch ---------- */
 
 char *
@@ -1751,9 +1888,20 @@ wm_ipc_handle_command(struct wm_ipc_server *ipc,
 		return make_error(_("empty request"));
 	}
 
+#ifdef WM_PERF_ENABLE
+	if (!perf_ipc_inited) {
+		wm_perf_probe_init(&perf_ipc_command, "ipc_command");
+		perf_ipc_inited = true;
+	}
+	WM_PERF_BEGIN(ipc_cmd);
+#endif
+
 	/* Extract "command" field */
 	char *command = json_get_string(json_request, "command");
 	if (!command) {
+#ifdef WM_PERF_ENABLE
+		WM_PERF_END(ipc_cmd, &perf_ipc_command);
+#endif
 		return make_error(_("missing 'command' field"));
 	}
 
@@ -1778,9 +1926,23 @@ wm_ipc_handle_command(struct wm_ipc_server *ipc,
 		free(events);
 	} else if (strcmp(command, "ping") == 0) {
 		result = make_ok();
+	} else if (strcmp(command, "screen_cast_start") == 0) {
+		result = cmd_screen_cast_start(server, json_request);
+	} else if (strcmp(command, "screen_cast_stop") == 0) {
+		result = cmd_screen_cast_stop(server);
+	} else if (strcmp(command, "get_screen_cast") == 0) {
+		result = cmd_get_screen_cast(server);
+#ifdef WM_PERF_ENABLE
+	} else if (strcmp(command, "get_perf") == 0) {
+		result = cmd_get_perf();
+#endif
 	} else {
 		result = make_error(_("unknown command"));
 	}
+
+#ifdef WM_PERF_ENABLE
+	WM_PERF_END(ipc_cmd, &perf_ipc_command);
+#endif
 
 	free(command);
 	return result;
