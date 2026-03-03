@@ -203,6 +203,16 @@ static const char *valid_slit_layers[] = {
 	"AboveDock", "Above", "Dock", "Normal", "Bottom", NULL
 };
 
+/* Valid workspace transition values */
+static const char *valid_workspace_transitions[] = {
+	"None", "Fade", "Slide", NULL
+};
+
+/* Valid workspace mode values */
+static const char *valid_workspace_modes[] = {
+	"global", "per-output", NULL
+};
+
 /* Valid menu search values */
 static const char *valid_menu_search[] = {
 	"nowhere", "itemstart", "somewhere", NULL
@@ -258,6 +268,9 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.workspaces", VT_INT, 1, 32, NULL},
 	{"session.screen0.workspacewarping", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.workspaceNames", VT_STRING, 0, 0, NULL},
+	{"session.screen0.workspaceMode", VT_ENUM, 0, 0, valid_workspace_modes},
+	{"session.screen0.workspaceTransition", VT_ENUM, 0, 0, valid_workspace_transitions},
+	{"session.screen0.workspaceTransitionDuration", VT_INT, 0, 5000, NULL},
 
 	/* Focus */
 	{"session.screen0.focusModel", VT_ENUM, 0, 0, valid_focus_models},
@@ -313,6 +326,16 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.tab.placement", VT_STRING, 0, 0, NULL},
 	{"session.screen0.tab.width", VT_INT, 0, 10000, NULL},
 	{"session.screen0.tabPadding", VT_INT, 0, 1000, NULL},
+
+	/* Window animations */
+	{"session.screen0.animateWindowMap", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.animateWindowUnmap", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.animateMinimize", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.animationDuration", VT_INT, 0, 5000, NULL},
+
+	/* Window snap zones */
+	{"session.screen0.enableWindowSnapping", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.snapZoneThreshold", VT_INT, 1, 100, NULL},
 
 	/* Window opacity */
 	{"session.screen0.window.focus.alpha", VT_INT, 0, 255, NULL},
