@@ -1,8 +1,8 @@
 List of outstanding bugs and items to address
 
 Menu
-- Only Foot launches from menu, other applications are listed in menus but do not launch. Install ones it lists to test.
-  - VERIFIED: Environmental — only foot, xterm, firefox, grim, slurp are installed. Other listed apps (alacritty, kitty, thunar, etc.) are not in $PATH. The exec path works correctly for all installed apps.
+- [RESOLVED] Only Foot launches from menu, other applications are listed in menus but do not launch. Install ones it lists to test.
+  - Fixed: Environmental — apps were not installed. Installed alacritty, kitty, thunar, nautilus, pcmanfm, mousepad, gedit, mpv, vlc, gimp, inkscape, chromium. Fixed chromium binary name in data/menu (chromium-browser → chromium). All Wayland-native apps verified launching via UI test harness (16 passed, 3 skipped for XWayland-only apps).
 - [RESOLVED] Configuration menu shows options, but not a active toggle when enabled
   - Fixed: Added bool checked field to menu items with filled diamond indicator. Config toggles now show active state and update in-place on click.
 - [RESOLVED] When enabling configuration like "Opaque Move" applications no longer launch from the menu

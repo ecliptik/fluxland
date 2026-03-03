@@ -8,7 +8,7 @@ Fluxbox-inspired Wayland compositor built on wlroots 0.18. C17, Meson, MIT licen
 meson setup build
 ninja -C build
 meson test -C build --print-errorlogs   # 53 C unit tests
-python3 -m pytest tests/ui/ --timeout=30 # 154 Python UI tests
+python3 -m pytest tests/ui/ --timeout=30 # 174 Python UI tests
 sudo ninja -C build install
 ```
 
@@ -19,7 +19,7 @@ Build options: `-Dxwayland=enabled`, `-Dasan=true`, `-Dubsan=true`
 ```
 src/           114 files (58 .c + 56 .h), ~35K lines — compositor source
 tests/         52 C test files, 7 fuzz targets — 81.2% line coverage
-tests/ui/      20 Python pytest files — 154 end-to-end UI tests via IPC
+tests/ui/      21 Python pytest files — 174 end-to-end UI tests via IPC
 data/          Default configs (init, keys, apps, menu, style, startup) + themes
 examples/      Complete example configs (wave-desktop, minimal, sloppy-focus)
 docs/          QUICKSTART.md, design/ARCHITECTURE.md, design/FLUXBOX-COMPAT.md

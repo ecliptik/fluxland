@@ -9,7 +9,7 @@
 
   [submenu] (Web Browsers)
     [exec] (Firefox) {firefox}
-    [exec] (Chromium) {chromium-browser}
+    [exec] (Chromium) {chromium}
     [exec] (Google Chrome) {google-chrome-stable}
   [end]
 
