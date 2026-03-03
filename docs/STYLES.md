@@ -355,5 +355,5 @@ menus, and the toolbar:
 | Toolbar base texture and iconbar colors | Supported |
 | Wildcard fonts (`*font`, `*Font`) | Supported |
 
-For the full compatibility report including detailed test methodology, see
-[`docs/STYLE_COMPAT_REPORT.md`](STYLE_COMPAT_REPORT.md).
+See the [Style Rendering Support](#style-rendering-support) table above for
+full details on supported style features.
