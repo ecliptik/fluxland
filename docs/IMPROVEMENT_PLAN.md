@@ -1,7 +1,7 @@
 # Fluxland Improvement Plan
 
 *Generated from comprehensive codebase review — 2026-03-02*
-*Last updated: 2026-03-02 — 23 items completed across five sprints*
+*Last updated: 2026-03-02 — 28 items completed across seven sprints*
 
 ## Executive Summary
 
@@ -255,34 +255,38 @@ Implemented native wallpaper rendering in `src/wallpaper.c/h`. Supports PNG load
 
 Allow users to extend the compositor with plugins (Lua, shared libraries, or IPC-based extensions). Would enable community-contributed features without core changes.
 
-### 7.2 Wayland Conformance Test Suite (WLCS) integration
+### 7.2 Wayland Conformance Test Suite (WLCS) integration — DONE (Sprint 7)
 **Effort**: L | **Category**: Testing
 
-The build system already has a `wlcs` option and `src/wlcs_shim.c` exists. Full WLCS integration would validate protocol compliance and catch edge cases in XDG shell, layer shell, and other protocol implementations.
+Fixed stale `wlcs_compositor_sources` list in `meson.build` — added 4 missing files (`view_focus.c`, `view_geometry.c`, `menu_parse.c`, `menu_render.c`) that were split in sprints 2/5 but never added to the WLCS source list. `libfluxland-wlcs.so` now builds cleanly.
 
-### 7.3 Screen recording / pipewire integration
+### 7.3 Screen recording / PipeWire integration — DONE (Sprint 7)
 **Effort**: L | **Category**: Feature
 
-PipeWire-based screen capture for screen recording and streaming (e.g., for OBS, xdg-desktop-portal integration).
+Implemented PipeWire screen cast module (`src/screen_cast.c/h`). Architecture: PipeWire event loop integrated with Wayland event loop via fd polling (no threads). Video format BGRx matching wlroots DRM_FORMAT_XRGB8888. IPC commands: `screen_cast_start`, `screen_cast_stop`, `get_screen_cast`. Optional build with `-Dpipewire=enabled`. Documentation in `docs/SCREEN_RECORDING.md`.
 
-### 7.4 Touch and gesture support improvements
+### 7.4 Touch and gesture support improvements — DONE (Sprint 7)
 **Effort**: M | **Category**: Feature
 
-While pointer-gestures-v1 is initialized, full touch gesture support (pinch-to-zoom, three-finger swipe for workspace switching) would improve tablet/touchscreen usability.
+Implemented compositor gesture interception for workspace switching. Three-finger swipe left/right switches workspaces, vertical swipe up shows window list (optional). Configurable via `session.screen0.gestureWorkspaceSwitch`, `gestureWorkspaceFingers`, `gestureSwipeThreshold`, `gestureOverview`. Non-matching finger counts pass through to clients.
 
-### 7.5 Accessibility improvements
+### 7.5 Accessibility improvements — DONE (Sprint 7)
 **Effort**: L | **Category**: Accessibility
 
-The IPC has accessibility meta-subscription support, but deeper accessibility integration (screen reader support via AT-SPI, keyboard-only navigation for all UI elements, high-contrast theme improvements) would broaden the user base.
+Multiple accessibility enhancements:
+- **IPC `get_windows` enriched**: Added `id`, `minimized`, `layer`, `decorated`, `role`, `pid` fields for screen reader integration
+- **Slit keyboard navigation**: New `FocusSlit` action + `WM_FOCUS_ZONE_SLIT` for keyboard-only slit navigation with IPC focus_changed broadcasts
+- **Menu focus announcements**: `focus_changed` IPC events during menu key navigation (label, index, has_submenu)
+- **Optional AT-SPI bridge**: `src/atspi_bridge.c/h` with `-Datspi=true` build option, announces focus changes to screen readers via sd-bus
 
-### 7.6 Performance profiling and optimization
+### 7.6 Performance profiling and optimization — DONE (Sprint 7)
 **Effort**: M | **Category**: Performance
 
-No known performance issues, but systematic profiling of:
-- Decoration rendering hot path (called on every frame with damage)
-- Menu rendering with many items
-- IPC command response time under load
-- Scene graph operations with many windows (50+ views)
+Implemented compile-time profiling infrastructure (`src/perf.c/h`). Zero-cost no-ops when disabled. Enable with `-Dperf=true`. Features:
+- `WM_PERF_BEGIN`/`WM_PERF_END` timing macros using `clock_gettime(CLOCK_MONOTONIC)`
+- Ring buffer (256 samples) with min/max/sum tracking per probe
+- Instrumented hot paths: `wm_decoration_update()`, `wm_render_text()`, `menu_update_render()`, `wm_ipc_handle_command()`
+- IPC `get_perf` command for runtime stats retrieval
 
 ---
 
@@ -319,11 +323,11 @@ No known performance issues, but systematic profiling of:
 | 6.5 | Full conditional keybindings | M | Low | Feature | DONE |
 | 6.6 | Native per-workspace wallpaper | M | Low | Feature | DONE |
 | 7.1 | Plugin/extension system | XL | Low | Architecture | Deferred |
-| 7.2 | WLCS integration | L | Medium | Testing | Deferred |
-| 7.3 | PipeWire screen recording | L | Low | Feature | Deferred |
-| 7.4 | Touch/gesture improvements | M | Low | Feature | Deferred |
-| 7.5 | Accessibility improvements | L | Medium | Accessibility | Deferred |
-| 7.6 | Performance profiling | M | Low | Performance | Deferred |
+| 7.2 | WLCS integration | L | Medium | Testing | **DONE** |
+| 7.3 | PipeWire screen recording | L | Low | Feature | **DONE** |
+| 7.4 | Touch/gesture improvements | M | Low | Feature | **DONE** |
+| 7.5 | Accessibility improvements | L | Medium | Accessibility | **DONE** |
+| 7.6 | Performance profiling | M | Low | Performance | **DONE** |
 
 **Effort key**: S = < 2 hours | M = 2–8 hours | L = 1–3 days | XL = 1+ week
 
@@ -334,5 +338,7 @@ No known performance issues, but systematic profiling of:
 3. ~~**Sprint 3 — Code quality**: Item 2.3~~ **DONE** — decomposed 4 mega-functions
 4. ~~**Sprint 4 — Test coverage**: Items 4.1, 4.2~~ **DONE** — 11 test files (157 tests), 3 fuzz targets
 5. ~~**Sprint 5 — Code quality**: Items 3.4, 5.3~~ **DONE** — split view.c and cursor.c, resolved empty docs dirs
-6. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
-7. **Features** (ongoing): Items from sections 6–7 based on user demand
+6. ~~**Sprint 6 — Features**: Items 6.1, 6.4, 6.5, 6.6~~ **DONE**
+7. ~~**Sprint 7 — Improvements**: Items 7.2, 7.3, 7.4, 7.5, 7.6~~ **DONE** — WLCS fix, PipeWire screen cast, gesture WM actions, accessibility enrichment, perf profiling
+8. **Next up**: Item 2.1 (CI/CD) — unlocks automated quality gates
+9. **Remaining**: Items 6.2, 6.3, 7.1 — based on user demand
