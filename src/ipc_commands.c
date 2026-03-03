@@ -1602,7 +1602,7 @@ cmd_get_windows(struct wm_server *server)
 			"{\"id\":%u,\"app_id\":%s,\"title\":%s,"
 			"\"workspace\":%d,\"focused\":%s,"
 			"\"maximized\":%s,\"fullscreen\":%s,"
-			"\"minimized\":%s,\"sticky\":%s,"
+			"\"minimized\":%s,\"shaded\":%s,\"sticky\":%s,"
 			"\"layer\":\"%s\",\"decorated\":%s,"
 			"\"role\":\"%s\",\"pid\":%d,"
 			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
@@ -1612,6 +1612,7 @@ cmd_get_windows(struct wm_server *server)
 			view->maximized ? "true" : "false",
 			view->fullscreen ? "true" : "false",
 			minimized ? "true" : "false",
+			view->decoration && view->decoration->shaded ? "true" : "false",
 			view->sticky ? "true" : "false",
 			view_layer_str(view->layer),
 			view->show_decoration ? "true" : "false",
