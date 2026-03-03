@@ -936,6 +936,8 @@ wlr_xcursor_manager_destroy(struct wlr_xcursor_manager *mgr)
 
 /* --- fluxland module stubs --- */
 
+static void wm_render_cleanup(void) { }
+
 static void config_reload(struct wm_config *config)
 {
 	(void)config;

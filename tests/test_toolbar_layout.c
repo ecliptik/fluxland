@@ -1855,8 +1855,10 @@ test_clock_timer_cb_hidden(void)
 	int ret = clock_timer_cb(toolbar);
 	assert(ret == 0);
 
-	/* Timer should still re-arm even when hidden */
-	assert(g_timer_update_last_ms == 1000);
+	/* Timer should NOT re-arm when hidden — saves CPU.
+	 * It will be restarted when toolbar becomes visible.
+	 * Value stays at reset value (-1) since no timer update call. */
+	assert(g_timer_update_last_ms == -1);
 
 	wm_toolbar_destroy(toolbar);
 	wl_list_remove(&ws.link);

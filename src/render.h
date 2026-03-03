@@ -79,6 +79,14 @@ int wm_measure_text_width(const char *text, const struct wm_font *font,
 cairo_surface_t *wm_render_button_glyph(enum wm_button_type type,
 	const struct wm_color *pic_color, int size, float scale);
 
+/* --- Cleanup --- */
+
+/*
+ * Free the cached measurement context used by text rendering.
+ * Call during compositor shutdown.
+ */
+void wm_render_cleanup(void);
+
 /* --- Rounded rectangle path --- */
 
 /*

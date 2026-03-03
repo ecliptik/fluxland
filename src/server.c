@@ -33,6 +33,7 @@
 #include "menu.h"
 #include "output.h"
 #include "input.h"
+#include "render.h"
 #include "rules.h"
 #include "idle.h"
 #include "output_management.h"
@@ -609,6 +610,7 @@ wm_server_destroy(struct wm_server *server)
 		wl_event_source_remove(server->auto_raise_timer);
 	style_destroy(server->style);
 	config_destroy(server->config);
+	wm_render_cleanup();
 
 	wm_input_finish(server);
 

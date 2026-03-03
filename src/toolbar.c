@@ -270,16 +270,24 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 			tool->width = h;
 			fixed_total += tool->width;
 		} else if (tool->type == WM_TOOL_WORKSPACE_NAME) {
-			/* Measure widest workspace name — single active label */
-			int max_tw = 0;
-			struct wm_workspace *ws_iter;
-			wl_list_for_each(ws_iter,
-				&toolbar->server->workspaces, link) {
-				const char *ws_name = ws_iter->name;
-				if (!ws_name || !*ws_name) ws_name = "1";
-				int tw = wm_measure_text_width(ws_name,
-					&style->toolbar_font, 1.0f);
-				if (tw > max_tw) max_tw = tw;
+			/* Use cached max width to avoid N Pango measurements
+			 * per toolbar layout. Invalidated on reconfigure. */
+			int max_tw;
+			if (toolbar->cached_ws_name_max_width >= 0) {
+				max_tw = toolbar->cached_ws_name_max_width;
+			} else {
+				max_tw = 0;
+				struct wm_workspace *ws_iter;
+				wl_list_for_each(ws_iter,
+					&toolbar->server->workspaces, link) {
+					const char *ws_name = ws_iter->name;
+					if (!ws_name || !*ws_name)
+						ws_name = "1";
+					int tw = wm_measure_text_width(ws_name,
+						&style->toolbar_font, 1.0f);
+					if (tw > max_tw) max_tw = tw;
+				}
+				toolbar->cached_ws_name_max_width = max_tw;
 			}
 			tool->width = max_tw + WM_TOOLBAR_PADDING * 4;
 			if (tool->width < 60) tool->width = 60;
@@ -429,14 +437,15 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-	/* Single hit box covering the whole tool */
-	free(tool->hit_boxes);
-	tool->hit_boxes = calloc(1, sizeof(struct wlr_box));
+	/* Single hit box covering the whole tool — allocate once, reuse */
 	if (!tool->hit_boxes) {
-		tool->hit_box_count = 0;
-		cairo_destroy(cr);
-		cairo_surface_destroy(surface);
-		return NULL;
+		tool->hit_boxes = calloc(1, sizeof(struct wlr_box));
+		if (!tool->hit_boxes) {
+			tool->hit_box_count = 0;
+			cairo_destroy(cr);
+			cairo_surface_destroy(surface);
+			return NULL;
+		}
 	}
 	tool->hit_box_count = 1;
 	tool->hit_boxes[0].x = 0;
@@ -498,12 +507,18 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 	enum wm_iconbar_mode mode = toolbar->iconbar_mode;
 	int count = 0;
 
-	free(toolbar->ib_entries);
-	toolbar->ib_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
-		sizeof(struct wm_iconbar_entry));
+	/* Reuse pre-allocated array instead of free+calloc per update.
+	 * Fallback to allocation if not pre-allocated (e.g. in tests). */
 	if (!toolbar->ib_entries) {
-		toolbar->ib_count = 0;
-		return 0;
+		toolbar->ib_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
+			sizeof(struct wm_iconbar_entry));
+		if (!toolbar->ib_entries) {
+			toolbar->ib_count = 0;
+			return 0;
+		}
+	} else {
+		memset(toolbar->ib_entries, 0, WM_TOOLBAR_ICONBAR_MAX *
+			sizeof(struct wm_iconbar_entry));
 	}
 
 	struct wm_view *view;
@@ -584,8 +599,6 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	if (count == 0) {
 		/* No windows — return empty surface */
 		cairo_destroy(cr);
-		free(toolbar->ib_boxes);
-		toolbar->ib_boxes = NULL;
 		return wlr_buffer_from_cairo(surface);
 	}
 
@@ -614,13 +627,18 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 		/* left: offset stays 0 */
 	}
 
-	/* Allocate hit boxes */
-	free(toolbar->ib_boxes);
-	toolbar->ib_boxes = calloc(count, sizeof(struct wlr_box));
+	/* Reuse pre-allocated hit boxes array.
+	 * Fallback to allocation if not pre-allocated (e.g. in tests). */
 	if (!toolbar->ib_boxes) {
-		cairo_destroy(cr);
-		cairo_surface_destroy(surface);
-		return NULL;
+		toolbar->ib_boxes = calloc(WM_TOOLBAR_ICONBAR_MAX,
+			sizeof(struct wlr_box));
+		if (!toolbar->ib_boxes) {
+			cairo_destroy(cr);
+			cairo_surface_destroy(surface);
+			return NULL;
+		}
+	} else {
+		memset(toolbar->ib_boxes, 0, count * sizeof(struct wlr_box));
 	}
 
 	/* Get icon bar colors (fall back to toolbar defaults) */
@@ -1044,8 +1062,8 @@ clock_timer_cb(void *data)
 	struct wm_toolbar *toolbar = data;
 
 	if (!toolbar->visible) {
-		/* Re-arm even when hidden */
-		wl_event_source_timer_update(toolbar->clock_timer, 1000);
+		/* Don't re-arm when hidden — saves 86,400 timer
+		 * fires/day. Timer restarts on visibility change. */
 		return 0;
 	}
 
@@ -1080,6 +1098,14 @@ wm_toolbar_create(struct wm_server *server)
 	toolbar->height = WM_TOOLBAR_HEIGHT;
 	toolbar->cached_ws_index = -1;
 	toolbar->cached_clock[0] = '\0';
+	toolbar->cached_ws_name_max_width = -1;
+
+	/* Pre-allocate iconbar arrays to avoid malloc/free churn on
+	 * every focus change, title change, and workspace switch. */
+	toolbar->ib_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
+		sizeof(struct wm_iconbar_entry));
+	toolbar->ib_boxes = calloc(WM_TOOLBAR_ICONBAR_MAX,
+		sizeof(struct wlr_box));
 
 	/* Read placement config */
 	if (server->config) {
@@ -1231,6 +1257,9 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	}
 
 	struct wm_config *config = toolbar->server->config;
+
+	/* Invalidate cached measurements on relayout (style/config change) */
+	toolbar->cached_ws_name_max_width = -1;
 
 	/* Re-read configuration values so reconfigure picks up changes */
 	if (config) {
@@ -1527,6 +1556,12 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 
 		toolbar_render(toolbar);
 
+		/* Restart clock timer (stopped while hidden) */
+		if (toolbar->clock_timer) {
+			wl_event_source_timer_update(
+				toolbar->clock_timer, 1000);
+		}
+
 		/* Cancel any pending hide */
 		if (toolbar->hide_timer) {
 			wl_event_source_timer_update(toolbar->hide_timer, 0);
@@ -1579,6 +1614,11 @@ wm_toolbar_toggle_visible(struct wm_toolbar *toolbar)
 	wlr_scene_node_set_enabled(&toolbar->scene_tree->node,
 		toolbar->visible);
 	wm_toolbar_relayout(toolbar);
+
+	/* Restart clock timer when becoming visible (it stops when hidden) */
+	if (toolbar->visible && toolbar->clock_timer) {
+		wl_event_source_timer_update(toolbar->clock_timer, 1000);
+	}
 
 	wlr_log(WLR_INFO, "toolbar toggled visible: %d", toolbar->visible);
 }
