@@ -201,6 +201,7 @@ struct wm_server {
 	/* Focus policy (click-to-focus, sloppy) */
 	int focus_policy; /* enum wm_focus_policy from view.h */
 	struct wm_view *focused_view;
+	struct wm_view *show_desktop_saved_view; /* restore focus on toggle-off */
 	bool focus_user_initiated; /* true for click/keybind focus changes */
 
 	/* Auto-raise timer for focus-follows-mouse modes */

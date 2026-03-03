@@ -626,6 +626,7 @@ struct wm_server {
 	int wireframe_x, wireframe_y, wireframe_w, wireframe_h;
 	int focus_policy;
 	struct wm_view *focused_view;
+	struct wm_view *show_desktop_saved_view;
 	bool focus_user_initiated;
 	struct wl_event_source *auto_raise_timer;
 	struct wm_view *auto_raise_view;

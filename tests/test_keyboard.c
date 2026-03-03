@@ -895,6 +895,7 @@ struct wm_server {
 	struct wm_toolbar *toolbar;
 	struct wm_slit *slit;
 	struct wm_view *focused_view;
+	struct wm_view *show_desktop_saved_view;
 	bool focus_user_initiated;
 	bool show_position;
 	enum wm_cursor_mode cursor_mode;
