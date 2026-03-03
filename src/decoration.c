@@ -1340,7 +1340,7 @@ layout_and_render(struct wm_decoration *deco, struct wm_style *style)
 		deco->preset == WM_DECOR_TAB ||
 		deco->preset == WM_DECOR_TINY ||
 		deco->preset == WM_DECOR_TOOL);
-	l.has_handle = (deco->preset == WM_DECOR_NORMAL);
+	l.has_handle = (deco->preset == WM_DECOR_NORMAL) && !deco->shaded;
 	l.has_borders = (deco->preset == WM_DECOR_NORMAL ||
 		deco->preset == WM_DECOR_BORDER);
 
@@ -1783,14 +1783,12 @@ wm_decoration_set_shaded(struct wm_decoration *decoration,
 			decoration->content_height;
 
 		/*
-		 * When shaded, hide handle/grips and set content height to 0.
+		 * Set content height to 0 and re-render decorations.
+		 * layout_and_render() checks the shaded flag to suppress
+		 * the handle, so borders wrap tightly around the titlebar.
 		 */
-		wlr_scene_node_set_enabled(&decoration->handle_buf->node,
-			false);
-		wlr_scene_node_set_enabled(&decoration->grip_left->node,
-			false);
-		wlr_scene_node_set_enabled(&decoration->grip_right->node,
-			false);
+		decoration->content_height = 0;
+		wm_decoration_update(decoration, style);
 	} else {
 		/* Restore geometry */
 		decoration->content_width =

@@ -425,13 +425,13 @@ config_create(void)
 	config->toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
 	config->toolbar_auto_hide = false;
 	config->toolbar_auto_hide_delay_ms = 500;
-	config->toolbar_width_percent = 100;
+	config->toolbar_width_percent = 72;
 	config->toolbar_height = 0;
 	config->toolbar_layer = 4; /* Dock */
 	config->toolbar_alpha = 255;
 	config->toolbar_on_head = 0;
 	config->toolbar_tools = strdup(
-		"prevworkspace workspacename nextworkspace iconbar clock");
+		"workspacename prevworkspace nextworkspace iconbar clock");
 
 	config->titlebar_left = strdup("Stick");
 	config->titlebar_right = strdup("Shade Minimize Maximize Close");

@@ -79,7 +79,7 @@ session.screen0.toolbar.autoHide: false
 session.screen0.toolbar.autoHideDelay: 500
 
 # Toolbar width as percentage of screen width (10-100)
-session.screen0.toolbar.widthPercent: 100
+session.screen0.toolbar.widthPercent: 72
 
 # -------------------------------------------------------------------
 # Keyboard layout (XKB)

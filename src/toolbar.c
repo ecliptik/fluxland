@@ -269,7 +269,7 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 			tool->width = h;
 			fixed_total += tool->width;
 		} else if (tool->type == WM_TOOL_WORKSPACE_NAME) {
-			/* Measure widest workspace name — buttons share this tool */
+			/* Measure widest workspace name — single active label */
 			int max_tw = 0;
 			struct wm_workspace *ws_iter;
 			wl_list_for_each(ws_iter,
@@ -280,8 +280,7 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 					&style->toolbar_font, 1.0f);
 				if (tw > max_tw) max_tw = tw;
 			}
-			int per_btn = max_tw + WM_TOOLBAR_PADDING * 4;
-			tool->width = per_btn * toolbar->server->workspace_count;
+			tool->width = max_tw + WM_TOOLBAR_PADDING * 4;
 			if (tool->width < 60) tool->width = 60;
 			fixed_total += tool->width;
 		} else if (tool->type == WM_TOOL_CLOCK) {
@@ -413,9 +412,7 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 {
 	struct wm_server *server = toolbar->server;
 	struct wm_style *style = server->style;
-	int ws_count = server->workspace_count;
 	struct wm_workspace *active_ws = wm_workspace_get_active(server);
-	int current = active_ws ? active_ws->index : 0;
 
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
@@ -431,94 +428,59 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-	int btn_width = 0;
-	if (ws_count > 0) {
-		btn_width = width / ws_count;
-	}
-
-	/* Free old hit boxes */
+	/* Single hit box covering the whole tool */
 	free(tool->hit_boxes);
-	tool->hit_boxes = calloc(ws_count, sizeof(struct wlr_box));
+	tool->hit_boxes = calloc(1, sizeof(struct wlr_box));
 	if (!tool->hit_boxes) {
 		tool->hit_box_count = 0;
 		cairo_destroy(cr);
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
-	tool->hit_box_count = ws_count;
+	tool->hit_box_count = 1;
+	tool->hit_boxes[0].x = 0;
+	tool->hit_boxes[0].y = 0;
+	tool->hit_boxes[0].width = width;
+	tool->hit_boxes[0].height = height;
 
-	struct wm_workspace *ws;
-	int i = 0;
-	wl_list_for_each(ws, &server->workspaces, link) {
-		int bx = i * btn_width;
-		int bw = (i == ws_count - 1) ? (width - bx) : btn_width;
+	/* Render background with toolbar texture */
+	cairo_surface_t *bg =
+		wm_render_texture(&style->toolbar_texture,
+			width, height, 1.0f);
+	if (bg) {
+		cairo_t *bcr = cairo_create(bg);
+		cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
+		cairo_paint(bcr);
+		cairo_destroy(bcr);
+		cairo_set_source_surface(cr, bg, 0, 0);
+		cairo_paint(cr);
+		cairo_surface_destroy(bg);
+	} else {
+		cairo_set_source_rgba(cr, 0.4, 0.4, 0.5, 1.0);
+		cairo_rectangle(cr, 0, 0, width, height);
+		cairo_fill(cr);
+	}
 
-		/* Render button background */
-		if (i == current) {
-			cairo_surface_t *bg =
-				wm_render_texture(&style->toolbar_texture,
-					bw, height, 1.0f);
-			if (bg) {
-				cairo_t *bcr = cairo_create(bg);
-				cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
-				cairo_paint(bcr);
-				cairo_destroy(bcr);
-				cairo_set_source_surface(cr, bg, bx, 0);
-				cairo_paint(cr);
-				cairo_surface_destroy(bg);
-			} else {
-				cairo_set_source_rgba(cr, 0.4, 0.4, 0.5, 1.0);
-				cairo_rectangle(cr, bx, 0, bw, height);
-				cairo_fill(cr);
-			}
-		} else {
-			cairo_set_source_rgba(cr, 0, 0, 0, 0.2);
-			cairo_rectangle(cr, bx, 0, bw, height);
-			cairo_fill(cr);
-		}
+	/* Draw active workspace name centered */
+	const char *name = active_ws ? active_ws->name : NULL;
+	char fallback[16];
+	if (!name || !*name) {
+		snprintf(fallback, sizeof(fallback), "%d",
+			active_ws ? active_ws->index + 1 : 1);
+		name = fallback;
+	}
 
-		/* Draw separator line */
-		if (i > 0) {
-			cairo_set_source_rgba(cr,
-				style->toolbar_text_color.r / 255.0,
-				style->toolbar_text_color.g / 255.0,
-				style->toolbar_text_color.b / 255.0, 0.3);
-			cairo_set_line_width(cr, 1.0);
-			cairo_move_to(cr, bx + 0.5, 2);
-			cairo_line_to(cr, bx + 0.5, height - 2);
-			cairo_stroke(cr);
-		}
-
-		/* Draw workspace name/number */
-		const char *name = ws->name;
-		char fallback[16];
-		if (!name || !*name) {
-			snprintf(fallback, sizeof(fallback), "%d", i + 1);
-			name = fallback;
-		}
-
-		int tw, th;
-		cairo_surface_t *text = wm_render_text(name,
-			&style->toolbar_font, &style->toolbar_text_color,
-			bw - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
-		if (text) {
-			int tx = bx + (bw - tw) / 2;
-			int ty = (height - th) / 2;
-			if (ty < 0) ty = 0;
-			cairo_set_source_surface(cr, text, tx, ty);
-			cairo_paint(cr);
-			cairo_surface_destroy(text);
-		}
-
-		/* Store hit box (in tool-local coords) */
-		if (tool->hit_boxes) {
-			tool->hit_boxes[i].x = bx;
-			tool->hit_boxes[i].y = 0;
-			tool->hit_boxes[i].width = bw;
-			tool->hit_boxes[i].height = height;
-		}
-
-		i++;
+	int tw, th;
+	cairo_surface_t *text = wm_render_text(name,
+		&style->toolbar_font, &style->toolbar_text_color,
+		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
+	if (text) {
+		int tx = (width - tw) / 2;
+		int ty = (height - th) / 2;
+		if (ty < 0) ty = 0;
+		cairo_set_source_surface(cr, text, tx, ty);
+		cairo_paint(cr);
+		cairo_surface_destroy(text);
 	}
 
 	cairo_destroy(cr);
@@ -1422,6 +1384,82 @@ wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
 
 		default:
 			/* Scroll on other tools: no action */
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool
+wm_toolbar_handle_button(struct wm_toolbar *toolbar,
+	double lx, double ly, uint32_t button)
+{
+	if (!toolbar || !toolbar->visible) {
+		return false;
+	}
+
+	/* Convert layout coords to toolbar-local coords */
+	double local_x = lx - toolbar->x;
+	double local_y = ly - toolbar->y;
+
+	/* Check bounds */
+	if (local_x < 0 || local_x >= toolbar->width ||
+	    local_y < 0 || local_y >= toolbar->height) {
+		return false;
+	}
+
+	/* Only handle left-click (BTN_LEFT = 272) */
+	if (button != 272) {
+		return true; /* consume but ignore non-left clicks */
+	}
+
+	/* Find which tool was clicked */
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		if (local_x < tool->x || local_x >= tool->x + tool->width) {
+			continue;
+		}
+
+		switch (tool->type) {
+		case WM_TOOL_PREV_WORKSPACE:
+			wm_workspace_switch_prev(toolbar->server);
+			return true;
+
+		case WM_TOOL_NEXT_WORKSPACE:
+			wm_workspace_switch_next(toolbar->server);
+			return true;
+
+		case WM_TOOL_PREV_WINDOW:
+			wm_focus_prev_view(toolbar->server);
+			return true;
+
+		case WM_TOOL_NEXT_WINDOW:
+			wm_focus_next_view(toolbar->server);
+			return true;
+
+		case WM_TOOL_ICONBAR: {
+			/* Find which iconbar entry was clicked */
+			double ib_x = local_x - tool->x;
+			for (int j = 0; j < toolbar->ib_count; j++) {
+				struct wlr_box *box = &toolbar->ib_boxes[j];
+				if (ib_x >= box->x &&
+				    ib_x < box->x + box->width) {
+					struct wm_view *view =
+						toolbar->ib_entries[j].view;
+					if (view) {
+						wm_focus_view(view, NULL);
+						wm_view_raise(view);
+					}
+					return true;
+				}
+			}
+			return true;
+		}
+
+		case WM_TOOL_WORKSPACE_NAME:
+		case WM_TOOL_CLOCK:
+			/* No click action */
 			return true;
 		}
 	}

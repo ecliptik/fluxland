@@ -747,6 +747,15 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	}
 #endif
 
+	/* Check if click is on a toolbar tool */
+	if (server->toolbar && server->toolbar->visible &&
+	    wm_toolbar_handle_button(server->toolbar,
+		    server->cursor->x, server->cursor->y, event->button)) {
+		wlr_seat_pointer_notify_button(server->seat,
+			event->time_msec, event->button, event->state);
+		return;
+	}
+
 	/* Determine context */
 	struct wm_view *view = NULL;
 	enum wm_mouse_context ctx = get_cursor_context(server, &view);
@@ -790,6 +799,45 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		WM_MOUSE_PRESS, event->button, mods);
 	if (bind) {
 		execute_mousebind(server, bind, view);
+
+		/* If click was on a decoration button, also dispatch its action */
+		if (view && view->decoration && ctx == WM_MOUSE_CTX_TITLEBAR &&
+		    event->button == BTN_LEFT) {
+			double dx = server->cursor->x - view->x;
+			double dy = server->cursor->y - view->y;
+			struct wm_decor_button *btn =
+				wm_decoration_button_at(view->decoration,
+					dx, dy);
+			if (btn) {
+				switch (btn->type) {
+				case WM_BUTTON_CLOSE:
+					execute_mouse_action(server,
+						WM_ACTION_CLOSE, NULL, view);
+					break;
+				case WM_BUTTON_MAXIMIZE:
+					execute_mouse_action(server,
+						WM_ACTION_MAXIMIZE, NULL,
+						view);
+					break;
+				case WM_BUTTON_ICONIFY:
+					execute_mouse_action(server,
+						WM_ACTION_MINIMIZE, NULL,
+						view);
+					break;
+				case WM_BUTTON_SHADE:
+					execute_mouse_action(server,
+						WM_ACTION_SHADE, NULL, view);
+					break;
+				case WM_BUTTON_STICK:
+					execute_mouse_action(server,
+						WM_ACTION_STICK, NULL, view);
+					break;
+				default:
+					break;
+				}
+			}
+		}
+
 		wlr_seat_pointer_notify_button(server->seat,
 			event->time_msec, event->button, event->state);
 		return;

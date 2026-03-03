@@ -47,6 +47,7 @@
 #define WM_IPC_H
 #define WM_FOREIGN_TOPLEVEL_H
 #define WM_KEYBIND_H
+#define WM_KEYBOARD_ACTIONS_H
 #define WM_I18N_H
 #define WM_UTIL_H
 #define WM_TABGROUP_H
@@ -866,6 +867,29 @@ typedef uint32_t xkb_keysym_t;
 #include <iconv.h>
 
 void wm_spawn_command(const char *cmd) { (void)cmd; }
+
+/* --- Action dispatch stubs (for menu.c WM_MENU_COMMAND dispatch) --- */
+
+enum wm_action {
+	WM_ACTION_NOP = 0,
+	WM_ACTION_MAXIMIZE,
+	WM_ACTION_MINIMIZE,
+	WM_ACTION_SHADE,
+	WM_ACTION_RECONFIGURE,
+};
+
+static enum wm_action wm_action_from_name(const char *name)
+{
+	(void)name;
+	return WM_ACTION_NOP;
+}
+
+static bool wm_execute_action(struct wm_server *server,
+	enum wm_action action, const char *argument)
+{
+	(void)server; (void)action; (void)argument;
+	return true;
+}
 
 /* --- Perf stubs (menu_render.c includes perf.h) --- */
 #include "perf.h"

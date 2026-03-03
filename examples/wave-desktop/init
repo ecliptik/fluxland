@@ -41,7 +41,7 @@ session.screen0.windowPlacement: RowSmartPlacement
 session.screen0.toolbar.visible: true
 session.screen0.toolbar.placement: BottomCenter
 session.screen0.toolbar.autoHide: false
-session.screen0.toolbar.widthPercent: 100
+session.screen0.toolbar.widthPercent: 72
 
 # -------------------------------------------------------------------
 # Style: Great Wave theme

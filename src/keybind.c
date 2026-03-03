@@ -1165,6 +1165,12 @@ keybind_add_from_string(struct wl_list *bindings, const char *line)
 	return parse_keybind_line(line, bindings);
 }
 
+enum wm_action
+wm_action_from_name(const char *name)
+{
+	return parse_action_name(name);
+}
+
 static int
 action_name_cmp(const void *a, const void *b)
 {

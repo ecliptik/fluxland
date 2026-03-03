@@ -248,4 +248,8 @@ void wm_condition_destroy(struct wm_condition *cond);
 /* List all available action names to stdout (for --list-commands) */
 void wm_keybind_list_actions(void);
 
+/* Look up an action enum by name (case-insensitive).
+ * Returns WM_ACTION_NOP if the name is not recognized. */
+enum wm_action wm_action_from_name(const char *name);
+
 #endif /* WM_KEYBIND_H */

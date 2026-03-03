@@ -784,6 +784,17 @@ parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
 					simple_tags[i].type,
 					label ? label : simple_tags[i].name);
 				if (item) {
+					/* Attach workspace submenu for
+					 * [workspaces] directive */
+					if (simple_tags[i].type ==
+					    WM_MENU_WORKSPACES && server) {
+						item->submenu =
+						    wm_menu_create_ws_switch_menu(
+							server);
+						if (item->submenu)
+							item->submenu->parent =
+								menu;
+					}
 					wl_list_insert(menu->items.prev,
 						&item->link);
 				}

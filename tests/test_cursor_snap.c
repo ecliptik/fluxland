@@ -98,6 +98,7 @@
 /* Block linux input event codes, cairo, and drm headers */
 #define _INPUT_EVENT_CODES_H
 #define _LINUX_INPUT_EVENT_CODES_H
+#define BTN_LEFT 272
 #define CAIRO_H
 
 /* Block drm_fourcc.h (system header guard is DRM_FOURCC_H) */
@@ -576,6 +577,22 @@ struct wm_decoration {
 	bool shaded;
 	int content_width;
 	int content_height;
+};
+
+/* From render.h */
+enum wm_button_type {
+	WM_BUTTON_CLOSE,
+	WM_BUTTON_MAXIMIZE,
+	WM_BUTTON_ICONIFY,
+	WM_BUTTON_SHADE,
+	WM_BUTTON_STICK,
+};
+
+struct wm_decor_button {
+	enum wm_button_type type;
+	void *node;
+	struct wlr_box box;
+	bool pressed;
 };
 
 /* From mousebind.h */
@@ -1360,6 +1377,9 @@ static void wm_workspace_switch_prev(struct wm_server *server)
 	{ (void)server; g_switch_prev_count++; }
 static void wm_workspace_switch(struct wm_server *server, int idx)
 	{ (void)server; (void)idx; }
+static struct wm_decor_button *wm_decoration_button_at(
+	struct wm_decoration *d, double x, double y)
+	{ (void)d; (void)x; (void)y; return NULL; }
 static enum wm_decor_region wm_decoration_region_at(
 	struct wm_decoration *d, double x, double y)
 	{ (void)d; (void)x; (void)y; return WM_DECOR_REGION_NONE; }
@@ -1376,6 +1396,9 @@ static void wm_toolbar_notify_pointer_motion(struct wm_toolbar *tb,
 static bool wm_toolbar_handle_scroll(struct wm_toolbar *tb, double x,
 	double y, double delta) { (void)tb; (void)x; (void)y; (void)delta;
 	return false; }
+static bool wm_toolbar_handle_button(struct wm_toolbar *tb, double x,
+	double y, uint32_t button) { (void)tb; (void)x; (void)y;
+	(void)button; return false; }
 static bool wm_menu_handle_motion(struct wm_server *s, double x, double y)
 	{ (void)s; (void)x; (void)y; return false; }
 static bool wm_menu_handle_button(struct wm_server *s, double x, double y,

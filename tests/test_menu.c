@@ -58,6 +58,13 @@ int wm_rules_remember_window(struct wm_view *v, const char *p)
 void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 	enum wm_ipc_event event, const char *payload)
 	{ (void)ipc; (void)event; (void)payload; }
+#include "keyboard_actions.h"
+bool wm_execute_action(struct wm_server *s, enum wm_action a,
+	const char *arg)
+	{ (void)s; (void)a; (void)arg; return true; }
+#include "keybind.h"
+enum wm_action wm_action_from_name(const char *name)
+	{ (void)name; return WM_ACTION_NOP; }
 
 #define TEST_DIR "/tmp/fluxland-test/wm-test-menu"
 #define TEST_MENU TEST_DIR "/menu"

@@ -24,6 +24,7 @@
 #include "foreign_toplevel.h"
 #include "i18n.h"
 #include "ipc.h"
+#include "keyboard_actions.h"
 #include "menu.h"
 #include "menu_parse.h"
 #include "menu_render.h"
@@ -134,6 +135,35 @@ wm_menu_create_workspace_menu(struct wm_server *server)
 		if (item) {
 			char cmd[64];
 			snprintf(cmd, sizeof(cmd), "SendToWorkspace %d",
+				ws->index + 1);
+			item->command = strdup(cmd);
+			wl_list_insert(menu->items.prev, &item->link);
+		}
+	}
+
+	return menu;
+}
+
+/* --- Workspace switching menu (for [workspaces] directive) --- */
+
+struct wm_menu *
+wm_menu_create_ws_switch_menu(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, _("Workspaces"));
+	if (!menu) {
+		return NULL;
+	}
+
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &server->workspaces, link) {
+		char label[128];
+		snprintf(label, sizeof(label), "%d: %s", ws->index + 1,
+			ws->name ? ws->name : _("Workspace"));
+		struct wm_menu_item *item = menu_item_create(
+			WM_MENU_COMMAND, label);
+		if (item) {
+			char cmd[64];
+			snprintf(cmd, sizeof(cmd), "Workspace %d",
 				ws->index + 1);
 			item->command = strdup(cmd);
 			wl_list_insert(menu->items.prev, &item->link);
@@ -578,12 +608,20 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 
 	case WM_MENU_RECONFIG:
 		wlr_log(WLR_INFO, "menu: %s", "reconfig");
-		/* Will be wired up in integration */
+		wm_execute_action(server, WM_ACTION_RECONFIGURE, NULL);
 		break;
 
 	case WM_MENU_RESTART:
 		wlr_log(WLR_INFO, "menu: %s", "restart");
-		/* Will be wired up in integration */
+		if (item->command) {
+			/* Restart with different window manager */
+			wm_spawn_command(item->command);
+			wl_display_terminate(server->wl_display);
+		} else {
+			/* Restart: reload configuration */
+			wm_execute_action(server, WM_ACTION_RECONFIGURE,
+				NULL);
+		}
 		break;
 
 	case WM_MENU_EXIT:
@@ -600,9 +638,7 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		break;
 
 	case WM_MENU_SHADE:
-		if (server->focused_view && server->focused_view->decoration) {
-			wlr_log(WLR_INFO, "menu: %s", "toggle shade");
-		}
+		wm_execute_action(server, WM_ACTION_SHADE, NULL);
 		break;
 
 	case WM_MENU_STICK:
@@ -613,11 +649,11 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		break;
 
 	case WM_MENU_MAXIMIZE:
-		/* Will be wired up to view maximize toggle */
+		wm_execute_action(server, WM_ACTION_MAXIMIZE, NULL);
 		break;
 
 	case WM_MENU_ICONIFY:
-		/* Will be wired up to view minimize */
+		wm_execute_action(server, WM_ACTION_MINIMIZE, NULL);
 		break;
 
 	case WM_MENU_CLOSE:
@@ -656,9 +692,32 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		break;
 
 	case WM_MENU_COMMAND:
-		/* Generic command - will be dispatched by integration */
 		if (item->command) {
 			wlr_log(WLR_INFO, "menu command: %s", item->command);
+			/* Parse "ActionName argument" and dispatch */
+			char action_name[64];
+			const char *arg = NULL;
+			const char *space = strchr(item->command, ' ');
+			if (space) {
+				size_t len = (size_t)(space - item->command);
+				if (len >= sizeof(action_name))
+					len = sizeof(action_name) - 1;
+				memcpy(action_name, item->command, len);
+				action_name[len] = '\0';
+				arg = space + 1;
+			} else {
+				snprintf(action_name, sizeof(action_name),
+					"%s", item->command);
+			}
+			enum wm_action act =
+				wm_action_from_name(action_name);
+			if (act != WM_ACTION_NOP) {
+				wm_execute_action(server, act, arg);
+			} else {
+				wlr_log(WLR_ERROR,
+					"menu: unknown action '%s'",
+					action_name);
+			}
 		}
 		break;
 

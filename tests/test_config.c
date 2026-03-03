@@ -59,7 +59,7 @@ test_create_destroy(void)
 	assert(c->toolbar_placement == WM_TOOLBAR_BOTTOM_CENTER);
 	assert(c->toolbar_auto_hide == false);
 	assert(c->toolbar_auto_hide_delay_ms == 500);
-	assert(c->toolbar_width_percent == 100);
+	assert(c->toolbar_width_percent == 72);
 	assert(c->workspace_warping == true);
 	assert(c->raise_on_focus == false);
 	assert(c->auto_raise_delay_ms == 250);

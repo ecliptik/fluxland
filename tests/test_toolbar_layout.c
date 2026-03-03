@@ -447,6 +447,10 @@ static int g_ws_switch_next_count;
 static int g_ws_switch_prev_count;
 static int g_timer_update_count;
 static int g_timer_update_last_ms;
+static int g_focus_next_count;
+static int g_focus_prev_count;
+static int g_focus_view_count;
+static int g_view_raise_count;
 
 /* --- Stub wlroots functions --- */
 
@@ -608,6 +612,35 @@ wm_focus_nav_get_toolbar_index(struct wm_server *server)
 	return server->focus_nav.toolbar_index;
 }
 
+static void
+wm_focus_next_view(struct wm_server *server)
+{
+	(void)server;
+	g_focus_next_count++;
+}
+
+static void
+wm_focus_prev_view(struct wm_server *server)
+{
+	(void)server;
+	g_focus_prev_count++;
+}
+
+static void
+wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
+{
+	(void)view;
+	(void)surface;
+	g_focus_view_count++;
+}
+
+static void
+wm_view_raise(struct wm_view *view)
+{
+	(void)view;
+	g_view_raise_count++;
+}
+
 /* --- Include toolbar source directly --- */
 
 #include "toolbar.h"
@@ -637,6 +670,10 @@ reset_globals(void)
 	g_measure_text_width_count = 0;
 	g_ws_switch_next_count = 0;
 	g_ws_switch_prev_count = 0;
+	g_focus_next_count = 0;
+	g_focus_prev_count = 0;
+	g_focus_view_count = 0;
+	g_view_raise_count = 0;
 	g_timer_update_count = 0;
 	g_timer_update_last_ms = -1;
 }

@@ -141,4 +141,8 @@ void wm_toolbar_toggle_above(struct wm_toolbar *toolbar);
 /* Toggle toolbar visibility on/off */
 void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
 
+/* Handle button click on toolbar; returns true if consumed */
+bool wm_toolbar_handle_button(struct wm_toolbar *toolbar,
+	double lx, double ly, uint32_t button);
+
 #endif /* WM_TOOLBAR_H */
