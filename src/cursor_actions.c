@@ -24,6 +24,7 @@
 #include "menu.h"
 #include "mousebind.h"
 #include "slit.h"
+#include "tabgroup.h"
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
@@ -206,6 +207,31 @@ execute_mouse_action(struct wm_server *server,
 		if (view)
 			wm_view_begin_interactive(view,
 				WM_CURSOR_TABBING, 0);
+		break;
+
+	case WM_ACTION_ACTIVATE_TAB:
+		if (view && view->tab_group &&
+		    view->tab_group->count > 1 && view->decoration) {
+			double dx = server->cursor->x - view->x;
+			double dy = server->cursor->y - view->y;
+			int tab_idx = wm_decoration_tab_at(
+				view->decoration, dx, dy);
+			if (tab_idx >= 0) {
+				int i = 0;
+				struct wm_view *tab_view;
+				wl_list_for_each(tab_view,
+						&view->tab_group->views,
+						tab_link) {
+					if (i == tab_idx) {
+						wm_tab_group_activate(
+							view->tab_group,
+							tab_view);
+						break;
+					}
+					i++;
+				}
+			}
+		}
 		break;
 
 	case WM_ACTION_CLOSE:

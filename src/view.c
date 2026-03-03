@@ -139,6 +139,14 @@ wm_view_begin_interactive(struct wm_view *view,
 		server->grab_y = server->cursor->y - view->y;
 		/* Reset grab_geobox so stale resize values don't affect move */
 		memset(&server->grab_geobox, 0, sizeof(server->grab_geobox));
+	} else if (mode == WM_CURSOR_TABBING) {
+		server->grab_x = server->cursor->x - view->x;
+		server->grab_y = server->cursor->y - view->y;
+		/* Save original position for cancel/restore */
+		server->grab_geobox.x = view->x;
+		server->grab_geobox.y = view->y;
+		server->grab_geobox.width = 0;
+		server->grab_geobox.height = 0;
 	} else {
 		struct wlr_box geo;
 		wlr_xdg_surface_get_geometry(view->xdg_toplevel->base,

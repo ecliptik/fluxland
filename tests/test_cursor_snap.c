@@ -653,6 +653,7 @@ enum wm_action {
 	WM_ACTION_MACRO_CMD,
 	WM_ACTION_TOGGLE_CMD,
 	WM_ACTION_KILL,
+	WM_ACTION_ACTIVATE_TAB,
 };
 
 struct wm_chain_state {
@@ -1398,6 +1399,13 @@ static void wm_focus_update_for_cursor(struct wm_server *s,
 	double cx, double cy) { (void)s; (void)cx; (void)cy; }
 static void wm_tab_group_activate(struct wm_tab_group *g,
 	struct wm_view *v) { (void)g; (void)v; }
+static struct wm_tab_group *wm_tab_group_create(struct wm_view *v)
+	{ (void)v; return NULL; }
+static void wm_tab_group_add(struct wm_tab_group *g,
+	struct wm_view *v) { (void)g; (void)v; }
+static void wm_tab_group_remove(struct wm_view *v) { (void)v; }
+static void wm_view_activate_tab(struct wm_view *v, int idx)
+	{ (void)v; (void)idx; }
 static cairo_surface_t *wm_render_text(const char *text,
 	const struct wm_font *f, const struct wm_color *c,
 	int max_w, int *ow, int *oh, enum wm_justify j, float sc)

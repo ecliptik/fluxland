@@ -206,6 +206,48 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 	}
 }
 
+static void
+process_cursor_tabbing(struct wm_server *server, uint32_t time)
+{
+	(void)time;
+	if (!server->grabbed_view) {
+		return;
+	}
+
+	struct wm_view *view = server->grabbed_view;
+
+	/* Move the dragged window along with cursor */
+	double new_x = server->cursor->x - server->grab_x;
+	double new_y = server->cursor->y - server->grab_y;
+
+	view->x = (int)new_x;
+	view->y = (int)new_y;
+	wlr_scene_node_set_position(&view->scene_tree->node,
+		view->x, view->y);
+
+	/* Find if cursor is over another view's titlebar */
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wm_view *target = view_at(server,
+		server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+
+	if (target && target != view && target->decoration) {
+		double dx = server->cursor->x - target->x;
+		double dy = server->cursor->y - target->y;
+		enum wm_decor_region region =
+			wm_decoration_region_at(target->decoration, dx, dy);
+		if (region == WM_DECOR_REGION_TITLEBAR ||
+		    region == WM_DECOR_REGION_LABEL) {
+			wlr_cursor_set_xcursor(server->cursor,
+				server->cursor_mgr, "dnd-link");
+			return;
+		}
+	}
+
+	wlr_cursor_set_xcursor(server->cursor,
+		server->cursor_mgr, "dnd-none");
+}
+
 /*
  * Cancel any pending auto-raise timer.
  */
@@ -295,6 +337,10 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	}
 	if (server->cursor_mode == WM_CURSOR_RESIZE) {
 		process_cursor_resize(server, time);
+		return;
+	}
+	if (server->cursor_mode == WM_CURSOR_TABBING) {
+		process_cursor_tabbing(server, time);
 		return;
 	}
 
@@ -492,6 +538,81 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 
 		/* End any interactive mode on button release */
 		if (server->cursor_mode != WM_CURSOR_PASSTHROUGH) {
+			/* Handle tab drop for tabbing mode */
+			if (server->cursor_mode == WM_CURSOR_TABBING &&
+			    server->grabbed_view) {
+				struct wm_view *dragged =
+					server->grabbed_view;
+				double sx2, sy2;
+				struct wlr_surface *surf2 = NULL;
+				struct wm_view *target = view_at(server,
+					server->cursor->x,
+					server->cursor->y,
+					&surf2, &sx2, &sy2);
+
+				if (target && target != dragged &&
+				    target->decoration) {
+					double tdx = server->cursor->x -
+						target->x;
+					double tdy = server->cursor->y -
+						target->y;
+					enum wm_decor_region region =
+						wm_decoration_region_at(
+							target->decoration,
+							tdx, tdy);
+					if (region ==
+					    WM_DECOR_REGION_TITLEBAR ||
+					    region ==
+					    WM_DECOR_REGION_LABEL) {
+						/* Drop on titlebar:
+						 * create/join tab group */
+						if (!target->tab_group) {
+							wm_tab_group_create(
+								target);
+						}
+						if (target->tab_group) {
+							wm_tab_group_add(
+								target->
+								tab_group,
+								dragged);
+						}
+						server->cursor_mode =
+							WM_CURSOR_PASSTHROUGH;
+						server->grabbed_view = NULL;
+						wlr_cursor_set_xcursor(
+							server->cursor,
+							server->cursor_mgr,
+							"default");
+						wlr_seat_pointer_notify_button(
+							server->seat,
+							event->time_msec,
+							event->button,
+							event->state);
+						return;
+					}
+				}
+
+				/* No valid drop target: restore position */
+				dragged->x =
+					server->grab_geobox.x;
+				dragged->y =
+					server->grab_geobox.y;
+				wlr_scene_node_set_position(
+					&dragged->scene_tree->node,
+					dragged->x, dragged->y);
+				server->cursor_mode =
+					WM_CURSOR_PASSTHROUGH;
+				server->grabbed_view = NULL;
+				wlr_cursor_set_xcursor(server->cursor,
+					server->cursor_mgr, "default");
+				wlr_seat_pointer_notify_button(
+					server->seat,
+					event->time_msec,
+					event->button,
+					event->state);
+				return;
+			}
+
 			/* Apply snap zone geometry if snapping is active */
 			if (server->cursor_mode == WM_CURSOR_MOVE &&
 			    server->snap_zone != WM_SNAP_ZONE_NONE &&
