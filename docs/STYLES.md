@@ -10,7 +10,7 @@ The signature fluxland style. Deep indigo blues, ocean teal, cream whites, and
 warm accents inspired by Hokusai's *The Great Wave off Kanagawa*. Ships as the
 default style in the [`wave-desktop`](../examples/wave-desktop/) example config.
 
-![wave](screenshots/styles/wave.png)
+![wave](screenshots/04_menu.png)
 
 Style file: [`examples/styles/wave.style`](../examples/styles/wave.style)
 
