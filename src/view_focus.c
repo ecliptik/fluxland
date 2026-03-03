@@ -15,6 +15,7 @@
 #include <wlr/util/log.h>
 
 #include "animation.h"
+#include "atspi_bridge.h"
 #include "config.h"
 #include "decoration.h"
 #include "foreign_toplevel.h"
@@ -137,6 +138,10 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 		wm_ipc_broadcast_event(&server->ipc,
 			WM_IPC_EVENT_FOCUS_CHANGED, buf);
 	}
+
+	/* Announce to AT-SPI for screen readers */
+	wm_atspi_announce_focus(server->atspi_bridge,
+		"window", view->title ? view->title : view->app_id);
 
 	/* Update decoration on newly focused view */
 	if (view->decoration) {

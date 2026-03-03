@@ -72,6 +72,7 @@
 #define WM_DRM_LEASE_H
 #define WM_DRM_SYNCOBJ_H
 #define WM_FOCUS_NAV_H
+#define WM_ATSPI_BRIDGE_H
 #define WM_TRANSIENT_SEAT_H
 #define WM_VIEWPORTER_H
 #define WM_XWAYLAND_H
@@ -473,6 +474,9 @@ struct wm_tab_group {
 /* Focus nav (opaque) */
 struct wm_focus_nav { int dummy; };
 
+/* AT-SPI bridge (opaque) */
+struct wm_atspi_bridge { int dummy; };
+
 /* Output management (opaque) */
 struct wm_output_management { int dummy; };
 
@@ -642,6 +646,7 @@ struct wm_server {
 	struct wm_rules rules;
 	struct wm_ipc_server ipc;
 	struct wm_focus_nav focus_nav;
+	struct wm_atspi_bridge *atspi_bridge;
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 	struct wm_output_management output_mgmt;
 	struct wm_idle idle;
@@ -1021,6 +1026,9 @@ static void wm_tab_group_activate(struct wm_tab_group *g,
 
 static void wm_text_input_focus_change(struct wm_server *s,
 	struct wlr_surface *surf) { (void)s; (void)surf; }
+
+static void wm_atspi_announce_focus(struct wm_atspi_bridge *b,
+	const char *role, const char *name) { (void)b; (void)role; (void)name; }
 
 static void wm_toolbar_update_iconbar(struct wm_toolbar *t) { (void)t; }
 

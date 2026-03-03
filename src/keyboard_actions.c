@@ -1361,6 +1361,9 @@ wm_execute_action(struct wm_server *server,
 	case WM_ACTION_FOCUS_ACTIVATE:
 		wm_focus_nav_activate(server);
 		return true;
+	case WM_ACTION_FOCUS_SLIT:
+		wm_focus_nav_enter_slit(server);
+		return true;
 
 	case WM_ACTION_IF:
 	case WM_ACTION_FOREACH:

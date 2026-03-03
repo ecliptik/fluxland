@@ -19,12 +19,14 @@ struct wm_server;
 enum wm_focus_zone {
 	WM_FOCUS_ZONE_WINDOWS,  /* normal window focus (default) */
 	WM_FOCUS_ZONE_TOOLBAR,  /* toolbar element focus */
+	WM_FOCUS_ZONE_SLIT,     /* slit dockapp focus */
 };
 
 /* Focus navigation state (stored in wm_server) */
 struct wm_focus_nav {
 	enum wm_focus_zone zone;
 	int toolbar_index; /* which toolbar tool is focused (-1 = none) */
+	int slit_index;    /* which slit client is focused (-1 = none) */
 };
 
 /* Initialize focus navigation state */
@@ -47,5 +49,20 @@ void wm_focus_nav_activate(struct wm_server *server);
 
 /* Get the currently focused toolbar tool index (-1 if none) */
 int wm_focus_nav_get_toolbar_index(struct wm_server *server);
+
+/* Switch keyboard focus to the slit */
+void wm_focus_nav_enter_slit(struct wm_server *server);
+
+/* Return keyboard focus from slit to windows */
+void wm_focus_nav_return_from_slit(struct wm_server *server);
+
+/* Cycle to next element within the slit */
+void wm_focus_nav_slit_next(struct wm_server *server);
+
+/* Cycle to previous element within the slit */
+void wm_focus_nav_slit_prev(struct wm_server *server);
+
+/* Activate the currently focused slit element */
+void wm_focus_nav_slit_activate(struct wm_server *server);
 
 #endif /* WM_FOCUS_NAV_H */

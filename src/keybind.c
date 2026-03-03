@@ -71,6 +71,7 @@ static const struct action_map actions[] = {
 	{"FocusPrev",          WM_ACTION_FOCUS_PREV},
 	{"FocusPrevElement",   WM_ACTION_FOCUS_PREV_ELEMENT},
 	{"FocusRight",         WM_ACTION_FOCUS_RIGHT},
+	{"FocusSlit",          WM_ACTION_FOCUS_SLIT},
 	{"FocusToolbar",       WM_ACTION_FOCUS_TOOLBAR},
 	{"FocusUp",            WM_ACTION_FOCUS_UP},
 	{"Fullscreen",         WM_ACTION_FULLSCREEN},

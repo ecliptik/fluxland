@@ -393,6 +393,7 @@ struct wm_output {
 struct wm_focus_nav {
 	int zone;
 	int toolbar_index;
+	int slit_index;
 };
 
 struct wm_systray;

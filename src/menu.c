@@ -893,6 +893,19 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 			if (item && item->type != WM_MENU_SEPARATOR) {
 				menu->selected_index = idx;
 				menu_update_render(menu);
+				/* Broadcast focus change for accessibility */
+				if (menu->server && item->label) {
+					char buf[512];
+					snprintf(buf, sizeof(buf),
+						"{\"event\":\"focus_changed\",\"data\":{"
+						"\"target\":\"menu\",\"label\":\"%s\","
+						"\"index\":%d,\"has_submenu\":%s}}",
+						item->label,
+						menu->selected_index,
+						item->submenu ? "true" : "false");
+					wm_ipc_broadcast_event(&menu->server->ipc,
+						WM_IPC_EVENT_FOCUS_CHANGED, buf);
+				}
 				return true;
 			}
 		}
@@ -912,6 +925,19 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 			if (item && item->type != WM_MENU_SEPARATOR) {
 				menu->selected_index = idx;
 				menu_update_render(menu);
+				/* Broadcast focus change for accessibility */
+				if (menu->server && item->label) {
+					char buf[512];
+					snprintf(buf, sizeof(buf),
+						"{\"event\":\"focus_changed\",\"data\":{"
+						"\"target\":\"menu\",\"label\":\"%s\","
+						"\"index\":%d,\"has_submenu\":%s}}",
+						item->label,
+						menu->selected_index,
+						item->submenu ? "true" : "false");
+					wm_ipc_broadcast_event(&menu->server->ipc,
+						WM_IPC_EVENT_FOCUS_CHANGED, buf);
+				}
 				return true;
 			}
 		}

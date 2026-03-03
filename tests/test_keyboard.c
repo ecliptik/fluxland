@@ -656,6 +656,7 @@ enum wm_action {
 	WM_ACTION_FOCUS_NEXT_ELEMENT,
 	WM_ACTION_FOCUS_PREV_ELEMENT,
 	WM_ACTION_FOCUS_ACTIVATE,
+	WM_ACTION_FOCUS_SLIT,
 };
 
 enum wm_condition_type {
@@ -757,11 +758,13 @@ enum wm_focus_policy {
 enum wm_focus_zone {
 	WM_FOCUS_ZONE_WINDOWS,
 	WM_FOCUS_ZONE_TOOLBAR,
+	WM_FOCUS_ZONE_SLIT,
 };
 
 struct wm_focus_nav {
 	enum wm_focus_zone zone;
 	int toolbar_index;
+	int slit_index;
 };
 
 /* --- Minimal struct definitions needed by keyboard.c --- */
@@ -1006,6 +1009,7 @@ static int stub_tab_group_move_right_count;
 static int stub_activate_tab_count;
 
 static int stub_focus_nav_enter_toolbar_count;
+static int stub_focus_nav_enter_slit_count;
 static int stub_focus_nav_next_element_count;
 static int stub_focus_nav_prev_element_count;
 static int stub_focus_nav_activate_count;
@@ -1113,6 +1117,7 @@ void wm_tab_group_move_left(struct wm_tab_group *g, struct wm_view *v) { (void)g
 void wm_tab_group_move_right(struct wm_tab_group *g, struct wm_view *v) { (void)g; (void)v; stub_tab_group_move_right_count++; }
 
 void wm_focus_nav_enter_toolbar(struct wm_server *s) { (void)s; stub_focus_nav_enter_toolbar_count++; }
+void wm_focus_nav_enter_slit(struct wm_server *s) { (void)s; stub_focus_nav_enter_slit_count++; }
 void wm_focus_nav_next_element(struct wm_server *s) { (void)s; stub_focus_nav_next_element_count++; }
 void wm_focus_nav_prev_element(struct wm_server *s) { (void)s; stub_focus_nav_prev_element_count++; }
 void wm_focus_nav_activate(struct wm_server *s) { (void)s; stub_focus_nav_activate_count++; }
@@ -1279,6 +1284,7 @@ reset_all_counters(void)
 	stub_tab_group_move_right_count = 0;
 	stub_activate_tab_count = 0;
 	stub_focus_nav_enter_toolbar_count = 0;
+	stub_focus_nav_enter_slit_count = 0;
 	stub_focus_nav_next_element_count = 0;
 	stub_focus_nav_prev_element_count = 0;
 	stub_focus_nav_activate_count = 0;
