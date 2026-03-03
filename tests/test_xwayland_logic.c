@@ -309,29 +309,51 @@ static void wlr_xwayland_surface_activate(
 	(void)surface; (void)activated;
 }
 
+/* Call tracking globals for test assertions */
+static bool g_configure_called;
+static int16_t g_last_configure_x, g_last_configure_y;
+static uint16_t g_last_configure_w, g_last_configure_h;
+static bool g_set_maximized_called;
+static bool g_last_maximized_value;
+static bool g_set_fullscreen_called;
+static bool g_last_fullscreen_value;
+static bool g_set_minimized_called;
+static bool g_last_minimized_value;
+
 static void wlr_xwayland_surface_configure(
 	struct wlr_xwayland_surface *surface,
 	int16_t x, int16_t y, uint16_t w, uint16_t h)
 {
-	(void)surface; (void)x; (void)y; (void)w; (void)h;
+	(void)surface;
+	g_configure_called = true;
+	g_last_configure_x = x;
+	g_last_configure_y = y;
+	g_last_configure_w = w;
+	g_last_configure_h = h;
 }
 
 static void wlr_xwayland_surface_set_maximized(
 	struct wlr_xwayland_surface *surface, bool maximized)
 {
-	(void)surface; (void)maximized;
+	(void)surface;
+	g_set_maximized_called = true;
+	g_last_maximized_value = maximized;
 }
 
 static void wlr_xwayland_surface_set_fullscreen(
 	struct wlr_xwayland_surface *surface, bool fullscreen)
 {
-	(void)surface; (void)fullscreen;
+	(void)surface;
+	g_set_fullscreen_called = true;
+	g_last_fullscreen_value = fullscreen;
 }
 
 static void wlr_xwayland_surface_set_minimized(
 	struct wlr_xwayland_surface *surface, bool minimized)
 {
-	(void)surface; (void)minimized;
+	(void)surface;
+	g_set_minimized_called = true;
+	g_last_minimized_value = minimized;
 }
 
 static struct wlr_xwayland_surface *
@@ -1780,6 +1802,165 @@ static void test_new_surface_creates_xview(void)
 }
 
 /* ================================================================ */
+/*  Tests: call tracking and additional handler coverage              */
+/* ================================================================ */
+
+static void test_request_resize_is_noop(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+	server.cursor_mode = WM_CURSOR_PASSTHROUGH;
+
+	xview.request_resize.notify = handle_xwayland_request_resize;
+	xview.request_resize.notify(&xview.request_resize, NULL);
+
+	/* Resize handler is a no-op — cursor mode unchanged */
+	assert(server.cursor_mode == WM_CURSOR_PASSTHROUGH);
+}
+
+static void test_request_maximize_calls_set_maximized(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.width = 800;
+	xs.height = 600;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	g_set_maximized_called = false;
+	xview.request_maximize.notify =
+		handle_xwayland_request_maximize;
+	xview.request_maximize.notify(
+		&xview.request_maximize, NULL);
+
+	assert(g_set_maximized_called == true);
+	assert(g_last_maximized_value == true);
+	assert(xview.maximized == true);
+}
+
+static void test_request_fullscreen_calls_set_fullscreen(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	xs.width = 800;
+	xs.height = 600;
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	g_set_fullscreen_called = false;
+	xview.request_fullscreen.notify =
+		handle_xwayland_request_fullscreen;
+	xview.request_fullscreen.notify(
+		&xview.request_fullscreen, NULL);
+
+	assert(g_set_fullscreen_called == true);
+	assert(g_last_fullscreen_value == true);
+	assert(xview.fullscreen == true);
+}
+
+static void test_request_minimize_calls_set_minimized(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	struct wlr_scene_tree st;
+	init_test_scene_tree(&st);
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = &st;
+
+	struct wlr_xwayland_minimize_event event = {
+		.surface = &xs,
+		.minimize = true,
+	};
+
+	g_set_minimized_called = false;
+	xview.request_minimize.notify =
+		handle_xwayland_request_minimize;
+	xview.request_minimize.notify(
+		&xview.request_minimize, &event);
+
+	assert(g_set_minimized_called == true);
+	assert(g_last_minimized_value == true);
+	assert(st.node.enabled == false);
+}
+
+static void test_request_move_noop_when_no_scene_tree(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+	server.cursor_mode = WM_CURSOR_MOVE;
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.scene_tree = NULL; /* no scene tree */
+
+	xview.request_move.notify = handle_xwayland_request_move;
+	xview.request_move.notify(&xview.request_move, NULL);
+
+	/* Early return — cursor_mode unchanged */
+	assert(server.cursor_mode == WM_CURSOR_MOVE);
+}
+
+static void test_override_redirect_set_on_managed_reclassifies(void)
+{
+	struct wm_server server;
+	init_test_server(&server);
+	struct wlr_xwayland_surface xs = make_xsurface();
+
+	struct wm_xwayland_view xview;
+	memset(&xview, 0, sizeof(xview));
+	xview.server = &server;
+	xview.xsurface = &xs;
+	xview.mapped = true;
+	xview.window_class = WM_XW_MANAGED;
+
+	/* Simulate override_redirect being set */
+	xs.override_redirect = true;
+
+	xview.set_override_redirect.notify =
+		handle_xwayland_set_override_redirect;
+	xview.set_override_redirect.notify(
+		&xview.set_override_redirect, NULL);
+
+	assert(xview.window_class == WM_XW_UNMANAGED);
+}
+
+/* ================================================================ */
 /*  main                                                             */
 /* ================================================================ */
 
@@ -1879,6 +2060,14 @@ int main(void)
 
 	printf("\n--- new_surface ---\n");
 	RUN_TEST(test_new_surface_creates_xview);
+
+	printf("\n--- call tracking and additional handler coverage ---\n");
+	RUN_TEST(test_request_resize_is_noop);
+	RUN_TEST(test_request_maximize_calls_set_maximized);
+	RUN_TEST(test_request_fullscreen_calls_set_fullscreen);
+	RUN_TEST(test_request_minimize_calls_set_minimized);
+	RUN_TEST(test_request_move_noop_when_no_scene_tree);
+	RUN_TEST(test_override_redirect_set_on_managed_reclassifies);
 
 	printf("\n%d/%d tests passed\n", tests_passed, tests_run);
 	return tests_passed == tests_run ? 0 : 1;
