@@ -118,6 +118,7 @@ See [`examples/`](examples/) for themes and complete configuration examples.
 - **Event subscriptions** -- subscribe to window, workspace, and output events for scripting
 - **XWayland support** -- run X11 applications alongside native Wayland clients
 - **Live reconfiguration** -- reload all config files at runtime (keys, apps, menu, style, init) via `Mod4+r` or `SIGHUP`
+- **Lightweight and efficient** -- runs comfortably on a Raspberry Pi 3 or 2010-era Intel Atom. The compositor uses ~16-32 MB of RAM, with an optimized rendering pipeline that caches text measurement contexts, pre-allocates buffers, and skips redundant scene graph updates. The only real hardware requirement is a GPU with OpenGL ES 2.0 and DRM/KMS kernel driver support.
 - **30+ Wayland protocols** including:
   - xdg-shell, xdg-decoration, layer-shell, session-lock
   - fractional-scale, tearing-control, content-type, presentation-time
