@@ -1018,6 +1018,9 @@ wm_toolbar_create(struct wm_server *server)
 		sizeof(struct wm_iconbar_entry));
 	toolbar->ib_boxes = calloc(WM_TOOLBAR_ICONBAR_MAX,
 		sizeof(struct wlr_box));
+	toolbar->ib_cached_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
+		sizeof(struct wm_iconbar_entry));
+	toolbar->ib_cached_count = -1;
 
 	/* Read placement config */
 	if (server->config) {
@@ -1117,6 +1120,7 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 
 	free(toolbar->ib_boxes);
 	free(toolbar->ib_entries);
+	free(toolbar->ib_cached_entries);
 	free(toolbar->cached_title);
 	free(toolbar);
 }
@@ -1138,6 +1142,53 @@ wm_toolbar_update_workspace(struct wm_toolbar *toolbar)
 	wm_toolbar_update_iconbar(toolbar);
 }
 
+/* Check if iconbar entries match the cached state */
+static bool
+iconbar_entries_match_cache(struct wm_toolbar *toolbar)
+{
+	if (toolbar->ib_cached_count < 0) {
+		return false;
+	}
+	if (toolbar->ib_count != toolbar->ib_cached_count) {
+		return false;
+	}
+	for (int i = 0; i < toolbar->ib_count; i++) {
+		struct wm_iconbar_entry *cur = &toolbar->ib_entries[i];
+		struct wm_iconbar_entry *cached = &toolbar->ib_cached_entries[i];
+		if (cur->view != cached->view ||
+		    cur->focused != cached->focused ||
+		    cur->iconified != cached->iconified) {
+			return false;
+		}
+		/* Compare titles: pointer match is fast path */
+		const char *cur_title = cur->view ? cur->view->title : NULL;
+		const char *cached_title = cached->view ? cached->view->title : NULL;
+		if (cur_title != cached_title) {
+			if (!cur_title || !cached_title ||
+			    strcmp(cur_title, cached_title) != 0) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+/* Snapshot current entries into the cache */
+static void
+iconbar_snapshot_cache(struct wm_toolbar *toolbar)
+{
+	if (!toolbar->ib_cached_entries) {
+		toolbar->ib_cached_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
+			sizeof(struct wm_iconbar_entry));
+		if (!toolbar->ib_cached_entries) {
+			return;
+		}
+	}
+	memcpy(toolbar->ib_cached_entries, toolbar->ib_entries,
+		toolbar->ib_count * sizeof(struct wm_iconbar_entry));
+	toolbar->ib_cached_count = toolbar->ib_count;
+}
+
 void
 wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 {
@@ -1146,6 +1197,12 @@ wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 	}
 
 	if (toolbar->iconbar_tool) {
+		/* Collect entries and check if anything changed */
+		collect_iconbar_entries(toolbar);
+		if (iconbar_entries_match_cache(toolbar)) {
+			return;
+		}
+
 		struct wlr_buffer *ib_buf = render_iconbar(toolbar,
 			toolbar->iconbar_tool->width, toolbar->height);
 		wlr_scene_buffer_set_buffer(toolbar->iconbar_tool->buf,
@@ -1153,6 +1210,8 @@ wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 		if (ib_buf) {
 			wlr_buffer_drop(ib_buf);
 		}
+
+		iconbar_snapshot_cache(toolbar);
 	}
 }
 
