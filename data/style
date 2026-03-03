@@ -1,5 +1,7 @@
-# fluxland default style
-# A clean, modern Fluxbox-inspired style with dark colors.
+# fluxland "Great Wave" style (default)
+# Inspired by Hokusai's "The Great Wave off Kanagawa"
+# Deep indigo blues, ocean teal, cream whites, and warm accents.
+#
 # Place custom styles in: ~/.config/fluxland/styles/
 #
 # Texture syntax:
@@ -8,36 +10,32 @@
 #                      PipeCross, Elliptic, Rectangle, Pyramid)
 #   Bevel1 or Bevel2 (raised/sunken bevel style)
 #   Interlaced (striped overlay effect)
-#   ParentRelative (inherit from parent element)
-#
-# Color formats: #RRGGBB, #RGB, rgb:R/G/B, or named (white, black, etc.)
-# Font syntax:  family-size:bold:italic
 
 # -------------------------------------------------------------------
 # Window titlebar
 # -------------------------------------------------------------------
 
 window.title.focus:                 Raised Gradient Vertical
-window.title.focus.color:           #3b4252
-window.title.focus.colorTo:         #2e3440
+window.title.focus.color:           #1b3a5c
+window.title.focus.colorTo:         #0f2440
 window.title.unfocus:               Flat Solid
-window.title.unfocus.color:         #2e3440
-window.title.unfocus.colorTo:       #2e3440
-window.title.height:                22
+window.title.unfocus.color:         #0f2440
+window.title.unfocus.colorTo:       #0f2440
+window.title.height:                24
 
 # -------------------------------------------------------------------
 # Window label (title text area within titlebar)
 # -------------------------------------------------------------------
 
 window.label.focus:                 Flat Solid
-window.label.focus.color:           #3b4252
-window.label.focus.textColor:       #eceff4
+window.label.focus.color:           #1b3a5c
+window.label.focus.textColor:       #f0e6d3
 window.label.unfocus:               Flat Solid
-window.label.unfocus.color:         #2e3440
-window.label.unfocus.textColor:     #4c566a
+window.label.unfocus.color:         #0f2440
+window.label.unfocus.textColor:     #5a7a9a
 window.label.active:                Flat Solid
-window.label.active.color:          #434c5e
-window.label.active.textColor:      #d8dee9
+window.label.active.color:          #1e4060
+window.label.active.textColor:      #d4c8b0
 
 window.label.focus.font:            sans-11:bold
 window.label.unfocus.font:          sans-11
@@ -49,71 +47,67 @@ window.justify:                     Center
 # -------------------------------------------------------------------
 
 window.button.focus:                Raised Gradient Vertical
-window.button.focus.color:          #434c5e
-window.button.focus.colorTo:        #3b4252
+window.button.focus.color:          #1e4060
+window.button.focus.colorTo:        #1b3a5c
 window.button.unfocus:              Flat Solid
-window.button.unfocus.color:        #3b4252
-window.button.unfocus.colorTo:      #2e3440
+window.button.unfocus.color:        #1b3a5c
+window.button.unfocus.colorTo:      #0f2440
 window.button.pressed:              Sunken Solid
-window.button.pressed.color:        #2e3440
+window.button.pressed.color:        #0f2440
 
-window.button.focus.picColor:       #d8dee9
-window.button.unfocus.picColor:     #4c566a
-window.button.pressed.picColor:     #88c0d0
+window.button.focus.picColor:       #f0e6d3
+window.button.unfocus.picColor:     #5a7a9a
+window.button.pressed.picColor:     #4da6a8
 
 # -------------------------------------------------------------------
 # Window handle (bottom resize bar) and grips (corner resize)
 # -------------------------------------------------------------------
 
 window.handle.focus:                Flat Solid
-window.handle.focus.color:          #3b4252
+window.handle.focus.color:          #1b3a5c
 window.handle.unfocus:              Flat Solid
-window.handle.unfocus.color:        #2e3440
+window.handle.unfocus.color:        #0f2440
 window.handleWidth:                 4
 
 window.grip.focus:                  Flat Solid
-window.grip.focus.color:            #4c566a
+window.grip.focus.color:            #2a5278
 window.grip.unfocus:                Flat Solid
-window.grip.unfocus.color:          #3b4252
+window.grip.unfocus.color:          #1b3a5c
 
 # -------------------------------------------------------------------
 # Window frame and border
 # -------------------------------------------------------------------
 
-window.frame.focusColor:            #3b4252
-window.frame.unfocusColor:          #2e3440
-window.borderColor:                 #1a1d23
+window.frame.focusColor:            #1b3a5c
+window.frame.unfocusColor:          #0f2440
+window.borderColor:                 #081a30
 window.borderWidth:                 1
 window.bevelWidth:                  1
 
-# Focus border (accessibility: highlighted border around focused windows)
 window.focus.border.width:          0
-window.focus.border.color:          #88c0d0
-
-# Rounded corners: TopLeft TopRight BottomLeft BottomRight
-# window.roundCorners:              TopLeft TopRight
+window.focus.border.color:          #4da6a8
 
 # -------------------------------------------------------------------
 # Menu
 # -------------------------------------------------------------------
 
 menu.title:                         Raised Gradient Vertical
-menu.title.color:                   #3b4252
-menu.title.colorTo:                 #2e3440
-menu.title.textColor:               #eceff4
+menu.title.color:                   #1b3a5c
+menu.title.colorTo:                 #0f2440
+menu.title.textColor:               #f0e6d3
 menu.title.font:                    sans-11:bold
 menu.title.justify:                 Center
 
 menu.frame:                         Flat Solid
-menu.frame.color:                   #2e3440
-menu.frame.textColor:               #d8dee9
+menu.frame.color:                   #0f2440
+menu.frame.textColor:               #d4c8b0
 menu.frame.font:                    sans-10
 
 menu.hilite:                        Flat Solid
-menu.hilite.color:                  #5e81ac
-menu.hilite.textColor:              #eceff4
+menu.hilite.color:                  #2a6b8a
+menu.hilite.textColor:              #f0e6d3
 
-menu.borderColor:                   #1a1d23
+menu.borderColor:                   #081a30
 menu.borderWidth:                   1
 
 # -------------------------------------------------------------------
@@ -121,11 +115,11 @@ menu.borderWidth:                   1
 # -------------------------------------------------------------------
 
 toolbar:                            Flat Solid
-toolbar.color:                      #2e3440
-toolbar.textColor:                  #d8dee9
+toolbar.color:                      #0f2440
+toolbar.textColor:                  #d4c8b0
 toolbar.font:                       sans-10
 
-toolbar.iconbar.focused.color:      #5e81ac
-toolbar.iconbar.focused.textColor:  #eceff4
-toolbar.iconbar.unfocused.color:    #3b4252
-toolbar.iconbar.unfocused.textColor:#7b88a1
+toolbar.iconbar.focused.color:      #2a6b8a
+toolbar.iconbar.focused.textColor:  #f0e6d3
+toolbar.iconbar.unfocused.color:    #1b3a5c
+toolbar.iconbar.unfocused.textColor:#7a9ab0

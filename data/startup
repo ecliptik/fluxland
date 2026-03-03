@@ -13,8 +13,8 @@
 # -------------------------------------------------------------------
 # swaybg -i ~/Pictures/wallpaper.png -m fill &
 
-# Solid color fallback if no wallpaper image
-swaybg -c '#2e3440' &
+# Solid color matching the Great Wave style
+swaybg -c '#0f2440' &
 
 # -------------------------------------------------------------------
 # Status bar (waybar)
