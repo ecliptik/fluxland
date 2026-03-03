@@ -255,6 +255,12 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 		}
 	}
 
+	/* Honor pre-map maximize/fullscreen requests from client */
+	if (view->xdg_toplevel->requested.maximized && !view->maximized)
+		wm_view_toggle_maximize(view);
+	if (view->xdg_toplevel->requested.fullscreen && !view->fullscreen)
+		wm_view_toggle_fullscreen(view);
+
 	/* Apply automatic window placement */
 	wm_placement_apply(view->server, view);
 	wlr_scene_node_set_position(&view->scene_tree->node,
@@ -479,6 +485,10 @@ handle_xdg_toplevel_request_maximize(struct wl_listener *listener,
 {
 	struct wm_view *view = wl_container_of(listener, view,
 		request_maximize);
+	/* Ignore pre-initial-commit requests — state is stored in
+	 * toplevel->requested and applied at map time */
+	if (!view->xdg_toplevel->base->initialized)
+		return;
 	wm_view_toggle_maximize(view);
 }
 
@@ -488,6 +498,8 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 {
 	struct wm_view *view = wl_container_of(listener, view,
 		request_fullscreen);
+	if (!view->xdg_toplevel->base->initialized)
+		return;
 	wm_view_toggle_fullscreen(view);
 }
 

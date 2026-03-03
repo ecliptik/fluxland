@@ -261,7 +261,14 @@ struct wlr_xdg_surface {
 	struct wlr_surface *surface;
 	void *data;
 	bool initial_commit;
+	bool initialized;
 	/* not needed: events are on surface in 0.18 */
+};
+
+struct wlr_xdg_toplevel_requested {
+	bool maximized;
+	bool minimized;
+	bool fullscreen;
 };
 
 struct wlr_xdg_toplevel {
@@ -269,6 +276,7 @@ struct wlr_xdg_toplevel {
 	char *title;
 	char *app_id;
 	int width, height;
+	struct wlr_xdg_toplevel_requested requested;
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal request_move;
@@ -1185,6 +1193,7 @@ setup_mock_view(int idx, struct wm_workspace *ws)
 	wl_list_init(&test_surfaces[idx].events.commit.listener_list);
 
 	test_xdg_surfaces[idx].surface = &test_surfaces[idx];
+	test_xdg_surfaces[idx].initialized = true;
 	test_toplevels[idx].base = &test_xdg_surfaces[idx];
 	test_toplevels[idx].width = 800;
 	test_toplevels[idx].height = 600;
