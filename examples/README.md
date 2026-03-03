@@ -1,6 +1,6 @@
 # fluxland Examples
 
-Example configurations and themes for fluxland. Copy any example to your
+Example configurations and styles for fluxland. Copy any example to your
 config directory to get started:
 
 ```sh
@@ -9,24 +9,24 @@ cp -r examples/wave-desktop/* ~/.config/fluxland/
 chmod +x ~/.config/fluxland/startup
 ```
 
-## Themes
+## Styles
 
-Ready-to-use style files in `themes/`. Copy to `~/.config/fluxland/style`
+Ready-to-use style files in `styles/`. Copy to `~/.config/fluxland/style`
 or point `session.styleFile` in your `init` to the path.
 
-| Theme | Description |
+| Style | Description |
 |---|---|
-| `default.style` | Clean dark theme with Nord-inspired colors |
+| `default.style` | Clean dark style with Nord-inspired colors |
 | `wave.style` | Deep indigo and ocean blue, inspired by Hokusai's *The Great Wave off Kanagawa* |
 | `hc-dark.style` | High-contrast dark (WCAG AAA) -- black background, white/yellow text |
 | `hc-light.style` | High-contrast light (WCAG AAA) -- white background, black/blue text |
 
-### Applying a theme
+### Applying a style
 
 Copy the style file:
 
 ```sh
-cp examples/themes/wave.style ~/.config/fluxland/style
+cp examples/styles/wave.style ~/.config/fluxland/style
 ```
 
 Or set the path in `~/.config/fluxland/init`:
@@ -70,5 +70,5 @@ pages for full format documentation:
 - `man fluxland` -- compositor usage
 - `man fluxland-keys` -- keybinding format
 - `man fluxland-apps` -- per-window rules
-- `man fluxland-style` -- theme/style format
+- `man fluxland-style` -- style format
 - `man fluxland-menu` -- menu format

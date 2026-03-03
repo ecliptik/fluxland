@@ -19,7 +19,7 @@ fluxland is a Wayland compositor built on the wlroots library, designed to repli
 │                         fluxland compositor                       │
 │                                                                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────────┐ │
-│  │ Config Engine │  │  Fluxbox     │  │     Theme / Style Engine  │ │
+│  │ Config Engine │  │  Fluxbox     │  │     Style Engine          │ │
 │  │              │◄─┤  Compat Layer│  │  (decoration rendering)   │ │
 │  └──────┬───────┘  └──────────────┘  └───────────┬───────────────┘ │
 │         │                                         │                 │
@@ -106,17 +106,17 @@ A dedicated subsystem for Fluxbox config format support:
 - **Init file parser**: Reads Fluxbox `init` resource-style configuration
 - **Menu file parser**: Reads Fluxbox menu definition format
 - **Apps file parser**: Reads Fluxbox `apps` window rules format
-- **Style/Theme translator**: Converts Fluxbox style definitions to fluxland theme format
+- **Style translator**: Converts Fluxbox style definitions to fluxland style format
 - **Action mapper**: Maps Fluxbox actions to fluxland equivalents, warning on unsupported actions
 
-### 5. Theme / Style Engine
+### 5. Style Engine
 
 Renders window decorations (server-side decoration):
 
 - Titlebar with configurable buttons (close, maximize, minimize, shade, stick)
 - Titlebar tabs for grouped windows
 - Window borders with configurable width and color
-- Fluxbox-compatible theme format support (textures, colors, fonts, button styles)
+- Fluxbox-compatible style format support (textures, colors, fonts, button styles)
 - Pixmap and gradient rendering for decoration textures
 
 ### 6. Input Handler
@@ -219,7 +219,7 @@ Window Rules Engine: Apply matching rules
 Tab/Group Manager: Add to group if rules dictate
     │
     ▼
-Theme Engine: Create window decoration
+Style Engine: Create window decoration
     │
     ▼
 Scene Graph: Add to render tree
@@ -244,7 +244,7 @@ Config Engine: Re-read all config files
 Distribute updated config to subsystems
     │
     ├──► Input Handler: Rebind keys/mouse
-    ├──► Theme Engine: Reload decorations
+    ├──► Style Engine: Reload decorations
     ├──► Menu System: Rebuild menus
     ├──► Toolbar: Reconfigure layout
     ├──► Window Rules: Update rule set
@@ -300,7 +300,7 @@ Distribute updated config to subsystems
 | Input handling | libinput (via wlroots) |
 | Rendering | wlroots scene graph (Vulkan/GLES2/Pixman backends) |
 | XKB | libxkbcommon (keyboard handling) |
-| Image loading | libpng, libjpeg (for themes/pixmaps) |
+| Image loading | libpng, libjpeg (for styles/pixmaps) |
 | Font rendering | Pango + Cairo (for titlebar text, menus) |
 | X11 compat | XWayland (optional) |
 | IPC | Unix domain socket (JSON messages) |

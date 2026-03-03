@@ -1,4 +1,4 @@
-"""Tests for style/theme operations via IPC."""
+"""Tests for style operations via IPC."""
 
 import os
 import time

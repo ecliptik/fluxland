@@ -1,6 +1,6 @@
 # fluxland "Great Wave" desktop configuration
 # A complete config inspired by Hokusai's "The Great Wave off Kanagawa"
-# with ocean blue theme and matching wallpaper.
+# with ocean blue style and matching wallpaper.
 #
 # Usage:
 #   cp -r examples/wave-desktop/* ~/.config/fluxland/
@@ -44,7 +44,7 @@ session.screen0.toolbar.autoHide: false
 session.screen0.toolbar.widthPercent: 72
 
 # -------------------------------------------------------------------
-# Style: Great Wave theme
+# Style: Great Wave
 # -------------------------------------------------------------------
 
 session.styleFile: ~/.config/fluxland/wave.style

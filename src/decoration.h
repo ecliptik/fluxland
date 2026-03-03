@@ -6,7 +6,7 @@
  * decoration.h - Server-side window decoration rendering and management
  *
  * Renders Fluxbox-style window decorations (titlebar with buttons, borders,
- * handle, grips) using the theme engine and integrates them into the scene
+ * handle, grips) using the style engine and integrates them into the scene
  * graph as scene nodes.
  */
 
@@ -150,7 +150,7 @@ struct wm_decoration *wm_decoration_create(struct wm_view *view,
 void wm_decoration_destroy(struct wm_decoration *decoration);
 
 /*
- * Full re-render of decorations (on theme change, focus change, title change).
+ * Full re-render of decorations (on style change, focus change, title change).
  * Uses the given style for rendering.
  */
 void wm_decoration_update(struct wm_decoration *decoration,

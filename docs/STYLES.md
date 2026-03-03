@@ -1,102 +1,102 @@
-# Fluxbox Theme Compatibility
+# Fluxbox Style Compatibility
 
-fluxland natively supports Fluxbox style files. Themes from
+fluxland natively supports Fluxbox style files. Styles from
 [box-look.org](https://www.box-look.org/browse?cat=139&ord=latest) and other
-Fluxbox theme archives work without modification.
+Fluxbox style archives work without modification.
 
-## Community Themes
+## Community Styles
 
-10 community themes from box-look.org tested and verified on fluxland. These
-themes are included in [`examples/themes/community/`](../examples/themes/community/).
+10 community styles from box-look.org tested and verified on fluxland. These
+styles are included in [`examples/styles/community/`](../examples/styles/community/).
 
 ### [Carbonit](https://www.box-look.org/p/1016944/)
 
-Dark theme with subtle pixmap textures on titlebars and buttons.
+Dark style with subtle pixmap textures on titlebars and buttons.
 
-![Carbonit](screenshots/themes/Carbonit.png)
+![Carbonit](screenshots/styles/Carbonit.png)
 
 ### [Neon](https://www.box-look.org/p/1016708/)
 
-Dark theme with neon-accented window decorations and black menus.
+Dark style with neon-accented window decorations and black menus.
 
-![Neon](screenshots/themes/Neon.png)
+![Neon](screenshots/styles/Neon.png)
 
 ### [Soft White](https://www.box-look.org/p/1017014/)
 
-Light theme with white/grey pixmap titlebar and warm grey menus.
+Light style with white/grey pixmap titlebar and warm grey menus.
 
-![Soft White](screenshots/themes/Soft_White.png)
+![Soft White](screenshots/styles/Soft_White.png)
 
 ### [Raven](https://www.box-look.org/p/1017008/)
 
-Dark theme with bold white text, black menus, and beveled decorations.
+Dark style with bold white text, black menus, and beveled decorations.
 
-![Raven](screenshots/themes/Raven.png)
+![Raven](screenshots/styles/Raven.png)
 
 ### [Graphite](https://www.box-look.org/p/1016816/)
 
-Clean gradient-based theme with diamond bullet markers and styled window buttons.
+Clean gradient-based style with diamond bullet markers and styled window buttons.
 
-![Graphite](screenshots/themes/Graphite.png)
+![Graphite](screenshots/styles/Graphite.png)
 
 ### [Clear](https://www.box-look.org/p/1016899/)
 
-Light blue/cream theme with raised bevels, triangle bullet markers, and styled buttons.
+Light blue/cream style with raised bevels, triangle bullet markers, and styled buttons.
 
-![Clear](screenshots/themes/Clear.png)
+![Clear](screenshots/styles/Clear.png)
 
 ### [Plastick](https://www.box-look.org/p/1016818/)
 
-Green/olive theme with distinctive pixmap titlebar textures and button icons.
+Green/olive style with distinctive pixmap titlebar textures and button icons.
 
-![Plastick](screenshots/themes/Plastick.png)
+![Plastick](screenshots/styles/Plastick.png)
 
 ### [Black Glass](https://www.box-look.org/p/1017007/)
 
-Dark glass theme with gradient titlebars, styled handles, and wide borders.
+Dark glass style with gradient titlebars, styled handles, and wide borders.
 
-![Black Glass](screenshots/themes/Black_Glass.png)
+![Black Glass](screenshots/styles/Black_Glass.png)
 
 ### [Coffee Dream](https://www.box-look.org/p/1016989/)
 
 Warm brown/coffee palette with left-aligned title text and muted tones.
 
-![Coffee Dream](screenshots/themes/CoffeeDream.png)
+![Coffee Dream](screenshots/styles/CoffeeDream.png)
 
 ### [blackdelux](https://www.box-look.org/p/1016962/)
 
-Minimal dark theme with thin borders and teal menu title accent.
+Minimal dark style with thin borders and teal menu title accent.
 
-![blackdelux](screenshots/themes/blackdelux.png)
+![blackdelux](screenshots/styles/blackdelux.png)
 
-## Using Themes
+## Using Styles
 
-### Install a community theme
+### Install a community style
 
-Copy a theme directory to your styles path:
+Copy a style directory to your styles path:
 
 ```sh
-cp -r examples/themes/community/Graphite ~/.config/fluxland/styles/
+cp -r examples/styles/community/Graphite ~/.config/fluxland/styles/
 ```
 
 ### Apply at runtime
 
-Switch themes without restarting via IPC:
+Switch styles without restarting via IPC:
 
 ```sh
 fluxland-ctl action SetStyle ~/.config/fluxland/styles/Graphite
 ```
 
-Or use the Styles submenu in the root menu — it lists all themes found in
+Or use the Styles submenu in the root menu — it lists all styles found in
 your configured styles directory.
 
-### Install themes from box-look.org
+### Install styles from box-look.org
 
-1. Download a Fluxbox theme archive from [box-look.org](https://www.box-look.org/browse?cat=139&ord=latest)
+1. Download a Fluxbox style archive from [box-look.org](https://www.box-look.org/browse?cat=139&ord=latest)
 2. Extract to `~/.config/fluxland/styles/`
 3. Apply with `SetStyle` or from the Styles menu
 
-Most pure Fluxbox themes work directly. Themes that require matching GTK
+Most pure Fluxbox styles work directly. Styles that require matching GTK
 themes will only affect window decorations, menus, and the toolbar — the
 GTK portion is not used.
 
@@ -106,7 +106,7 @@ See [`fluxland-style(5)`](../man/fluxland-style.5) for the complete style
 file format reference. The default style at
 [`data/style`](../data/style) is a good starting point.
 
-## Theme Rendering Support
+## Style Rendering Support
 
 fluxland supports the full Fluxbox style property set for window decorations,
 menus, and the toolbar:
@@ -126,4 +126,4 @@ menus, and the toolbar:
 | Wildcard fonts (`*font`, `*Font`) | Supported |
 
 For the full compatibility report including detailed test methodology, see
-[`docs/THEME_COMPAT_REPORT.md`](THEME_COMPAT_REPORT.md).
+[`docs/STYLE_COMPAT_REPORT.md`](STYLE_COMPAT_REPORT.md).

@@ -471,7 +471,7 @@ wm_server_init(struct wm_server *server)
 			server->config->config_dir : "(none)");
 	}
 
-	/* Load style/theme */
+	/* Load style */
 	server->style = style_create();
 	if (server->style && server->config && server->config->style_file) {
 		if (style_load(server->style,

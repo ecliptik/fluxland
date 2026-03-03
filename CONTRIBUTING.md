@@ -330,7 +330,7 @@ Fuzz targets require Clang to build.
 |--------|------|---------------|
 | `fuzz_rcparser` | `tests/fuzz/fuzz_rcparser.c` | X resource database parser |
 | `fuzz_keybind` | `tests/fuzz/fuzz_keybind.c` | Key binding parser |
-| `fuzz_style` | `tests/fuzz/fuzz_style.c` | Style/theme parser |
+| `fuzz_style` | `tests/fuzz/fuzz_style.c` | Style parser |
 | `fuzz_menu` | `tests/fuzz/fuzz_menu.c` | Menu file parser |
 
 ### Adding a new fuzz target

@@ -3,7 +3,7 @@
  * Copyright (c) 2025 fluxland contributors
  * SPDX-License-Identifier: MIT
  *
- * style.c - Fluxbox style/theme file parser
+ * style.c - Fluxbox style file parser
  *
  * Parses Fluxbox-compatible style files using the rcparser to read
  * key-value pairs and maps them into the wm_style structure.
@@ -404,7 +404,7 @@ style_get_int(struct rc_database *db, const char *key, int default_val)
 /*
  * Resolve a relative pixmap filename to a full path.
  * Tries style_dir/filename first, then style_dir/pixmaps/filename
- * as a fallback (standard Fluxbox theme convention).
+ * as a fallback (standard Fluxbox style convention).
  */
 static char *
 resolve_pixmap_file(const char *style_dir, const char *filename)
@@ -477,7 +477,7 @@ load_texture(struct rc_database *db, const char *base_key,
 		/*
 		 * Fluxbox compat: if a pixmap path is set but the texture type
 		 * was empty or non-pixmap, implicitly switch to pixmap fill.
-		 * Many community themes set e.g. "window.title.focus:" (empty)
+		 * Many community styles set e.g. "window.title.focus:" (empty)
 		 * with "window.title.focus.pixmap: title.xpm" and expect the
 		 * pixmap to be used.
 		 */
@@ -701,7 +701,7 @@ style_create(void)
 	s->window_title_height = DEFAULT_TITLE_HEIGHT;
 	s->menu_border_width = DEFAULT_BORDER_WIDTH;
 
-	/* Focus border defaults (disabled by default, enabled in HC themes) */
+	/* Focus border defaults (disabled by default, enabled in HC styles) */
 	s->window_focus_border_width = 0;
 	s->window_focus_border_color = make_color(0x88, 0xC0, 0xD0);
 

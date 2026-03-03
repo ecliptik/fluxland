@@ -66,7 +66,7 @@ fluxland aims to be the spiritual successor to Fluxbox in the Wayland world. Whi
 | Slit auto-hide | Full | With configurable delay |
 | Slit ordering | Partial | Best-effort ordering; X11 dockapp protocol differences |
 
-### Window Decorations / Themes
+### Window Decorations / Styles
 
 | Fluxbox Feature | fluxland Support | Notes |
 |---|---|---|
@@ -81,7 +81,7 @@ fluxland aims to be the spiritual successor to Fluxbox in the Wayland world. Whi
 | Bevel styles (flat, raised, sunken) | Full | |
 | Font configuration | Full | Via fontconfig/Pango |
 | Rounded corners | Extended | Not in Fluxbox but added as extension |
-| Theme hot-reload | Full | Change themes without restart |
+| Style hot-reload | Full | Change styles without restart |
 
 ### Menu System
 
@@ -96,7 +96,7 @@ fluxland aims to be the spiritual successor to Fluxbox in the Wayland world. Whi
 | Menu icons | Full | Icons alongside menu text |
 | Menu transparency | Full | Wayland-native alpha compositing |
 | Workspaces submenu | Full | |
-| Styles/themes submenu | Full | Browse and apply themes |
+| Styles submenu | Full | Browse and apply styles |
 
 ### Key Bindings
 
@@ -127,7 +127,7 @@ fluxland aims to be the spiritual successor to Fluxbox in the Wayland world. Whi
 | `apps` | `~/.fluxbox/apps` | `~/.config/fluxland/apps` | High - window matching uses app-id instead of WM_CLASS where appropriate |
 | `startup` | `~/.fluxbox/startup` | `~/.config/fluxland/startup` | Full - shell script format, directly compatible |
 | `windowmenu` | `~/.fluxbox/windowmenu` | `~/.config/fluxland/windowmenu` | Full |
-| `overlay` | `~/.fluxbox/overlay` | N/A | Not supported (X11-specific theme overlays) |
+| `overlay` | `~/.fluxbox/overlay` | N/A | Not supported (X11-specific style overlays) |
 
 ### Import Tool
 
@@ -233,7 +233,7 @@ The import tool:
 1. **Window geometry**: Wayland windows are positioned by the compositor, not the client. Apps cannot request specific screen positions.
 2. **Slit/dockapps**: Traditional X11 dockapps must run under XWayland. Native Wayland dockapp protocol is not yet standard.
 3. **Focus stealing**: Wayland's security model prevents unexpected focus changes. Some Fluxbox focus behaviors may behave slightly differently.
-4. **Overlay theme file**: Fluxbox's `overlay` file for per-theme patches is not supported. Use the native theme system instead.
+4. **Overlay style file**: Fluxbox's `overlay` file for per-style patches is not supported. Use the native style system instead.
 
 ### Migration Notes
 
@@ -254,7 +254,7 @@ Features that work identically to Fluxbox:
 - Workspace management
 - Window shading, sticking, layering
 - Menu system (root, window, pipe menus)
-- Theme/style system (colors, gradients, fonts)
+- Style system (colors, gradients, fonts)
 - Window rules (apps file)
 
 ### Tier 2: Near Compatibility
@@ -269,12 +269,12 @@ Features that work but require adaptation:
 - Slit (X11 dockapps need XWayland)
 - System tray (protocol differences)
 - Window position remembering (Wayland positioning model)
-- Some theme pixmaps (rendering engine differences)
+- Some style pixmaps (rendering engine differences)
 
 ### Tier 4: Not Supported
 Features that cannot be implemented in Wayland:
 - X11-specific properties and atoms
 - Direct X11 protocol interactions
 - Root window operations
-- Overlay theme file
+- Overlay style file
 - Client-driven window positioning

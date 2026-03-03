@@ -3,7 +3,7 @@
  * Copyright (c) 2025 fluxland contributors
  * SPDX-License-Identifier: MIT
  *
- * style.h - Fluxbox style/theme file parser and data structures
+ * style.h - Fluxbox style file parser and data structures
  *
  * Parses Fluxbox-compatible style files that use X resource database syntax
  * to define textures, colors, fonts, and layout for window decorations,
@@ -215,7 +215,7 @@ struct wm_style {
 
 /* --- API --- */
 
-/* Create a style with sensible defaults (Fluxbox-like dark theme) */
+/* Create a style with sensible defaults (Fluxbox-like dark style) */
 struct wm_style *style_create(void);
 
 /* Load style from a file, returns 0 on success, -1 on error */

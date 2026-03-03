@@ -1,5 +1,5 @@
 /*
- * fuzz_style.c - libFuzzer target for the style/theme parser
+ * fuzz_style.c - libFuzzer target for the style parser
  *
  * Writes fuzzer-provided data to a temporary file, feeds it to
  * style_load(), and verifies that the parser doesn't crash.

@@ -1,5 +1,5 @@
 /*
- * test_style.c - Unit tests for style/theme parser
+ * test_style.c - Unit tests for style parser
  */
 
 #define _POSIX_C_SOURCE 200809L

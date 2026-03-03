@@ -23,7 +23,7 @@ test_keybind = executable(
 )
 test('keybind', test_keybind)
 
-# --- test_style: style/theme parser tests ---
+# --- test_style: style parser tests ---
 test_style = executable(
   'test_style',
   files('test_style.c', '../src/style.c', '../src/rcparser.c'),

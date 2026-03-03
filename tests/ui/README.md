@@ -37,7 +37,7 @@ The harness automatically starts a headless compositor instance for the test ses
 | test_rules.py | 8 | Window rules (Remember command) |
 | test_arrangement.py | 5 | Window arrangement (grid, columns, rows, cascade) |
 | test_placement.py | 3 | Window placement policy |
-| test_styles.py | 5 | Style/theme loading |
+| test_styles.py | 5 | Style loading |
 | test_layers.py | 4 | Window layer operations |
 | test_slit.py | 3 | Slit/dock operations |
 | test_config.py | 4 | Configuration query and reload |
@@ -70,8 +70,8 @@ Test configs live in `configs/`:
 - `default/` — Standard config (ClickToFocus, RowSmartPlacement)
 - `click_focus/` — Explicit click-to-focus
 - `sloppy_focus/` — Mouse/sloppy focus model
-- `hc_dark/` — High-contrast dark theme
-- `hc_light/` — High-contrast light theme
+- `hc_dark/` — High-contrast dark style
+- `hc_light/` — High-contrast light style
 
 ## Adding Tests
 

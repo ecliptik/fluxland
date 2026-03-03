@@ -36,7 +36,7 @@ if have_fuzzer
     install: false,
   )
 
-  # --- fuzz_style: style/theme file fuzzer ---
+  # --- fuzz_style: style file fuzzer ---
   executable(
     'fuzz_style',
     files('fuzz_style.c', '../../src/style.c', '../../src/rcparser.c'),

@@ -140,7 +140,7 @@ if have_pipewire
   add_project_arguments('-DWM_HAS_PIPEWIRE', language: 'c')
 endif
 
-# GdkPixbuf for XPM/JPEG/BMP theme pixmap support
+# GdkPixbuf for XPM/JPEG/BMP style pixmap support
 pixbuf_opt = get_option('pixbuf')
 pixbuf_dep = dependency('gdk-pixbuf-2.0', version: '>=2.36.0', required: pixbuf_opt)
 have_pixbuf = pixbuf_dep.found()
@@ -407,6 +407,18 @@ example_configs = [
 install_data(
   example_configs,
   install_dir: get_option('datadir') / 'fluxland' / 'examples',
+)
+
+# --- Bundled styles (community + upstream Fluxbox) ---
+
+install_subdir(
+  'examples/styles/community',
+  install_dir: get_option('datadir') / 'fluxland' / 'styles',
+)
+
+install_subdir(
+  'examples/styles/upstream',
+  install_dir: get_option('datadir') / 'fluxland' / 'styles',
 )
 
 # --- Man pages ---

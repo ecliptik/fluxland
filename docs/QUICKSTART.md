@@ -192,7 +192,7 @@ chmod +x ~/.config/fluxland/startup
 | `keys` | Keyboard/mouse bindings, key chains, keymodes |
 | `apps` | Per-window rules (size, position, workspace, decorations) |
 | `menu` | Right-click root menu (apps, submenus, styles) |
-| `style` | Window decoration theme (colors, fonts, textures) |
+| `style` | Window decoration style (colors, fonts, textures) |
 | `startup` | Shell script run once at launch (wallpaper, bars, daemons) |
 
 ### Customize for your setup
@@ -438,6 +438,6 @@ When the Claude team receives your issue:
 - `man fluxland` -- compositor usage
 - `man fluxland-keys` -- keybinding format
 - `man fluxland-apps` -- per-window rules
-- `man fluxland-style` -- theme/style format
+- `man fluxland-style` -- style format
 - `man fluxland-menu` -- menu definition format
 - [CONTRIBUTING.md](CONTRIBUTING.md) -- development workflow and architecture

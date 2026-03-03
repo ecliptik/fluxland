@@ -1,0 +1,37 @@
+Source: fluxland
+Section: x11
+Priority: optional
+Maintainer: fluxland contributors <fluxland@example.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ meson (>= 0.60.0),
+ ninja-build,
+ pkg-config,
+ libwlroots-dev (>= 0.18.0),
+ wayland-protocols (>= 1.32),
+ libwayland-dev (>= 1.22.0),
+ libxkbcommon-dev,
+ libpango1.0-dev,
+ libcairo2-dev,
+ libinput-dev (>= 1.14),
+ libdrm-dev,
+ libpixman-1-dev,
+ libxcb1-dev,
+ libxcb-ewmh-dev,
+ libxcb-icccm4-dev,
+ libsystemd-dev,
+Standards-Version: 4.6.2
+Homepage: https://github.com/ecliptik/fluxland
+Rules-Requires-Root: no
+
+Package: fluxland
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: xwayland, foot
+Suggests: grim, slurp, wl-clipboard, swaylock
+Description: Fluxbox-inspired Wayland compositor
+ Fluxland is a lightweight Wayland compositor inspired by Fluxbox.
+ It provides a familiar stacking window manager experience on Wayland
+ using the wlroots library, with features including configurable
+ keybindings, window decorations, workspaces, a toolbar, menus, and
+ bundled Fluxbox-compatible styles.

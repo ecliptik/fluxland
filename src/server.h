@@ -139,7 +139,7 @@ struct wm_server {
 	struct wl_listener new_layer_surface;
 	struct wl_list layer_surfaces; /* wm_layer_surface.link */
 
-	/* Theme/style for decorations */
+	/* Style for decorations */
 	struct wm_style *style;
 
 	struct wl_list outputs; /* wm_output.link */

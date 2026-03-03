@@ -26,7 +26,7 @@ with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) o
 what I learned building a 35,000-line compositor without writing a single line of code.
 
 Built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) 0.18, fluxland implements 30+ Wayland protocols and delivers
-first-class support for server-side decorations with Fluxbox theme
+first-class support for server-side decorations with Fluxbox style
 compatibility, key chains and modal keybindings, window tabbing, a configurable
 toolbar with icon bar, the slit (dockapp container), and per-window rules. It
 reads Fluxbox configuration files directly, making migration straightforward.
@@ -37,7 +37,7 @@ the benefits of a modern Wayland session.
 
 ## Screenshots
 
-*[Great Wave](https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa) theme with ocean blue decorations and [Hokusai](https://en.wikipedia.org/wiki/Hokusai) wallpaper.*
+*[Great Wave](https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa) style with ocean blue decorations and [Hokusai](https://en.wikipedia.org/wiki/Hokusai) wallpaper.*
 
 | | |
 |---|---|
@@ -46,7 +46,7 @@ the benefits of a modern Wayland session.
 | ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
 | Root menu | Grid arrangement (4 windows) |
 
-See [`examples/`](examples/) for themes and complete configuration examples, and the [theme gallery](docs/THEMES.md) for Fluxbox theme compatibility screenshots.
+See [`examples/`](examples/) for styles and complete configuration examples, and the [style gallery](docs/STYLES.md) for Fluxbox style compatibility screenshots.
 
 ## Quick Start
 
@@ -99,7 +99,7 @@ See [`examples/`](examples/) for themes and complete configuration examples, and
 
 ## Features
 
-- **Server-side decorations** with full [Fluxbox theme/style support](docs/THEMES.md) (gradients, textures, fonts, colors)
+- **Server-side decorations** with full [Fluxbox style support](docs/STYLES.md) (gradients, textures, fonts, colors)
 - **Key chains** -- multi-key sequences (e.g. `Mod4+x Mod4+t` to launch a terminal)
 - **Keymodes** -- modal keybinding sets (e.g. a resize mode with vim-style movement keys)
 - **Window tabbing** -- group windows into tabbed containers, drag-to-tab from titlebars
@@ -209,7 +209,7 @@ fluxland reads configuration from the first directory found:
 | `keys` | Fluxbox keys format | Keyboard and mouse bindings, key chains, keymodes, macro/toggle commands |
 | `apps` | Fluxbox apps format | Per-window rules: workspace, dimensions, position, decorations, layer, transparency, auto-grouping |
 | `menu` | Fluxbox menu format | Root menu definition with exec entries, submenus, separators, styles directory, and built-in items |
-| `style` | Fluxbox style format | Window decoration theme: titlebar, buttons, handle, grip, frame, menu, and toolbar colors/textures/fonts |
+| `style` | Fluxbox style format | Window decoration style: titlebar, buttons, handle, grip, frame, menu, and toolbar colors/textures/fonts |
 | `startup` | Shell script | Autostart script executed once at launch; use for wallpaper, bars, daemons |
 
 All configuration can be reloaded at runtime with `Mod4+r` (Reconfigure action)
@@ -226,7 +226,7 @@ See the man pages below for detailed format documentation.
 - **Key binding format** -- modifier and key names, action names, key chains, and keymodes are compatible.
 - **Mouse bindings** -- same context names (OnTitlebar, OnDesktop, OnWindowBorder, etc.) and button syntax.
 - **Per-window rules** -- same `[app]`/`[end]` block syntax with property matching and settings.
-- **Themes** -- Fluxbox style files [work directly](docs/THEMES.md); texture syntax (Raised, Flat, Gradient, etc.) is preserved.
+- **Styles** -- Fluxbox style files [work directly](docs/STYLES.md); texture syntax (Raised, Flat, Gradient, etc.) is preserved.
 - **Menu format** -- `[exec]`, `[submenu]`, `[separator]`, `[stylesdir]`, `[reconfig]`, `[exit]` entries.
 - **Config directory** -- fluxland falls back to `~/.fluxbox/` if no fluxland config directory exists.
 
@@ -279,7 +279,7 @@ The socket path is auto-detected from `$FLUXLAND_SOCK` or
 | fluxland(1) | 1 | Compositor usage and command-line options |
 | fluxland-keys(5) | 5 | Key and mouse binding configuration |
 | fluxland-apps(5) | 5 | Per-window rules and auto-grouping |
-| fluxland-style(5) | 5 | Theme/style file format |
+| fluxland-style(5) | 5 | Style file format |
 | fluxland-menu(5) | 5 | Menu definition format |
 
 After installation, access with `man fluxland`, `man fluxland-keys`, etc.

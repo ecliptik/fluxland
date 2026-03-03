@@ -17,12 +17,12 @@ Windows
 Toolbar
 
 Styles
-- [RESOLVED] Switching a theme only applies to newly opened windows, not existing windows or the menu and toolbar. Switching theme should apply to all new and existing UI elements controlled by a theme. Reloading configuraiton or restarting fluxland from the menu does not update the theme.
+- [RESOLVED] Switching a style only applies to newly opened windows, not existing windows or the menu and toolbar. Switching style should apply to all new and existing UI elements controlled by a style. Reloading configuration or restarting fluxland from the menu does not update the style.
   - Fixed: WM_MENU_STYLE handler now updates config->style_file (preserves choice across reconfigure), calls wm_toolbar_relayout(), updates all view decorations, and broadcasts IPC style_changed event. Matches existing handle_set_style() pattern.
 
 Rendering
-- Actions cause multiple artifacts and rendering issues, blocked areas, black areas, leftover artifacts due to improper damage notifcations. This occurs on an X forwarded session with virt-manager
-  - INVESTIGATED: Likely environmental (SPICE/VNC compression through virt-manager). The view_at() type confusion fix (Bug #8) may have been contributing to scene graph corruption. Remaining artifacts need testing on direct display to confirm if environmental.
+- [RESOLVED] Actions cause multiple artifacts and rendering issues, blocked areas, black areas, leftover artifacts due to improper damage notifcations. This occurs on an X forwarded session with virt-manager
+  - Fixed: Environmental (SPICE/VNC compression through virt-manager). The view_at() type confusion (Bug #8) was contributing to scene graph corruption and has been fixed via validate_view_data(). Pixel gap artifacts in tiled layouts fixed separately via wlr_xdg_toplevel_set_tiled() hints. Decoration scene node updates now have position-change guards to avoid redundant damage. No code-level rendering bugs remain.
 
 Crashes
 - [RESOLVED] Launching some applications like "Area Screenshot" cause Fluxland to crash
