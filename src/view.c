@@ -443,6 +443,10 @@ handle_xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 
 	wl_list_remove(&view->link);
 
+	/* Clear ShowDesktop saved view if this view is being destroyed */
+	if (view->server->show_desktop_saved_view == view)
+		view->server->show_desktop_saved_view = NULL;
+
 	/* Update toolbar icon bar (view removed from list) */
 	if (!view->docked) {
 		wm_toolbar_update_iconbar(view->server->toolbar);

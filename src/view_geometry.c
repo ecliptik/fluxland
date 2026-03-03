@@ -63,6 +63,9 @@ get_view_output_area(struct wm_view *view, struct wlr_box *area)
 void
 wm_view_toggle_maximize(struct wm_view *view)
 {
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+		return;
+
 	if (view->maximized) {
 		/* Restore saved geometry */
 		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
@@ -133,6 +136,9 @@ wm_view_toggle_maximize(struct wm_view *view)
 void
 wm_view_toggle_fullscreen(struct wm_view *view)
 {
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+		return;
+
 	if (view->fullscreen) {
 		/* Restore from fullscreen */
 		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
@@ -234,6 +240,9 @@ wm_view_maximize_vert(struct wm_view *view)
 		return;
 	}
 
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+		return;
+
 	if (view->maximized_vert) {
 		/* Restore saved y and height */
 		view->y = view->saved_geometry.y;
@@ -276,6 +285,9 @@ wm_view_maximize_horiz(struct wm_view *view)
 	if (!view) {
 		return;
 	}
+
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+		return;
 
 	if (view->maximized_horiz) {
 		/* Restore saved x and width */
@@ -321,6 +333,9 @@ wm_view_lhalf(struct wm_view *view)
 	if (!view)
 		return;
 
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+		return;
+
 	if (view->lhalf) {
 		/* Toggle off — restore saved geometry */
 		view->x = view->saved_geometry.x;
@@ -359,6 +374,9 @@ void
 wm_view_rhalf(struct wm_view *view)
 {
 	if (!view)
+		return;
+
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->rhalf) {
@@ -401,6 +419,9 @@ void
 wm_view_resize_by(struct wm_view *view, int dw, int dh)
 {
 	if (!view)
+		return;
+
+	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
 		return;
 
 	struct wlr_box geo;

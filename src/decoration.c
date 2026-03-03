@@ -1477,6 +1477,11 @@ wm_decoration_refresh_geometry(struct wm_decoration *decoration,
 		return;
 	}
 
+	/* Skip configure during unmap/teardown */
+	if (!decoration->view->scene_tree->node.enabled) {
+		return;
+	}
+
 	struct wlr_box geo;
 	wlr_xdg_surface_get_geometry(decoration->view->xdg_toplevel->base,
 		&geo);

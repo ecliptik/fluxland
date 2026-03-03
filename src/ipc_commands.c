@@ -1028,6 +1028,8 @@ handle_action_workspace(struct wm_server *server, enum wm_action action,
 		}
 
 		if (any_visible) {
+			server->show_desktop_saved_view =
+				server->focused_view;
 			wl_list_for_each(v, &server->views, link) {
 				if (v->workspace == ws &&
 				    v->scene_tree->node.enabled) {
@@ -1046,6 +1048,18 @@ handle_action_workspace(struct wm_server *server, enum wm_action action,
 			}
 		} else {
 			wm_view_deiconify_all_workspace(server);
+			if (server->show_desktop_saved_view) {
+				struct wm_view *saved =
+					server->show_desktop_saved_view;
+				server->show_desktop_saved_view = NULL;
+				wl_list_for_each(v, &server->views, link) {
+					if (v == saved) {
+						wm_focus_view(saved,
+							saved->xdg_toplevel->base->surface);
+						break;
+					}
+				}
+			}
 		}
 		return 1;
 	}

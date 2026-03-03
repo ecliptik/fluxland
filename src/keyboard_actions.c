@@ -627,6 +627,9 @@ handle_show_desktop(struct wm_server *server)
 	}
 
 	if (any_visible) {
+		/* Save focused view for restore on toggle-off */
+		server->show_desktop_saved_view = server->focused_view;
+
 		/* Minimize all visible views without triggering
 		 * focus changes (which reorder the view list and
 		 * corrupt the iteration) */
@@ -652,6 +655,20 @@ handle_show_desktop(struct wm_server *server)
 	} else {
 		/* Restore all minimized views on workspace */
 		wm_view_deiconify_all_workspace(server);
+
+		/* Restore focus to previously focused view if still valid */
+		if (server->show_desktop_saved_view) {
+			struct wm_view *saved =
+				server->show_desktop_saved_view;
+			server->show_desktop_saved_view = NULL;
+			wl_list_for_each(v, &server->views, link) {
+				if (v == saved) {
+					wm_focus_view(saved,
+						saved->xdg_toplevel->base->surface);
+					break;
+				}
+			}
+		}
 	}
 	return true;
 }
