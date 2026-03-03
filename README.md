@@ -42,7 +42,7 @@ the benefits of a modern Wayland session.
 | | |
 |---|---|
 | ![Desktop](docs/screenshots/desktop_wave.png) | ![Single Window](docs/screenshots/01_single_window.png) |
-| Desktop with toolbar | Single window |
+| Desktop with wallpaper | Single window with [gkrellm](http://gkrellm.srcbox.net/) in slit (XWayland) |
 | ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
 | Root menu | Grid arrangement (4 windows) |
 
