@@ -269,14 +269,19 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 			tool->width = h;
 			fixed_total += tool->width;
 		} else if (tool->type == WM_TOOL_WORKSPACE_NAME) {
-			/* Measure current workspace name */
-			struct wm_workspace *ws =
-				wm_workspace_get_active(toolbar->server);
-			const char *name = ws ? ws->name : "1";
-			if (!name || !*name) name = "1";
-			int tw = wm_measure_text_width(name,
-				&style->toolbar_font, 1.0f);
-			tool->width = tw + WM_TOOLBAR_PADDING * 4;
+			/* Measure widest workspace name — buttons share this tool */
+			int max_tw = 0;
+			struct wm_workspace *ws_iter;
+			wl_list_for_each(ws_iter,
+				&toolbar->server->workspaces, link) {
+				const char *ws_name = ws_iter->name;
+				if (!ws_name || !*ws_name) ws_name = "1";
+				int tw = wm_measure_text_width(ws_name,
+					&style->toolbar_font, 1.0f);
+				if (tw > max_tw) max_tw = tw;
+			}
+			int per_btn = max_tw + WM_TOOLBAR_PADDING * 4;
+			tool->width = per_btn * toolbar->server->workspace_count;
 			if (tool->width < 60) tool->width = 60;
 			fixed_total += tool->width;
 		} else if (tool->type == WM_TOOL_CLOCK) {
@@ -1522,6 +1527,12 @@ wm_toolbar_toggle_visible(struct wm_toolbar *toolbar)
 	}
 
 	toolbar->visible = !toolbar->visible;
+
+	/* Sync config so relayout doesn't revert the change */
+	if (toolbar->server->config) {
+		toolbar->server->config->toolbar_visible = toolbar->visible;
+	}
+
 	wlr_scene_node_set_enabled(&toolbar->scene_tree->node,
 		toolbar->visible);
 	wm_toolbar_relayout(toolbar);
