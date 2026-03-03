@@ -438,6 +438,7 @@ struct wm_server {
 	struct wm_menu *custom_menu;
 	struct wl_listener new_xdg_decoration;
 	int focus_policy;
+	struct wm_toolbar *toolbar;
 };
 
 /* --- Render stubs --- */
@@ -903,6 +904,12 @@ static bool wm_execute_action(struct wm_server *server,
 static void wm_server_reconfigure(struct wm_server *server)
 {
 	(void)server;
+}
+
+struct wm_toolbar;
+static void wm_toolbar_relayout(struct wm_toolbar *toolbar)
+{
+	(void)toolbar;
 }
 
 /* --- Perf stubs (menu_render.c includes perf.h) --- */

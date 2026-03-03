@@ -33,6 +33,7 @@
 #include "rules.h"
 #include "server.h"
 #include "style.h"
+#include "toolbar.h"
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
@@ -192,9 +193,13 @@ handle_config_command(struct wm_server *server, const char *cmd)
 		return;
 	}
 
-	/* Apply changes */
+	/* Apply changes directly without full reconfigure.
+	 * A full wm_server_reconfigure() would re-read the config file from
+	 * disk, undoing the in-memory toggle, and would destroy/recreate all
+	 * menus while we're still inside a menu click handler (UAF). */
 	server->focus_policy = cfg->focus_policy;
-	wm_server_reconfigure(server);
+	if (server->toolbar)
+		wm_toolbar_relayout(server->toolbar);
 }
 
 static struct wm_menu *
@@ -1249,9 +1254,10 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 
 		if (item->type != WM_MENU_SEPARATOR &&
 		    item->type != WM_MENU_NOP) {
-			execute_menu_item(menu, item);
-			/* Hide all menus after activation */
+			/* Hide menus BEFORE executing to avoid UAF —
+			 * see button handler comment for details. */
 			wm_menu_hide(root_menu);
+			execute_menu_item(menu, item);
 		}
 		return true;
 	}
@@ -1527,8 +1533,12 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 	/* Activate the item */
 	if (item->type != WM_MENU_SEPARATOR &&
 	    item->type != WM_MENU_NOP) {
-		execute_menu_item(hit_menu, item);
+		/* Hide menus BEFORE executing the action to avoid UAF:
+		 * execute_menu_item may trigger wm_server_reconfigure()
+		 * which destroys and recreates all menus. If we hid
+		 * after, root_menu would be a dangling pointer. */
 		wm_menu_hide(root_menu);
+		execute_menu_item(hit_menu, item);
 	}
 
 	return true;

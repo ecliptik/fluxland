@@ -65,6 +65,9 @@ bool wm_execute_action(struct wm_server *s, enum wm_action a,
 #include "server.h"
 void wm_server_reconfigure(struct wm_server *s)
 	{ (void)s; }
+#include "toolbar.h"
+void wm_toolbar_relayout(struct wm_toolbar *toolbar)
+	{ (void)toolbar; }
 #include "keybind.h"
 enum wm_action wm_action_from_name(const char *name)
 	{ (void)name; return WM_ACTION_NOP; }

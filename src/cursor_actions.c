@@ -30,6 +30,25 @@
 #include "workspace.h"
 
 /*
+ * Validate that node.data is actually a wm_view by checking the
+ * server's view list. Returns the view if valid, NULL otherwise.
+ * This prevents type confusion when node.data is set by layer_shell,
+ * toolbar, menu, or other non-view scene nodes.
+ */
+static struct wm_view *
+validate_view_data(struct wm_server *server, void *data)
+{
+	if (!data)
+		return NULL;
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v == data)
+			return v;
+	}
+	return NULL;
+}
+
+/*
  * Find the view under the cursor, returning the surface and
  * surface-local coordinates. Returns NULL if no view is found.
  */
@@ -55,7 +74,8 @@ view_at(struct wm_server *server, double lx, double ly,
 		}
 		if (surface)
 			*surface = NULL;
-		return tree ? tree->node.data : NULL;
+		return tree ? validate_view_data(server,
+			tree->node.data) : NULL;
 	}
 
 	*surface = scene_surface->surface;
@@ -64,7 +84,8 @@ view_at(struct wm_server *server, double lx, double ly,
 	while (tree && !tree->node.data) {
 		tree = tree->node.parent;
 	}
-	return tree ? tree->node.data : NULL;
+	return tree ? validate_view_data(server,
+		tree->node.data) : NULL;
 }
 
 /*
