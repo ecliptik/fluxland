@@ -401,7 +401,6 @@ example_configs = [
   'data/style',
   'data/fluxland-hc-dark.style',
   'data/fluxland-hc-light.style',
-  'data/fluxland-wave.style',
 ]
 
 install_data(

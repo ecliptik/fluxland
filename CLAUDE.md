@@ -21,7 +21,7 @@ src/           114 files (58 .c + 56 .h), ~35K lines — compositor source
 tests/         52 C test files, 7 fuzz targets — 81.2% line coverage
 tests/ui/      21 Python pytest files — 174 end-to-end UI tests via IPC
 data/          Default configs (init, keys, apps, menu, style, startup) + styles
-examples/      Complete example configs (wave-desktop, minimal, sloppy-focus)
+examples/      Example config overlays (wave-desktop, minimal, sloppy-focus) + styles
 docs/          QUICKSTART.md, design/ARCHITECTURE.md, design/FLUXBOX-COMPAT.md
 man/           5 man pages (fluxland.1, fluxland-keys.5, etc.)
 packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/

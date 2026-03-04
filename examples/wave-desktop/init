@@ -3,7 +3,8 @@
 # with ocean blue style and matching wallpaper.
 #
 # Usage:
-#   cp -r examples/wave-desktop/* ~/.config/fluxland/
+#   cp data/* ~/.config/fluxland/
+#   cp examples/wave-desktop/* ~/.config/fluxland/
 #   Download a Great Wave wallpaper to ~/Pictures/great_wave.jpg
 
 # -------------------------------------------------------------------
@@ -47,4 +48,4 @@ session.screen0.toolbar.widthPercent: 72
 # Style: Great Wave
 # -------------------------------------------------------------------
 
-session.styleFile: ~/.config/fluxland/wave.style
+session.styleFile: ~/.config/fluxland/styles/wave.style

@@ -70,7 +70,8 @@ See [`examples/`](examples/) for styles and complete configuration examples, and
    Or start from a themed example (see [`examples/`](examples/)):
 
    ```sh
-   cp -r /path/to/fluxland/examples/wave-desktop/* ~/.config/fluxland/
+   cp /path/to/fluxland/data/* ~/.config/fluxland/
+   cp /path/to/fluxland/examples/wave-desktop/* ~/.config/fluxland/
    chmod +x ~/.config/fluxland/startup
    ```
 

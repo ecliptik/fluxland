@@ -7,8 +7,8 @@ Fluxbox style archives work without modification.
 ## The Great Wave
 
 The signature fluxland style. Deep indigo blues, ocean teal, cream whites, and
-warm accents inspired by Hokusai's *The Great Wave off Kanagawa*. Ships as the
-default style in the [`wave-desktop`](../examples/wave-desktop/) example config.
+warm accents inspired by Hokusai's *The Great Wave off Kanagawa*. Ships as a
+bundled style at [`examples/styles/wave.style`](../examples/styles/wave.style).
 
 ![wave](screenshots/04_menu.png)
 

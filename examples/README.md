@@ -1,11 +1,13 @@
 # fluxland Examples
 
-Example configurations and styles for fluxland. Copy any example to your
-config directory to get started:
+Example configurations and styles for fluxland. Each example only contains
+files that differ from the defaults in `data/`. To use an example, first copy
+the defaults, then overlay the example-specific files:
 
 ```sh
 mkdir -p ~/.config/fluxland
-cp -r examples/wave-desktop/* ~/.config/fluxland/
+cp data/* ~/.config/fluxland/
+cp examples/wave-desktop/* ~/.config/fluxland/
 chmod +x ~/.config/fluxland/startup
 ```
 
@@ -37,30 +39,50 @@ session.styleFile: /path/to/wave.style
 
 Then press `Mod4+r` to reload.
 
-## Complete Configurations
+## Example Configurations
 
-Each directory below is a self-contained config you can copy directly to
-`~/.config/fluxland/`.
+Each directory below contains only the files that differ from defaults.
+Start by copying `data/*`, then overlay the example on top.
 
 ### wave-desktop
 
-A themed desktop inspired by *The Great Wave off Kanagawa*. Includes the
-ocean blue style, a startup script that sets the Great Wave as wallpaper,
-and nautical workspace names.
+A themed desktop inspired by *The Great Wave off Kanagawa*. Overrides `init`
+(nautical workspace names, wave style path) and `startup` (Great Wave
+wallpaper via swaybg).
+
+```sh
+cp data/* ~/.config/fluxland/
+cp examples/wave-desktop/* ~/.config/fluxland/
+cp examples/styles/wave.style ~/.config/fluxland/styles/
+chmod +x ~/.config/fluxland/startup
+```
 
 **Prerequisites:** Install `swaybg` and download a Great Wave wallpaper to
 `~/Pictures/great_wave.jpg`.
 
 ### minimal
 
-A bare-minimum configuration for new users. Four workspaces, click-to-focus,
-default keybindings, and a solid dark background. Start here and customize.
+A bare-minimum configuration for new users. Overrides `init` (trimmed
+settings) and `startup` (minimal startup). Four workspaces, click-to-focus,
+and a solid dark background. Start here and customize.
+
+```sh
+cp data/* ~/.config/fluxland/
+cp examples/minimal/* ~/.config/fluxland/
+chmod +x ~/.config/fluxland/startup
+```
 
 ### sloppy-focus
 
-Focus follows the mouse pointer with auto-raise after 400ms. Good for users
-who prefer not to click windows to focus them. Includes opaque resize for a
-smoother feel with mouse-driven workflows.
+Focus follows the mouse pointer with auto-raise after 400ms. Overrides `init`
+(MouseFocus settings, opaque resize) and `startup`. Good for users who prefer
+not to click windows to focus them.
+
+```sh
+cp data/* ~/.config/fluxland/
+cp examples/sloppy-focus/* ~/.config/fluxland/
+chmod +x ~/.config/fluxland/startup
+```
 
 ## Customizing
 
