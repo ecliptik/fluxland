@@ -41,9 +41,9 @@ the benefits of a modern Wayland session.
 
 | | |
 |---|---|
-| ![Desktop](docs/screenshots/desktop_wave.png) | ![Single Window](docs/screenshots/01_single_window.png) |
+| ![Desktop](docs/screenshots/desktop.png) | ![Single Window](docs/screenshots/window_slit.png) |
 | Desktop with wallpaper | Single window with [gkrellm](http://gkrellm.srcbox.net/) in slit (XWayland) |
-| ![Menu](docs/screenshots/04_menu.png) | ![Grid](docs/screenshots/06_grid.png) |
+| ![Menu](docs/screenshots/menu.png) | ![Grid](docs/screenshots/grid.png) |
 | Root menu | Grid arrangement (4 windows) |
 
 See [`examples/`](examples/) for styles and complete configuration examples, and the [style gallery](docs/STYLES.md) for Fluxbox style compatibility screenshots.

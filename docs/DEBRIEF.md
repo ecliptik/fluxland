@@ -69,7 +69,7 @@ Then I left for a two week vacation. It turned out to be the right rhythm — th
 
 **Day 6** — 137 Python end-to-end tests, documentation polish, final bug fixes. Version 1.0.0 tagged.
 
-![fluxland desktop with Great Wave style](screenshots/04_menu.png)
+![fluxland desktop with Great Wave style](screenshots/menu.png)
 *Fluxland running with the Great Wave style — server-side decorations, toolbar, slit, and root menu.*
 
 ## The moment it clicked: team orchestration
