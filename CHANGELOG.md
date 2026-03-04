@@ -5,7 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-03-03
+
+### Added
+- Fluxbox style compatibility with 37 bundled styles (10 community from box-look.org, 27 upstream from Fluxbox)
+- GdkPixbuf support for XPM, JPEG, and BMP pixmaps in styles
+- Style gallery documentation with screenshots for all bundled styles
+- PipeWire screen cast module with IPC control
+- Touchpad gesture interception for workspace switching
+- AT-SPI accessibility bridge and IPC enrichment
+- Native dockapp protocol for slit
+- Conditional keybindings
+- Per-workspace wallpaper support
+- Workspace slide transitions
+- Mouse drag-to-tab and tab click activation
+- Fluxbox-style toolbar layout with workspace name tool
+- Checked state indicators for menu items
+- XWayland views in IPC get_windows response
+- Default keybindings for LHalf/RHalf half-tiling
+- Shaded field in IPC get_windows response
+- Great Wave as default style for new installs
+- Config validation entries for workspace, animation, and snap zone settings
+- SECURITY.md with vulnerability reporting and audit history
+- Man pages for fluxland-init(5), fluxland-startup(5), and fluxland-ctl(1)
+- 11 new C unit test files and 3 new fuzz targets
+- App launch tests for all default menu entries
+
+### Changed
+- Deduplicated example configs to overlay format
+- Renamed "theme" terminology to "style" throughout codebase for Fluxbox consistency
+- Decomposed mega-functions in ipc_commands.c, keyboard_actions.c, decoration.c, and config.c
+- Decomposed view.c and cursor.c into focused modules
+- Extracted menu_render.c/h and menu_parse.c/h from menu.c
+- Extracted shared pixel_buffer module
+- Consolidated double-fork into wm_spawn_command() with environment sanitization
+- Cleaned up screenshot history and renamed screenshots to descriptive names
+
+### Fixed
+- Critical UAF in menu config toggle and type confusion crash in view_at()
+- Style rendering: XPM support, greyNN colors, rgb: color scaling, pixmap subdirectory resolution
+- Style rendering: per-button pixmaps, shade button ParentRelative fallback, implicit pixmap fill
+- Style rendering: wildcard keys in parser, per-component toolbar styles
+- Toolbar text contrast and workspace white wash in wave style
+- ShowDesktop focus restore and xdg_surface configure timing guards
+- Double-centering of text in titlebars and toolbar
+- Toolbar workspace button sizing and toggle visibility
+- Theme switch propagation, remember save/restore, and layer parsing
+- XDG toplevel request handler guards against pre-initialization
+- Config parser hardening against long lines and symlink attacks
+- NULL checks after malloc and wlr_scene_*_create() calls
+- Buffer overflow: replaced sprintf with snprintf in json_escape
+- Standalone style installation (wave, default, hc-dark, hc-light)
+
+### Performance
+- Iconbar per-entry dirty tracking to skip redundant re-renders
+- Position-change guards on decoration scene node updates
+- Config reload mtime diffing to skip unchanged subsystems
+- Text rendering pipeline and toolbar allocation churn optimization
+- WLCS source fix and compile-time performance profiling
 
 ## [1.0.0] - 2026-02-27
 

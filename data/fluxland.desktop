@@ -5,5 +5,5 @@ GenericName=Wayland Compositor
 Exec=fluxland
 Type=Application
 Categories=System;
-Keywords=wayland;compositor;window manager;wlroots;fluxbox;tiling;
+Keywords=wayland;compositor;window manager;wlroots;fluxbox;stacking;
 DesktopNames=fluxland

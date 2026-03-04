@@ -1,6 +1,6 @@
 # Fluxland
 
-Fluxbox-inspired Wayland compositor built on wlroots 0.18. C17, Meson, MIT license. Version 1.0.0.
+Fluxbox-inspired Wayland compositor built on wlroots 0.18. C17, Meson, MIT license. Version 1.1.0.
 
 ## Build & Test
 
@@ -17,13 +17,13 @@ Build options: `-Dxwayland=enabled`, `-Dasan=true`, `-Dubsan=true`
 ## Project Layout
 
 ```
-src/           114 files (58 .c + 56 .h), ~35K lines — compositor source
+src/           116 files (59 .c + 57 .h), ~35K lines — compositor source
 tests/         52 C test files, 7 fuzz targets — 81.2% line coverage
 tests/ui/      21 Python pytest files — 174 end-to-end UI tests via IPC
 data/          Default configs (init, keys, apps, menu, style, startup) + styles
 examples/      Example config overlays (wave-desktop, minimal, sloppy-focus) + styles
 docs/          QUICKSTART.md, design/ARCHITECTURE.md, design/FLUXBOX-COMPAT.md
-man/           5 man pages (fluxland.1, fluxland-keys.5, etc.)
+man/           8 man pages (fluxland.1, fluxland-keys.5, etc.)
 packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/
 ```
 

@@ -278,10 +278,13 @@ The socket path is auto-detected from `$FLUXLAND_SOCK` or
 | Page | Section | Description |
 |---|---|---|
 | fluxland(1) | 1 | Compositor usage and command-line options |
+| fluxland-ctl(1) | 1 | IPC client usage |
 | fluxland-keys(5) | 5 | Key and mouse binding configuration |
 | fluxland-apps(5) | 5 | Per-window rules and auto-grouping |
+| fluxland-init(5) | 5 | Init file reference |
 | fluxland-style(5) | 5 | Style file format |
 | fluxland-menu(5) | 5 | Menu definition format |
+| fluxland-startup(5) | 5 | Startup script reference |
 
 After installation, access with `man fluxland`, `man fluxland-keys`, etc.
 

@@ -1,5 +1,5 @@
 Name:           fluxland
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        A Fluxbox-inspired Wayland compositor
 License:        MIT
@@ -56,9 +56,20 @@ keybindings, window decorations, workspaces, a toolbar, and menus.
 %{_mandir}/man5/fluxland-apps.5*
 %{_mandir}/man5/fluxland-keys.5*
 %{_mandir}/man5/fluxland-menu.5*
+%{_mandir}/man1/fluxland-ctl.1*
+%{_mandir}/man5/fluxland-init.5*
+%{_mandir}/man5/fluxland-startup.5*
 %{_mandir}/man5/fluxland-style.5*
+%{_datadir}/fluxland/styles/
 
 %changelog
+* Mon Mar 03 2026 Fluxland Contributors <noreply@fluxland.dev> - 1.1.0-1
+- Fluxbox style compatibility with 37 bundled styles
+- GdkPixbuf pixmap support for XPM/JPEG/BMP
+- PipeWire screen cast, touchpad gestures, AT-SPI bridge
+- Performance: iconbar dirty tracking, decoration position guards
+- Multiple critical bug fixes (UAF, type confusion, config hardening)
+
 * Fri Feb 27 2026 fluxland contributors <fluxland@example.com> - 1.0.0-1
 - Release 1.0.0
 

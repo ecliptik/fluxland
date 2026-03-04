@@ -1,3 +1,13 @@
+fluxland (1.1.0-1) unstable; urgency=medium
+
+  * Fluxbox style compatibility with 37 bundled styles
+  * GdkPixbuf pixmap support for XPM/JPEG/BMP
+  * PipeWire screen cast, touchpad gestures, AT-SPI bridge
+  * Performance: iconbar dirty tracking, decoration position guards
+  * Multiple critical bug fixes (UAF, type confusion, config hardening)
+
+ -- Fluxland Contributors <noreply@fluxland.dev>  Mon, 03 Mar 2026 00:00:00 +0000
+
 fluxland (1.0.0-1) unstable; urgency=medium
 
   * Release 1.0.0.

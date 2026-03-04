@@ -53,6 +53,7 @@ wallpaper via swaybg).
 ```sh
 cp data/* ~/.config/fluxland/
 cp examples/wave-desktop/* ~/.config/fluxland/
+mkdir -p ~/.config/fluxland/styles
 cp examples/styles/wave.style ~/.config/fluxland/styles/
 chmod +x ~/.config/fluxland/startup
 ```

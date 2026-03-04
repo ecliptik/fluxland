@@ -6,7 +6,7 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: fluxland 1.0.0\n"
+"Project-Id-Version: fluxland 1.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ecliptik/fluxland/issues\n"
 "POT-Creation-Date: 2026-03-02 08:12-0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"

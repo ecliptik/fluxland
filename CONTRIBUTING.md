@@ -70,10 +70,10 @@ WLR_BACKENDS=headless WLR_RENDERER=pixman ./build/fluxland
 ### Running tests
 
 ```sh
-# C unit tests (38 tests)
+# C unit tests (53 tests)
 meson test -C build --print-errorlogs
 
-# Python UI tests (137 tests, requires running compositor)
+# Python UI tests (174 tests, requires running compositor)
 python3 -m pytest tests/ui/ --timeout=30
 ```
 
@@ -321,7 +321,7 @@ read it in `wm_server_reconfigure()`.
 
 ## How to write a fuzz target
 
-Fluxland includes 4 fuzz targets in `tests/fuzz/` using libFuzzer.
+Fluxland includes 7 fuzz targets in `tests/fuzz/` using libFuzzer.
 Fuzz targets require Clang to build.
 
 ### Existing targets
@@ -332,6 +332,9 @@ Fuzz targets require Clang to build.
 | `fuzz_keybind` | `tests/fuzz/fuzz_keybind.c` | Key binding parser |
 | `fuzz_style` | `tests/fuzz/fuzz_style.c` | Style parser |
 | `fuzz_menu` | `tests/fuzz/fuzz_menu.c` | Menu file parser |
+| `fuzz_ipc_command` | `tests/fuzz/fuzz_ipc_command.c` | IPC command parser |
+| `fuzz_rules` | `tests/fuzz/fuzz_rules.c` | Window rules parser |
+| `fuzz_mousebind` | `tests/fuzz/fuzz_mousebind.c` | Mouse binding parser |
 
 ### Adding a new fuzz target
 

@@ -47,7 +47,7 @@ fluxland is a Wayland compositor built on the wlroots library, designed to repli
 │  └──────────────┘          │                                      │
 │                              │                                      │
 │  ┌──────────────┐  ┌───────▼───────┐  ┌──────────────────────┐   │
-│  │  IPC / D-Bus │  │   Wayland     │  │    XWayland          │   │
+│  │  IPC         │  │   Wayland     │  │    XWayland          │   │
 │  │  Interface   │  │   Protocol    │  │    Bridge             │   │
 │  │              │  │   Handler     │  │                      │   │
 │  └──────────────┘  └───────────────┘  └──────────────────────┘   │
@@ -261,7 +261,7 @@ Distribute updated config to subsystems
 
 ### 2. C as the implementation language
 
-**Decision**: Implement in C (C23 standard, C17 minimum).
+**Decision**: Implement in C (C17).
 
 **Rationale**: wlroots is a C library with a C API. Using C avoids FFI overhead and complexity, provides direct access to all wlroots internals, and aligns with the broader Wayland ecosystem (labwc, Sway, Weston). The Wayland ecosystem tooling (wayland-scanner, protocol XML) generates C code. C keeps the codebase accessible to contributors from the wlroots/Wayland community. Follows the labwc model as our closest architectural reference.
 
@@ -300,7 +300,7 @@ Distribute updated config to subsystems
 | Input handling | libinput (via wlroots) |
 | Rendering | wlroots scene graph (Vulkan/GLES2/Pixman backends) |
 | XKB | libxkbcommon (keyboard handling) |
-| Image loading | libpng, libjpeg (for styles/pixmaps) |
+| Image loading | GdkPixbuf (for styles/pixmaps) |
 | Font rendering | Pango + Cairo (for titlebar text, menus) |
 | X11 compat | XWayland (optional) |
 | IPC | Unix domain socket (JSON messages) |
@@ -347,8 +347,5 @@ Distribute updated config to subsystems
 ## Future Considerations
 
 - **Plugin system**: Lua or other scripting for extensibility
-- **Animation framework**: Smooth window transitions and effects
-- **Touchpad gestures**: Workspace switching and window management via gestures
-- **Fractional scaling**: Per-monitor fractional scale support
 - **HDR support**: When wlroots and Wayland protocols mature
 - **Session management**: Integration with systemd and login managers

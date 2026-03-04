@@ -105,13 +105,13 @@ ninja -C build
 Verify everything works:
 
 ```sh
-ninja -C build test        # run all 7 test suites
+ninja -C build test        # run all 53 test suites
 ```
 
 You should see all tests pass:
 
 ```
-Ok:                 7
+Ok:                 53
 Expected Fail:      0
 Fail:               0
 ```
@@ -124,7 +124,7 @@ Use `checkinstall` for a quick local package:
 sudo apt install -y checkinstall
 
 sudo checkinstall --pkgname=fluxland \
-  --pkgversion=1.0.0 \
+  --pkgversion=1.1.0 \
   --pkgrelease=1 \
   --pkggroup=x11 \
   --maintainer="you@example.com" \
@@ -135,11 +135,11 @@ sudo checkinstall --pkgname=fluxland \
   ninja -C build install
 ```
 
-This creates `fluxland_1.0.0-1_amd64.deb` in the current directory and
+This creates `fluxland_1.1.0-1_amd64.deb` in the current directory and
 installs it. To share or reinstall:
 
 ```sh
-sudo dpkg -i fluxland_1.0.0-1_amd64.deb
+sudo dpkg -i fluxland_1.1.0-1_amd64.deb
 ```
 
 To remove:
@@ -440,4 +440,4 @@ When the Claude team receives your issue:
 - `man fluxland-apps` -- per-window rules
 - `man fluxland-style` -- style format
 - `man fluxland-menu` -- menu definition format
-- [CONTRIBUTING.md](CONTRIBUTING.md) -- development workflow and architecture
+- [CONTRIBUTING.md](../CONTRIBUTING.md) -- development workflow and architecture

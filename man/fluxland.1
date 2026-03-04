@@ -1,12 +1,15 @@
-.TH FLUXLAND 1 "2026-02-27" "fluxland 1.0.0" "General Commands Manual"
+.TH FLUXLAND 1 "2026-03-03" "fluxland 1.1.0" "General Commands Manual"
 .SH NAME
 fluxland \- a Fluxbox-inspired Wayland compositor
 .SH SYNOPSIS
 .B fluxland
 .RB [ \-s
 .IR command ]
+.RB [ \-c ]
 .RB [ \-d ]
 .RB [ \-v ]
+.RB [ \-l ]
+.RB [ \-\-ipc\-no\-exec ]
 .RB [ \-h ]
 .SH DESCRIPTION
 .B fluxland
@@ -32,12 +35,27 @@ This is in addition to the
 .I startup
 script in the configuration directory.
 .TP
+.BR \-c ", " \-\-check\-config
+Validate all configuration files (init, keys, style) and exit.
+Reports syntax errors, unknown keys, and invalid values without
+starting the compositor.
+.TP
 .BR \-d ", " \-\-debug
 Enable debug logging.
 Without this flag, only error-level messages are printed.
 .TP
 .BR \-v ", " \-\-version
 Print the version string and exit.
+.TP
+.BR \-l ", " \-\-list\-commands
+List all available IPC commands and exit.
+.TP
+.B \-\-ipc\-no\-exec
+Disable the
+.BR Exec ", " BindKey ", and " SetStyle
+commands via IPC.
+This prevents remote clients from executing arbitrary commands
+or modifying key bindings through the IPC socket.
 .TP
 .BR \-h ", " \-\-help
 Print a brief usage summary and exit.
