@@ -92,9 +92,11 @@ Mod4 Shift d :ShowDesktop
 # Window focus cycling
 # -------------------------------------------------------------------
 
-# Alt-Tab / Shift-Alt-Tab: cycle through windows
-Mod1 Tab :NextWindow
-Mod1 Shift Tab :PrevWindow
+# Alt-Tab / Shift-Alt-Tab: cycle through windows on this workspace, one
+# entry per tab group (Fluxbox's default). Hold Alt to keep walking the
+# list; without a pattern NextWindow cycles every workspace.
+Mod1 Tab :NextWindow {groups} (workspace=[current])
+Mod1 Shift Tab :PrevWindow {groups} (workspace=[current])
 
 # Alternative focus cycling (same as NextWindow/PrevWindow)
 # Mod4 j :FocusNext

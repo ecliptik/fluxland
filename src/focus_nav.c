@@ -39,6 +39,12 @@ wm_focus_nav_enter_toolbar(struct wm_server *server)
 		return;
 	}
 
+	/* Pressing FocusToolbar again leaves the toolbar */
+	if (server->focus_nav.zone == WM_FOCUS_ZONE_TOOLBAR) {
+		wm_focus_nav_return_to_windows(server);
+		return;
+	}
+
 	server->focus_nav.zone = WM_FOCUS_ZONE_TOOLBAR;
 	server->focus_nav.toolbar_index = 0;
 

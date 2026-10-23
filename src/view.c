@@ -181,6 +181,8 @@ handle_xdg_toplevel_map(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, map);
 
+	view->mapped = true;
+
 	/* Check if this view should be docked into the slit */
 	if (view->server->slit &&
 	    wm_rules_should_dock(&view->server->rules, view)) {
@@ -321,6 +323,10 @@ static void
 handle_xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view = wl_container_of(listener, view, unmap);
+
+	view->mapped = false;
+	if (view->server->focus_cycle.restore_minimized == view)
+		view->server->focus_cycle.restore_minimized = NULL;
 
 	/* Docked views: slit handles unmap via its own listener */
 	if (view->docked) {

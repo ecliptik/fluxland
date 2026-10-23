@@ -1,69 +1,44 @@
-# Screen Recording with PipeWire
+# Screenshots, Screen Recording and Screen Sharing
 
-Fluxland supports screen recording via PipeWire when built with `-Dpipewire=enabled`.
+Fluxland doesn't record the screen itself. It implements the standard
+wlroots capture protocols, and the usual tools build on them:
 
-## Prerequisites
+| Protocol | Used by |
+|----------|---------|
+| `wlr-screencopy-unstable-v1` | grim, wf-recorder, wl-screenrec, xdg-desktop-portal-wlr |
+| `wlr-export-dmabuf-unstable-v1` | obs-wlrobs, older recorders |
 
-Install PipeWire development libraries:
-
-```sh
-# Debian/Ubuntu
-sudo apt install libpipewire-0.3-dev
-
-# Fedora
-sudo dnf install pipewire-devel
-
-# Arch
-sudo pacman -S pipewire
-```
-
-## Building with PipeWire support
+## Screenshots
 
 ```sh
-meson setup build -Dpipewire=enabled
-ninja -C build
+grim ~/screenshot.png                      # all outputs
+grim -g "$(slurp)" ~/region.png            # a region
+grim -o HDMI-A-1 ~/output.png              # one output
 ```
 
-## Usage
-
-### Start recording
+## Recording
 
 ```sh
-# Record the default (first) output
-fluxland-ctl screen_cast_start
-
-# Record a specific output
-fluxland-ctl screen_cast_start '{"output":"HDMI-A-1"}'
+wf-recorder -f ~/recording.mp4             # all outputs
+wf-recorder -g "$(slurp)" -f ~/region.mp4  # a region
+wf-recorder -o HDMI-A-1 -f ~/output.mp4    # one output
 ```
 
-### Check status
+Stop with Ctrl+C.
 
-```sh
-fluxland-ctl get_screen_cast
-# Returns: {"success":true,"data":{"available":true,"state":"streaming","node_id":42}}
-```
+## Screen sharing (browsers, OBS, video calls)
 
-### Stop recording
+Firefox, Chromium, OBS, Zoom and other apps share the screen through
+[xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/). On
+wlroots compositors the backend is
+[xdg-desktop-portal-wlr](https://github.com/emersion/xdg-desktop-portal-wlr),
+which captures with screencopy and streams over PipeWire.
 
-```sh
-fluxland-ctl screen_cast_stop
-```
+Install `xdg-desktop-portal`, `xdg-desktop-portal-wlr` and
+`xdg-desktop-portal-gtk` (for file choosers), and make sure PipeWire is
+running. When fluxland starts it sets `XDG_CURRENT_DESKTOP=fluxland` and
+imports its environment into the D-Bus and systemd user sessions, so the
+portal picks up `fluxland-portals.conf` and the right `WAYLAND_DISPLAY`.
 
-### Recording with OBS or FFmpeg
-
-The screen cast creates a PipeWire video source node. Use the node ID with:
-
-```sh
-# FFmpeg (replace NODE_ID with actual ID)
-ffmpeg -f pipewire -i "NODE_ID" -c:v libx264 output.mp4
-
-# OBS Studio
-# Add a "PipeWire Video Capture" source and select "fluxland-screen-cast"
-```
-
-## Architecture
-
-- PipeWire event loop is integrated with the Wayland event loop via fd polling
-- Video format: BGRx (matching wlroots DRM_FORMAT_XRGB8888)
-- Frame delivery: triggered by output frame events
-- No threads: all PipeWire processing runs on the main compositor thread
+Choosing what to share: xdg-desktop-portal-wlr asks with a chooser
+command (slurp by default). See its `config` for `chooser_type`.

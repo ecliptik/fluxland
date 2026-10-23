@@ -18,9 +18,15 @@
 
 struct wm_server;
 
-/* Execute a single action by enum value */
+struct wm_view;
+
+/* Execute a single action by enum value on the focused view */
 bool wm_execute_action(struct wm_server *server,
 	enum wm_action action, const char *argument);
+
+/* Execute a single action on `target` (NULL = focused view) */
+bool wm_execute_action_on(struct wm_server *server, enum wm_action action,
+	const char *argument, struct wm_view *target);
 
 /* Execute a keybind, including MacroCmd/ToggleCmd/If/ForEach/Map/Delay */
 bool wm_execute_keybind_action(struct wm_server *server,

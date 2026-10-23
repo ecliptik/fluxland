@@ -26,6 +26,7 @@
 #include "i18n.h"
 #include "ipc.h"
 #include "keyboard_actions.h"
+#include "command.h"
 #include "menu.h"
 #include "menu_parse.h"
 #include "menu_render.h"
@@ -913,30 +914,19 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 				item->checked = !item->checked;
 				break;
 			}
-			/* Parse "ActionName argument" and dispatch */
-			char action_name[64];
-			const char *arg = NULL;
-			const char *space = strchr(item->command, ' ');
-			if (space) {
-				size_t len = (size_t)(space - item->command);
-				if (len >= sizeof(action_name))
-					len = sizeof(action_name) - 1;
-				memcpy(action_name, item->command, len);
-				action_name[len] = '\0';
-				arg = space + 1;
-			} else {
-				snprintf(action_name, sizeof(action_name),
-					"%s", item->command);
+			/*
+			 * Full command language (MacroCmd, If, ...). Parse
+			 * first: the command may reconfigure and free the menu.
+			 */
+			struct wm_command *cmd =
+				wm_command_parse(item->command);
+			if (!cmd) {
+				wlr_log(WLR_ERROR, "menu: bad command '%s'",
+					item->command);
+				break;
 			}
-			enum wm_action act =
-				wm_action_from_name(action_name);
-			if (act != WM_ACTION_NOP) {
-				wm_execute_action(server, act, arg);
-			} else {
-				wlr_log(WLR_ERROR,
-					"menu: unknown action '%s'",
-					action_name);
-			}
+			wm_command_execute(server, cmd, NULL);
+			wm_command_destroy(cmd);
 		}
 		break;
 

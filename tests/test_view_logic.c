@@ -59,6 +59,8 @@
 #define WM_PLACEMENT_H
 #define WM_RULES_H
 #define WM_TABGROUP_H
+#define WM_CLIENT_PATTERN_H
+#define WLR_TYPES_WLR_KEYBOARD_H
 #define WM_TEXT_INPUT_H
 #define WM_PROTOCOLS_H
 #define WM_KEYBIND_H
@@ -318,6 +320,27 @@ struct wlr_keyboard {
 	struct wlr_keyboard_modifiers modifiers;
 };
 
+enum wlr_keyboard_modifier {
+	WLR_MODIFIER_SHIFT = 1 << 0,
+	WLR_MODIFIER_CAPS = 1 << 1,
+	WLR_MODIFIER_CTRL = 1 << 2,
+	WLR_MODIFIER_ALT = 1 << 3,
+	WLR_MODIFIER_MOD2 = 1 << 4,
+	WLR_MODIFIER_MOD3 = 1 << 5,
+	WLR_MODIFIER_LOGO = 1 << 6,
+	WLR_MODIFIER_MOD5 = 1 << 7,
+};
+
+/* Modifiers "held" during focus cycling tests */
+static uint32_t g_kb_modifiers;
+
+static uint32_t
+wlr_keyboard_get_modifiers(struct wlr_keyboard *kb)
+{
+	(void)kb;
+	return g_kb_modifiers;
+}
+
 struct wlr_seat {
 	struct {
 		struct wlr_surface *focused_surface;
@@ -544,6 +567,11 @@ struct wm_view {
 	int focus_protection;
 	bool ignore_size_hints;
 	bool docked;
+	bool focus_hidden;
+	bool icon_hidden;
+	bool urgent;
+	bool mapped;
+	uint64_t focus_seq;
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener foreign_toplevel_request_activate;
 	struct wl_listener foreign_toplevel_request_maximize;
@@ -636,6 +664,12 @@ struct wm_server {
 	struct wm_view *focused_view;
 	struct wm_view *show_desktop_saved_view;
 	bool focus_user_initiated;
+	struct {
+		bool active;
+		struct wm_view *restore_minimized;
+	} focus_cycle;
+	uint64_t focus_seq_counter;
+	struct wl_list pending_commands;
 	struct wl_event_source *auto_raise_timer;
 	struct wm_view *auto_raise_view;
 	struct wl_list views;
@@ -1107,6 +1141,44 @@ void move_view_to_output(struct wm_view *view, struct wm_output *out);
 
 /* --- Include view source files directly --- */
 
+/* client_pattern.h stand-in: match app_id and/or current workspace */
+struct wm_client_pattern {
+	const char *app_id;
+	bool current_ws;
+};
+struct wm_window_list_spec {
+	bool static_order;
+	bool groups;
+	struct wm_client_pattern *pattern;
+};
+static bool
+wm_client_pattern_match(struct wm_server *s,
+	const struct wm_client_pattern *p, struct wm_view *v)
+{
+	if (p->current_ws && v->workspace != s->current_workspace &&
+	    !v->sticky)
+		return false;
+	if (p->app_id && (!v->app_id || strcmp(v->app_id, p->app_id) != 0))
+		return false;
+	return true;
+}
+
+static int g_ws_switch_count;
+static int g_ws_switch_index;
+static void
+wm_workspace_switch(struct wm_server *s, int idx)
+{
+	g_ws_switch_count++;
+	g_ws_switch_index = idx;
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &s->workspaces, link) {
+		if (ws->index == idx)
+			s->current_workspace = ws;
+	}
+}
+
+void wm_view_minimize(struct wm_view *view);
+
 #include "view_focus.c"
 #include "view_geometry.c"
 #include "view.c"
@@ -1216,6 +1288,7 @@ setup_mock_view(int idx, struct wm_workspace *ws)
 	test_views[idx].unfocus_alpha = 200;
 	test_views[idx].show_decoration = true;
 	test_views[idx].layer = WM_LAYER_NORMAL;
+	test_views[idx].mapped = true;
 	wl_list_init(&test_views[idx].tab_link);
 
 	wl_list_insert(test_server.views.prev, &test_views[idx].link);
@@ -1820,6 +1893,16 @@ test_view_rhalf_toggle(void)
 	printf("  PASS: view_rhalf_toggle\n");
 }
 
+/* NextWindow (workspace=[current]) equivalent used by these tests */
+static struct wm_client_pattern current_ws_pattern = { .current_ws = true };
+
+static void
+cycle_ws(bool reverse)
+{
+	struct wm_window_list_spec spec = { .pattern = &current_ws_pattern };
+	wm_focus_cycle(&test_server, &spec, reverse);
+}
+
 /* ===== wm_view_cycle_next / wm_view_cycle_prev tests ===== */
 
 static void
@@ -1827,7 +1910,7 @@ test_view_cycle_next_empty(void)
 {
 	init_test_server();
 	/* Empty list, should not crash */
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 	assert(test_server.focused_view == NULL);
 	printf("  PASS: view_cycle_next_empty\n");
 }
@@ -1844,7 +1927,7 @@ test_view_cycle_next_basic(void)
 	test_server.focused_view = &test_views[0];
 
 	/* cycle_next: should focus the view after v0 in the list */
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 	/* The candidate after v0 is v1 */
 	assert(test_server.focused_view == &test_views[1]);
 
@@ -1870,7 +1953,7 @@ test_view_cycle_next_skips_other_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	/* cycle_next should skip v1 (different workspace) and pick v2 */
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 	assert(test_server.focused_view == &test_views[2]);
 
 	wl_list_remove(&test_views[0].link);
@@ -1889,7 +1972,7 @@ test_view_cycle_next_wraps_around(void)
 	/* Focus the last view on the workspace; cycle_next wraps to first */
 	test_server.focused_view = &test_views[1];
 
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 	/* Should wrap around to v0 */
 	assert(test_server.focused_view == &test_views[0]);
 
@@ -1902,7 +1985,7 @@ static void
 test_view_cycle_prev_empty(void)
 {
 	init_test_server();
-	wm_view_cycle_prev(&test_server);
+	cycle_ws(true);
 	assert(test_server.focused_view == NULL);
 	printf("  PASS: view_cycle_prev_empty\n");
 }
@@ -1918,7 +2001,7 @@ test_view_cycle_prev_basic(void)
 	/* Focus v1 (middle). cycle_prev picks the view before it (v0). */
 	test_server.focused_view = &test_views[1];
 
-	wm_view_cycle_prev(&test_server);
+	cycle_ws(true);
 	assert(test_server.focused_view == &test_views[0]);
 
 	wl_list_remove(&test_views[0].link);
@@ -1939,7 +2022,7 @@ test_view_cycle_next_deiconifies(void)
 	/* Iconify v1 (disable its scene node) */
 	test_scene_trees[1].node.enabled = false;
 
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 
 	/* Should have deiconified v1 and focused it */
 	assert(test_views[1].scene_tree->node.enabled == true);
@@ -1958,7 +2041,7 @@ test_view_cycle_next_single_noop(void)
 
 	test_server.focused_view = &test_views[0];
 
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 	/* Only one view; candidate == focused, so no-op */
 	assert(test_server.focused_view == &test_views[0]);
 
@@ -2410,7 +2493,7 @@ test_view_cycle_next_sticky(void)
 	test_server.focused_view = &test_views[0];
 
 	/* cycle_next should include v1 because it's sticky */
-	wm_view_cycle_next(&test_server);
+	cycle_ws(false);
 	assert(test_server.focused_view == &test_views[1]);
 
 	wl_list_remove(&test_views[0].link);
@@ -4049,7 +4132,7 @@ test_view_cycle_prev_wraps(void)
 
 	/* Focus first view; prev should wrap to last */
 	test_server.focused_view = &test_views[0];
-	wm_view_cycle_prev(&test_server);
+	cycle_ws(true);
 	assert(test_server.focused_view == &test_views[1]);
 
 	wl_list_remove(&test_views[0].link);
@@ -4436,6 +4519,198 @@ test_view_at_foreign_node_data(void)
 	printf("  PASS: view_at_foreign_node_data\n");
 }
 
+/* ===== Fluxbox-style focus cycling (wm_focus_cycle) ===== */
+
+static void
+setup_three_mru(void)
+{
+	init_test_server();
+	g_kb_modifiers = 0;
+	g_seat_has_keyboard = true;
+	for (int i = 0; i < 3; i++) {
+		setup_mock_view(i, &test_workspace);
+		test_views[i].focus_seq = (uint64_t)(3 - i); /* v0 newest */
+	}
+	test_server.focus_seq_counter = 3;
+	test_server.focused_view = &test_views[0];
+}
+
+static void
+teardown_three(void)
+{
+	for (int i = 0; i < 3; i++)
+		wl_list_remove(&test_views[i].link);
+	g_kb_modifiers = 0;
+	g_seat_has_keyboard = false;
+	test_server.focus_cycle.active = false;
+	test_server.focus_cycle.restore_minimized = NULL;
+}
+
+static void
+test_cycle_walks_list_while_held(void)
+{
+	setup_three_mru();
+	g_kb_modifiers = WLR_MODIFIER_ALT;
+
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[1]);
+	assert(test_server.focus_cycle.active);
+	/* Order is frozen: the next press goes on to v2, not back to v0 */
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[2]);
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[0]);
+	wm_focus_cycle(&test_server, NULL, true);
+	assert(test_server.focused_view == &test_views[2]);
+
+	/* Releasing the modifier commits v2 as most recent */
+	g_kb_modifiers = 0;
+	wm_focus_cycle_end(&test_server);
+	assert(!test_server.focus_cycle.active);
+	assert(test_views[2].focus_seq > test_views[0].focus_seq);
+
+	teardown_three();
+	printf("  PASS: cycle_walks_list_while_held\n");
+}
+
+static void
+test_cycle_without_modifiers_commits(void)
+{
+	setup_three_mru();
+	/* Bound to a plain key: each press commits, so it toggles */
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[1]);
+	assert(!test_server.focus_cycle.active);
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[0]);
+	teardown_three();
+	printf("  PASS: cycle_without_modifiers_commits\n");
+}
+
+static void
+test_cycle_lock_modifiers_not_held(void)
+{
+	setup_three_mru();
+	g_kb_modifiers = WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2;
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(!test_server.focus_cycle.active);
+	teardown_three();
+	printf("  PASS: cycle_lock_modifiers_not_held\n");
+}
+
+static void
+test_cycle_reminimizes_passed_window(void)
+{
+	setup_three_mru();
+	test_config.animate_minimize = false;
+	test_views[1].scene_tree->node.enabled = false; /* minimized */
+	g_kb_modifiers = WLR_MODIFIER_ALT;
+
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[1]);
+	assert(test_views[1].scene_tree->node.enabled);
+	assert(test_server.focus_cycle.restore_minimized == &test_views[1]);
+
+	/* Moving on puts v1 back where it was */
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[2]);
+	assert(!test_views[1].scene_tree->node.enabled);
+
+	teardown_three();
+	printf("  PASS: cycle_reminimizes_passed_window\n");
+}
+
+static void
+test_cycle_static_order(void)
+{
+	setup_three_mru();
+	/* Focus order v0,v1,v2 but creation order (id) is reversed */
+	test_views[0].id = 3;
+	test_views[1].id = 1;
+	test_views[2].id = 2;
+	struct wm_window_list_spec spec = { .static_order = true };
+	wm_focus_cycle(&test_server, &spec, false);
+	/* Creation order 1(v1),2(v2),3(v0): after v0 wraps to v1 */
+	assert(test_server.focused_view == &test_views[1]);
+	teardown_three();
+	printf("  PASS: cycle_static_order\n");
+}
+
+static void
+test_cycle_skips_focus_hidden_and_pattern(void)
+{
+	setup_three_mru();
+	test_views[1].focus_hidden = true;
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[2]);
+
+	test_server.focused_view = &test_views[0];
+	test_views[1].focus_hidden = false;
+	test_views[0].app_id = "a";
+	test_views[1].app_id = "b";
+	test_views[2].app_id = "a";
+	struct wm_client_pattern pat = { .app_id = "a" };
+	struct wm_window_list_spec spec = { .pattern = &pat };
+	wm_focus_cycle(&test_server, &spec, false);
+	assert(test_server.focused_view == &test_views[2]);
+	teardown_three();
+	printf("  PASS: cycle_skips_focus_hidden_and_pattern\n");
+}
+
+static void
+test_cycle_groups_skip_inactive_tabs(void)
+{
+	setup_three_mru();
+	struct wm_tab_group group = { .active_view = &test_views[2] };
+	test_views[1].tab_group = &group;
+	test_views[2].tab_group = &group;
+	struct wm_window_list_spec spec = { .groups = true };
+	wm_focus_cycle(&test_server, &spec, false);
+	/* v1 is a hidden tab of v2's group */
+	assert(test_server.focused_view == &test_views[2]);
+	test_views[1].tab_group = NULL;
+	test_views[2].tab_group = NULL;
+	teardown_three();
+	printf("  PASS: cycle_groups_skip_inactive_tabs\n");
+}
+
+static void
+test_cycle_switches_workspace(void)
+{
+	static struct wm_workspace other_ws;
+	setup_three_mru();
+	memset(&other_ws, 0, sizeof(other_ws));
+	other_ws.index = 1;
+	wl_list_insert(&test_server.workspaces, &other_ws.link);
+	test_views[1].workspace = &other_ws;
+	g_ws_switch_count = 0;
+
+	/* No pattern: Fluxbox cycles through every workspace */
+	wm_focus_cycle(&test_server, NULL, false);
+	assert(test_server.focused_view == &test_views[1]);
+	assert(g_ws_switch_count == 1 && g_ws_switch_index == 1);
+
+	wl_list_remove(&other_ws.link);
+	test_server.current_workspace = &test_workspace;
+	teardown_three();
+	printf("  PASS: cycle_switches_workspace\n");
+}
+
+static void
+test_focus_seq_frozen_during_cycle(void)
+{
+	setup_three_mru();
+	test_server.focus_cycle.active = true;
+	uint64_t before = test_views[2].focus_seq;
+	wm_focus_view(&test_views[2], NULL);
+	assert(test_views[2].focus_seq == before);
+	test_server.focus_cycle.active = false;
+	wm_focus_view(&test_views[1], NULL);
+	assert(test_views[1].focus_seq == test_server.focus_seq_counter);
+	teardown_three();
+	printf("  PASS: focus_seq_frozen_during_cycle\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -4667,6 +4942,17 @@ main(void)
 	/* view_at with scene node */
 	test_view_at_with_node();
 	test_view_at_foreign_node_data();
+
+	/* Focus cycling */
+	test_cycle_walks_list_while_held();
+	test_cycle_without_modifiers_commits();
+	test_cycle_lock_modifiers_not_held();
+	test_cycle_reminimizes_passed_window();
+	test_cycle_static_order();
+	test_cycle_skips_focus_hidden_and_pattern();
+	test_cycle_groups_skip_inactive_tabs();
+	test_cycle_switches_workspace();
+	test_focus_seq_frozen_during_cycle();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

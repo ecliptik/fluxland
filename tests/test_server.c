@@ -70,6 +70,7 @@
 #define WM_PRESENTATION_H
 #define WM_SCREENCOPY_H
 #define WM_SESSION_LOCK_H
+#define WM_COMMAND_H
 #define WM_SLIT_H
 #define WM_STYLE_H
 #define WM_SYSTRAY_H
@@ -405,7 +406,6 @@ struct wm_systray { int dummy; };
 struct wm_wallpaper { int dummy; };
 struct wm_ws_transition { int dummy; };
 struct wm_atspi_bridge { int dummy; };
-struct wm_screen_cast { int dummy; };
 
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
@@ -506,6 +506,7 @@ struct wm_server {
 	struct wm_view *auto_raise_view;
 
 	struct wl_list views;
+	struct wl_list pending_commands;
 
 	struct wl_list workspaces;
 	struct wm_workspace *current_workspace;
@@ -529,7 +530,6 @@ struct wm_server {
 
 	struct wm_focus_nav focus_nav;
 	struct wm_atspi_bridge *atspi_bridge;
-	struct wm_screen_cast *screen_cast;
 
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 	struct wm_output_management output_mgmt;
@@ -1158,6 +1158,7 @@ static void wm_layer_shell_init(struct wm_server *s) { (void)s; }
 static void wm_layer_shell_finish(struct wm_server *s) { (void)s; }
 static void wm_session_lock_init(struct wm_server *s) { (void)s; }
 static void wm_session_lock_finish(struct wm_server *s) { (void)s; }
+static void wm_command_finish(struct wm_server *s) { (void)s; }
 static void wm_idle_init(struct wm_server *s) { (void)s; }
 static void wm_idle_finish(struct wm_server *s) { (void)s; }
 static void wm_output_management_init(struct wm_server *s) { (void)s; }
@@ -1206,13 +1207,6 @@ static struct wm_atspi_bridge *wm_atspi_bridge_create(struct wm_server *s)
 	return NULL;
 }
 static void wm_atspi_bridge_destroy(struct wm_atspi_bridge *b) { (void)b; }
-
-static struct wm_screen_cast *wm_screen_cast_init(struct wm_server *s)
-{
-	(void)s;
-	return NULL;
-}
-static void wm_screen_cast_destroy(struct wm_screen_cast *sc) { (void)sc; }
 
 static void wm_workspaces_init(struct wm_server *server, int count)
 {

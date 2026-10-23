@@ -67,21 +67,27 @@ void wm_view_move_to_workspace(struct wm_view *view,
 	struct wm_workspace *workspace);
 
 /* Send the focused view to a workspace by index */
-void wm_view_send_to_workspace(struct wm_server *server, int index);
+void wm_view_send_to_workspace(struct wm_server *server,
+	struct wm_view *view, int index);
 
 /* Toggle sticky (visible on all workspaces) */
 void wm_view_set_sticky(struct wm_view *view, bool sticky);
 
 /* Send focused view to workspace, then switch to it */
-void wm_view_take_to_workspace(struct wm_server *server, int index);
+void wm_view_take_to_workspace(struct wm_server *server,
+	struct wm_view *view, int index);
 
 /* Send focused view to next/prev workspace (wrapping) */
-void wm_view_send_to_next_workspace(struct wm_server *server);
-void wm_view_send_to_prev_workspace(struct wm_server *server);
+void wm_view_send_to_next_workspace(struct wm_server *server,
+	struct wm_view *view);
+void wm_view_send_to_prev_workspace(struct wm_server *server,
+	struct wm_view *view);
 
 /* Send focused view to next/prev workspace and follow */
-void wm_view_take_to_next_workspace(struct wm_server *server);
-void wm_view_take_to_prev_workspace(struct wm_server *server);
+void wm_view_take_to_next_workspace(struct wm_server *server,
+	struct wm_view *view);
+void wm_view_take_to_prev_workspace(struct wm_server *server,
+	struct wm_view *view);
 
 /* Add a new workspace */
 void wm_workspace_add(struct wm_server *server);

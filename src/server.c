@@ -21,7 +21,6 @@
 
 #include "server.h"
 #include "atspi_bridge.h"
-#include "screen_cast.h"
 #include "config.h"
 #include "decoration.h"
 #include "keyboard.h"
@@ -41,6 +40,7 @@
 #include "presentation.h"
 #include "screencopy.h"
 #include "session_lock.h"
+#include "command.h"
 #include "slit.h"
 #include "wallpaper.h"
 #include "style.h"
@@ -431,6 +431,7 @@ wm_server_init(struct wm_server *server)
 
 	/* Init lists */
 	wl_list_init(&server->views);
+	wl_list_init(&server->pending_commands);
 	server->cursor_mode = WM_CURSOR_PASSTHROUGH;
 	server->grabbed_view = NULL;
 
@@ -518,9 +519,6 @@ wm_server_init(struct wm_server *server)
 	/* Initialize AT-SPI accessibility bridge (NULL when disabled) */
 	server->atspi_bridge = wm_atspi_bridge_create(server);
 
-	/* Initialize PipeWire screen recording (NULL if not available) */
-	server->screen_cast = wm_screen_cast_init(server);
-
 	/* Create toolbar (after workspaces so it can display them) */
 	server->toolbar = wm_toolbar_create(server);
 
@@ -601,7 +599,6 @@ wm_server_destroy(struct wm_server *server)
 #ifdef WM_HAS_SYSTRAY
 	wm_systray_destroy(server->systray);
 #endif
-	wm_screen_cast_destroy(server->screen_cast);
 	wm_atspi_bridge_destroy(server->atspi_bridge);
 	wm_slit_destroy(server->slit);
 	wm_wallpaper_destroy(server->wallpaper);
@@ -619,6 +616,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_protocols_finish(server);
 	wm_output_management_finish(server);
 	wm_idle_finish(server);
+	wm_command_finish(server);
 	wm_session_lock_finish(server);
 	wm_layer_shell_finish(server);
 	wm_workspaces_finish(server);

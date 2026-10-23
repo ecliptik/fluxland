@@ -47,13 +47,9 @@ struct wm_mousebind {
 	enum wm_mouse_event event;
 	uint32_t button;         /* linux button code (BTN_LEFT etc.) */
 	uint32_t modifiers;      /* keyboard modifiers */
-	enum wm_action action;
-	char *argument;
-
-	/* For MacroCmd / ToggleCmd */
-	struct wm_subcmd *subcmds;
-	int subcmd_count;
-	int toggle_index;
+	enum wm_action action;   /* top-level action of `command` */
+	char *argument;          /* raw argument of the top-level command */
+	struct wm_command *command;
 
 	struct wl_list link;
 };

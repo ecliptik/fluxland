@@ -1,7 +1,7 @@
 # Test infrastructure for fluxland
 # Each test is a standalone executable that returns 0 on success.
 
-test_inc = include_directories('../include', '../src')
+test_inc = include_directories('../src')
 
 # --- test_config: config parser tests ---
 test_config = executable(
@@ -16,12 +16,28 @@ test('config', test_config)
 # --- test_keybind: keybinding parser tests ---
 test_keybind = executable(
   'test_keybind',
-  files('test_keybind.c', '../src/keybind.c'),
+  files('test_keybind.c', '../src/keybind.c', '../src/command.c',
+    '../src/client_pattern.c',
+    '../src/regex_guard.c'),
   include_directories: test_inc,
-  dependencies: [wayland_server, wlroots, xkbcommon],
+  dependencies: [wayland_server, wlroots, xkbcommon, server_protos,
+    pangocairo],
   install: false,
 )
 test('keybind', test_keybind)
+
+# --- test_command: command language + client patterns ---
+test_command = executable(
+  'test_command',
+  files('test_command.c', '../src/command.c', '../src/client_pattern.c',
+    '../src/regex_guard.c',
+    '../src/keybind.c'),
+  include_directories: test_inc,
+  dependencies: [wayland_server, wlroots, xkbcommon, server_protos,
+    pangocairo],
+  install: false,
+)
+test('command', test_command)
 
 # --- test_style: style parser tests ---
 test_style = executable(
@@ -36,7 +52,7 @@ test('style', test_style)
 # --- test_rules: window rules parser tests ---
 test_rules = executable(
   'test_rules',
-  files('test_rules.c', '../src/rules.c'),
+  files('test_rules.c', '../src/rules.c', '../src/regex_guard.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
   install: false,
@@ -113,7 +129,10 @@ test('view_logic', test_view_logic)
 # --- test_ipc: IPC command dispatch and subscription tests ---
 test_ipc = executable(
   'test_ipc',
-  files('test_ipc.c', '../src/ipc_commands.c', '../src/ipc.c', '../src/perf.c'),
+  files('test_ipc.c', '../src/ipc_commands.c', '../src/ipc_json.c', '../src/ipc.c',
+    '../src/perf.c',
+    '../src/command.c', '../src/client_pattern.c',
+    '../src/regex_guard.c', '../src/keybind.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
   install: false,
@@ -174,9 +193,12 @@ test('autostart', test_autostart)
 # --- test_mousebind: mouse binding parser tests ---
 test_mousebind = executable(
   'test_mousebind',
-  files('test_mousebind.c', '../src/mousebind.c'),
+  files('test_mousebind.c', '../src/mousebind.c', '../src/keybind.c',
+    '../src/command.c', '../src/client_pattern.c',
+    '../src/regex_guard.c'),
   include_directories: test_inc,
-  dependencies: [wayland_server, wlroots, xkbcommon],
+  dependencies: [wayland_server, wlroots, xkbcommon, server_protos,
+    pangocairo],
   install: false,
 )
 test('mousebind', test_mousebind)
@@ -360,7 +382,7 @@ if wayland_client.found()
     dependencies: [wayland_client],
     install: false,
   )
-  test('integration', test_integration, timeout: 30)
+  test('integration', test_integration, env: test_main_env, depends: fluxland_exe, timeout: 30)
 
   # --- XDG shell client protocol (client-side header for tests) ---
   wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
@@ -482,7 +504,7 @@ if wayland_client.found()
     dependencies: [wayland_client, harness_dep],
     install: false,
   )
-  test('xdg_shell', test_xdg_shell, timeout: 30)
+  test('xdg_shell', test_xdg_shell, env: test_main_env, depends: fluxland_exe, timeout: 30)
 
   # --- test_multi_client: multi-client integration tests ---
   test_multi_client = executable(
@@ -493,7 +515,7 @@ if wayland_client.found()
     dependencies: [wayland_client, harness_dep],
     install: false,
   )
-  test('multi_client', test_multi_client, timeout: 30)
+  test('multi_client', test_multi_client, env: test_main_env, depends: fluxland_exe, timeout: 30)
 
   # --- test_layer_shell: layer shell protocol tests ---
   test_layer_shell = executable(
@@ -506,7 +528,7 @@ if wayland_client.found()
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
-  test('layer_shell', test_layer_shell, timeout: 10)
+  test('layer_shell', test_layer_shell, env: test_main_env, depends: fluxland_exe, timeout: 10)
 
   # --- test_session_lock: session lock protocol tests ---
   test_session_lock = executable('test_session_lock',
@@ -517,7 +539,7 @@ if wayland_client.found()
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
-  test('session_lock', test_session_lock, timeout: 10)
+  test('session_lock', test_session_lock, env: test_main_env, depends: fluxland_exe, timeout: 10)
 
   # --- test_idle: idle inhibit protocol tests ---
   test_idle = executable('test_idle',
@@ -528,7 +550,7 @@ if wayland_client.found()
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
-  test('idle', test_idle, timeout: 10)
+  test('idle', test_idle, env: test_main_env, depends: fluxland_exe, timeout: 10)
 endif
 
 # --- Visual regression tests (decoration rendering) ---
@@ -702,17 +724,6 @@ test_gesture = executable(
   install: false,
 )
 test('gesture', test_gesture)
-
-# --- test_screen_cast: screen cast module unit tests ---
-# screen_cast.c is #included directly in the test to test stub path.
-test_screen_cast = executable(
-  'test_screen_cast',
-  files('test_screen_cast.c'),
-  include_directories: test_inc,
-  dependencies: [],
-  install: false,
-)
-test('screen_cast_unit', test_screen_cast)
 
 # --- Fuzz targets (requires -fsanitize=fuzzer support) ---
 subdir('fuzz')

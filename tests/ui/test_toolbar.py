@@ -87,31 +87,31 @@ class TestToolbarVisibility:
 # ---------------------------------------------------------------------------
 
 class TestToolbarFocusNavigation:
-    """Test toolbar keyboard focus commands.
+    """Toolbar keyboard focus commands also work over IPC.
 
-    Note: These actions are keyboard-only and return 'action not supported
-    via IPC'. Tests verify this is the expected behavior.
+    IPC shares the key binding dispatcher, so these are no longer
+    keyboard-only. FocusToolbar toggles, which leaves state clean.
     """
 
-    def test_focus_toolbar_not_supported_via_ipc(self, ipc):
-        """FocusToolbar is a keyboard-only action, not available via IPC."""
-        with pytest.raises(CommandError, match="not supported"):
+    def test_focus_toolbar_enter_and_leave(self, ipc):
+        """FocusToolbar enters toolbar focus; a second one leaves it."""
+        assert ipc.command("FocusToolbar").get("success") is True
+        assert ipc.command("FocusToolbar").get("success") is True
+
+    def test_focus_next_prev_element(self, ipc):
+        """FocusNextElement/FocusPrevElement move within the toolbar."""
+        ipc.command("FocusToolbar")
+        try:
+            assert ipc.command("FocusNextElement").get("success") is True
+            assert ipc.command("FocusPrevElement").get("success") is True
+        finally:
             ipc.command("FocusToolbar")
 
-    def test_focus_next_element_not_supported_via_ipc(self, ipc):
-        """FocusNextElement is a keyboard-only action, not available via IPC."""
-        with pytest.raises(CommandError, match="not supported"):
-            ipc.command("FocusNextElement")
-
-    def test_focus_prev_element_not_supported_via_ipc(self, ipc):
-        """FocusPrevElement is a keyboard-only action, not available via IPC."""
-        with pytest.raises(CommandError, match="not supported"):
-            ipc.command("FocusPrevElement")
-
-    def test_focus_activate_not_supported_via_ipc(self, ipc):
-        """FocusActivate is a keyboard-only action, not available via IPC."""
-        with pytest.raises(CommandError, match="not supported"):
-            ipc.command("FocusActivate")
+    def test_focus_activate_outside_toolbar_is_noop(self, ipc):
+        """FocusActivate does nothing when the toolbar isn't focused."""
+        before = ipc.get_workspaces()
+        assert ipc.command("FocusActivate").get("success") is True
+        assert ipc.get_workspaces() == before
 
 
 # ---------------------------------------------------------------------------

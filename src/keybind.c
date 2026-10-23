@@ -9,8 +9,9 @@
  *   [Modifier ...] key :Action [argument]
  *   [Modifier ...] key [Modifier ...] key :Action   (chains)
  *   modename: [Modifier ...] key :Action             (keymodes)
- *   MacroCmd {cmd1} {cmd2} ...                       (meta-commands)
- *   ToggleCmd {cmd1} {cmd2} ...
+ *   [Modifier ...] key {condition} :Action           (guarded binding)
+ *
+ * The action text is parsed by command.c (MacroCmd, ToggleCmd, If, ...).
  *
  * Modifiers: None, Mod1 (Alt), Mod4 (Super), Control, Shift
  * Key names use XKB naming convention.
@@ -18,6 +19,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "command.h"
 #include "keybind.h"
 #include "util.h"
 #include <ctype.h>
@@ -79,6 +81,7 @@ static const struct action_map actions[] = {
 	{"HideMenus",         WM_ACTION_HIDE_MENUS},
 	{"Iconify",            WM_ACTION_MINIMIZE},
 	{"If",                 WM_ACTION_IF},
+	{"Cond",               WM_ACTION_IF},
 	{"KeyMode",            WM_ACTION_KEY_MODE},
 	{"Kill",               WM_ACTION_KILL},
 	{"KillWindow",         WM_ACTION_KILL},
@@ -247,20 +250,6 @@ parse_key_segment(char **tokens, int token_count, int *pos,
 }
 
 /*
- * Free a sub-command list.
- */
-static void
-free_subcmds(struct wm_subcmd *head)
-{
-	while (head) {
-		struct wm_subcmd *next = head->next;
-		free(head->argument);
-		free(head);
-		head = next;
-	}
-}
-
-/*
  * Free a keybind node and all its children recursively.
  */
 static void
@@ -272,9 +261,8 @@ keybind_free(struct wm_keybind *bind)
 		wl_list_remove(&child->link);
 		keybind_free(child);
 	}
-	free_subcmds(bind->subcmds);
-	free_subcmds(bind->else_cmd);
-	wm_condition_destroy(bind->condition);
+	wm_command_destroy(bind->command);
+	wm_condition_destroy(bind->guard);
 	free(bind->argument);
 	free(bind);
 }
@@ -318,489 +306,6 @@ find_or_create_chain_node(struct wl_list *list, uint32_t mods,
 }
 
 /*
- * Parse sub-commands from a MacroCmd or ToggleCmd argument string.
- * Format: {cmd1} {cmd2} ...
- * Each {block} contains an action and optional argument.
- */
-static struct wm_subcmd *
-parse_subcmds(const char *str, int *count)
-{
-	struct wm_subcmd *head = NULL;
-	struct wm_subcmd **tail = &head;
-	int n = 0;
-
-	while (str && *str) {
-		/* Find next '{' */
-		const char *open = strchr(str, '{');
-		if (!open)
-			break;
-
-		/* Find matching '}' */
-		const char *close = strchr(open + 1, '}');
-		if (!close)
-			break;
-
-		/* Extract the content between braces */
-		size_t len = close - (open + 1);
-		char *content = strndup(open + 1, len);
-		if (!content)
-			break;
-
-		/* Trim whitespace */
-		char *p = strip(content);
-
-		/* Parse as action [argument] */
-		char action_name[256];
-		const char *arg = NULL;
-
-		const char *sp = p;
-		while (*sp && !isspace((unsigned char)*sp))
-			sp++;
-
-		size_t name_len = sp - p;
-		if (name_len >= sizeof(action_name)) {
-			free(content);
-			str = close + 1;
-			continue;
-		}
-		memcpy(action_name, p, name_len);
-		action_name[name_len] = '\0';
-
-		if (*sp) {
-			arg = sp;
-			while (isspace((unsigned char)*arg))
-				arg++;
-			if (*arg == '\0')
-				arg = NULL;
-		}
-
-		enum wm_action action = parse_action_name(action_name);
-		if (action != WM_ACTION_NOP) {
-			struct wm_subcmd *cmd = calloc(1, sizeof(*cmd));
-			if (cmd) {
-				cmd->action = action;
-				if (arg)
-					cmd->argument = strdup(arg);
-				*tail = cmd;
-				tail = &cmd->next;
-				n++;
-			}
-		}
-
-		free(content);
-		str = close + 1;
-	}
-
-	if (count)
-		*count = n;
-	return head;
-}
-
-/*
- * Recursively free a condition tree.
- */
-void
-wm_condition_destroy(struct wm_condition *cond)
-{
-	if (!cond)
-		return;
-	free(cond->property);
-	free(cond->pattern);
-	wm_condition_destroy(cond->child);
-	wm_condition_destroy(cond->left);
-	wm_condition_destroy(cond->right);
-	free(cond);
-}
-
-/*
- * Skip whitespace in a string pointer.
- */
-static void
-skip_ws(const char **str)
-{
-	while (**str && isspace((unsigned char)**str))
-		(*str)++;
-}
-
-/*
- * Extract content between matching '{' and '}' braces, handling nesting.
- * Advances *str past the closing '}'.
- * Returns malloc'd string of inner content, or NULL on error.
- */
-static char *
-extract_brace_block(const char **str)
-{
-	skip_ws(str);
-	if (**str != '{')
-		return NULL;
-	(*str)++; /* skip opening '{' */
-
-	int depth = 1;
-	const char *start = *str;
-	while (**str && depth > 0) {
-		if (**str == '{')
-			depth++;
-		else if (**str == '}')
-			depth--;
-		if (depth > 0)
-			(*str)++;
-	}
-	if (depth != 0)
-		return NULL;
-
-	size_t len = *str - start;
-	(*str)++; /* skip closing '}' */
-
-	char *content = strndup(start, len);
-	return content;
-}
-
-/*
- * Recursive descent parser for condition expressions.
- * Syntax:
- *   Matches (property=pattern)
- *   Some (property=pattern)
- *   Every (property=pattern)
- *   Not {condition}
- *   And {condition} {condition}
- *   Or {condition} {condition}
- *   Xor {condition} {condition}
- */
-static struct wm_condition *
-parse_condition(const char **str)
-{
-	skip_ws(str);
-	if (**str == '\0')
-		return NULL;
-
-	/* Read keyword */
-	const char *start = *str;
-	while (**str && !isspace((unsigned char)**str) &&
-	       **str != '(' && **str != '{')
-		(*str)++;
-
-	size_t kw_len = *str - start;
-	if (kw_len == 0)
-		return NULL;
-
-	char keyword[64];
-	if (kw_len >= sizeof(keyword))
-		return NULL;
-	memcpy(keyword, start, kw_len);
-	keyword[kw_len] = '\0';
-
-	struct wm_condition *cond = calloc(1, sizeof(*cond));
-	if (!cond)
-		return NULL;
-
-	if (strcasecmp(keyword, "Matches") == 0 ||
-	    strcasecmp(keyword, "Some") == 0 ||
-	    strcasecmp(keyword, "Every") == 0) {
-		if (strcasecmp(keyword, "Matches") == 0)
-			cond->type = WM_COND_MATCHES;
-		else if (strcasecmp(keyword, "Some") == 0)
-			cond->type = WM_COND_SOME;
-		else
-			cond->type = WM_COND_EVERY;
-
-		/* Parse (property=pattern) */
-		skip_ws(str);
-		if (**str != '(') {
-			wlr_log(WLR_ERROR,
-				"condition '%s': expected '('", keyword);
-			free(cond);
-			return NULL;
-		}
-		(*str)++; /* skip '(' */
-
-		const char *pstart = *str;
-		while (**str && **str != ')')
-			(*str)++;
-		if (**str != ')') {
-			wlr_log(WLR_ERROR,
-				"condition '%s': missing ')'", keyword);
-			free(cond);
-			return NULL;
-		}
-
-		size_t plen = *str - pstart;
-		(*str)++; /* skip ')' */
-
-		char *inner = strndup(pstart, plen);
-		if (!inner) {
-			free(cond);
-			return NULL;
-		}
-
-		/* Split on first '=' */
-		char *eq = strchr(inner, '=');
-		if (!eq) {
-			wlr_log(WLR_ERROR,
-				"condition '%s': missing '=' in property spec",
-				keyword);
-			free(inner);
-			free(cond);
-			return NULL;
-		}
-		*eq = '\0';
-
-		/* Trim whitespace from property and pattern */
-		char *prop = inner;
-		while (isspace((unsigned char)*prop))
-			prop++;
-		char *pend = eq - 1;
-		while (pend > prop && isspace((unsigned char)*pend))
-			*pend-- = '\0';
-
-		char *pat = eq + 1;
-		while (isspace((unsigned char)*pat))
-			pat++;
-		char *patend = pat + strlen(pat) - 1;
-		while (patend > pat && isspace((unsigned char)*patend))
-			*patend-- = '\0';
-
-		cond->property = strdup(prop);
-		cond->pattern = strdup(pat);
-		free(inner);
-
-		if (!cond->property || !cond->pattern) {
-			wm_condition_destroy(cond);
-			return NULL;
-		}
-	} else if (strcasecmp(keyword, "Not") == 0) {
-		cond->type = WM_COND_NOT;
-		char *block = extract_brace_block(str);
-		if (!block) {
-			wlr_log(WLR_ERROR,
-				"%s", "Not condition: missing {block}");
-			free(cond);
-			return NULL;
-		}
-		const char *bp = block;
-		cond->child = parse_condition(&bp);
-		free(block);
-		if (!cond->child) {
-			free(cond);
-			return NULL;
-		}
-	} else if (strcasecmp(keyword, "And") == 0 ||
-		   strcasecmp(keyword, "Or") == 0 ||
-		   strcasecmp(keyword, "Xor") == 0) {
-		if (strcasecmp(keyword, "And") == 0)
-			cond->type = WM_COND_AND;
-		else if (strcasecmp(keyword, "Or") == 0)
-			cond->type = WM_COND_OR;
-		else
-			cond->type = WM_COND_XOR;
-
-		char *left_block = extract_brace_block(str);
-		if (!left_block) {
-			wlr_log(WLR_ERROR,
-				"%s condition: missing first {block}",
-				keyword);
-			free(cond);
-			return NULL;
-		}
-		char *right_block = extract_brace_block(str);
-		if (!right_block) {
-			wlr_log(WLR_ERROR,
-				"%s condition: missing second {block}",
-				keyword);
-			free(left_block);
-			free(cond);
-			return NULL;
-		}
-
-		const char *lp = left_block;
-		cond->left = parse_condition(&lp);
-		free(left_block);
-
-		const char *rp = right_block;
-		cond->right = parse_condition(&rp);
-		free(right_block);
-
-		if (!cond->left || !cond->right) {
-			wm_condition_destroy(cond);
-			return NULL;
-		}
-	} else {
-		wlr_log(WLR_ERROR, "unknown condition keyword: %s", keyword);
-		free(cond);
-		return NULL;
-	}
-
-	return cond;
-}
-
-/*
- * Parse a single subcmd from a brace block content string.
- * Format: "ActionName argument..."
- * Returns a single wm_subcmd node or NULL.
- */
-static struct wm_subcmd *
-parse_single_subcmd(const char *content)
-{
-	while (isspace((unsigned char)*content))
-		content++;
-	if (*content == '\0')
-		return NULL;
-
-	/* Extract action name */
-	const char *sp = content;
-	while (*sp && !isspace((unsigned char)*sp))
-		sp++;
-
-	char action_name[256];
-	size_t name_len = sp - content;
-	if (name_len >= sizeof(action_name))
-		return NULL;
-	memcpy(action_name, content, name_len);
-	action_name[name_len] = '\0';
-
-	const char *arg = sp;
-	while (isspace((unsigned char)*arg))
-		arg++;
-	if (*arg == '\0')
-		arg = NULL;
-
-	enum wm_action action = parse_action_name(action_name);
-	if (action == WM_ACTION_NOP)
-		return NULL;
-
-	struct wm_subcmd *cmd = calloc(1, sizeof(*cmd));
-	if (!cmd)
-		return NULL;
-	cmd->action = action;
-	if (arg)
-		cmd->argument = strdup(arg);
-	return cmd;
-}
-
-/*
- * Parse If/ForEach/Map/Delay arguments and populate the keybind.
- * Returns true on success.
- */
-static bool
-parse_conditional_args(enum wm_action action, const char *argument,
-		       struct wm_keybind *bind)
-{
-	if (!argument || !*argument)
-		return false;
-
-	const char *p = argument;
-
-	if (action == WM_ACTION_IF) {
-		/* Format: {condition} {then_cmd} {else_cmd} */
-		char *cond_block = extract_brace_block(&p);
-		if (!cond_block) {
-			wlr_log(WLR_ERROR,
-				"%s", "If: missing condition block");
-			return false;
-		}
-		const char *cp = cond_block;
-		bind->condition = parse_condition(&cp);
-		free(cond_block);
-		if (!bind->condition)
-			return false;
-
-		/* Then command */
-		char *then_block = extract_brace_block(&p);
-		if (!then_block) {
-			wlr_log(WLR_ERROR,
-				"%s", "If: missing then block");
-			return false;
-		}
-		bind->subcmds = parse_single_subcmd(then_block);
-		free(then_block);
-		if (bind->subcmds)
-			bind->subcmd_count = 1;
-
-		/* Optional else command */
-		skip_ws(&p);
-		if (*p == '{') {
-			char *else_block = extract_brace_block(&p);
-			if (else_block) {
-				bind->else_cmd =
-					parse_single_subcmd(else_block);
-				free(else_block);
-			}
-		}
-		return true;
-	}
-
-	if (action == WM_ACTION_FOREACH) {
-		/* Format: {condition} {action arg} */
-		char *cond_block = extract_brace_block(&p);
-		if (!cond_block) {
-			wlr_log(WLR_ERROR,
-				"%s", "ForEach: missing condition block");
-			return false;
-		}
-		const char *cp = cond_block;
-		bind->condition = parse_condition(&cp);
-		free(cond_block);
-		if (!bind->condition)
-			return false;
-
-		char *cmd_block = extract_brace_block(&p);
-		if (!cmd_block) {
-			wlr_log(WLR_ERROR,
-				"%s", "ForEach: missing command block");
-			return false;
-		}
-		bind->subcmds = parse_single_subcmd(cmd_block);
-		free(cmd_block);
-		if (bind->subcmds)
-			bind->subcmd_count = 1;
-		return true;
-	}
-
-	if (action == WM_ACTION_MAP) {
-		/* Format: {action arg} */
-		char *cmd_block = extract_brace_block(&p);
-		if (!cmd_block) {
-			wlr_log(WLR_ERROR,
-				"%s", "Map: missing command block");
-			return false;
-		}
-		bind->subcmds = parse_single_subcmd(cmd_block);
-		free(cmd_block);
-		if (bind->subcmds)
-			bind->subcmd_count = 1;
-		return true;
-	}
-
-	if (action == WM_ACTION_DELAY) {
-		/* Format: {action arg} microseconds */
-		char *cmd_block = extract_brace_block(&p);
-		if (!cmd_block) {
-			wlr_log(WLR_ERROR,
-				"%s", "Delay: missing command block");
-			return false;
-		}
-		bind->subcmds = parse_single_subcmd(cmd_block);
-		free(cmd_block);
-		if (bind->subcmds)
-			bind->subcmd_count = 1;
-
-		/* Parse delay value */
-		skip_ws(&p);
-		if (*p) {
-			char *end;
-			errno = 0;
-			long val = strtol(p, &end, 10);
-			if (!errno && end != p && val > 0 && val <= INT_MAX)
-				bind->delay_us = (int)val;
-		}
-		if (bind->delay_us <= 0)
-			bind->delay_us = 1000000; /* default 1 second */
-		return true;
-	}
-
-	return false;
-}
-
-/*
  * Parse the action part of a keybinding line (everything after the last ':').
  * Sets action, argument, and subcmds on the binding.
  * Returns true on success.
@@ -808,57 +313,16 @@ parse_conditional_args(enum wm_action action, const char *argument,
 static bool
 parse_action_part(const char *action_str, struct wm_keybind *bind)
 {
-	while (isspace((unsigned char)*action_str))
-		action_str++;
-
-	if (*action_str == '\0')
+	struct wm_command *cmd = wm_command_parse(action_str);
+	if (!cmd)
 		return false;
-
-	/* Extract action name */
-	char action_name[256];
-	const char *space = action_str;
-	while (*space && !isspace((unsigned char)*space))
-		space++;
-
-	size_t name_len = space - action_str;
-	if (name_len >= sizeof(action_name))
-		return false;
-	memcpy(action_name, action_str, name_len);
-	action_name[name_len] = '\0';
-
-	enum wm_action action = parse_action_name(action_name);
-	if (action == WM_ACTION_NOP)
-		return false;
-
-	bind->action = action;
-
-	/* Everything after the action name is the argument */
-	const char *argument = space;
-	while (isspace((unsigned char)*argument))
-		argument++;
-	if (*argument == '\0')
-		argument = NULL;
-
-	if (action == WM_ACTION_MACRO_CMD || action == WM_ACTION_TOGGLE_CMD) {
-		if (argument) {
-			/* Parse sub-commands from argument */
-			bind->subcmds = parse_subcmds(argument,
-				&bind->subcmd_count);
-			/* Store raw argument too for reference */
-			bind->argument = strdup(argument);
-		}
-	} else if (action == WM_ACTION_IF || action == WM_ACTION_FOREACH ||
-		   action == WM_ACTION_MAP || action == WM_ACTION_DELAY) {
-		if (argument) {
-			if (!parse_conditional_args(action, argument, bind))
-				return false;
-			bind->argument = strdup(argument);
-		}
-	} else {
-		if (argument)
-			bind->argument = strdup(argument);
+	bind->command = cmd;
+	bind->action = cmd->action;
+	if (cmd->argument) {
+		bind->argument = strdup(cmd->argument);
+		if (!bind->argument)
+			return false;
 	}
-
 	return true;
 }
 
@@ -897,13 +361,15 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 	struct wm_condition *guard_cond = NULL;
 	char *brace = strchr(key_part, '{');
 	if (brace) {
-		/* Extract the condition block from the key spec */
-		const char *bp = brace;
-		char *cond_block = extract_brace_block(&bp);
-		if (cond_block) {
-			const char *cp = cond_block;
-			guard_cond = parse_condition(&cp);
-			free(cond_block);
+		/* The condition block runs to the matching '}' */
+		char *close = strrchr(brace, '}');
+		if (close) {
+			char *cond_text = strndup(brace + 1,
+				(size_t)(close - brace - 1));
+			if (cond_text) {
+				guard_cond = wm_condition_parse(cond_text);
+				free(cond_text);
+			}
 		}
 		/* Truncate key_part at the brace to remove condition */
 		*brace = '\0';
@@ -985,20 +451,8 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 		return false;
 	}
 
-	/*
-	 * Attach the guard condition. For non-conditional actions
-	 * (not If/ForEach/Map/Delay), this acts as a per-binding guard.
-	 * For conditional actions, parse_action_part() already set
-	 * bind->condition, so we discard the guard.
-	 */
-	if (guard_cond) {
-		if (bind->condition) {
-			/* Action already has its own condition (If/ForEach) */
-			wm_condition_destroy(guard_cond);
-		} else {
-			bind->condition = guard_cond;
-		}
-	}
+	/* Guard: the binding only fires when the condition holds */
+	bind->guard = guard_cond;
 
 	wl_list_insert(current_list->prev, &bind->link);
 	free(key_part);

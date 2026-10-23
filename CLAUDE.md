@@ -18,11 +18,11 @@ Build options: `-Dxwayland=enabled`, `-Dasan=true`, `-Dubsan=true`
 
 ```
 src/           116 files (59 .c + 57 .h), ~35K lines — compositor source
-tests/         52 C test files, 7 fuzz targets — 81.2% line coverage
+tests/         53 C test suites, 8 fuzz targets
 tests/ui/      21 Python pytest files — 174 end-to-end UI tests via IPC
 data/          Default configs (init, keys, apps, menu, style, startup) + styles
 examples/      Example config overlays (wave-desktop, minimal, sloppy-focus) + styles
-docs/          QUICKSTART.md, design/ARCHITECTURE.md, design/FLUXBOX-COMPAT.md
+docs/          QUICKSTART.md, design/ARCHITECTURE.md, STYLES.md, SCREEN_RECORDING.md
 man/           8 man pages (fluxland.1, fluxland-keys.5, etc.)
 packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/
 ```
@@ -32,7 +32,9 @@ packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/
 - **Scene graph rendering** via wlroots `wlr_scene` API (damage tracking, compositing)
 - **Server-side decorations** as scene buffers (NOT wl_surfaces — affects pointer focus)
 - **Text rendering** with Pango/Cairo: `wm_render_text()`, `wm_measure_text_width()`
-- **Action dispatch** split: `keyboard.c` (event routing) + `keyboard_actions.c` (110+ actions)
+- **Command language**: `command.c` parses and runs Fluxbox commands (MacroCmd, ToggleCmd, If/Cond, ForEach/Map, Delay, nested) for key bindings, mouse bindings, menu `[command]` items and IPC alike
+- **Action dispatch**: one dispatcher, `wm_execute_action_on()` in `keyboard_actions.c` (110+ actions); `keyboard.c` only routes key events
+- **Client patterns**: `client_pattern.c` implements Fluxbox's `(name=...) (title!=...) (workspace=[current]) {N}` matching (anchored POSIX EREs) for conditions and window lists
 - **IPC**: JSON-over-Unix-socket with SO_PEERCRED auth, event subscriptions
 - **Config**: Fluxbox-compatible parser in `rcparser.c`, validation in `validate.c`
 - **Central state**: `server.h` holds 98 wlroots protocol interfaces in one struct
@@ -45,11 +47,17 @@ packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/
 | view.c | 1,931 | Window lifecycle, focus, XDG toplevel |
 | decoration.c | 1,821 | SSD titlebar, buttons, resize handles |
 | cursor.c | 1,796 | Pointer input, move/resize, snap zones |
-| ipc_commands.c | 1,664 | IPC command handlers |
+| ipc_commands.c | ~700 | IPC protocol (queries, subscriptions; commands go through command.c) |
 | toolbar.c | 1,523 | Workspace switcher, iconbar, clock |
 | keyboard_actions.c | 1,282 | 110+ WM action handlers |
 
 ## Critical Patterns
+
+### Commands act on a target window
+Window actions run against a target view: the clicked window for mouse bindings, each window for ForEach, the focused window otherwise. Handlers must use the `view` they're given, never `server->focused_view` directly. Add new actions to the single table in `keybind.c` and the dispatcher in `keyboard_actions.c`; keys, mouse, menus and IPC all get them.
+
+### Focus order is `focus_seq`, not list order
+`server->views` is stacking order. Most-recently-used order is `view->focus_seq`; NextWindow cycling freezes it while modifiers are held (`server->focus_cycle`) and commits on release.
 
 ### Child processes: always double-fork
 All 5 exec paths (`keyboard.c`, `menu.c`, `cursor.c`, `autostart.c`, `ipc_commands.c`) use double-fork to avoid SIGCHLD racing with wlroots. Never use `waitpid(-1)` in a compositor.
@@ -79,9 +87,11 @@ Call `wm_toolbar_update_iconbar()` in BOTH `unmap` and `destroy` handlers.
 
 - Tests use `#include "source.c"` with header guards + local stubs
 - When adding new public API, add stubs to ALL test files that `#include` that module
-- Fuzz targets (7) use libFuzzer, require Clang: `fuzz_rcparser`, `fuzz_keybind`, `fuzz_style`, `fuzz_menu`, `fuzz_ipc_command`, `fuzz_rules`, `fuzz_mousebind`
+- Fuzz targets (8) use libFuzzer, require Clang: `fuzz_rcparser`, `fuzz_keybind`, `fuzz_style`, `fuzz_menu`, `fuzz_ipc_command`, `fuzz_rules`, `fuzz_mousebind`, `fuzz_command`
 - UI tests connect via `FLUXLAND_SOCK` env var; support headless and live session modes
 - Tests needing `/tmp/fluxland-test/` fail under sandbox
+- UI harness logs compositor stderr to a file (an unread pipe fills and blocks the compositor); `FLUXLAND_TEST_KEEP_LOG=<path>` keeps it, `FLUXLAND_BINARY` picks the binary
+- CI: `.github/workflows/ci.yml` (GitHub and Forgejo Actions) runs `tools/ci.sh build|sanitize|fuzz|ui` in `debian:trixie`; run the same steps locally
 
 ## Security
 

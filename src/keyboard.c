@@ -30,6 +30,7 @@
 #include "menu.h"
 #include "protocols.h"
 #include "session_lock.h"
+#include "view.h"
 
 /*
  * Reset chain state back to root level.
@@ -362,6 +363,12 @@ handle_modifiers(struct wl_listener *listener, void *data)
 	wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
 	wlr_seat_keyboard_notify_modifiers(server->seat,
 		&keyboard->wlr_keyboard->modifiers);
+
+	/* Releasing the modifiers ends a NextWindow/PrevWindow cycle */
+	if (server->focus_cycle.active &&
+	    !(wlr_keyboard_get_modifiers(keyboard->wlr_keyboard) &
+	      ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)))
+		wm_focus_cycle_end(server);
 }
 
 static void

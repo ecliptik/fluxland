@@ -51,6 +51,9 @@
 #define WM_KEYBOARD_ACTIONS_H
 #define WM_ANIMATION_H
 #define WM_FOREIGN_TOPLEVEL_H
+#define WM_COMMAND_H
+#define WM_CLIENT_PATTERN_H
+#define WLR_TYPES_WLR_CURSOR_H
 
 /* Block real xkbcommon header */
 #define _XKBCOMMON_H_
@@ -225,6 +228,8 @@ struct wlr_scene_buffer {
 #define WLR_MODIFIER_ALT   (1 << 1)
 #define WLR_MODIFIER_SHIFT (1 << 2)
 #define WLR_MODIFIER_LOGO  (1 << 3)
+#define WLR_MODIFIER_CAPS  (1 << 4)
+#define WLR_MODIFIER_MOD2  (1 << 5)
 
 #define WLR_EDGE_TOP    (1 << 0)
 #define WLR_EDGE_BOTTOM (1 << 1)
@@ -659,29 +664,19 @@ enum wm_action {
 	WM_ACTION_FOCUS_SLIT,
 };
 
-enum wm_condition_type {
-	WM_COND_MATCHES,
-	WM_COND_SOME,
-	WM_COND_EVERY,
-	WM_COND_NOT,
-	WM_COND_AND,
-	WM_COND_OR,
-	WM_COND_XOR,
-};
+/* command.h / client_pattern.h: stubbed below */
+struct wm_condition;
+struct wm_client_pattern;
 
-struct wm_condition {
-	enum wm_condition_type type;
-	char *property;
-	char *pattern;
-	struct wm_condition *child;
-	struct wm_condition *left;
-	struct wm_condition *right;
-};
-
-struct wm_subcmd {
+struct wm_command {
 	enum wm_action action;
 	char *argument;
-	struct wm_subcmd *next;
+};
+
+struct wm_window_list_spec {
+	bool static_order;
+	bool groups;
+	struct wm_client_pattern *pattern;
 };
 
 struct wm_keybind {
@@ -689,12 +684,8 @@ struct wm_keybind {
 	xkb_keysym_t keysym;
 	enum wm_action action;
 	char *argument;
-	struct wm_subcmd *subcmds;
-	int subcmd_count;
-	int toggle_index;
-	struct wm_condition *condition;
-	struct wm_subcmd *else_cmd;
-	int delay_us;
+	struct wm_command *command;
+	struct wm_condition *guard;
 	struct wl_list children;
 	struct wl_list link;
 };
@@ -897,6 +888,12 @@ struct wm_server {
 	struct wm_view *focused_view;
 	struct wm_view *show_desktop_saved_view;
 	bool focus_user_initiated;
+	struct {
+		bool active;
+		struct wm_view *restore_minimized;
+	} focus_cycle;
+	uint64_t focus_seq_counter;
+	struct wl_list pending_commands;
 	bool show_position;
 	enum wm_cursor_mode cursor_mode;
 	struct wl_list views;
@@ -1055,18 +1052,25 @@ void wm_view_set_head(struct wm_view *v, int h) { (void)v; (void)h; stub_set_hea
 void wm_view_send_to_next_head(struct wm_view *v) { (void)v; stub_send_next_head_count++; }
 void wm_view_send_to_prev_head(struct wm_view *v) { (void)v; stub_send_prev_head_count++; }
 void wm_view_close_all(struct wm_server *s) { (void)s; stub_close_all_count++; }
-void wm_view_cycle_next(struct wm_server *s) { (void)s; stub_cycle_next_count++; }
-void wm_view_cycle_prev(struct wm_server *s) { (void)s; stub_cycle_prev_count++; }
+void wm_focus_cycle(struct wm_server *s, const struct wm_window_list_spec *spec,
+	bool reverse)
+{
+	(void)s; (void)spec;
+	if (reverse)
+		stub_cycle_prev_count++;
+	else
+		stub_cycle_next_count++;
+}
 void wm_view_deiconify_last(struct wm_server *s) { (void)s; stub_deiconify_last_count++; }
 void wm_view_deiconify_all(struct wm_server *s) { (void)s; stub_deiconify_all_count++; }
 void wm_view_deiconify_all_workspace(struct wm_server *s) { (void)s; stub_deiconify_all_ws_count++; }
 void wm_view_activate_tab(struct wm_view *v, int i) { (void)v; (void)i; stub_activate_tab_count++; }
-void wm_view_send_to_workspace(struct wm_server *s, int i) { (void)s; (void)i; stub_send_to_ws_count++; }
-void wm_view_take_to_workspace(struct wm_server *s, int i) { (void)s; (void)i; stub_take_to_ws_count++; }
-void wm_view_send_to_next_workspace(struct wm_server *s) { (void)s; stub_send_next_ws_count++; }
-void wm_view_send_to_prev_workspace(struct wm_server *s) { (void)s; stub_send_prev_ws_count++; }
-void wm_view_take_to_next_workspace(struct wm_server *s) { (void)s; stub_take_next_ws_count++; }
-void wm_view_take_to_prev_workspace(struct wm_server *s) { (void)s; stub_take_prev_ws_count++; }
+void wm_view_send_to_workspace(struct wm_server *s, struct wm_view *v, int i) { (void)s; (void)v; (void)i; stub_send_to_ws_count++; }
+void wm_view_take_to_workspace(struct wm_server *s, struct wm_view *v, int i) { (void)s; (void)v; (void)i; stub_take_to_ws_count++; }
+void wm_view_send_to_next_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_send_next_ws_count++; }
+void wm_view_send_to_prev_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_send_prev_ws_count++; }
+void wm_view_take_to_next_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_take_next_ws_count++; }
+void wm_view_take_to_prev_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_take_prev_ws_count++; }
 
 enum wm_view_layer wm_view_layer_from_name(const char *n) { (void)n; return (enum wm_view_layer)stub_view_layer_from_name_result; }
 
@@ -1100,6 +1104,11 @@ void wm_menu_show_custom(struct wm_server *s, const char *a, int x, int y) { (vo
 bool wm_menu_handle_key(struct wm_server *s, uint32_t kc, xkb_keysym_t sym, bool press) { (void)s; (void)kc; (void)sym; (void)press; return stub_menu_handle_key_result; }
 
 void wm_decoration_update(struct wm_decoration *d, struct wm_style *s) { (void)d; (void)s; stub_decoration_update_count++; }
+int wm_decoration_tab_at(struct wm_decoration *d, double x, double y) { (void)d; (void)x; (void)y; return -1; }
+void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b) { (void)v; b->x = 0; b->y = 0; b->width = 100; b->height = 100; }
+void wm_tab_group_activate(struct wm_tab_group *g, struct wm_view *v) { (void)g; (void)v; }
+static int stub_cycle_end_count;
+void wm_focus_cycle_end(struct wm_server *s) { (void)s; stub_cycle_end_count++; }
 void wm_decoration_set_preset(struct wm_decoration *d, enum wm_decor_preset p, struct wm_style *s) { (void)d; (void)p; (void)s; stub_decoration_set_preset_count++; }
 void wm_decoration_set_shaded(struct wm_decoration *d, bool shaded, struct wm_style *s) { (void)d; (void)s; stub_decoration_set_shaded_count++; stub_decoration_shaded_value = shaded; }
 
@@ -1175,6 +1184,73 @@ bool wm_keybind_check_condition(struct wm_server *server,
 	struct wm_keybind *bind);
 void wm_chain_reset(struct wm_server *server);
 struct wl_list *wm_get_active_bindings(struct wm_server *server);
+
+/* --- command.c / client_pattern.c stubs --- */
+static int stub_command_execute_count;
+static bool stub_condition_result = true;
+bool wm_execute_action_on(struct wm_server *server, enum wm_action action,
+	const char *argument, struct wm_view *target);
+bool
+wm_command_execute(struct wm_server *server, struct wm_command *cmd,
+	struct wm_view *target)
+{
+	stub_command_execute_count++;
+	if (!cmd)
+		return false;
+	switch (cmd->action) {
+	case WM_ACTION_MACRO_CMD:
+	case WM_ACTION_TOGGLE_CMD:
+	case WM_ACTION_IF:
+	case WM_ACTION_FOREACH:
+	case WM_ACTION_MAP:
+	case WM_ACTION_DELAY:
+		return true; /* compound: covered by test_command */
+	default:
+		return wm_execute_action_on(server, cmd->action,
+			cmd->argument, target);
+	}
+}
+struct wm_command *
+wm_command_create(enum wm_action action, const char *argument)
+{
+	/* Like command.c: compound commands need {...} arguments */
+	if (!argument && (action == WM_ACTION_MACRO_CMD ||
+	    action == WM_ACTION_TOGGLE_CMD || action == WM_ACTION_IF ||
+	    action == WM_ACTION_FOREACH || action == WM_ACTION_MAP ||
+	    action == WM_ACTION_DELAY))
+		return NULL;
+	struct wm_command *cmd = calloc(1, sizeof(*cmd));
+	cmd->action = action;
+	cmd->argument = argument ? strdup(argument) : NULL;
+	return cmd;
+}
+void
+wm_command_destroy(struct wm_command *cmd)
+{
+	if (!cmd)
+		return;
+	free(cmd->argument);
+	free(cmd);
+}
+bool
+wm_condition_evaluate(struct wm_server *server, struct wm_condition *cond,
+	struct wm_view *view)
+{
+	(void)server; (void)cond; (void)view;
+	return stub_condition_result;
+}
+bool
+wm_window_list_parse(const char *args, struct wm_window_list_spec *spec)
+{
+	(void)args;
+	memset(spec, 0, sizeof(*spec));
+	return true;
+}
+void
+wm_window_list_finish(struct wm_window_list_spec *spec)
+{
+	(void)spec;
+}
 
 #include "keyboard_actions.c"
 #include "keyboard.c"
@@ -1456,357 +1532,30 @@ test_blocked_env_wayland_display(void)
 	printf("  PASS: test_blocked_env_wayland_display\n");
 }
 
-/* Test bool_match: "true" matches true */
-static void
-test_bool_match_true(void)
-{
-	assert(bool_match("true", true) == true);
-	assert(bool_match("true", false) == false);
-	printf("  PASS: test_bool_match_true\n");
-}
 
-/* Test bool_match: "false" matches false */
-static void
-test_bool_match_false(void)
-{
-	assert(bool_match("false", false) == true);
-	assert(bool_match("false", true) == false);
-	printf("  PASS: test_bool_match_false\n");
-}
 
-/* Test bool_match: "yes"/"no" variants */
-static void
-test_bool_match_yes_no(void)
-{
-	assert(bool_match("yes", true) == true);
-	assert(bool_match("no", false) == true);
-	assert(bool_match("yes", false) == false);
-	assert(bool_match("no", true) == false);
-	printf("  PASS: test_bool_match_yes_no\n");
-}
 
-/* Test bool_match: "1"/"0" variants */
-static void
-test_bool_match_digits(void)
-{
-	assert(bool_match("1", true) == true);
-	assert(bool_match("0", false) == true);
-	assert(bool_match("1", false) == false);
-	assert(bool_match("0", true) == false);
-	printf("  PASS: test_bool_match_digits\n");
-}
 
-/* Test layer_name: all enum values */
-static void
-test_layer_name_all(void)
-{
-	assert(strcmp(layer_name(WM_LAYER_DESKTOP), "Desktop") == 0);
-	assert(strcmp(layer_name(WM_LAYER_BELOW), "Below") == 0);
-	assert(strcmp(layer_name(WM_LAYER_NORMAL), "Normal") == 0);
-	assert(strcmp(layer_name(WM_LAYER_ABOVE), "Above") == 0);
-	/* Default case: unknown layer maps to "Normal" */
-	assert(strcmp(layer_name(99), "Normal") == 0);
-	printf("  PASS: test_layer_name_all\n");
-}
 
 /* ====================================================================
  * Group B: Condition evaluation tests (minimal stubs)
  * ==================================================================== */
 
-/* Test match_property: title match */
-static void
-test_match_property_title(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
 
-	assert(match_property(&test_server, &test_view, "title", "Firefox") == true);
-	assert(match_property(&test_server, &test_view, "title", "Chrome") == false);
-	/* Glob matching */
-	assert(match_property(&test_server, &test_view, "title", "Fire*") == true);
-	printf("  PASS: test_match_property_title\n");
-}
 
-/* Test match_property: class/name match (maps to app_id) */
-static void
-test_match_property_class(void)
-{
-	setup_with_view();
-	test_view.app_id = "org.mozilla.firefox";
 
-	assert(match_property(&test_server, &test_view, "class", "org.mozilla.firefox") == true);
-	assert(match_property(&test_server, &test_view, "name", "org.mozilla.firefox") == true);
-	assert(match_property(&test_server, &test_view, "class", "chromium") == false);
-	printf("  PASS: test_match_property_class\n");
-}
 
-/* Test match_property: boolean properties */
-static void
-test_match_property_booleans(void)
-{
-	setup_with_view();
-	test_view.maximized = true;
-	test_view.fullscreen = false;
-	test_view.sticky = true;
 
-	assert(match_property(&test_server, &test_view, "maximized", "true") == true);
-	assert(match_property(&test_server, &test_view, "maximized", "false") == false);
-	assert(match_property(&test_server, &test_view, "fullscreen", "false") == true);
-	assert(match_property(&test_server, &test_view, "sticky", "yes") == true);
-	printf("  PASS: test_match_property_booleans\n");
-}
 
-/* Test match_property: layer */
-static void
-test_match_property_layer(void)
-{
-	setup_with_view();
-	test_view.layer = WM_LAYER_ABOVE;
 
-	assert(match_property(&test_server, &test_view, "layer", "Above") == true);
-	assert(match_property(&test_server, &test_view, "layer", "Normal") == false);
-	printf("  PASS: test_match_property_layer\n");
-}
 
-/* Test match_property: shaded (decoration state) */
-static void
-test_match_property_shaded(void)
-{
-	setup_with_view();
-	test_decoration.shaded = true;
 
-	assert(match_property(&test_server, &test_view, "shaded", "true") == true);
-	assert(match_property(&test_server, &test_view, "shaded", "false") == false);
-	printf("  PASS: test_match_property_shaded\n");
-}
 
-/* Test match_property: minimized (scene_tree enabled) */
-static void
-test_match_property_minimized(void)
-{
-	setup_with_view();
-	test_scene_tree.node.enabled = false; /* minimized */
 
-	assert(match_property(&test_server, &test_view, "minimized", "true") == true);
-	assert(match_property(&test_server, &test_view, "minimized", "false") == false);
-	printf("  PASS: test_match_property_minimized\n");
-}
 
-/* Test match_property: workspace match by name and index */
-static void
-test_match_property_workspace(void)
-{
-	setup_with_view();
-	memset(&test_workspace, 0, sizeof(test_workspace));
-	test_workspace.name = "coding";
-	test_workspace.index = 2;
-	test_view.workspace = &test_workspace;
 
-	assert(match_property(&test_server, &test_view, "workspace", "coding") == true);
-	assert(match_property(&test_server, &test_view, "workspace", "gaming") == false);
-	/* Index-based matching (1-indexed display, so index 2 → "3") */
-	assert(match_property(&test_server, &test_view, "workspace", "3") == true);
-	printf("  PASS: test_match_property_workspace\n");
-}
 
-/* Test match_property: NULL inputs */
-static void
-test_match_property_null(void)
-{
-	setup_with_view();
-	assert(match_property(&test_server, NULL, "title", "test") == false);
-	assert(match_property(&test_server, &test_view, NULL, "test") == false);
-	assert(match_property(&test_server, &test_view, "title", NULL) == false);
-	printf("  PASS: test_match_property_null\n");
-}
 
-/* Test evaluate_condition: simple match */
-static void
-test_evaluate_condition_matches(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-
-	struct wm_condition cond = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	assert(evaluate_condition(&test_server, &cond, &test_view) == true);
-
-	cond.pattern = "Chrome";
-	assert(evaluate_condition(&test_server, &cond, &test_view) == false);
-	printf("  PASS: test_evaluate_condition_matches\n");
-}
-
-/* Test evaluate_condition: NOT */
-static void
-test_evaluate_condition_not(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-
-	struct wm_condition match = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	struct wm_condition not_cond = {
-		.type = WM_COND_NOT,
-		.child = &match,
-	};
-	assert(evaluate_condition(&test_server, &not_cond, &test_view) == false);
-
-	match.pattern = "Chrome";
-	assert(evaluate_condition(&test_server, &not_cond, &test_view) == true);
-	printf("  PASS: test_evaluate_condition_not\n");
-}
-
-/* Test evaluate_condition: AND */
-static void
-test_evaluate_condition_and(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	test_view.maximized = true;
-
-	struct wm_condition left = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	struct wm_condition right = {
-		.type = WM_COND_MATCHES,
-		.property = "maximized",
-		.pattern = "true",
-	};
-	struct wm_condition and_cond = {
-		.type = WM_COND_AND,
-		.left = &left,
-		.right = &right,
-	};
-	assert(evaluate_condition(&test_server, &and_cond, &test_view) == true);
-
-	/* Make one side false */
-	right.pattern = "false";
-	assert(evaluate_condition(&test_server, &and_cond, &test_view) == false);
-	printf("  PASS: test_evaluate_condition_and\n");
-}
-
-/* Test evaluate_condition: OR */
-static void
-test_evaluate_condition_or(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	test_view.maximized = false;
-
-	struct wm_condition left = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	struct wm_condition right = {
-		.type = WM_COND_MATCHES,
-		.property = "maximized",
-		.pattern = "true",
-	};
-	struct wm_condition or_cond = {
-		.type = WM_COND_OR,
-		.left = &left,
-		.right = &right,
-	};
-	/* left is true, right is false → OR = true */
-	assert(evaluate_condition(&test_server, &or_cond, &test_view) == true);
-
-	/* Both false */
-	left.pattern = "Chrome";
-	assert(evaluate_condition(&test_server, &or_cond, &test_view) == false);
-	printf("  PASS: test_evaluate_condition_or\n");
-}
-
-/* Test evaluate_condition: XOR */
-static void
-test_evaluate_condition_xor(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	test_view.maximized = false;
-
-	struct wm_condition left = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	struct wm_condition right = {
-		.type = WM_COND_MATCHES,
-		.property = "maximized",
-		.pattern = "true",
-	};
-	struct wm_condition xor_cond = {
-		.type = WM_COND_XOR,
-		.left = &left,
-		.right = &right,
-	};
-	/* T ^ F = T */
-	assert(evaluate_condition(&test_server, &xor_cond, &test_view) == true);
-
-	/* Make both true → XOR = false */
-	test_view.maximized = true;
-	assert(evaluate_condition(&test_server, &xor_cond, &test_view) == false);
-	printf("  PASS: test_evaluate_condition_xor\n");
-}
-
-/* Test evaluate_condition: NULL returns false */
-static void
-test_evaluate_condition_null(void)
-{
-	setup();
-	assert(evaluate_condition(&test_server, NULL, NULL) == false);
-	printf("  PASS: test_evaluate_condition_null\n");
-}
-
-/* Test evaluate_condition: SOME with views list */
-static void
-test_evaluate_condition_some(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	struct wm_condition cond = {
-		.type = WM_COND_SOME,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	assert(evaluate_condition(&test_server, &cond, NULL) == true);
-
-	cond.pattern = "Chrome";
-	assert(evaluate_condition(&test_server, &cond, NULL) == false);
-
-	wl_list_remove(&test_view.link);
-	printf("  PASS: test_evaluate_condition_some\n");
-}
-
-/* Test evaluate_condition: EVERY with views list */
-static void
-test_evaluate_condition_every(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	struct wm_condition cond = {
-		.type = WM_COND_EVERY,
-		.property = "title",
-		.pattern = "Fire*",
-	};
-	/* Single view matching → every = true */
-	assert(evaluate_condition(&test_server, &cond, NULL) == true);
-
-	wl_list_remove(&test_view.link);
-	printf("  PASS: test_evaluate_condition_every\n");
-}
 
 /* ====================================================================
  * Group C: Chain state machine tests
@@ -2267,7 +2016,7 @@ test_action_nop(void)
 	printf("  PASS: test_action_nop\n");
 }
 
-/* Test MacroCmd/ToggleCmd reached via direct execute_action returns false */
+/* MacroCmd/ToggleCmd with no {sub-commands} fail to parse: false */
 static void
 test_action_macro_toggle_direct(void)
 {
@@ -2557,171 +2306,10 @@ test_action_layouts(void)
  * Group E: wm_execute_keybind_action() dispatch tests (MacroCmd, etc)
  * ==================================================================== */
 
-/* Test MacroCmd: executes all subcmds in sequence */
-static void
-test_keybind_action_macro(void)
-{
-	setup();
-	struct wm_subcmd cmd2 = {
-		.action = WM_ACTION_FOCUS_PREV,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_subcmd cmd1 = {
-		.action = WM_ACTION_FOCUS_NEXT,
-		.argument = NULL,
-		.next = &cmd2,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_MACRO_CMD;
-	bind.subcmds = &cmd1;
 
-	assert(wm_execute_keybind_action(&test_server, &bind) == true);
-	assert(stub_focus_next_count == 1);
-	assert(stub_focus_prev_count == 1);
-	printf("  PASS: test_keybind_action_macro\n");
-}
 
-/* Test ToggleCmd: cycles through subcmds */
-static void
-test_keybind_action_toggle(void)
-{
-	setup();
-	struct wm_subcmd cmd2 = {
-		.action = WM_ACTION_FOCUS_PREV,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_subcmd cmd1 = {
-		.action = WM_ACTION_FOCUS_NEXT,
-		.argument = NULL,
-		.next = &cmd2,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_TOGGLE_CMD;
-	bind.subcmds = &cmd1;
-	bind.subcmd_count = 2;
-	bind.toggle_index = 0;
 
-	/* First call: cmd1 (FOCUS_NEXT) */
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_focus_next_count == 1);
-	assert(stub_focus_prev_count == 0);
-	assert(bind.toggle_index == 1);
 
-	/* Second call: cmd2 (FOCUS_PREV) */
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_focus_prev_count == 1);
-	assert(bind.toggle_index == 0); /* wraps around */
-
-	printf("  PASS: test_keybind_action_toggle\n");
-}
-
-/* Test If: true branch executes */
-static void
-test_keybind_action_if_true(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-
-	struct wm_condition cond = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Firefox",
-	};
-	struct wm_subcmd then_cmd = {
-		.action = WM_ACTION_FOCUS_NEXT,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_subcmd else_cmd = {
-		.action = WM_ACTION_FOCUS_PREV,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_IF;
-	bind.condition = &cond;
-	bind.subcmds = &then_cmd;
-	bind.else_cmd = &else_cmd;
-
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_focus_next_count == 1);
-	assert(stub_focus_prev_count == 0);
-	printf("  PASS: test_keybind_action_if_true\n");
-}
-
-/* Test If: false branch (else) executes */
-static void
-test_keybind_action_if_false(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-
-	struct wm_condition cond = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Chrome",
-	};
-	struct wm_subcmd then_cmd = {
-		.action = WM_ACTION_FOCUS_NEXT,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_subcmd else_cmd = {
-		.action = WM_ACTION_FOCUS_PREV,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_IF;
-	bind.condition = &cond;
-	bind.subcmds = &then_cmd;
-	bind.else_cmd = &else_cmd;
-
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_focus_next_count == 0);
-	assert(stub_focus_prev_count == 1);
-	printf("  PASS: test_keybind_action_if_false\n");
-}
-
-/* Test ForEach: runs action on matching views */
-static void
-test_keybind_action_foreach(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	struct wm_condition cond = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Fire*",
-	};
-	struct wm_subcmd cmd = {
-		.action = WM_ACTION_RAISE,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_FOREACH;
-	bind.condition = &cond;
-	bind.subcmds = &cmd;
-
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_raise_count == 1);
-
-	/* Verify focused_view is restored */
-	assert(test_server.focused_view == &test_view);
-
-	wl_list_remove(&test_view.link);
-	printf("  PASS: test_keybind_action_foreach\n");
-}
 
 /* ====================================================================
  * Group F: handle_compositor_keybinding() tests
@@ -3321,101 +2909,9 @@ test_apply_config_failure(void)
  * Group L: wm_execute_keybind_action() Map/Delay tests
  * ==================================================================== */
 
-/* Test: Map iterates views and applies action */
-static void
-test_keybind_action_map(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-	wl_list_insert(&test_server.views, &test_view.link);
 
-	struct wm_subcmd cmd = {
-		.action = WM_ACTION_RAISE,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_MAP;
-	bind.subcmds = &cmd;
 
-	wm_execute_keybind_action(&test_server, &bind);
 
-	assert(stub_raise_count == 1);
-	assert(test_server.focused_view == &test_view);
-
-	wl_list_remove(&test_view.link);
-	printf("  PASS: test_keybind_action_map\n");
-}
-
-/* Test: Map with no subcmds does nothing */
-static void
-test_keybind_action_map_no_subcmds(void)
-{
-	setup_with_view();
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_MAP;
-	bind.subcmds = NULL;
-
-	bool result = wm_execute_keybind_action(&test_server, &bind);
-	assert(result == true);
-	assert(stub_raise_count == 0);
-
-	wl_list_remove(&test_view.link);
-	printf("  PASS: test_keybind_action_map_no_subcmds\n");
-}
-
-/* Test: Delay creates a timer */
-static void
-test_keybind_action_delay(void)
-{
-	setup();
-	struct wm_subcmd cmd = {
-		.action = WM_ACTION_FOCUS_NEXT,
-		.argument = strdup("test_arg"),
-		.next = NULL,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_DELAY;
-	bind.subcmds = &cmd;
-	bind.delay_us = 5000;
-
-	bool result = wm_execute_keybind_action(&test_server, &bind);
-	assert(result == true);
-	assert(g_stub_source_count == 1);
-	assert(g_stub_sources[0].next_ms == 5);
-
-	assert(stub_focus_next_count == 0);
-
-	free(cmd.argument);
-	printf("  PASS: test_keybind_action_delay\n");
-}
-
-/* Test: delay_timer_cb fires the delayed action */
-static void
-test_delay_timer_cb_fires(void)
-{
-	setup();
-
-	struct delay_cb_data *cb = calloc(1, sizeof(*cb));
-	assert(cb != NULL);
-	cb->server = &test_server;
-	cb->action = WM_ACTION_FOCUS_NEXT;
-	cb->argument = strdup("test");
-	struct wl_event_source dummy_timer = {0};
-	cb->timer = &dummy_timer;
-
-	int ret = delay_timer_cb(cb);
-	assert(ret == 0);
-	assert(stub_focus_next_count == 1);
-	assert(dummy_timer.removed == true);
-
-	printf("  PASS: test_delay_timer_cb_fires\n");
-}
 
 /* ====================================================================
  * Group M: Additional wm_execute_action() coverage
@@ -3492,6 +2988,30 @@ test_action_custom_menu(void)
 	printf("  PASS: test_action_custom_menu\n");
 }
 
+/*
+ * SetStyle only accepts existing files under $HOME or the system
+ * share/etc dirs: create one under a scratch $HOME.
+ */
+static char style_home[64];
+static char style_path[128];
+
+static const char *
+make_style_file(const char *name)
+{
+	if (!style_home[0]) {
+		snprintf(style_home, sizeof(style_home),
+			"/tmp/fluxland-kbtest-XXXXXX");
+		assert(mkdtemp(style_home));
+	}
+	setenv("HOME", style_home, 1);
+	snprintf(style_path, sizeof(style_path), "%s/%s", style_home, name);
+	FILE *f = fopen(style_path, "w");
+	assert(f);
+	fputs("! style\n", f);
+	fclose(f);
+	return style_path;
+}
+
 /* Test SetStyle action: loads style, relayouts toolbar, updates decorations */
 static void
 test_action_set_style(void)
@@ -3499,16 +3019,35 @@ test_action_set_style(void)
 	setup_with_view();
 	wl_list_insert(&test_server.views, &test_view.link);
 
-	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "/path/to/style");
+	const char *path = make_style_file("style");
+	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, path);
 	assert(stub_style_load_count == 1);
 	assert(stub_toolbar_relayout_count == 1);
 	assert(stub_decoration_update_count == 1);
-	assert(strcmp(test_config.style_file, "/path/to/style") == 0);
+	assert(strcmp(test_config.style_file, path) == 0);
 
 	free(test_config.style_file);
 	test_config.style_file = NULL;
 	wl_list_remove(&test_view.link);
 	printf("  PASS: test_action_set_style\n");
+}
+
+/* SetStyle only accepts regular files */
+static void
+test_action_set_style_rejects_paths(void)
+{
+	setup_with_view();
+	make_style_file("style");
+	test_config.style_file = NULL;
+
+	assert(!wm_execute_action(&test_server, WM_ACTION_SET_STYLE,
+		"/nonexistent/style"));
+	assert(!wm_execute_action(&test_server, WM_ACTION_SET_STYLE,
+		"/dev/zero"));
+	assert(!wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "/tmp"));
+	assert(stub_style_load_count == 0);
+	assert(test_config.style_file == NULL);
+	printf("  PASS: test_action_set_style_rejects_paths\n");
 }
 
 /* Test SetStyle with no argument does nothing */
@@ -4015,41 +3554,6 @@ test_handle_key_release_not_handled(void)
  * Group R: ForEach with subcmds on workspace views
  * ==================================================================== */
 
-/* Test ForEach with subcmds executes on each matching view */
-static void
-test_keybind_action_foreach_with_subcmds(void)
-{
-	setup_with_view();
-	test_workspace.index = 0;
-	stub_active_workspace = &test_workspace;
-	test_view.workspace = &test_workspace;
-	test_view.sticky = true; /* condition checks sticky=yes */
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	/* Need a condition for evaluate_condition (NULL condition returns false) */
-	struct wm_condition cond = {
-		.type = WM_COND_MATCHES,
-		.property = "sticky",
-		.pattern = "yes",
-	};
-	struct wm_subcmd cmd = {
-		.action = WM_ACTION_RAISE,
-		.argument = NULL,
-		.next = NULL,
-	};
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_FOREACH;
-	bind.condition = &cond;
-	bind.subcmds = &cmd;
-
-	bool result = wm_execute_keybind_action(&test_server, &bind);
-	assert(result == true);
-	assert(stub_raise_count >= 1);
-
-	wl_list_remove(&test_view.link);
-	printf("  PASS: test_keybind_action_foreach_with_subcmds\n");
-}
 
 /* ====================================================================
  * Group S: NEXT_WINDOW / PREV_WINDOW filtered cycling
@@ -4114,117 +3618,11 @@ test_action_prev_window_no_arg(void)
 	printf("  PASS: test_action_prev_window_no_arg\n");
 }
 
-/* Test NEXT_WINDOW with filter matching app_id */
-static void
-test_action_next_window_filtered(void)
-{
-	setup_multi_view(3);
-	test_views_arr[0].app_id = "terminal";
-	test_views_arr[1].app_id = "browser";
-	test_views_arr[2].app_id = "terminal";
-	test_server.focused_view = &test_views_arr[0];
 
-	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "terminal");
-	/* Should focus the next terminal (views_arr[2]) */
-	assert(stub_focus_view_count == 1);
 
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_next_window_filtered\n");
-}
 
-/* Test NEXT_WINDOW with filter matching title */
-static void
-test_action_next_window_filtered_title(void)
-{
-	setup_multi_view(2);
-	test_views_arr[0].title = "Firefox";
-	test_views_arr[1].title = "Firefox - Tab 2";
-	test_server.focused_view = &test_views_arr[0];
 
-	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "Firefox*");
-	assert(stub_focus_view_count == 1);
 
-	cleanup_multi_view(2);
-	printf("  PASS: test_action_next_window_filtered_title\n");
-}
-
-/* Test NEXT_WINDOW wraps around when no match after focused */
-static void
-test_action_next_window_filtered_wrap(void)
-{
-	setup_multi_view(3);
-	test_views_arr[0].app_id = "terminal";
-	test_views_arr[1].app_id = "browser";
-	test_views_arr[2].app_id = "editor";
-	/* focused is last terminal, next should wrap to first */
-	test_server.focused_view = &test_views_arr[0];
-
-	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "terminal");
-	/* Only one match (self), no focus change */
-	assert(stub_focus_view_count == 0);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_next_window_filtered_wrap\n");
-}
-
-/* Test NEXT_WINDOW skips views on other workspaces (non-sticky) */
-static void
-test_action_next_window_filtered_skip_ws(void)
-{
-	struct wm_workspace other_ws = {0};
-	other_ws.name = "other";
-	other_ws.index = 1;
-
-	setup_multi_view(3);
-	test_views_arr[0].app_id = "terminal";
-	test_views_arr[1].app_id = "terminal";
-	test_views_arr[1].workspace = &other_ws; /* different workspace */
-	test_views_arr[2].app_id = "terminal";
-	test_server.focused_view = &test_views_arr[0];
-
-	wm_execute_action(&test_server, WM_ACTION_NEXT_WINDOW, "terminal");
-	/* Should skip views_arr[1] and focus views_arr[2] */
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_next_window_filtered_skip_ws\n");
-}
-
-/* Test PREV_WINDOW with filter */
-static void
-test_action_prev_window_filtered(void)
-{
-	setup_multi_view(3);
-	test_views_arr[0].app_id = "terminal";
-	test_views_arr[1].app_id = "browser";
-	test_views_arr[2].app_id = "terminal";
-	test_server.focused_view = &test_views_arr[2];
-
-	wm_execute_action(&test_server, WM_ACTION_PREV_WINDOW, "terminal");
-	/* Should focus the previous terminal (views_arr[0]) */
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_prev_window_filtered\n");
-}
-
-/* Test PREV_WINDOW wrap: focused is first match, wraps to last */
-static void
-test_action_prev_window_filtered_wrap(void)
-{
-	setup_multi_view(3);
-	test_views_arr[0].app_id = "terminal";
-	test_views_arr[1].app_id = "browser";
-	test_views_arr[2].app_id = "terminal";
-	test_server.focused_view = &test_views_arr[0];
-
-	wm_execute_action(&test_server, WM_ACTION_PREV_WINDOW, "terminal");
-	/* Should wrap to last terminal (views_arr[2]) */
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_prev_window_filtered_wrap\n");
-}
 
 /* ====================================================================
  * Group T: NEXT_GROUP / PREV_GROUP
@@ -4232,96 +3630,9 @@ test_action_prev_window_filtered_wrap(void)
 
 static struct wm_tab_group test_groups[3];
 
-/* Test NEXT_GROUP with < 2 groups does nothing */
-static void
-test_action_next_group_too_few(void)
-{
-	setup_multi_view(2);
-	memset(test_groups, 0, sizeof(test_groups));
-	wl_list_init(&test_groups[0].views);
-	test_groups[0].active_view = &test_views_arr[0];
-	test_views_arr[0].tab_group = &test_groups[0];
-	test_views_arr[1].tab_group = &test_groups[0]; /* same group */
-	test_server.focused_view = &test_views_arr[0];
 
-	wm_execute_action(&test_server, WM_ACTION_NEXT_GROUP, NULL);
-	/* < 2 unique groups → no focus change */
-	assert(stub_focus_view_count == 0);
 
-	cleanup_multi_view(2);
-	printf("  PASS: test_action_next_group_too_few\n");
-}
 
-/* Test NEXT_GROUP cycles to next group */
-static void
-test_action_next_group_cycles(void)
-{
-	setup_multi_view(3);
-	memset(test_groups, 0, sizeof(test_groups));
-	wl_list_init(&test_groups[0].views);
-	wl_list_init(&test_groups[1].views);
-	test_groups[0].active_view = &test_views_arr[0];
-	test_groups[1].active_view = &test_views_arr[2];
-
-	test_views_arr[0].tab_group = &test_groups[0];
-	test_views_arr[1].tab_group = &test_groups[0]; /* same group as [0] */
-	test_views_arr[2].tab_group = &test_groups[1]; /* different group */
-	test_server.focused_view = &test_views_arr[0];
-
-	wm_execute_action(&test_server, WM_ACTION_NEXT_GROUP, NULL);
-	/* Should focus active_view of next group */
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_next_group_cycles\n");
-}
-
-/* Test PREV_GROUP cycles to previous group */
-static void
-test_action_prev_group_cycles(void)
-{
-	setup_multi_view(3);
-	memset(test_groups, 0, sizeof(test_groups));
-	wl_list_init(&test_groups[0].views);
-	wl_list_init(&test_groups[1].views);
-	test_groups[0].active_view = &test_views_arr[0];
-	test_groups[1].active_view = &test_views_arr[2];
-
-	test_views_arr[0].tab_group = &test_groups[0];
-	test_views_arr[1].tab_group = &test_groups[0];
-	test_views_arr[2].tab_group = &test_groups[1];
-	test_server.focused_view = &test_views_arr[2];
-
-	wm_execute_action(&test_server, WM_ACTION_PREV_GROUP, NULL);
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_prev_group_cycles\n");
-}
-
-/* Test NEXT_GROUP with no focused view tab_group */
-static void
-test_action_next_group_no_current(void)
-{
-	setup_multi_view(3);
-	memset(test_groups, 0, sizeof(test_groups));
-	wl_list_init(&test_groups[0].views);
-	wl_list_init(&test_groups[1].views);
-	test_groups[0].active_view = &test_views_arr[0];
-	test_groups[1].active_view = &test_views_arr[2];
-
-	test_views_arr[0].tab_group = &test_groups[0];
-	test_views_arr[1].tab_group = NULL; /* no group */
-	test_views_arr[2].tab_group = &test_groups[1];
-	test_server.focused_view = &test_views_arr[1]; /* not in any group */
-
-	wm_execute_action(&test_server, WM_ACTION_NEXT_GROUP, NULL);
-	/* cur_idx < 0, so next_idx = 0 → focus first group's active view */
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_next_group_no_current\n");
-}
 
 /* ====================================================================
  * Group U: SET_ENV with space format blocked
@@ -4376,11 +3687,12 @@ test_action_set_style_updates_views(void)
 	wl_list_insert(&test_server.views, &test_view.link);
 	test_config.style_file = strdup("/old/style");
 
-	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "/new/style");
+	const char *path = make_style_file("new-style");
+	wm_execute_action(&test_server, WM_ACTION_SET_STYLE, path);
 	assert(stub_style_load_count == 1);
 	assert(stub_toolbar_relayout_count == 1);
 	assert(stub_decoration_update_count == 1);
-	assert(strcmp(test_config.style_file, "/new/style") == 0);
+	assert(strcmp(test_config.style_file, path) == 0);
 
 	free(test_config.style_file);
 	test_config.style_file = NULL;
@@ -4412,112 +3724,10 @@ test_action_reload_style_updates_views(void)
  * Group W: keybind_action dispatch edge cases
  * ==================================================================== */
 
-/* Test ToggleCmd cycles through subcmds */
-static void
-test_keybind_action_toggle_cycles(void)
-{
-	setup_with_view();
-	struct wm_subcmd cmd1 = { .action = WM_ACTION_RAISE, .argument = NULL, .next = NULL };
-	struct wm_subcmd cmd0 = { .action = WM_ACTION_LOWER, .argument = NULL, .next = &cmd1 };
 
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_TOGGLE_CMD;
-	bind.subcmds = &cmd0;
-	bind.subcmd_count = 2;
-	bind.toggle_index = 0;
 
-	/* First call: index 0 → LOWER */
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_lower_count == 1);
-	assert(bind.toggle_index == 1);
 
-	/* Second call: index 1 → RAISE */
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_raise_count == 1);
-	assert(bind.toggle_index == 0); /* wraps back */
 
-	printf("  PASS: test_keybind_action_toggle_cycles\n");
-}
-
-/* Test If with else_cmd branch */
-static void
-test_keybind_action_if_else(void)
-{
-	setup_with_view();
-	test_view.title = "Firefox";
-
-	struct wm_condition cond = {
-		.type = WM_COND_MATCHES,
-		.property = "title",
-		.pattern = "Chrome", /* doesn't match */
-	};
-	struct wm_subcmd then_cmd = { .action = WM_ACTION_RAISE, .argument = NULL, .next = NULL };
-	struct wm_subcmd else_cmd = { .action = WM_ACTION_LOWER, .argument = NULL, .next = NULL };
-
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_IF;
-	bind.condition = &cond;
-	bind.subcmds = &then_cmd;
-	bind.else_cmd = &else_cmd;
-
-	wm_execute_keybind_action(&test_server, &bind);
-	/* Condition is false, so else_cmd (LOWER) should run */
-	assert(stub_lower_count == 1);
-	assert(stub_raise_count == 0);
-
-	printf("  PASS: test_keybind_action_if_else\n");
-}
-
-/* Test Map executes on all views regardless of condition */
-static void
-test_keybind_action_map_all_views(void)
-{
-	setup_multi_view(3);
-	struct wm_subcmd cmd = { .action = WM_ACTION_RAISE, .argument = NULL, .next = NULL };
-
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_MAP;
-	bind.subcmds = &cmd;
-
-	wm_execute_keybind_action(&test_server, &bind);
-	assert(stub_raise_count == 3); /* once per view */
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_keybind_action_map_all_views\n");
-}
-
-/* Test Delay with no subcmds */
-static void
-test_keybind_action_delay_no_subcmds(void)
-{
-	setup();
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_DELAY;
-	bind.subcmds = NULL;
-
-	bool result = wm_execute_keybind_action(&test_server, &bind);
-	assert(result == true);
-	printf("  PASS: test_keybind_action_delay_no_subcmds\n");
-}
-
-/* Test ForEach with no subcmds */
-static void
-test_keybind_action_foreach_no_subcmds(void)
-{
-	setup();
-	struct wm_keybind bind = {0};
-	wl_list_init(&bind.children);
-	bind.action = WM_ACTION_FOREACH;
-	bind.subcmds = NULL;
-
-	bool result = wm_execute_keybind_action(&test_server, &bind);
-	assert(result == true);
-	printf("  PASS: test_keybind_action_foreach_no_subcmds\n");
-}
 
 /* Test regular action via keybind_action falls through to execute_action */
 static void
@@ -4525,11 +3735,14 @@ test_keybind_action_regular(void)
 {
 	setup();
 	struct wm_keybind bind = {0};
+	struct wm_command cmd = { .action = WM_ACTION_RECONFIGURE };
 	wl_list_init(&bind.children);
 	bind.action = WM_ACTION_RECONFIGURE;
+	bind.command = &cmd;
 
 	bool result = wm_execute_keybind_action(&test_server, &bind);
 	assert(result == true);
+	assert(stub_command_execute_count >= 1);
 	assert(stub_reconfigure_count == 1);
 	printf("  PASS: test_keybind_action_regular\n");
 }
@@ -4685,29 +3898,8 @@ main(void)
 	test_blocked_env_normal();
 	test_blocked_env_case_insensitive();
 	test_blocked_env_wayland_display();
-	test_bool_match_true();
-	test_bool_match_false();
-	test_bool_match_yes_no();
-	test_bool_match_digits();
-	test_layer_name_all();
 
 	printf("\n  Group B: Condition evaluation\n");
-	test_match_property_title();
-	test_match_property_class();
-	test_match_property_booleans();
-	test_match_property_layer();
-	test_match_property_shaded();
-	test_match_property_minimized();
-	test_match_property_workspace();
-	test_match_property_null();
-	test_evaluate_condition_matches();
-	test_evaluate_condition_not();
-	test_evaluate_condition_and();
-	test_evaluate_condition_or();
-	test_evaluate_condition_xor();
-	test_evaluate_condition_null();
-	test_evaluate_condition_some();
-	test_evaluate_condition_every();
 
 	printf("\n  Group C: Chain state machine\n");
 	test_wm_chain_reset();
@@ -4770,11 +3962,6 @@ main(void)
 	test_action_layouts();
 
 	printf("\n  Group E: wm_execute_keybind_action() dispatch\n");
-	test_keybind_action_macro();
-	test_keybind_action_toggle();
-	test_keybind_action_if_true();
-	test_keybind_action_if_false();
-	test_keybind_action_foreach();
 
 	printf("\n  Group F: handle_compositor_keybinding()\n");
 	test_compositor_vt_switch();
@@ -4815,10 +4002,6 @@ main(void)
 	test_apply_config_failure();
 
 	printf("\n  Group L: wm_execute_keybind_action() Map/Delay\n");
-	test_keybind_action_map();
-	test_keybind_action_map_no_subcmds();
-	test_keybind_action_delay();
-	test_delay_timer_cb_fires();
 
 	printf("\n  Group M: Additional wm_execute_action() coverage\n");
 	test_action_kill();
@@ -4829,6 +4012,7 @@ main(void)
 	test_action_client_menu();
 	test_action_custom_menu();
 	test_action_set_style();
+	test_action_set_style_rejects_paths();
 	test_action_set_style_no_arg();
 	test_action_reload_style();
 	test_action_bind_key();
@@ -4873,23 +4057,12 @@ main(void)
 	test_handle_key_release_not_handled();
 
 	printf("\n  Group R: ForEach with subcmds\n");
-	test_keybind_action_foreach_with_subcmds();
 
 	printf("\n  Group S: NEXT_WINDOW / PREV_WINDOW filtered cycling\n");
 	test_action_next_window_no_arg();
 	test_action_prev_window_no_arg();
-	test_action_next_window_filtered();
-	test_action_next_window_filtered_title();
-	test_action_next_window_filtered_wrap();
-	test_action_next_window_filtered_skip_ws();
-	test_action_prev_window_filtered();
-	test_action_prev_window_filtered_wrap();
 
 	printf("\n  Group T: NEXT_GROUP / PREV_GROUP\n");
-	test_action_next_group_too_few();
-	test_action_next_group_cycles();
-	test_action_prev_group_cycles();
-	test_action_next_group_no_current();
 
 	printf("\n  Group U: SET_ENV edge cases\n");
 	test_action_set_env_blocked_space();
@@ -4901,11 +4074,6 @@ main(void)
 	test_action_reload_style_updates_views();
 
 	printf("\n  Group W: keybind_action dispatch edge cases\n");
-	test_keybind_action_toggle_cycles();
-	test_keybind_action_if_else();
-	test_keybind_action_map_all_views();
-	test_keybind_action_delay_no_subcmds();
-	test_keybind_action_foreach_no_subcmds();
 	test_keybind_action_regular();
 
 	printf("\n  Group X: Additional action no-view guards\n");

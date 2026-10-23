@@ -35,7 +35,7 @@ uint32_t get_keyboard_modifiers(struct wm_server *server);
 void execute_mouse_action(struct wm_server *server,
 	enum wm_action action, const char *argument, struct wm_view *view);
 
-/* Dispatch a mouse binding (handles MacroCmd/ToggleCmd) */
+/* Dispatch a mouse binding's command against the clicked view */
 void execute_mousebind(struct wm_server *server, struct wm_mousebind *bind,
 	struct wm_view *view);
 

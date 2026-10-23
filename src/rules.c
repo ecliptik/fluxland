@@ -18,6 +18,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "regex_guard.h"
 #include "rules.h"
 #include "decoration.h"
 #include "foreign_toplevel.h"
@@ -154,10 +155,10 @@ static int parse_patterns(const char *line, struct wm_match_pattern **out_patter
 		}
 		pat->negate = negate;
 
-		/* Cap regex length to prevent ReDoS / excessive compilation cost */
-		if (strlen(regex) > 1024) {
-			wlr_log(WLR_ERROR, "rules: regex too long (%zu bytes): %.32s...",
-				strlen(regex), regex);
+		/* Cap regex length and shape to bound compilation cost */
+		if (strlen(regex) > 1024 || !wm_regex_is_sane(regex)) {
+			wlr_log(WLR_ERROR, "rules: regex too long or too "
+				"complex: %.32s...", regex);
 			free(pat->property);
 			free(pat->regex_str);
 			free(content);

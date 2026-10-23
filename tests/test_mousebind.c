@@ -4,6 +4,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "command.h"
 #include "mousebind.h"
 #include <assert.h>
 #include <linux/input-event-codes.h>
@@ -16,6 +17,30 @@
 
 #define TEST_DIR "/tmp/fluxland-test/wm-test-mousebind"
 #define TEST_KEYS TEST_DIR "/keys"
+
+/* Execution-side symbols used by command.c / client_pattern.c */
+struct wm_server;
+struct wm_view;
+struct wm_workspace;
+struct wlr_box;
+bool
+wm_execute_action_on(struct wm_server *server, enum wm_action action,
+	const char *argument, struct wm_view *target)
+{
+	(void)server; (void)action; (void)argument; (void)target;
+	return true;
+}
+void
+wm_view_get_geometry(struct wm_view *view, struct wlr_box *box)
+{
+	(void)view; (void)box;
+}
+struct wm_workspace *
+wm_workspace_get_active(struct wm_server *server)
+{
+	(void)server;
+	return NULL;
+}
 
 static void
 setup(void)
@@ -356,13 +381,10 @@ test_macrocmd(void)
 		WM_MOUSE_CTX_TITLEBAR, WM_MOUSE_PRESS, BTN_LEFT, 0);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_MACRO_CMD);
-	assert(bind->subcmd_count == 3);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_RAISE);
-	assert(bind->subcmds->next != NULL);
-	assert(bind->subcmds->next->action == WM_ACTION_FOCUS);
-	assert(bind->subcmds->next->next != NULL);
-	assert(bind->subcmds->next->next->action == WM_ACTION_ACTIVATE_TAB);
+	assert(bind->command->child_count == 3);
+	assert(bind->command->children[0]->action == WM_ACTION_RAISE);
+	assert(bind->command->children[1]->action == WM_ACTION_FOCUS);
+	assert(bind->command->children[2]->action == WM_ACTION_ACTIVATE_TAB);
 
 	mousebind_destroy_list(&bindings);
 	printf("  PASS: test_macrocmd\n");
@@ -384,11 +406,9 @@ test_togglecmd(void)
 		WM_MOUSE_CTX_TITLEBAR, WM_MOUSE_PRESS, BTN_LEFT, 0);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_TOGGLE_CMD);
-	assert(bind->subcmd_count == 2);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_SHADE);
-	assert(bind->subcmds->next != NULL);
-	assert(bind->subcmds->next->action == WM_ACTION_SHADE_OFF);
+	assert(bind->command->child_count == 2);
+	assert(bind->command->children[0]->action == WM_ACTION_SHADE);
+	assert(bind->command->children[1]->action == WM_ACTION_SHADE_OFF);
 
 	mousebind_destroy_list(&bindings);
 	printf("  PASS: test_togglecmd\n");

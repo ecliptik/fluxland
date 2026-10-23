@@ -133,12 +133,6 @@ if get_option('atspi')
 endif
 
 # PipeWire screen recording
-pipewire_opt = get_option('pipewire')
-pipewire_dep = dependency('libpipewire-0.3', version: '>=0.3.0', required: pipewire_opt)
-have_pipewire = pipewire_dep.found()
-if have_pipewire
-  add_project_arguments('-DWM_HAS_PIPEWIRE', language: 'c')
-endif
 
 # GdkPixbuf for XPM/JPEG/BMP style pixmap support
 pixbuf_opt = get_option('pixbuf')
@@ -152,7 +146,6 @@ conf_data = configuration_data()
 conf_data.set10('HAVE_XWAYLAND', have_xwayland)
 conf_data.set10('WM_HAS_SYSTRAY', have_systray)
 conf_data.set10('WM_HAS_ATSPI', have_atspi)
-conf_data.set10('WM_HAS_PIPEWIRE', have_pipewire)
 conf_data.set10('WM_HAS_PIXBUF', have_pixbuf)
 
 configure_file(
@@ -182,7 +175,7 @@ subdir('protocols')
 
 # --- Include directories ---
 
-wm_inc = include_directories('include', 'src')
+wm_inc = include_directories('src')
 
 # --- Collect sources ---
 
@@ -207,6 +200,9 @@ wm_sources = files(
   'src/animation.c',
   'src/atspi_bridge.c',
   'src/autostart.c',
+  'src/client_pattern.c',
+  'src/regex_guard.c',
+  'src/command.c',
   'src/server.c',
   'src/output.c',
   'src/pixel_buffer.c',
@@ -234,6 +230,7 @@ wm_sources = files(
   'src/tabgroup.c',
   'src/ipc.c',
   'src/ipc_commands.c',
+  'src/ipc_json.c',
   'src/rules.c',
   'src/placement.c',
   'src/idle.c',
@@ -242,7 +239,6 @@ wm_sources = files(
   'src/protocols.c',
   'src/presentation.c',
   'src/screencopy.c',
-  'src/screen_cast.c',
   'src/session_lock.c',
   'src/text_input.c',
   'src/transient_seat.c',
@@ -274,9 +270,6 @@ elif have_atspi
   wm_deps += [sdbus_dep]
 endif
 
-if have_pipewire
-  wm_deps += [pipewire_dep]
-endif
 
 if have_pixbuf
   wm_deps += [pixbuf_dep]
@@ -300,6 +293,9 @@ if get_option('wlcs')
     'src/animation.c',
     'src/atspi_bridge.c',
     'src/autostart.c',
+  'src/client_pattern.c',
+  'src/regex_guard.c',
+  'src/command.c',
     'src/server.c',
     'src/output.c',
     'src/pixel_buffer.c',
@@ -327,6 +323,7 @@ if get_option('wlcs')
     'src/tabgroup.c',
     'src/ipc.c',
     'src/ipc_commands.c',
+  'src/ipc_json.c',
     'src/rules.c',
     'src/placement.c',
     'src/idle.c',
@@ -335,8 +332,7 @@ if get_option('wlcs')
     'src/protocols.c',
     'src/presentation.c',
     'src/screencopy.c',
-    'src/screen_cast.c',
-    'src/session_lock.c',
+      'src/session_lock.c',
     'src/text_input.c',
     'src/transient_seat.c',
     'src/drm_lease.c',
@@ -382,13 +378,9 @@ executable(
 
 # --- Install data files ---
 
+# Session entry for display managers (not an application launcher)
 install_data(
   'data/fluxland.desktop',
-  install_dir: get_option('datadir') / 'applications',
-)
-
-install_data(
-  'data/fluxland-session.desktop',
   install_dir: get_option('datadir') / 'wayland-sessions',
 )
 

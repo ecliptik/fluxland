@@ -415,6 +415,24 @@ wm_unfocus_current(struct wm_server *server)
 	g_unfocus_count++;
 }
 
+/* Mirrors view_focus.c: most recent visible view on the active workspace */
+struct wm_workspace *wm_workspace_get_active(struct wm_server *server);
+static void
+wm_focus_fallback(struct wm_server *server, struct wm_view *except)
+{
+	struct wm_workspace *ws = wm_workspace_get_active(server);
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v == except || !v->scene_tree->node.enabled)
+			continue;
+		if (v->workspace != ws && !v->sticky)
+			continue;
+		wm_focus_view(v, NULL);
+		return;
+	}
+	wm_unfocus_current(server);
+}
+
 static struct wm_output *
 wm_server_get_focused_output(struct wm_server *server)
 {
@@ -1001,7 +1019,7 @@ test_view_send_to_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_send_to_workspace(&test_server, 2);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* View should have moved to workspace 2 */
 	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
@@ -1022,7 +1040,7 @@ test_view_send_to_workspace_no_focused_view(void)
 	test_server.focused_view = NULL;
 
 	reset_globals();
-	wm_view_send_to_workspace(&test_server, 2);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* Should be a no-op */
 	assert(g_toolbar_iconbar_update_count == 0);
@@ -1042,7 +1060,7 @@ test_view_send_to_same_workspace(void)
 
 	reset_globals();
 	/* Send to workspace 0, same as current */
-	wm_view_send_to_workspace(&test_server, 0);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 0);
 
 	/* Should be a no-op */
 	assert(test_views[0].workspace == ws0);
@@ -1063,7 +1081,7 @@ test_view_send_to_invalid_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_send_to_workspace(&test_server, 99);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 99);
 
 	/* Should be a no-op */
 	assert(test_views[0].workspace == ws0);
@@ -1085,7 +1103,7 @@ test_view_send_to_workspace_unsticks(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_send_to_workspace(&test_server, 2);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* Sticky flag should have been cleared */
 	assert(!test_views[0].sticky);
@@ -1109,7 +1127,7 @@ test_view_send_focuses_next_view(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_send_to_workspace(&test_server, 2);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* View 1 should be focused since it's still on ws0 */
 	assert(g_focus_view_count >= 1);
@@ -1133,7 +1151,7 @@ test_view_take_to_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_take_to_workspace(&test_server, 2);
+	wm_view_take_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* View should have been moved to workspace 2 AND we should switch there */
 	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
@@ -1155,7 +1173,7 @@ test_view_take_to_workspace_no_focused(void)
 	test_server.focused_view = NULL;
 
 	reset_globals();
-	wm_view_take_to_workspace(&test_server, 2);
+	wm_view_take_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* Should be a no-op, stay on workspace 0 */
 	assert(test_server.current_workspace->index == 0);
@@ -1175,7 +1193,7 @@ test_view_take_to_workspace_unsticks(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_take_to_workspace(&test_server, 2);
+	wm_view_take_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* Sticky should be cleared */
 	assert(!test_views[0].sticky);
@@ -1200,7 +1218,7 @@ test_view_send_to_next_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_send_to_next_workspace(&test_server);
+	wm_view_send_to_next_workspace(&test_server, test_server.focused_view);
 
 	/* View should have moved to workspace 1 */
 	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
@@ -1223,7 +1241,7 @@ test_view_send_to_prev_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_send_to_prev_workspace(&test_server);
+	wm_view_send_to_prev_workspace(&test_server, test_server.focused_view);
 
 	/* View should have moved to workspace 1 */
 	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
@@ -1246,7 +1264,7 @@ test_view_take_to_next_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_take_to_next_workspace(&test_server);
+	wm_view_take_to_next_workspace(&test_server, test_server.focused_view);
 
 	/* View on ws1, and we switched there */
 	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
@@ -1271,7 +1289,7 @@ test_view_take_to_prev_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_take_to_prev_workspace(&test_server);
+	wm_view_take_to_prev_workspace(&test_server, test_server.focused_view);
 
 	/* View on ws1, and we switched there */
 	struct wm_workspace *ws1 = wm_workspace_get(&test_server, 1);
@@ -1620,7 +1638,7 @@ test_view_send_per_output_mode(void)
 	test_server.focused_view = &test_views[0];
 	g_toolbar_iconbar_update_count = 0;
 
-	wm_view_send_to_workspace(&test_server, 2);
+	wm_view_send_to_workspace(&test_server, test_server.focused_view, 2);
 
 	/* View moved to workspace 2 */
 	struct wm_workspace *ws2 = wm_workspace_get(&test_server, 2);
@@ -1737,7 +1755,7 @@ test_view_take_to_invalid_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_take_to_workspace(&test_server, 99);
+	wm_view_take_to_workspace(&test_server, test_server.focused_view, 99);
 
 	/* Should be a no-op (invalid index) */
 	assert(test_views[0].workspace == ws0);
@@ -1760,7 +1778,7 @@ test_view_take_to_same_workspace(void)
 	test_server.focused_view = &test_views[0];
 
 	reset_globals();
-	wm_view_take_to_workspace(&test_server, 0);
+	wm_view_take_to_workspace(&test_server, test_server.focused_view, 0);
 
 	/* View stays on ws0, we're still on ws0 */
 	assert(test_views[0].workspace == ws0);

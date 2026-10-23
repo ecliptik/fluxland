@@ -4,6 +4,8 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "client_pattern.h"
+#include "command.h"
 #include "keybind.h"
 #include <assert.h>
 #include <stdio.h>
@@ -13,6 +15,30 @@
 #include <unistd.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <xkbcommon/xkbcommon.h>
+
+/* Execution-side symbols used by command.c / client_pattern.c */
+struct wm_server;
+struct wm_view;
+struct wm_workspace;
+struct wlr_box;
+bool
+wm_execute_action_on(struct wm_server *server, enum wm_action action,
+	const char *argument, struct wm_view *target)
+{
+	(void)server; (void)action; (void)argument; (void)target;
+	return true;
+}
+void
+wm_view_get_geometry(struct wm_view *view, struct wlr_box *box)
+{
+	(void)view; (void)box;
+}
+struct wm_workspace *
+wm_workspace_get_active(struct wm_server *server)
+{
+	(void)server;
+	return NULL;
+}
 
 #define TEST_DIR "/tmp/fluxland-test/wm-test-keybind"
 #define TEST_KEYS TEST_DIR "/keys"
@@ -392,11 +418,9 @@ test_macrocmd(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_t);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_MACRO_CMD);
-	assert(bind->subcmd_count == 2);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_MAXIMIZE);
-	assert(bind->subcmds->next != NULL);
-	assert(bind->subcmds->next->action == WM_ACTION_RAISE);
+	assert(bind->command->child_count == 2);
+	assert(bind->command->children[0]->action == WM_ACTION_MAXIMIZE);
+	assert(bind->command->children[1]->action == WM_ACTION_RAISE);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_macrocmd\n");
@@ -1047,11 +1071,9 @@ test_togglecmd(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_t);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_TOGGLE_CMD);
-	assert(bind->subcmd_count == 2);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_SHADE);
-	assert(bind->subcmds->next != NULL);
-	assert(bind->subcmds->next->action == WM_ACTION_SHADE_OFF);
+	assert(bind->command->child_count == 2);
+	assert(bind->command->children[0]->action == WM_ACTION_SHADE);
+	assert(bind->command->children[1]->action == WM_ACTION_SHADE_OFF);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_togglecmd\n");
@@ -1137,21 +1159,21 @@ test_macrocmd_with_args(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_m);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_MACRO_CMD);
-	assert(bind->subcmd_count == 3);
+	assert(bind->command->child_count == 3);
 
 	/* First: Exec foot */
-	assert(bind->subcmds->action == WM_ACTION_EXEC);
-	assert(bind->subcmds->argument != NULL);
-	assert(strcmp(bind->subcmds->argument, "foot") == 0);
+	assert(bind->command->children[0]->action == WM_ACTION_EXEC);
+	assert(bind->command->children[0]->argument != NULL);
+	assert(strcmp(bind->command->children[0]->argument, "foot") == 0);
 
 	/* Second: SendToWorkspace 3 */
-	struct wm_subcmd *s2 = bind->subcmds->next;
+	struct wm_command *s2 = bind->command->children[1];
 	assert(s2 != NULL);
 	assert(s2->action == WM_ACTION_SEND_TO_WORKSPACE);
 	assert(s2->argument && strcmp(s2->argument, "3") == 0);
 
 	/* Third: Maximize */
-	struct wm_subcmd *s3 = s2->next;
+	struct wm_command *s3 = bind->command->children[2];
 	assert(s3 != NULL);
 	assert(s3->action == WM_ACTION_MAXIMIZE);
 	assert(s3->argument == NULL);
@@ -1367,20 +1389,21 @@ test_if_condition(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_i);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_IF);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_MATCHES);
-	assert(bind->condition->property != NULL);
-	assert(strcmp(bind->condition->property, "class") == 0);
-	assert(bind->condition->pattern != NULL);
-	assert(strcmp(bind->condition->pattern, "Firefox") == 0);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_MATCHES);
+	assert(bind->command->condition->pattern != NULL);
+	assert(bind->command->condition->pattern->term_count == 1);
+	assert(bind->command->condition->pattern->terms[0].prop == WM_PROP_CLASS);
+	assert(strcmp(bind->command->condition->pattern->terms[0].regex_str,
+		"Firefox") == 0);
 
 	/* Then branch */
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_MAXIMIZE);
+	assert(bind->command->then_cmd != NULL);
+	assert(bind->command->then_cmd->action == WM_ACTION_MAXIMIZE);
 
 	/* Else branch */
-	assert(bind->else_cmd != NULL);
-	assert(bind->else_cmd->action == WM_ACTION_MINIMIZE);
+	assert(bind->command->else_cmd != NULL);
+	assert(bind->command->else_cmd->action == WM_ACTION_MINIMIZE);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_if_condition\n");
@@ -1411,10 +1434,10 @@ test_foreach_condition(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_f);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_FOREACH);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_MATCHES);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_MINIMIZE);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_MATCHES);
+	assert(bind->command->then_cmd != NULL);
+	assert(bind->command->then_cmd->action == WM_ACTION_MINIMIZE);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_foreach_condition\n");
@@ -1445,10 +1468,10 @@ test_condition_operators(void)
 	struct wm_keybind *bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_a);
 	assert(bind != NULL);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_NOT);
-	assert(bind->condition->child != NULL);
-	assert(bind->condition->child->type == WM_COND_MATCHES);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_NOT);
+	assert(bind->command->condition->child != NULL);
+	assert(bind->command->condition->child->type == WM_COND_MATCHES);
 
 	keybind_destroy_all(&keymodes);
 
@@ -1471,12 +1494,12 @@ test_condition_operators(void)
 	bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_b);
 	assert(bind != NULL);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_AND);
-	assert(bind->condition->left != NULL);
-	assert(bind->condition->left->type == WM_COND_MATCHES);
-	assert(bind->condition->right != NULL);
-	assert(bind->condition->right->type == WM_COND_MATCHES);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_AND);
+	assert(bind->command->condition->operands[0] != NULL);
+	assert(bind->command->condition->operands[0]->type == WM_COND_MATCHES);
+	assert(bind->command->condition->operands[1] != NULL);
+	assert(bind->command->condition->operands[1]->type == WM_COND_MATCHES);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_condition_operators\n");
@@ -1508,17 +1531,17 @@ test_or_xor_conditions(void)
 	struct wm_keybind *bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_o);
 	assert(bind != NULL);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_OR);
-	assert(bind->condition->left != NULL);
-	assert(bind->condition->right != NULL);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_OR);
+	assert(bind->command->condition->operands[0] != NULL);
+	assert(bind->command->condition->operands[1] != NULL);
 
 	/* Xor */
 	bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_p);
 	assert(bind != NULL);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_XOR);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_XOR);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_or_xor_conditions\n");
@@ -1549,14 +1572,14 @@ test_some_every_conditions(void)
 	struct wm_keybind *bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_s);
 	assert(bind != NULL);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_SOME);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_SOME);
 
 	bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_e);
 	assert(bind != NULL);
-	assert(bind->condition != NULL);
-	assert(bind->condition->type == WM_COND_EVERY);
+	assert(bind->command->condition != NULL);
+	assert(bind->command->condition->type == WM_COND_EVERY);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_some_every_conditions\n");
@@ -1587,8 +1610,8 @@ test_map_command(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_m);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_MAP);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_MAXIMIZE);
+	assert(bind->command->then_cmd != NULL);
+	assert(bind->command->then_cmd->action == WM_ACTION_MAXIMIZE);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_map_command\n");
@@ -1619,9 +1642,9 @@ test_delay_command(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_d);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_DELAY);
-	assert(bind->subcmds != NULL);
-	assert(bind->subcmds->action == WM_ACTION_MAXIMIZE);
-	assert(bind->delay_us == 500000);
+	assert(bind->command->then_cmd != NULL);
+	assert(bind->command->then_cmd->action == WM_ACTION_MAXIMIZE);
+	assert(bind->command->delay_us == 500000);
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_delay_command\n");
@@ -1652,7 +1675,7 @@ test_delay_default(void)
 		WLR_MODIFIER_LOGO, XKB_KEY_d);
 	assert(bind != NULL);
 	assert(bind->action == WM_ACTION_DELAY);
-	assert(bind->delay_us == 1000000); /* default 1 second */
+	assert(bind->command->delay_us == 200); /* Fluxbox's default */
 
 	keybind_destroy_all(&keymodes);
 	printf("  PASS: test_delay_default\n");

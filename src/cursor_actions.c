@@ -16,7 +16,9 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
 
+#include "command.h"
 #include "config.h"
+#include "keyboard_actions.h"
 #include "cursor_actions.h"
 #include "server.h"
 #include "decoration.h"
@@ -179,186 +181,24 @@ get_keyboard_modifiers(struct wm_server *server)
 }
 
 /*
- * Execute a mouse action (simplified version for cursor dispatch).
+ * Execute a single action on the window under the cursor. Mouse
+ * bindings share the dispatcher (and its action set) with key
+ * bindings and IPC.
  */
 void
 execute_mouse_action(struct wm_server *server,
 	enum wm_action action, const char *argument, struct wm_view *view)
 {
-	switch (action) {
-	case WM_ACTION_RAISE:
-		if (view)
-			wm_view_raise(view);
-		break;
-
-	case WM_ACTION_FOCUS:
-		if (view) {
-			server->focus_user_initiated = true;
-			wm_focus_view(view, NULL);
-		}
-		break;
-
-	case WM_ACTION_START_MOVING:
-		if (view)
-			wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
-		break;
-
-	case WM_ACTION_START_RESIZING:
-		if (view) {
-			/* Determine edges based on cursor position */
-			struct wlr_box geo;
-			wm_view_get_geometry(view, &geo);
-			double cx = server->cursor->x - view->x;
-			double cy = server->cursor->y - view->y;
-			uint32_t edges = 0;
-			if (cx < geo.width / 2)
-				edges |= WLR_EDGE_LEFT;
-			else
-				edges |= WLR_EDGE_RIGHT;
-			if (cy < geo.height / 2)
-				edges |= WLR_EDGE_TOP;
-			else
-				edges |= WLR_EDGE_BOTTOM;
-			wm_view_begin_interactive(view,
-				WM_CURSOR_RESIZE, edges);
-		}
-		break;
-
-	case WM_ACTION_START_TABBING:
-		if (view)
-			wm_view_begin_interactive(view,
-				WM_CURSOR_TABBING, 0);
-		break;
-
-	case WM_ACTION_ACTIVATE_TAB:
-		if (view && view->tab_group &&
-		    view->tab_group->count > 1 && view->decoration) {
-			double dx = server->cursor->x - view->x;
-			double dy = server->cursor->y - view->y;
-			int tab_idx = wm_decoration_tab_at(
-				view->decoration, dx, dy);
-			if (tab_idx >= 0) {
-				int i = 0;
-				struct wm_view *tab_view;
-				wl_list_for_each(tab_view,
-						&view->tab_group->views,
-						tab_link) {
-					if (i == tab_idx) {
-						wm_tab_group_activate(
-							view->tab_group,
-							tab_view);
-						break;
-					}
-					i++;
-				}
-			}
-		}
-		break;
-
-	case WM_ACTION_CLOSE:
-		if (view)
-			wlr_xdg_toplevel_send_close(view->xdg_toplevel);
-		break;
-
-	case WM_ACTION_MAXIMIZE:
-		if (view)
-			wm_view_toggle_maximize(view);
-		break;
-
-	case WM_ACTION_MINIMIZE:
-		if (view)
-			wm_view_minimize(view);
-		break;
-
-	case WM_ACTION_SHADE:
-		if (view && view->decoration && server->style)
-			wm_decoration_set_shaded(view->decoration,
-				!view->decoration->shaded, server->style);
-		break;
-
-	case WM_ACTION_STICK:
-		if (view)
-			wm_view_set_sticky(view, !view->sticky);
-		break;
-
-	case WM_ACTION_LOWER:
-		if (view)
-			wm_view_lower(view);
-		break;
-
-	case WM_ACTION_NEXT_WORKSPACE:
-		wm_workspace_switch_next(server);
-		break;
-
-	case WM_ACTION_PREV_WORKSPACE:
-		wm_workspace_switch_prev(server);
-		break;
-
-	case WM_ACTION_WORKSPACE:
-		if (argument) {
-			int ws;
-			if (safe_atoi(argument, &ws))
-				wm_workspace_switch(server, ws - 1);
-		}
-		break;
-
-	case WM_ACTION_EXEC:
-		wm_spawn_command(argument);
-		break;
-
-	case WM_ACTION_ROOT_MENU:
-		wm_menu_show_root(server,
-			(int)server->cursor->x, (int)server->cursor->y);
-		break;
-
-	case WM_ACTION_WINDOW_MENU:
-		wm_menu_show_window(server,
-			(int)server->cursor->x, (int)server->cursor->y);
-		break;
-
-	case WM_ACTION_HIDE_MENUS:
-		wm_menu_hide_all(server);
-		break;
-
-	default:
-		/* Remaining actions are stubs or keyboard-only */
-		break;
-	}
+	wm_execute_action_on(server, action, argument, view);
 }
 
 /*
- * Dispatch a mouse binding: MacroCmd and ToggleCmd are handled here,
- * other actions delegate to execute_mouse_action.
+ * Dispatch a mouse binding. Window commands act on the window that
+ * was clicked (Fluxbox's OnWindow semantics), not the focused one.
  */
 void
 execute_mousebind(struct wm_server *server, struct wm_mousebind *bind,
 	struct wm_view *view)
 {
-	if (bind->action == WM_ACTION_MACRO_CMD) {
-		struct wm_subcmd *cmd = bind->subcmds;
-		while (cmd) {
-			execute_mouse_action(server, cmd->action,
-				cmd->argument, view);
-			cmd = cmd->next;
-		}
-		return;
-	}
-
-	if (bind->action == WM_ACTION_TOGGLE_CMD) {
-		if (bind->subcmd_count > 0) {
-			struct wm_subcmd *cmd = bind->subcmds;
-			int idx = bind->toggle_index % bind->subcmd_count;
-			for (int i = 0; i < idx && cmd; i++)
-				cmd = cmd->next;
-			if (cmd) {
-				execute_mouse_action(server, cmd->action,
-					cmd->argument, view);
-			}
-			bind->toggle_index =
-				(bind->toggle_index + 1) % bind->subcmd_count;
-		}
-		return;
-	}
-
-	execute_mouse_action(server, bind->action, bind->argument, view);
+	wm_command_execute(server, bind->command, view);
 }

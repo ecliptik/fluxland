@@ -55,7 +55,6 @@ struct wm_slit;
 struct wm_wallpaper;
 struct wm_systray;
 struct wm_atspi_bridge;
-struct wm_screen_cast;
 struct wlr_foreign_toplevel_manager_v1;
 struct wlr_primary_selection_v1_device_manager;
 struct wlr_pointer_constraints_v1;
@@ -204,12 +203,27 @@ struct wm_server {
 	struct wm_view *show_desktop_saved_view; /* restore focus on toggle-off */
 	bool focus_user_initiated; /* true for click/keybind focus changes */
 
+	/*
+	 * NextWindow/PrevWindow cycling. While the modifiers that started
+	 * a cycle are held, focus changes don't update the focus order, so
+	 * repeated presses walk the list instead of flipping between two
+	 * windows (Fluxbox's FocusControl::cycleFocus).
+	 */
+	struct {
+		bool active;
+		struct wm_view *restore_minimized; /* de-iconified by cycling */
+	} focus_cycle;
+	uint64_t focus_seq_counter;
+
 	/* Auto-raise timer for focus-follows-mouse modes */
 	struct wl_event_source *auto_raise_timer;
 	struct wm_view *auto_raise_view;
 
 	/* Managed windows */
 	struct wl_list views; /* wm_view.link */
+
+	/* Delay commands waiting to fire (command.c) */
+	struct wl_list pending_commands;
 
 	/* Workspaces */
 	struct wl_list workspaces; /* wm_workspace.link */
@@ -245,7 +259,6 @@ struct wm_server {
 	struct wm_atspi_bridge *atspi_bridge;
 
 	/* PipeWire screen recording (NULL if not enabled) */
-	struct wm_screen_cast *screen_cast;
 
 	/* Foreign toplevel management (taskbar support) */
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;

@@ -36,6 +36,7 @@
 
 /* Project headers */
 #define WM_VIEW_H
+#define WM_COMMAND_H
 #define WM_SERVER_H
 #define WM_DECORATION_H
 #define WM_RENDER_H
@@ -926,6 +927,24 @@ static bool wm_execute_action(struct wm_server *server,
 static void wm_server_reconfigure(struct wm_server *server)
 {
 	(void)server;
+}
+
+/* command.h stand-in: menu [command] items */
+struct wm_command { int dummy; };
+static int stub_command_exec_count;
+static struct wm_command *wm_command_parse(const char *str)
+{
+	if (!str || !*str)
+		return NULL;
+	return calloc(1, sizeof(struct wm_command));
+}
+static void wm_command_destroy(struct wm_command *cmd) { free(cmd); }
+static bool wm_command_execute(struct wm_server *s, struct wm_command *cmd,
+	struct wm_view *target)
+{
+	(void)s; (void)cmd; (void)target;
+	stub_command_exec_count++;
+	return true;
 }
 
 struct wm_toolbar;

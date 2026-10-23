@@ -94,6 +94,8 @@
 #define WM_LAYER_SHELL_H
 #define WM_CURSOR_SNAP_H
 #define WM_CURSOR_ACTIONS_H
+#define WM_COMMAND_H
+#define WM_KEYBOARD_ACTIONS_H
 
 /* Block linux input event codes, cairo, and drm headers */
 #define _INPUT_EVENT_CODES_H
@@ -616,12 +618,6 @@ enum wm_mouse_event {
 	WM_MOUSE_MOVE,
 };
 
-struct wm_subcmd {
-	int action;
-	char *argument;
-	struct wm_subcmd *next;
-};
-
 struct wm_mousebind {
 	enum wm_mouse_context context;
 	enum wm_mouse_event event;
@@ -629,9 +625,7 @@ struct wm_mousebind {
 	uint32_t modifiers;
 	int action;
 	char *argument;
-	struct wm_subcmd *subcmds;
-	int subcmd_count;
-	int toggle_index;
+	struct wm_command *command;
 	struct wl_list link;
 };
 
@@ -1469,6 +1463,38 @@ static void closefrom(int fd) { (void)fd; }
 
 #include "pixel_buffer.c"
 #include "cursor_snap.c"
+/* --- command.c / keyboard_actions.c: record what mouse bindings run --- */
+struct wm_command {
+	int action;
+	char *argument;
+};
+static int g_command_execute_count;
+static struct wm_command *g_last_command;
+static struct wm_view *g_last_command_target;
+static bool
+wm_command_execute(struct wm_server *server, struct wm_command *cmd,
+	struct wm_view *target)
+{
+	(void)server;
+	g_command_execute_count++;
+	g_last_command = cmd;
+	g_last_command_target = target;
+	return true;
+}
+static int g_action_on_count;
+static int g_last_action_on;
+static struct wm_view *g_last_action_target;
+static bool
+wm_execute_action_on(struct wm_server *server, int action,
+	const char *argument, struct wm_view *target)
+{
+	(void)server; (void)argument;
+	g_action_on_count++;
+	g_last_action_on = action;
+	g_last_action_target = target;
+	return true;
+}
+
 #include "cursor_actions.c"
 #include "cursor.c"
 
@@ -2184,232 +2210,16 @@ test_process_cursor_resize_no_view(void)
 	printf("  PASS: process_cursor_resize_no_view\n");
 }
 
-/*
- * Test 26: execute_mouse_action dispatches RAISE action.
- */
-static void
-test_execute_mouse_action_raise(void)
-{
-	setup();
-	struct wm_view view = {0};
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_RAISE, NULL, &view);
-	assert(g_view_raise_count == 1);
-	printf("  PASS: execute_mouse_action_raise\n");
-}
 
-/*
- * Test 27: execute_mouse_action dispatches FOCUS action.
- */
-static void
-test_execute_mouse_action_focus(void)
-{
-	setup();
-	struct wm_view view = {0};
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_FOCUS, NULL, &view);
-	assert(g_focus_view_count == 1);
-	assert(test_server.focus_user_initiated == true);
-	printf("  PASS: execute_mouse_action_focus\n");
-}
 
-/*
- * Test 28: execute_mouse_action dispatches START_MOVING action.
- */
-static void
-test_execute_mouse_action_start_moving(void)
-{
-	setup();
-	struct wm_view view = {0};
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_START_MOVING,
-		NULL, &view);
-	assert(g_begin_interactive_count == 1);
-	printf("  PASS: execute_mouse_action_start_moving\n");
-}
 
-/*
- * Test 29: execute_mouse_action dispatches START_RESIZING action
- * with correct edge calculation.
- */
-static void
-test_execute_mouse_action_start_resizing(void)
-{
-	setup();
-	struct wlr_xdg_toplevel toplevel = {0};
-	struct wlr_xdg_surface xdg_surface = {0};
-	toplevel.base = &xdg_surface;
-	struct wm_view view = {0};
-	view.xdg_toplevel = &toplevel;
-	view.x = 100;
-	view.y = 100;
 
-	/* Cursor in bottom-right quadrant of view */
-	test_cursor.x = 600;
-	test_cursor.y = 500;
 
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_START_RESIZING,
-		NULL, &view);
-	assert(g_begin_interactive_count == 1);
-	printf("  PASS: execute_mouse_action_start_resizing\n");
-}
 
-/*
- * Test 30: execute_mouse_action NEXT/PREV_WORKSPACE actions.
- */
-static void
-test_execute_mouse_action_workspace_switch(void)
-{
-	setup();
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_NEXT_WORKSPACE,
-		NULL, NULL);
-	assert(g_switch_next_count == 1);
 
-	execute_mouse_action(&test_server, WM_ACTION_PREV_WORKSPACE,
-		NULL, NULL);
-	assert(g_switch_prev_count == 1);
-	printf("  PASS: execute_mouse_action_workspace_switch\n");
-}
 
-/*
- * Test 31: execute_mouse_action with NULL view is safe for view-
- * dependent actions (RAISE, FOCUS, CLOSE, etc.).
- */
-static void
-test_execute_mouse_action_null_view(void)
-{
-	setup();
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_RAISE, NULL, NULL);
-	assert(g_view_raise_count == 0);
 
-	execute_mouse_action(&test_server, WM_ACTION_FOCUS, NULL, NULL);
-	assert(g_focus_view_count == 0);
 
-	execute_mouse_action(&test_server, WM_ACTION_START_MOVING,
-		NULL, NULL);
-	assert(g_begin_interactive_count == 0);
-
-	execute_mouse_action(&test_server, WM_ACTION_CLOSE, NULL, NULL);
-	execute_mouse_action(&test_server, WM_ACTION_STICK, NULL, NULL);
-	execute_mouse_action(&test_server, WM_ACTION_LOWER, NULL, NULL);
-
-	/* No crashes — all handled gracefully */
-	printf("  PASS: execute_mouse_action_null_view\n");
-}
-
-/*
- * Test 32: execute_mouse_action WORKSPACE with numeric argument.
- */
-static void
-test_execute_mouse_action_workspace_number(void)
-{
-	setup();
-	/* workspace switch to index (arg is 1-based, converted to 0-based) */
-	execute_mouse_action(&test_server, WM_ACTION_WORKSPACE, "3", NULL);
-	/* No crash, the stub wm_workspace_switch was called */
-
-	/* Invalid argument */
-	execute_mouse_action(&test_server, WM_ACTION_WORKSPACE, "abc", NULL);
-	execute_mouse_action(&test_server, WM_ACTION_WORKSPACE, NULL, NULL);
-	printf("  PASS: execute_mouse_action_workspace_number\n");
-}
-
-/*
- * Test 33: execute_mouse_action NOP and default cases are no-ops.
- */
-static void
-test_execute_mouse_action_nop(void)
-{
-	setup();
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_NOP, NULL, NULL);
-	execute_mouse_action(&test_server, WM_ACTION_KILL, NULL, NULL);
-	assert(g_view_raise_count == 0);
-	assert(g_focus_view_count == 0);
-	printf("  PASS: execute_mouse_action_nop\n");
-}
-
-/*
- * Test 34: execute_mousebind dispatches simple (non-macro) binding.
- */
-static void
-test_execute_mousebind_simple(void)
-{
-	setup();
-	struct wm_view view = {0};
-	struct wm_mousebind bind = {0};
-	bind.action = WM_ACTION_RAISE;
-
-	reset_globals();
-	execute_mousebind(&test_server, &bind, &view);
-	assert(g_view_raise_count == 1);
-	printf("  PASS: execute_mousebind_simple\n");
-}
-
-/*
- * Test 35: execute_mousebind handles MACRO_CMD by running all subcmds.
- */
-static void
-test_execute_mousebind_macro(void)
-{
-	setup();
-	struct wm_view view = {0};
-	struct wm_subcmd cmd2 = {
-		.action = WM_ACTION_FOCUS, .argument = NULL, .next = NULL
-	};
-	struct wm_subcmd cmd1 = {
-		.action = WM_ACTION_RAISE, .argument = NULL, .next = &cmd2
-	};
-	struct wm_mousebind bind = {0};
-	bind.action = WM_ACTION_MACRO_CMD;
-	bind.subcmds = &cmd1;
-
-	reset_globals();
-	execute_mousebind(&test_server, &bind, &view);
-	assert(g_view_raise_count == 1);
-	assert(g_focus_view_count == 1);
-	printf("  PASS: execute_mousebind_macro\n");
-}
-
-/*
- * Test 36: execute_mousebind handles TOGGLE_CMD cycling through subcmds.
- */
-static void
-test_execute_mousebind_toggle(void)
-{
-	setup();
-	struct wm_subcmd cmd2 = {
-		.action = WM_ACTION_NEXT_WORKSPACE, .argument = NULL,
-		.next = NULL
-	};
-	struct wm_subcmd cmd1 = {
-		.action = WM_ACTION_PREV_WORKSPACE, .argument = NULL,
-		.next = &cmd2
-	};
-	struct wm_mousebind bind = {0};
-	bind.action = WM_ACTION_TOGGLE_CMD;
-	bind.subcmds = &cmd1;
-	bind.subcmd_count = 2;
-	bind.toggle_index = 0;
-
-	reset_globals();
-
-	/* First toggle: should execute cmd1 (PREV_WORKSPACE) */
-	execute_mousebind(&test_server, &bind, NULL);
-	assert(g_switch_prev_count == 1);
-	assert(g_switch_next_count == 0);
-	assert(bind.toggle_index == 1);
-
-	/* Second toggle: should execute cmd2 (NEXT_WORKSPACE) */
-	execute_mousebind(&test_server, &bind, NULL);
-	assert(g_switch_next_count == 1);
-	assert(bind.toggle_index == 0); /* wraps back to 0 */
-
-	printf("  PASS: execute_mousebind_toggle\n");
-}
 
 /*
  * Test 37: cancel_auto_raise clears auto_raise_view.
@@ -2767,38 +2577,7 @@ test_wm_cursor_init(void)
 	printf("  PASS: wm_cursor_init\n");
 }
 
-/*
- * Test 54: execute_mouse_action SHADE toggles decoration shaded state.
- */
-static void
-test_execute_mouse_action_shade(void)
-{
-	setup();
-	struct wm_style style = {0};
-	struct wm_decoration decor = {0};
-	decor.shaded = false;
-	struct wm_view view = {0};
-	view.decoration = &decor;
-	test_server.style = &style;
 
-	execute_mouse_action(&test_server, WM_ACTION_SHADE, NULL, &view);
-	/* wm_decoration_set_shaded is a stub but the call path is exercised */
-	printf("  PASS: execute_mouse_action_shade\n");
-}
-
-/*
- * Test 55: execute_mouse_action SHADE with no decoration is safe.
- */
-static void
-test_execute_mouse_action_shade_no_decor(void)
-{
-	setup();
-	struct wm_view view = {0};
-	view.decoration = NULL;
-	execute_mouse_action(&test_server, WM_ACTION_SHADE, NULL, &view);
-	/* No crash */
-	printf("  PASS: execute_mouse_action_shade_no_decor\n");
-}
 
 /*
  * Test 56: position_overlay_update is a no-op when show_position is false.
@@ -2889,23 +2668,6 @@ test_process_cursor_resize_wireframe(void)
 	printf("  PASS: process_cursor_resize_wireframe\n");
 }
 
-/*
- * Test 61: execute_mousebind toggle with 0 subcmd_count is safe.
- */
-static void
-test_execute_mousebind_toggle_empty(void)
-{
-	setup();
-	struct wm_mousebind bind = {0};
-	bind.action = WM_ACTION_TOGGLE_CMD;
-	bind.subcmds = NULL;
-	bind.subcmd_count = 0;
-
-	reset_globals();
-	execute_mousebind(&test_server, &bind, NULL);
-	/* No crash */
-	printf("  PASS: execute_mousebind_toggle_empty\n");
-}
 
 /*
  * Test 62: schedule_auto_raise with NULL config is a no-op.
@@ -3525,78 +3287,10 @@ test_process_cursor_motion_drag_icon(void)
 	printf("  PASS: process_cursor_motion_drag_icon\n");
 }
 
-/*
- * Test 82: execute_mouse_action START_TABBING action.
- */
-static void
-test_execute_mouse_action_start_tabbing(void)
-{
-	setup();
-	struct wm_view view = {0};
-	reset_globals();
-	execute_mouse_action(&test_server, WM_ACTION_START_TABBING,
-		NULL, &view);
-	assert(g_begin_interactive_count == 1);
-	printf("  PASS: execute_mouse_action_start_tabbing\n");
-}
 
-/*
- * Test 83: execute_mouse_action LOWER action.
- */
-static void
-test_execute_mouse_action_lower(void)
-{
-	setup();
-	struct wm_view view = {0};
-	execute_mouse_action(&test_server, WM_ACTION_LOWER, NULL, &view);
-	/* wm_view_lower is a stub, no crash */
-	printf("  PASS: execute_mouse_action_lower\n");
-}
 
-/*
- * Test 84: execute_mouse_action CLOSE action.
- */
-static void
-test_execute_mouse_action_close(void)
-{
-	setup();
-	struct wlr_xdg_toplevel toplevel = {0};
-	struct wm_view view = {0};
-	view.xdg_toplevel = &toplevel;
-	execute_mouse_action(&test_server, WM_ACTION_CLOSE, NULL, &view);
-	/* wlr_xdg_toplevel_send_close is a stub, no crash */
-	printf("  PASS: execute_mouse_action_close\n");
-}
 
-/*
- * Test 85: execute_mouse_action STICK toggles sticky.
- */
-static void
-test_execute_mouse_action_stick(void)
-{
-	setup();
-	struct wm_view view = {0};
-	view.sticky = false;
-	execute_mouse_action(&test_server, WM_ACTION_STICK, NULL, &view);
-	/* wm_view_set_sticky is a stub, no crash */
-	printf("  PASS: execute_mouse_action_stick\n");
-}
 
-/*
- * Test 86: execute_mouse_action ROOT_MENU and WINDOW_MENU.
- */
-static void
-test_execute_mouse_action_menus(void)
-{
-	setup();
-	test_cursor.x = 100;
-	test_cursor.y = 200;
-	execute_mouse_action(&test_server, WM_ACTION_ROOT_MENU, NULL, NULL);
-	execute_mouse_action(&test_server, WM_ACTION_WINDOW_MENU, NULL, NULL);
-	execute_mouse_action(&test_server, WM_ACTION_HIDE_MENUS, NULL, NULL);
-	/* All stub, no crash */
-	printf("  PASS: execute_mouse_action_menus\n");
-}
 
 /*
  * Test 87: handle_cursor_button release ends wireframe move mode.
@@ -3896,9 +3590,44 @@ test_pixel_buffer_destroy(void)
 	printf("  PASS: pixel_buffer_destroy\n");
 }
 
+/*
+ * Mouse bindings run their command against the clicked window, through
+ * the dispatcher shared with keys and IPC.
+ */
+static void
+test_execute_mousebind_targets_clicked_view(void)
+{
+	setup();
+	struct wm_view view = {0};
+	struct wm_command cmd = { .action = WM_ACTION_RAISE };
+	struct wm_mousebind bind = { .action = WM_ACTION_RAISE,
+		.command = &cmd };
+	g_command_execute_count = 0;
+	execute_mousebind(&test_server, &bind, &view);
+	assert(g_command_execute_count == 1);
+	assert(g_last_command == &cmd);
+	assert(g_last_command_target == &view);
+	printf("  PASS: execute_mousebind_targets_clicked_view\n");
+}
+
+static void
+test_execute_mouse_action_forwards(void)
+{
+	setup();
+	struct wm_view view = {0};
+	g_action_on_count = 0;
+	execute_mouse_action(&test_server, WM_ACTION_CLOSE, NULL, &view);
+	assert(g_action_on_count == 1);
+	assert(g_last_action_on == WM_ACTION_CLOSE);
+	assert(g_last_action_target == &view);
+	printf("  PASS: execute_mouse_action_forwards\n");
+}
+
 int
 main(void)
 {
+	test_execute_mousebind_targets_clicked_view();
+	test_execute_mouse_action_forwards();
 	printf("test_cursor_snap:\n");
 
 	/* region_to_context mapping tests */
@@ -3938,22 +3667,8 @@ main(void)
 	test_process_cursor_resize_wireframe();
 
 	/* execute_mouse_action tests */
-	test_execute_mouse_action_raise();
-	test_execute_mouse_action_focus();
-	test_execute_mouse_action_start_moving();
-	test_execute_mouse_action_start_resizing();
-	test_execute_mouse_action_workspace_switch();
-	test_execute_mouse_action_null_view();
-	test_execute_mouse_action_workspace_number();
-	test_execute_mouse_action_nop();
-	test_execute_mouse_action_shade();
-	test_execute_mouse_action_shade_no_decor();
 
 	/* execute_mousebind tests */
-	test_execute_mousebind_simple();
-	test_execute_mousebind_macro();
-	test_execute_mousebind_toggle();
-	test_execute_mousebind_toggle_empty();
 
 	/* auto-raise tests */
 	test_cancel_auto_raise();
@@ -4021,11 +3736,6 @@ main(void)
 	test_process_cursor_motion_drag_icon();
 
 	/* additional execute_mouse_action tests */
-	test_execute_mouse_action_start_tabbing();
-	test_execute_mouse_action_lower();
-	test_execute_mouse_action_close();
-	test_execute_mouse_action_stick();
-	test_execute_mouse_action_menus();
 
 	/* additional resize edge combinations */
 	test_process_cursor_resize_left_only();

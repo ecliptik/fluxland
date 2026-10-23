@@ -76,6 +76,18 @@ void wm_decoration_update(struct wm_decoration *deco, struct wm_style *style)
 #include "keybind.h"
 enum wm_action wm_action_from_name(const char *name)
 	{ (void)name; return WM_ACTION_NOP; }
+#include "command.h"
+static int stub_command_run_count;
+struct wm_command *wm_command_parse(const char *str)
+{
+	if (!str || !*str)
+		return NULL;
+	return calloc(1, sizeof(struct wm_command));
+}
+void wm_command_destroy(struct wm_command *cmd) { free(cmd); }
+bool wm_command_execute(struct wm_server *s, struct wm_command *cmd,
+	struct wm_view *target)
+	{ (void)s; (void)cmd; (void)target; stub_command_run_count++; return true; }
 
 #define TEST_DIR "/tmp/fluxland-test/wm-test-menu"
 #define TEST_MENU TEST_DIR "/menu"

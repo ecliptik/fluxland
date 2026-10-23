@@ -10,11 +10,14 @@
 #include <string.h>
 #include <strings.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
 #include "animation.h"
+#include "client_pattern.h"
+#include "tabgroup.h"
 #include "atspi_bridge.h"
 #include "config.h"
 #include "decoration.h"
@@ -42,6 +45,9 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	struct wlr_surface *prev_surface =
 		seat->keyboard_state.focused_surface;
 
+	/* Callers may pass NULL for "the view's own surface" */
+	if (!surface)
+		surface = view->xdg_toplevel->base->surface;
 	if (prev_surface == surface) {
 		server->focus_user_initiated = false;
 		return;
@@ -89,6 +95,10 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	/* Move view to front of the views list (stacking order) */
 	wl_list_remove(&view->link);
 	wl_list_insert(&server->views, &view->link);
+
+	/* Focus order stays frozen while NextWindow cycling is active */
+	if (!server->focus_cycle.active)
+		view->focus_seq = ++server->focus_seq_counter;
 
 	/* Raise in the scene graph */
 	wlr_scene_node_raise_to_top(&view->scene_tree->node);
@@ -206,19 +216,24 @@ void
 wm_focus_fallback(struct wm_server *server, struct wm_view *except)
 {
 	struct wm_workspace *ws = wm_workspace_get_active(server);
-	struct wm_view *v;
+	struct wm_view *v, *best = NULL;
 
-	/* server->views is kept in most-recently-focused order */
+	/* Most recently focused; ties keep stacking (list) order */
 	wl_list_for_each(v, &server->views, link) {
 		/* Disabled scene node: unmapped or minimized */
 		if (v == except || !v->scene_tree->node.enabled)
 			continue;
 		if (v->workspace != ws && !v->sticky)
 			continue;
-		wm_focus_view(v, v->xdg_toplevel->base->surface);
-		return;
+		if (v->focus_hidden)
+			continue;
+		if (!best || v->focus_seq > best->focus_seq)
+			best = v;
 	}
-	wm_unfocus_current(server);
+	if (best)
+		wm_focus_view(best, best->xdg_toplevel->base->surface);
+	else
+		wm_unfocus_current(server);
 }
 
 void
@@ -437,111 +452,139 @@ deiconify_view(struct wm_view *view)
 	}
 }
 
-/* --- Window cycling (workspace-aware, with de-iconify) --- */
+/* --- Window cycling (Fluxbox FocusControl::cycleFocus) --- */
 
-void
-wm_view_cycle_next(struct wm_server *server)
+static bool
+cycle_eligible(struct wm_server *server, struct wm_view *v,
+	const struct wm_window_list_spec *spec)
 {
-	struct wm_workspace *ws = wm_workspace_get_active(server);
-	struct wm_view *focused = server->focused_view;
+	if (!v->mapped || v->docked || v->focus_hidden)
+		return false;
+	if (spec && spec->groups && v->tab_group &&
+	    v->tab_group->active_view != v)
+		return false;
+	if (spec && spec->pattern &&
+	    !wm_client_pattern_match(server, spec->pattern, v))
+		return false;
+	return true;
+}
 
-	/*
-	 * Find the next view after the focused one on the current workspace.
-	 * If the focused view is NULL, pick the first view on the workspace.
-	 */
-	struct wm_view *candidate = NULL;
-	bool past_focused = (focused == NULL);
+/* True if a sorts before b: most recently focused first */
+static bool
+before_focus_order(const struct wm_view *a, const struct wm_view *b)
+{
+	return a->focus_seq > b->focus_seq;
+}
 
-	struct wm_view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace != ws && !view->sticky) {
-			continue;
+static bool
+before_creation_order(const struct wm_view *a, const struct wm_view *b)
+{
+	return a->id < b->id;
+}
+
+/* Stable insertion sort: ties keep stacking (list) order */
+static void
+sort_views(struct wm_view **list, int count,
+	bool (*before)(const struct wm_view *, const struct wm_view *))
+{
+	for (int i = 1; i < count; i++) {
+		struct wm_view *v = list[i];
+		int j = i - 1;
+		while (j >= 0 && before(v, list[j])) {
+			list[j + 1] = list[j];
+			j--;
 		}
-		if (past_focused) {
-			candidate = view;
-			break;
-		}
-		if (view == focused) {
-			past_focused = true;
-		}
-	}
-
-	/* Wrap around: if we didn't find one after focused, pick first */
-	if (!candidate) {
-		wl_list_for_each(view, &server->views, link) {
-			if (view->workspace != ws && !view->sticky) {
-				continue;
-			}
-			candidate = view;
-			break;
-		}
-	}
-
-	if (!candidate || candidate == focused) {
-		return;
-	}
-
-	/* De-iconify if minimized */
-	if (!candidate->scene_tree->node.enabled) {
-		deiconify_view(candidate);
-	} else {
-		wm_focus_view(candidate,
-			candidate->xdg_toplevel->base->surface);
+		list[j + 1] = v;
 	}
 }
 
-void
-wm_view_cycle_prev(struct wm_server *server)
+static bool
+modifiers_held(struct wm_server *server)
 {
-	struct wm_workspace *ws = wm_workspace_get_active(server);
-	struct wm_view *focused = server->focused_view;
+	struct wlr_keyboard *kb = wlr_seat_get_keyboard(server->seat);
+	if (!kb)
+		return false;
+	/* Lock modifiers don't count as "held" */
+	return (wlr_keyboard_get_modifiers(kb) &
+		~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)) != 0;
+}
 
-	/*
-	 * Find the previous view before the focused one on the current
-	 * workspace. Walk the list and track the last eligible view seen
-	 * before the focused one.
-	 */
-	struct wm_view *candidate = NULL;
-	struct wm_view *last_on_ws = NULL;
+void
+wm_focus_cycle_end(struct wm_server *server)
+{
+	server->focus_cycle.active = false;
+	server->focus_cycle.restore_minimized = NULL;
+	if (server->focused_view)
+		server->focused_view->focus_seq =
+			++server->focus_seq_counter;
+}
 
-	struct wm_view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace != ws && !view->sticky) {
-			continue;
-		}
-		if (view == focused) {
-			if (candidate) {
-				break; /* candidate is the view before focused */
-			}
-			/* focused is first — need to wrap to last */
-			continue;
-		}
-		candidate = view;
-		last_on_ws = view;
-	}
-
-	/* If no candidate before focused, wrap to the last view on ws */
-	if (!candidate) {
-		/* Walk to find the absolute last view on this workspace */
-		wl_list_for_each(view, &server->views, link) {
-			if (view->workspace == ws || view->sticky) {
-				last_on_ws = view;
-			}
-		}
-		candidate = last_on_ws;
-	}
-
-	if (!candidate || candidate == focused) {
+void
+wm_focus_cycle(struct wm_server *server,
+	const struct wm_window_list_spec *spec, bool reverse)
+{
+	int n = wl_list_length(&server->views);
+	if (n <= 0)
 		return;
+	struct wm_view **list = calloc((size_t)n, sizeof(*list));
+	if (!list)
+		return;
+
+	int count = 0;
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (count < n && cycle_eligible(server, v, spec))
+			list[count++] = v;
+	}
+	sort_views(list, count, spec && spec->static_order ?
+		before_creation_order : before_focus_order);
+
+	struct wm_view *focused = server->focused_view;
+	int cur = -1;
+	for (int i = 0; i < count; i++) {
+		if (list[i] == focused ||
+		    (focused && focused->tab_group &&
+		     list[i]->tab_group == focused->tab_group))
+			cur = i;
 	}
 
-	/* De-iconify if minimized */
-	if (!candidate->scene_tree->node.enabled) {
-		deiconify_view(candidate);
-	} else {
-		wm_focus_view(candidate,
-			candidate->xdg_toplevel->base->surface);
+	struct wm_view *cand = NULL;
+	if (count > 0) {
+		if (cur < 0)
+			cand = list[reverse ? count - 1 : 0];
+		else if (count > 1)
+			cand = list[(cur + (reverse ? count - 1 : 1)) % count];
 	}
+	free(list);
+	if (!cand)
+		return;
+
+	bool held = modifiers_held(server);
+	struct wm_view *prev_restored = server->focus_cycle.restore_minimized;
+	server->focus_cycle.restore_minimized = NULL;
+	server->focus_cycle.active = held;
+
+	/* Focusing a window on another workspace switches to it */
+	if (!cand->sticky && cand->workspace &&
+	    cand->workspace != wm_workspace_get_active(server))
+		wm_workspace_switch(server, cand->workspace->index);
+
+	server->focus_user_initiated = true;
+	if (!cand->scene_tree->node.enabled) {
+		deiconify_view(cand);
+		/* Re-iconified if the cycle moves past it */
+		if (held)
+			server->focus_cycle.restore_minimized = cand;
+	} else {
+		wm_focus_view(cand, NULL);
+		wm_view_raise(cand);
+	}
+
+	if (prev_restored && prev_restored != cand && prev_restored->mapped)
+		wm_view_minimize(prev_restored);
+
+	if (!held)
+		wm_focus_cycle_end(server);
 }
 
 void

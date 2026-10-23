@@ -49,8 +49,7 @@ keybindings, window decorations, workspaces, a toolbar, and menus.
 %doc README.md
 %{_bindir}/fluxland
 %{_bindir}/fluxland-ctl
-%{_datadir}/applications/fluxland.desktop
-%{_datadir}/wayland-sessions/fluxland-session.desktop
+%{_datadir}/wayland-sessions/fluxland.desktop
 %{_datadir}/fluxland/examples/
 %{_mandir}/man1/fluxland.1*
 %{_mandir}/man5/fluxland-apps.5*

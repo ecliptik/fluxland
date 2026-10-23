@@ -10,17 +10,21 @@
 
 #define _GNU_SOURCE
 #include <ctype.h>
-#include <fnmatch.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 
 #include "animation.h"
+#include "client_pattern.h"
+#include "command.h"
 #include "foreign_toplevel.h"
 #include "i18n.h"
 #include "keyboard_actions.h"
@@ -44,319 +48,29 @@
 
 /* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
 
-/* --- Condition evaluation for If/ForEach --- */
+/* --- Key binding execution --- */
 
-/*
- * Check if a boolean property string matches "yes", "true", or "1".
- */
-static bool
-bool_match(const char *pattern, bool value)
-{
-	bool pat_true = (strcasecmp(pattern, "yes") == 0 ||
-			 strcasecmp(pattern, "true") == 0 ||
-			 strcmp(pattern, "1") == 0);
-	return value == pat_true;
-}
-
-/*
- * Layer name string for a view layer enum value.
- */
-static const char *
-layer_name(enum wm_view_layer layer)
-{
-	switch (layer) {
-	case WM_LAYER_DESKTOP: return "Desktop";
-	case WM_LAYER_BELOW:   return "Below";
-	case WM_LAYER_NORMAL:  return "Normal";
-	case WM_LAYER_ABOVE:   return "Above";
-	default:               return "Normal";
-	}
-}
-
-/*
- * Match a view property against a fnmatch pattern.
- */
-static bool
-match_property(struct wm_server *server, struct wm_view *view,
-	       const char *property, const char *pattern)
-{
-	if (!property || !pattern)
-		return false;
-
-	/* "focused" can be checked even when view is NULL */
-	if (strcasecmp(property, "focused") == 0)
-		return bool_match(pattern, view != NULL);
-
-	if (!view)
-		return false;
-
-	if (strcasecmp(property, "title") == 0) {
-		return view->title &&
-		       fnmatch(pattern, view->title, 0) == 0;
-	}
-	if (strcasecmp(property, "class") == 0 ||
-	    strcasecmp(property, "name") == 0) {
-		return view->app_id &&
-		       fnmatch(pattern, view->app_id, 0) == 0;
-	}
-	if (strcasecmp(property, "workspace") == 0) {
-		if (view->workspace && view->workspace->name &&
-		    fnmatch(pattern, view->workspace->name, 0) == 0)
-			return true;
-		/* Also try matching workspace index as string */
-		if (view->workspace) {
-			char idx[16];
-			snprintf(idx, sizeof(idx), "%d",
-				 view->workspace->index + 1);
-			return fnmatch(pattern, idx, 0) == 0;
-		}
-		return false;
-	}
-	if (strcasecmp(property, "maximized") == 0)
-		return bool_match(pattern, view->maximized);
-	if (strcasecmp(property, "minimized") == 0)
-		return bool_match(pattern,
-			!view->scene_tree->node.enabled);
-	if (strcasecmp(property, "fullscreen") == 0)
-		return bool_match(pattern, view->fullscreen);
-	if (strcasecmp(property, "shaded") == 0)
-		return bool_match(pattern,
-			view->decoration && view->decoration->shaded);
-	if (strcasecmp(property, "sticky") == 0)
-		return bool_match(pattern, view->sticky);
-	if (strcasecmp(property, "layer") == 0)
-		return fnmatch(pattern, layer_name(view->layer), 0) == 0;
-	if (strcasecmp(property, "output") == 0 ||
-	    strcasecmp(property, "head") == 0) {
-		/* Find which output this view is on */
-		int idx = 0;
-		struct wm_output *o;
-		wl_list_for_each(o, &server->outputs, link) {
-			if (o->wlr_output && view->x >= o->usable_area.x &&
-			    view->x < o->usable_area.x + o->usable_area.width &&
-			    view->y >= o->usable_area.y &&
-			    view->y < o->usable_area.y + o->usable_area.height) {
-				if (strcasecmp(property, "output") == 0) {
-					return o->wlr_output->name &&
-					       fnmatch(pattern,
-						       o->wlr_output->name,
-						       0) == 0;
-				} else {
-					char idx_str[16];
-					snprintf(idx_str, sizeof(idx_str),
-						 "%d", idx);
-					return fnmatch(pattern, idx_str,
-						       0) == 0;
-				}
-			}
-			idx++;
-		}
-		return false;
-	}
-
-	wlr_log(WLR_ERROR, "unknown condition property: %s", property);
-	return false;
-}
-
-/*
- * Recursively evaluate a condition tree against a view.
- */
-static bool
-evaluate_condition(struct wm_server *server,
-		   struct wm_condition *cond, struct wm_view *view)
-{
-	if (!cond)
-		return false;
-
-	switch (cond->type) {
-	case WM_COND_MATCHES:
-		return match_property(server, view, cond->property,
-				      cond->pattern);
-
-	case WM_COND_SOME: {
-		struct wm_view *v;
-		wl_list_for_each(v, &server->views, link) {
-			if (match_property(server, v, cond->property,
-					   cond->pattern))
-				return true;
-		}
-		return false;
-	}
-
-	case WM_COND_EVERY: {
-		struct wm_view *v;
-		wl_list_for_each(v, &server->views, link) {
-			if (!match_property(server, v, cond->property,
-					    cond->pattern))
-				return false;
-		}
-		return true;
-	}
-
-	case WM_COND_NOT:
-		return !evaluate_condition(server, cond->child, view);
-
-	case WM_COND_AND:
-		return evaluate_condition(server, cond->left, view) &&
-		       evaluate_condition(server, cond->right, view);
-
-	case WM_COND_OR:
-		return evaluate_condition(server, cond->left, view) ||
-		       evaluate_condition(server, cond->right, view);
-
-	case WM_COND_XOR:
-		return evaluate_condition(server, cond->left, view) ^
-		       evaluate_condition(server, cond->right, view);
-	}
-
-	return false;
-}
-
-/* --- Delay timer callback data --- */
-
-struct delay_cb_data {
-	struct wm_server *server;
-	enum wm_action action;
-	char *argument;
-	struct wl_event_source *timer;
-};
-
-static int
-delay_timer_cb(void *data)
-{
-	struct delay_cb_data *cb = data;
-	wm_execute_action(cb->server, cb->action, cb->argument);
-	wl_event_source_remove(cb->timer);
-	free(cb->argument);
-	free(cb);
-	return 0;
-}
-
-/*
- * Execute a keybind, including MacroCmd/ToggleCmd dispatch.
- */
 bool
 wm_execute_keybind_action(struct wm_server *server,
 	struct wm_keybind *bind)
 {
-	if (bind->action == WM_ACTION_MACRO_CMD) {
-		struct wm_subcmd *cmd = bind->subcmds;
-		while (cmd) {
-			wm_execute_action(server, cmd->action, cmd->argument);
-			cmd = cmd->next;
-		}
-		return true;
-	}
-
-	if (bind->action == WM_ACTION_TOGGLE_CMD) {
-		if (bind->subcmd_count > 0) {
-			struct wm_subcmd *cmd = bind->subcmds;
-			int idx = bind->toggle_index % bind->subcmd_count;
-			for (int i = 0; i < idx && cmd; i++)
-				cmd = cmd->next;
-			if (cmd) {
-				wm_execute_action(server, cmd->action,
-					cmd->argument);
-			}
-			bind->toggle_index =
-				(bind->toggle_index + 1) % bind->subcmd_count;
-		}
-		return true;
-	}
-
-	if (bind->action == WM_ACTION_IF) {
-		struct wm_view *view = server->focused_view;
-		bool result = evaluate_condition(server,
-			bind->condition, view);
-		if (result && bind->subcmds) {
-			wm_execute_action(server, bind->subcmds->action,
-				bind->subcmds->argument);
-		} else if (!result && bind->else_cmd) {
-			wm_execute_action(server, bind->else_cmd->action,
-				bind->else_cmd->argument);
-		}
-		return true;
-	}
-
-	if (bind->action == WM_ACTION_FOREACH) {
-		if (!bind->subcmds)
-			return true;
-		struct wm_view *saved = server->focused_view;
-		struct wm_view *v, *tmp;
-		wl_list_for_each_safe(v, tmp, &server->views, link) {
-			if (evaluate_condition(server, bind->condition, v)) {
-				server->focused_view = v;
-				wm_execute_action(server,
-					bind->subcmds->action,
-					bind->subcmds->argument);
-			}
-		}
-		server->focused_view = saved;
-		return true;
-	}
-
-	if (bind->action == WM_ACTION_MAP) {
-		if (!bind->subcmds)
-			return true;
-		struct wm_view *saved = server->focused_view;
-		struct wm_view *v, *tmp;
-		wl_list_for_each_safe(v, tmp, &server->views, link) {
-			server->focused_view = v;
-			wm_execute_action(server,
-				bind->subcmds->action,
-				bind->subcmds->argument);
-		}
-		server->focused_view = saved;
-		return true;
-	}
-
-	if (bind->action == WM_ACTION_DELAY) {
-		if (!bind->subcmds)
-			return true;
-		struct delay_cb_data *cb = calloc(1, sizeof(*cb));
-		if (!cb)
-			return false;
-		cb->server = server;
-		cb->action = bind->subcmds->action;
-		if (bind->subcmds->argument)
-			cb->argument = strdup(bind->subcmds->argument);
-		cb->timer = wl_event_loop_add_timer(
-			server->wl_event_loop, delay_timer_cb, cb);
-		if (!cb->timer) {
-			free(cb->argument);
-			free(cb);
-			return false;
-		}
-		/* delay_us is in microseconds, timer wants milliseconds */
-		int ms = bind->delay_us / 1000;
-		if (ms < 1)
-			ms = 1;
-		wl_event_source_timer_update(cb->timer, ms);
-		return true;
-	}
-
+	if (bind->command)
+		return wm_command_execute(server, bind->command, NULL);
+	/* Bindings built in code may carry just an action + argument */
 	return wm_execute_action(server, bind->action, bind->argument);
 }
 
 /*
  * Check a keybind's guard condition against the focused view.
- * Returns true if the condition passes or the binding has no guard.
- * Guard conditions only apply to non-conditional actions (not If/ForEach/
- * Map/Delay, which use the condition field for their own purposes).
+ * Returns true if the binding has no guard or the guard holds.
  */
 bool
 wm_keybind_check_condition(struct wm_server *server,
 	struct wm_keybind *bind)
 {
-	if (!bind->condition)
+	if (!bind->guard)
 		return true;
-	/* Don't treat as guard for actions that use conditions internally */
-	if (bind->action == WM_ACTION_IF ||
-	    bind->action == WM_ACTION_FOREACH ||
-	    bind->action == WM_ACTION_MAP ||
-	    bind->action == WM_ACTION_DELAY)
-		return true;
-	return evaluate_condition(server, bind->condition,
+	return wm_condition_evaluate(server, bind->guard,
 		server->focused_view);
 }
 
@@ -404,94 +118,18 @@ handle_kill(struct wm_view *view)
 }
 
 static bool
-handle_next_window(struct wm_server *server, const char *argument)
+handle_cycle_window(struct wm_server *server, const char *argument,
+	bool reverse, bool groups)
 {
-	if (argument) {
-		/* Filtered cycling: only windows matching pattern */
-		struct wm_workspace *ws = wm_workspace_get_active(server);
-		struct wm_view *focused = server->focused_view;
-		struct wm_view *candidate = NULL;
-		bool past_focused = (focused == NULL);
-		struct wm_view *first_match = NULL;
-		struct wm_view *v;
-		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace != ws && !v->sticky)
-				continue;
-			bool match = (v->title &&
-				fnmatch(argument, v->title, 0) == 0) ||
-				(v->app_id &&
-				fnmatch(argument, v->app_id, 0) == 0);
-			if (!match)
-				continue;
-			if (!first_match)
-				first_match = v;
-			if (past_focused) {
-				candidate = v;
-				break;
-			}
-			if (v == focused)
-				past_focused = true;
-		}
-		if (!candidate)
-			candidate = first_match;
-		if (candidate && candidate != focused)
-			wm_focus_view(candidate,
-				candidate->xdg_toplevel->base->surface);
-	} else {
-		wm_view_cycle_next(server);
+	struct wm_window_list_spec spec;
+	if (!wm_window_list_parse(argument, &spec)) {
+		wlr_log(WLR_ERROR, "bad window pattern: %s", argument);
+		return false;
 	}
-	return true;
-}
-
-static bool
-handle_prev_window(struct wm_server *server, const char *argument)
-{
-	if (argument) {
-		/* Filtered cycling: only windows matching pattern */
-		struct wm_workspace *ws = wm_workspace_get_active(server);
-		struct wm_view *focused = server->focused_view;
-		struct wm_view *candidate = NULL;
-		struct wm_view *last_match = NULL;
-		struct wm_view *v;
-		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace != ws && !v->sticky)
-				continue;
-			bool match = (v->title &&
-				fnmatch(argument, v->title, 0) == 0) ||
-				(v->app_id &&
-				fnmatch(argument, v->app_id, 0) == 0);
-			if (!match)
-				continue;
-			if (v == focused) {
-				if (candidate)
-					break;
-				continue;
-			}
-			candidate = v;
-			last_match = v;
-		}
-		if (!candidate) {
-			/* Wrap: find last matching view */
-			wl_list_for_each(v, &server->views, link) {
-				if (v->workspace != ws && !v->sticky)
-					continue;
-				bool m = (v->title &&
-					fnmatch(argument, v->title,
-						0) == 0) ||
-					(v->app_id &&
-					fnmatch(argument, v->app_id,
-						0) == 0);
-				if (m)
-					last_match = v;
-			}
-			candidate = last_match;
-		}
-		if (candidate && candidate != focused)
-			wm_focus_view(candidate,
-				candidate->xdg_toplevel->base->surface);
-	} else {
-		wm_view_cycle_prev(server);
-	}
+	if (groups)
+		spec.groups = true;
+	wm_focus_cycle(server, &spec, reverse);
+	wm_window_list_finish(&spec);
 	return true;
 }
 
@@ -549,12 +187,13 @@ handle_workspace_switch(struct wm_server *server, const char *argument)
 }
 
 static bool
-handle_send_to_workspace(struct wm_server *server, const char *argument)
+handle_send_to_workspace(struct wm_server *server, struct wm_view *view,
+	const char *argument)
 {
 	if (argument) {
 		int ws;
 		if (safe_atoi(argument, &ws))
-			wm_view_send_to_workspace(server, ws - 1);
+			wm_view_send_to_workspace(server, view, ws - 1);
 	}
 	return true;
 }
@@ -694,8 +333,22 @@ static bool
 handle_set_style(struct wm_server *server, const char *argument)
 {
 	if (argument && server->config) {
+		/*
+		 * Only regular files: reading a device or FIFO would hang
+		 * the compositor. (Any source may set a style: key and menu
+		 * styles live wherever [stylesdir] points.)
+		 */
+		char *resolved = realpath(argument, NULL);
+		struct stat st;
+		if (!resolved || stat(resolved, &st) != 0 ||
+		    !S_ISREG(st.st_mode)) {
+			wlr_log(WLR_ERROR, "SetStyle: not a style file: %s",
+				argument);
+			free(resolved);
+			return false;
+		}
 		free(server->config->style_file);
-		server->config->style_file = strdup(argument);
+		server->config->style_file = resolved;
 		if (server->style && server->config->style_file)
 			style_load(server->style,
 				server->config->style_file);
@@ -758,12 +411,13 @@ handle_set_decor(struct wm_server *server, struct wm_view *view,
 }
 
 static bool
-handle_take_to_workspace(struct wm_server *server, const char *argument)
+handle_take_to_workspace(struct wm_server *server, struct wm_view *view,
+	const char *argument)
 {
 	if (argument) {
 		int ws;
 		if (safe_atoi(argument, &ws))
-			wm_view_take_to_workspace(server, ws - 1);
+			wm_view_take_to_workspace(server, view, ws - 1);
 	}
 	return true;
 }
@@ -886,58 +540,6 @@ handle_goto_window(struct wm_server *server, const char *argument)
 }
 
 static bool
-handle_next_prev_group(struct wm_server *server, struct wm_view *view,
-	enum wm_action action)
-{
-	struct wm_workspace *ws = wm_workspace_get_active(server);
-	/* Build array of unique tab groups on current workspace */
-	struct wm_tab_group *groups[256];
-	int ngroups = 0;
-	struct wm_view *v;
-	wl_list_for_each(v, &server->views, link) {
-		if (v->workspace != ws && !v->sticky)
-			continue;
-		if (!v->tab_group)
-			continue;
-		/* Check if already in our list */
-		bool found = false;
-		for (int i = 0; i < ngroups; i++) {
-			if (groups[i] == v->tab_group) {
-				found = true;
-				break;
-			}
-		}
-		if (!found && ngroups < 256)
-			groups[ngroups++] = v->tab_group;
-	}
-	if (ngroups < 2)
-		return true;
-	/* Find the current group */
-	int cur_idx = -1;
-	if (view && view->tab_group) {
-		for (int i = 0; i < ngroups; i++) {
-			if (groups[i] == view->tab_group) {
-				cur_idx = i;
-				break;
-			}
-		}
-	}
-	int next_idx;
-	if (cur_idx < 0) {
-		next_idx = 0;
-	} else if (action == WM_ACTION_NEXT_GROUP) {
-		next_idx = (cur_idx + 1) % ngroups;
-	} else {
-		next_idx = (cur_idx - 1 + ngroups) % ngroups;
-	}
-	struct wm_view *target = groups[next_idx]->active_view;
-	if (target)
-		wm_focus_view(target,
-			target->xdg_toplevel->base->surface);
-	return true;
-}
-
-static bool
 handle_unclutter(struct wm_server *server)
 {
 	struct wm_workspace *ws = wm_workspace_get_active(server);
@@ -966,11 +568,134 @@ handle_unclutter(struct wm_server *server)
 
 /* --- Main action dispatcher --- */
 
+/*
+ * Edges to resize from for StartResizing, following Fluxbox's
+ * getResizeDirection(): an explicit corner/edge, NearestCorner,
+ * NearestEdge or NearestCornerOrEdge [px [pct]] / [pct%]. With no
+ * argument Fluxbox resizes from the bottom-right corner.
+ */
+static bool
+near_corner(int xy, int wh, int px, int pc)
+{
+	return xy < px || 100 * xy < pc * wh;
+}
+
+static uint32_t
+resize_edges_for(struct wm_server *server, struct wm_view *view,
+	const char *argument)
+{
+	char mode[32] = "bottomright";
+	int px = 0, pc = 0;
+	if (argument) {
+		char extra1[16] = "", extra2[16] = "";
+		int n = sscanf(argument, "%31s %15s %15s", mode, extra1, extra2);
+		if (strcasecmp(mode, "NearestCorner") == 0) {
+			pc = 100;
+		} else if (strcasecmp(mode, "NearestCornerOrEdge") == 0) {
+			if (n >= 2) {
+				size_t l = strlen(extra1);
+				if (l > 0 && extra1[l - 1] == '%') {
+					extra1[l - 1] = '\0';
+					safe_atoi(extra1, &pc);
+				} else {
+					safe_atoi(extra1, &px);
+					if (n >= 3)
+						safe_atoi(extra2, &pc);
+				}
+			} else {
+				px = 50;
+				pc = 30;
+			}
+		}
+	}
+
+	static const struct {
+		const char *name;
+		uint32_t edges;
+	} fixed[] = {
+		{ "TopLeft",     WLR_EDGE_TOP | WLR_EDGE_LEFT },
+		{ "Top",         WLR_EDGE_TOP },
+		{ "TopRight",    WLR_EDGE_TOP | WLR_EDGE_RIGHT },
+		{ "Left",        WLR_EDGE_LEFT },
+		{ "Right",       WLR_EDGE_RIGHT },
+		{ "BottomLeft",  WLR_EDGE_BOTTOM | WLR_EDGE_LEFT },
+		{ "Bottom",      WLR_EDGE_BOTTOM },
+		{ "BottomRight", WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT },
+	};
+	for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); i++) {
+		if (strcasecmp(mode, fixed[i].name) == 0)
+			return fixed[i].edges;
+	}
+
+	bool center = strcasecmp(mode, "Center") == 0;
+	if (!center && strcasecmp(mode, "NearestCorner") != 0 &&
+	    strcasecmp(mode, "NearestEdge") != 0 &&
+	    strcasecmp(mode, "NearestCornerOrEdge") != 0)
+		return WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT;
+	if (center)
+		pc = 100; /* not supported yet: nearest corner instead */
+
+	struct wlr_box geo;
+	wm_view_get_geometry(view, &geo);
+	int w = geo.width > 0 ? geo.width : 1;
+	int h = geo.height > 0 ? geo.height : 1;
+	int x = (int)server->cursor->x - view->x;
+	int y = (int)server->cursor->y - view->y;
+	int cx = w / 2, cy = h / 2;
+
+	if (x < cx && near_corner(x, cx, px, pc)) {
+		if (y < cy && near_corner(y, cy, px, pc))
+			return WLR_EDGE_TOP | WLR_EDGE_LEFT;
+		if (near_corner(h - y - 1, h - cy, px, pc))
+			return WLR_EDGE_BOTTOM | WLR_EDGE_LEFT;
+	} else if (near_corner(w - x - 1, w - cx, px, pc)) {
+		if (y < cy && near_corner(y, cy, px, pc))
+			return WLR_EDGE_TOP | WLR_EDGE_RIGHT;
+		if (near_corner(h - y - 1, h - cy, px, pc))
+			return WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT;
+	}
+	/* Not a corner: the nearest edge */
+	if (cy - abs(y - cy) < cx - abs(x - cx))
+		return y > cy ? WLR_EDGE_BOTTOM : WLR_EDGE_TOP;
+	return x > cx ? WLR_EDGE_RIGHT : WLR_EDGE_LEFT;
+}
+
+/* Activate the tab under the cursor (mouse bindings without a number) */
+static void
+activate_tab_under_cursor(struct wm_server *server, struct wm_view *view)
+{
+	if (!view->tab_group || view->tab_group->count <= 1 ||
+	    !view->decoration)
+		return;
+	double dx = server->cursor->x - view->x;
+	double dy = server->cursor->y - view->y;
+	int tab_idx = wm_decoration_tab_at(view->decoration, dx, dy);
+	if (tab_idx < 0)
+		return;
+	int i = 0;
+	struct wm_view *tab_view;
+	wl_list_for_each(tab_view, &view->tab_group->views, tab_link) {
+		if (i++ == tab_idx) {
+			wm_tab_group_activate(view->tab_group, tab_view);
+			return;
+		}
+	}
+}
+
+/* --- Action dispatch --- */
+
 bool
 wm_execute_action(struct wm_server *server,
 	enum wm_action action, const char *argument)
 {
-	struct wm_view *view = server->focused_view;
+	return wm_execute_action_on(server, action, argument, NULL);
+}
+
+bool
+wm_execute_action_on(struct wm_server *server, enum wm_action action,
+	const char *argument, struct wm_view *target)
+{
+	struct wm_view *view = target ? target : server->focused_view;
 
 	switch (action) {
 	case WM_ACTION_EXEC:
@@ -988,9 +713,9 @@ wm_execute_action(struct wm_server *server,
 		wm_focus_prev_view(server);
 		return true;
 	case WM_ACTION_NEXT_WINDOW:
-		return handle_next_window(server, argument);
+		return handle_cycle_window(server, argument, false, false);
 	case WM_ACTION_PREV_WINDOW:
-		return handle_prev_window(server, argument);
+		return handle_cycle_window(server, argument, true, false);
 	case WM_ACTION_DEICONIFY:
 		return handle_deiconify(server, argument);
 	case WM_ACTION_MAXIMIZE:
@@ -1006,7 +731,7 @@ wm_execute_action(struct wm_server *server,
 	case WM_ACTION_WORKSPACE:
 		return handle_workspace_switch(server, argument);
 	case WM_ACTION_SEND_TO_WORKSPACE:
-		return handle_send_to_workspace(server, argument);
+		return handle_send_to_workspace(server, view, argument);
 	case WM_ACTION_NEXT_WORKSPACE:
 		wm_workspace_switch_next(server);
 		return true;
@@ -1078,7 +803,8 @@ wm_execute_action(struct wm_server *server,
 			wm_tab_group_move_right(view->tab_group, view);
 		return true;
 	case WM_ACTION_START_TABBING:
-		/* Tabbing is initiated by mouse action, not keyboard */
+		if (view)
+			wm_view_begin_interactive(view, WM_CURSOR_TABBING, 0);
 		return true;
 	case WM_ACTION_FOCUS:
 		/* Focus is implicit in mouse binding dispatch */
@@ -1092,7 +818,7 @@ wm_execute_action(struct wm_server *server,
 	case WM_ACTION_START_RESIZING:
 		if (view)
 			wm_view_begin_interactive(view, WM_CURSOR_RESIZE,
-				WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT);
+				resize_edges_for(server, view, argument));
 		return true;
 
 	/* Menu actions */
@@ -1173,6 +899,8 @@ wm_execute_action(struct wm_server *server,
 			int idx;
 			if (safe_atoi(argument, &idx))
 				wm_view_activate_tab(view, idx - 1);
+		} else if (view) {
+			activate_tab_under_cursor(server, view);
 		}
 		return true;
 	case WM_ACTION_LOWER:
@@ -1227,18 +955,18 @@ wm_execute_action(struct wm_server *server,
 
 	/* Workspace send/take */
 	case WM_ACTION_TAKE_TO_WORKSPACE:
-		return handle_take_to_workspace(server, argument);
+		return handle_take_to_workspace(server, view, argument);
 	case WM_ACTION_SEND_TO_NEXT_WORKSPACE:
-		wm_view_send_to_next_workspace(server);
+		wm_view_send_to_next_workspace(server, view);
 		return true;
 	case WM_ACTION_SEND_TO_PREV_WORKSPACE:
-		wm_view_send_to_prev_workspace(server);
+		wm_view_send_to_prev_workspace(server, view);
 		return true;
 	case WM_ACTION_TAKE_TO_NEXT_WORKSPACE:
-		wm_view_take_to_next_workspace(server);
+		wm_view_take_to_next_workspace(server, view);
 		return true;
 	case WM_ACTION_TAKE_TO_PREV_WORKSPACE:
-		wm_view_take_to_prev_workspace(server);
+		wm_view_take_to_prev_workspace(server, view);
 		return true;
 	case WM_ACTION_ADD_WORKSPACE:
 		wm_workspace_add(server);
@@ -1331,8 +1059,9 @@ wm_execute_action(struct wm_server *server,
 	case WM_ACTION_GOTO_WINDOW:
 		return handle_goto_window(server, argument);
 	case WM_ACTION_NEXT_GROUP:
+		return handle_cycle_window(server, argument, false, true);
 	case WM_ACTION_PREV_GROUP:
-		return handle_next_prev_group(server, view, action);
+		return handle_cycle_window(server, argument, true, true);
 	case WM_ACTION_UNCLUTTER:
 		return handle_unclutter(server);
 
@@ -1353,9 +1082,16 @@ wm_execute_action(struct wm_server *server,
 	 */
 	case WM_ACTION_MACRO_CMD:
 	case WM_ACTION_TOGGLE_CMD:
-		wlr_log(WLR_ERROR,
-			"%s", "MacroCmd/ToggleCmd cannot be nested in subcmds");
-		return false;
+	case WM_ACTION_IF:
+	case WM_ACTION_FOREACH:
+	case WM_ACTION_MAP:
+	case WM_ACTION_DELAY: {
+		/* Compound commands given as action + argument text */
+		struct wm_command *cmd = wm_command_create(action, argument);
+		bool ok = cmd && wm_command_execute(server, cmd, target);
+		wm_command_destroy(cmd);
+		return ok;
+	}
 
 	/* Focus navigation */
 	case WM_ACTION_FOCUS_TOOLBAR:
@@ -1374,13 +1110,6 @@ wm_execute_action(struct wm_server *server,
 		wm_focus_nav_enter_slit(server);
 		return true;
 
-	case WM_ACTION_IF:
-	case WM_ACTION_FOREACH:
-	case WM_ACTION_MAP:
-	case WM_ACTION_DELAY:
-		wlr_log(WLR_ERROR,
-			"%s", "If/ForEach/Map/Delay require keybind context");
-		return false;
 	}
 
 	return false;

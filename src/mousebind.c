@@ -16,6 +16,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "command.h"
 #include "mousebind.h"
 #include "util.h"
 #include <ctype.h>
@@ -28,85 +29,6 @@
 
 #define KEYS_LINE_MAX 1024
 
-/* Reuse parse_action_name from keybind.c — declared in keybind.h indirectly.
- * We'll duplicate the minimal action parsing here since it's static there. */
-
-struct action_map {
-	const char *name;
-	enum wm_action action;
-};
-
-static const struct action_map actions[] = {
-	{"ActivateTab",        WM_ACTION_ACTIVATE_TAB},
-	{"Close",              WM_ACTION_CLOSE},
-	{"DetachClient",       WM_ACTION_DETACH_CLIENT},
-	{"Exec",               WM_ACTION_EXEC},
-	{"ExecCommand",        WM_ACTION_EXEC},
-	{"Execute",            WM_ACTION_EXEC},
-	{"Exit",               WM_ACTION_EXIT},
-	{"Focus",              WM_ACTION_FOCUS},
-	{"Fullscreen",         WM_ACTION_FULLSCREEN},
-	{"HideMenus",          WM_ACTION_HIDE_MENUS},
-	{"Iconify",            WM_ACTION_MINIMIZE},
-	{"KeyMode",            WM_ACTION_KEY_MODE},
-	{"Kill",               WM_ACTION_KILL},
-	{"KillWindow",         WM_ACTION_KILL},
-	{"Lower",              WM_ACTION_LOWER},
-	{"LowerLayer",         WM_ACTION_LOWER_LAYER},
-	{"MacroCmd",           WM_ACTION_MACRO_CMD},
-	{"Maximize",           WM_ACTION_MAXIMIZE},
-	{"MaximizeHorizontal", WM_ACTION_MAXIMIZE_HORIZ},
-	{"MaximizeVertical",   WM_ACTION_MAXIMIZE_VERT},
-	{"Minimize",           WM_ACTION_MINIMIZE},
-	{"Move",               WM_ACTION_MOVE},
-	{"MoveDown",           WM_ACTION_MOVE_DOWN},
-	{"MoveLeft",           WM_ACTION_MOVE_LEFT},
-	{"MoveRight",          WM_ACTION_MOVE_RIGHT},
-	{"MoveTabLeft",        WM_ACTION_MOVE_TAB_LEFT},
-	{"MoveTabRight",       WM_ACTION_MOVE_TAB_RIGHT},
-	{"MoveTo",             WM_ACTION_MOVE_TO},
-	{"MoveUp",             WM_ACTION_MOVE_UP},
-	{"NextTab",            WM_ACTION_NEXT_TAB},
-	{"NextWindow",         WM_ACTION_FOCUS_NEXT},
-	{"NextWorkspace",      WM_ACTION_NEXT_WORKSPACE},
-	{"PrevTab",            WM_ACTION_PREV_TAB},
-	{"PrevWindow",         WM_ACTION_FOCUS_PREV},
-	{"PrevWorkspace",      WM_ACTION_PREV_WORKSPACE},
-	{"Quit",               WM_ACTION_EXIT},
-	{"Raise",              WM_ACTION_RAISE},
-	{"RaiseLayer",         WM_ACTION_RAISE_LAYER},
-	{"Reconfigure",        WM_ACTION_RECONFIGURE},
-	{"Resize",             WM_ACTION_RESIZE},
-	{"ResizeTo",           WM_ACTION_RESIZE_TO},
-	{"RootMenu",           WM_ACTION_ROOT_MENU},
-	{"SendToWorkspace",    WM_ACTION_SEND_TO_WORKSPACE},
-	{"SetDecor",           WM_ACTION_SET_DECOR},
-	{"SetLayer",           WM_ACTION_SET_LAYER},
-	{"Shade",              WM_ACTION_SHADE},
-	{"ShadeOff",           WM_ACTION_SHADE_OFF},
-	{"ShadeOn",            WM_ACTION_SHADE_ON},
-	{"ShadeWindow",        WM_ACTION_SHADE},
-	{"ShowDesktop",        WM_ACTION_SHOW_DESKTOP},
-	{"StartMoving",        WM_ACTION_START_MOVING},
-	{"StartResizing",      WM_ACTION_START_RESIZING},
-	{"StartTabbing",       WM_ACTION_START_TABBING},
-	{"Stick",              WM_ACTION_STICK},
-	{"StickWindow",        WM_ACTION_STICK},
-	{"ToggleCmd",          WM_ACTION_TOGGLE_CMD},
-	{"ToggleDecor",        WM_ACTION_TOGGLE_DECOR},
-	{"WindowMenu",         WM_ACTION_WINDOW_MENU},
-	{"Workspace",          WM_ACTION_WORKSPACE},
-};
-
-static enum wm_action
-parse_action_name(const char *name)
-{
-	for (size_t i = 0; i < sizeof(actions) / sizeof(actions[0]); i++) {
-		if (strcasecmp(actions[i].name, name) == 0)
-			return actions[i].action;
-	}
-	return WM_ACTION_NOP;
-}
 
 static bool
 parse_modifier(const char *token, uint32_t *mods)
@@ -254,76 +176,6 @@ parse_mouse_event(const char *token, enum wm_mouse_event *event,
 }
 
 /*
- * Parse sub-commands from a MacroCmd or ToggleCmd argument.
- */
-static struct wm_subcmd *
-parse_subcmds(const char *str, int *count)
-{
-	struct wm_subcmd *head = NULL;
-	struct wm_subcmd **tail = &head;
-	int n = 0;
-
-	while (str && *str) {
-		const char *open = strchr(str, '{');
-		if (!open)
-			break;
-		const char *close = strchr(open + 1, '}');
-		if (!close)
-			break;
-
-		size_t len = close - (open + 1);
-		char *content = strndup(open + 1, len);
-		if (!content)
-			break;
-
-		char *p = strip(content);
-		char action_name[256];
-		const char *arg = NULL;
-
-		const char *sp = p;
-		while (*sp && !isspace((unsigned char)*sp))
-			sp++;
-
-		size_t name_len = sp - p;
-		if (name_len >= sizeof(action_name)) {
-			free(content);
-			str = close + 1;
-			continue;
-		}
-		memcpy(action_name, p, name_len);
-		action_name[name_len] = '\0';
-
-		if (*sp) {
-			arg = sp;
-			while (isspace((unsigned char)*arg))
-				arg++;
-			if (*arg == '\0')
-				arg = NULL;
-		}
-
-		enum wm_action action = parse_action_name(action_name);
-		if (action != WM_ACTION_NOP) {
-			struct wm_subcmd *cmd = calloc(1, sizeof(*cmd));
-			if (cmd) {
-				cmd->action = action;
-				if (arg)
-					cmd->argument = strdup(arg);
-				*tail = cmd;
-				tail = &cmd->next;
-				n++;
-			}
-		}
-
-		free(content);
-		str = close + 1;
-	}
-
-	if (count)
-		*count = n;
-	return head;
-}
-
-/*
  * Parse a single mouse binding line.
  * Format: [OnContext] [Modifier ...] EventN :Action [argument]
  */
@@ -394,32 +246,9 @@ parse_mousebind_line(const char *line, const uint32_t *button_map)
 		return NULL;
 	}
 
-	/* Parse action */
-	char action_name[256];
-	const char *argument = NULL;
-
-	const char *space = action_str;
-	while (*space && !isspace((unsigned char)*space))
-		space++;
-
-	size_t name_len = space - action_str;
-	if (name_len >= sizeof(action_name)) {
-		free(key_part);
-		return NULL;
-	}
-	memcpy(action_name, action_str, name_len);
-	action_name[name_len] = '\0';
-
-	if (*space) {
-		argument = space;
-		while (isspace((unsigned char)*argument))
-			argument++;
-		if (*argument == '\0')
-			argument = NULL;
-	}
-
-	enum wm_action action = parse_action_name(action_name);
-	if (action == WM_ACTION_NOP) {
+	/* Parse the command (shared grammar with keys and IPC) */
+	struct wm_command *cmd = wm_command_parse(action_str);
+	if (!cmd) {
 		free(key_part);
 		return NULL;
 	}
@@ -427,6 +256,7 @@ parse_mousebind_line(const char *line, const uint32_t *button_map)
 	/* Build the mouse binding */
 	struct wm_mousebind *bind = calloc(1, sizeof(*bind));
 	if (!bind) {
+		wm_command_destroy(cmd);
 		free(key_part);
 		return NULL;
 	}
@@ -435,15 +265,10 @@ parse_mousebind_line(const char *line, const uint32_t *button_map)
 	bind->event = event;
 	bind->button = button;
 	bind->modifiers = modifiers;
-	bind->action = action;
-
-	if (action == WM_ACTION_MACRO_CMD || action == WM_ACTION_TOGGLE_CMD) {
-		if (argument)
-			bind->subcmds = parse_subcmds(argument,
-				&bind->subcmd_count);
-	}
-	if (argument)
-		bind->argument = strdup(argument);
+	bind->command = cmd;
+	bind->action = cmd->action;
+	if (cmd->argument)
+		bind->argument = strdup(cmd->argument);
 
 	free(key_part);
 	return bind;
@@ -577,24 +402,13 @@ mousebind_find(struct wl_list *bindings, enum wm_mouse_context context,
 	return NULL;
 }
 
-static void
-free_subcmds(struct wm_subcmd *head)
-{
-	while (head) {
-		struct wm_subcmd *next = head->next;
-		free(head->argument);
-		free(head);
-		head = next;
-	}
-}
-
 void
 mousebind_destroy_list(struct wl_list *bindings)
 {
 	struct wm_mousebind *bind, *tmp;
 	wl_list_for_each_safe(bind, tmp, bindings, link) {
 		wl_list_remove(&bind->link);
-		free_subcmds(bind->subcmds);
+		wm_command_destroy(bind->command);
 		free(bind->argument);
 		free(bind);
 	}

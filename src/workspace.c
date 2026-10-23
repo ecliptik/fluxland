@@ -459,9 +459,9 @@ wm_view_move_to_workspace(struct wm_view *view,
 }
 
 void
-wm_view_send_to_workspace(struct wm_server *server, int index)
+wm_view_send_to_workspace(struct wm_server *server, struct wm_view *view,
+	int index)
 {
-	struct wm_view *view = server->focused_view;
 	if (!view) {
 		return;
 	}
@@ -493,28 +493,18 @@ wm_view_send_to_workspace(struct wm_server *server, int index)
 		update_views_per_output(server);
 	}
 
-	if (target != active) {
+	if (target != active && view == server->focused_view) {
 		/* View will be hidden because its workspace tree is disabled
 		 * (global mode) or per-view visibility toggled it off
 		 * (per-output mode) */
-		struct wm_view *next;
-		wl_list_for_each(next, &server->views, link) {
-			if (next != view &&
-			    next->scene_tree->node.enabled &&
-			    (next->workspace == active || next->sticky)) {
-				wm_focus_view(next,
-					next->xdg_toplevel->base->surface);
-				return;
-			}
-		}
-		wm_unfocus_current(server);
+		wm_focus_fallback(server, view);
 	}
 }
 
 void
-wm_view_take_to_workspace(struct wm_server *server, int index)
+wm_view_take_to_workspace(struct wm_server *server, struct wm_view *view,
+	int index)
 {
-	struct wm_view *view = server->focused_view;
 	if (!view) {
 		return;
 	}
@@ -537,37 +527,41 @@ wm_view_take_to_workspace(struct wm_server *server, int index)
 }
 
 void
-wm_view_send_to_next_workspace(struct wm_server *server)
+wm_view_send_to_next_workspace(struct wm_server *server,
+	struct wm_view *view)
 {
 	struct wm_workspace *current = wm_workspace_get_active(server);
 	int next = (current->index + 1) % server->workspace_count;
-	wm_view_send_to_workspace(server, next);
+	wm_view_send_to_workspace(server, view, next);
 }
 
 void
-wm_view_send_to_prev_workspace(struct wm_server *server)
+wm_view_send_to_prev_workspace(struct wm_server *server,
+	struct wm_view *view)
 {
 	struct wm_workspace *current = wm_workspace_get_active(server);
 	int prev = (current->index - 1 + server->workspace_count) %
 		server->workspace_count;
-	wm_view_send_to_workspace(server, prev);
+	wm_view_send_to_workspace(server, view, prev);
 }
 
 void
-wm_view_take_to_next_workspace(struct wm_server *server)
+wm_view_take_to_next_workspace(struct wm_server *server,
+	struct wm_view *view)
 {
 	struct wm_workspace *current = wm_workspace_get_active(server);
 	int next = (current->index + 1) % server->workspace_count;
-	wm_view_take_to_workspace(server, next);
+	wm_view_take_to_workspace(server, view, next);
 }
 
 void
-wm_view_take_to_prev_workspace(struct wm_server *server)
+wm_view_take_to_prev_workspace(struct wm_server *server,
+	struct wm_view *view)
 {
 	struct wm_workspace *current = wm_workspace_get_active(server);
 	int prev = (current->index - 1 + server->workspace_count) %
 		server->workspace_count;
-	wm_view_take_to_workspace(server, prev);
+	wm_view_take_to_workspace(server, view, prev);
 }
 
 void

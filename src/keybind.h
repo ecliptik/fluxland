@@ -140,37 +140,8 @@ enum wm_action {
 	WM_ACTION_FOCUS_SLIT,
 };
 
-/*
- * Condition types for If/ForEach conditional commands.
- */
-enum wm_condition_type {
-	WM_COND_MATCHES,   /* test focused window property */
-	WM_COND_SOME,      /* true if ANY window matches */
-	WM_COND_EVERY,     /* true if ALL windows match */
-	WM_COND_NOT,       /* negate child condition */
-	WM_COND_AND,       /* logical AND of two conditions */
-	WM_COND_OR,        /* logical OR */
-	WM_COND_XOR,       /* logical XOR */
-};
-
-struct wm_condition {
-	enum wm_condition_type type;
-	char *property;              /* for Matches/Some/Every */
-	char *pattern;               /* for Matches/Some/Every */
-	struct wm_condition *child;  /* for Not */
-	struct wm_condition *left;   /* for And/Or/Xor */
-	struct wm_condition *right;  /* for And/Or/Xor */
-};
-
-/*
- * A single sub-command within a MacroCmd or ToggleCmd.
- * Stored as a singly-linked list.
- */
-struct wm_subcmd {
-	enum wm_action action;
-	char *argument;
-	struct wm_subcmd *next;
-};
+struct wm_command;
+struct wm_condition;
 
 /*
  * Keybinding node. Forms a tree for chained bindings:
@@ -182,17 +153,13 @@ struct wm_keybind {
 	uint32_t modifiers;
 	xkb_keysym_t keysym;
 	enum wm_action action;     /* NOP for intermediate chain nodes */
-	char *argument;
+	char *argument;            /* raw argument of the top-level command */
 
-	/* For MacroCmd / ToggleCmd */
-	struct wm_subcmd *subcmds;
-	int subcmd_count;
-	int toggle_index;          /* current index for ToggleCmd */
+	/* Parsed command (NULL for intermediate chain nodes) */
+	struct wm_command *command;
 
-	/* For If / ForEach conditional commands */
-	struct wm_condition *condition;
-	struct wm_subcmd *else_cmd;  /* for If's else branch */
-	int delay_us;                /* for Delay */
+	/* Optional guard: {condition} in the key spec (fluxland extension) */
+	struct wm_condition *guard;
 
 	struct wl_list children;   /* child bindings (next key in chain) */
 	struct wl_list link;       /* sibling list */
@@ -241,9 +208,6 @@ void keybind_destroy_list(struct wl_list *bindings);
 /* Parse a keybinding line (e.g. "Mod4 t :Exec xterm") and add to bindings.
  * Returns true on success. Used by BindKey action. */
 bool keybind_add_from_string(struct wl_list *bindings, const char *line);
-
-/* Destroy a condition tree (recursively frees all nodes) */
-void wm_condition_destroy(struct wm_condition *cond);
 
 /* List all available action names to stdout (for --list-commands) */
 void wm_keybind_list_actions(void);

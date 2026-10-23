@@ -85,6 +85,19 @@ struct wm_view {
 	/* True if this view is docked into the slit (skip normal WM handling) */
 	bool docked;
 
+	/* Fluxbox apps attributes: skip in focus cycling / iconbar */
+	bool focus_hidden;
+	bool icon_hidden;
+
+	/* Demands attention (denied activation, X11 urgency hint) */
+	bool urgent;
+
+	/* Surface is mapped (minimized views stay mapped) */
+	bool mapped;
+
+	/* Focus order: higher = more recently focused (see focus cycling) */
+	uint64_t focus_seq;
+
 	/* Foreign toplevel handle (for external taskbars) */
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener foreign_toplevel_request_activate;
@@ -153,19 +166,19 @@ void wm_view_minimize(struct wm_view *view);
 void wm_view_unminimize(struct wm_view *view);
 void wm_focus_prev_view(struct wm_server *server);
 
-/*
- * Cycle to the next view on the current workspace.
- * If the target view is minimized (iconified), de-iconify it.
- * Wraps around at list boundaries.
- */
-void wm_view_cycle_next(struct wm_server *server);
+struct wm_window_list_spec;
 
 /*
- * Cycle to the previous view on the current workspace.
- * If the target view is minimized (iconified), de-iconify it.
- * Wraps around at list boundaries.
+ * NextWindow/PrevWindow: focus the next/previous window in focus order
+ * (or creation order with {static}) that matches the spec (NULL = all
+ * windows). While modifiers are held the order stays frozen, so
+ * repeated presses walk the list; it is committed on release.
  */
-void wm_view_cycle_prev(struct wm_server *server);
+void wm_focus_cycle(struct wm_server *server,
+	const struct wm_window_list_spec *spec, bool reverse);
+
+/* End a cycle (all modifiers released): commit the focus order. */
+void wm_focus_cycle_end(struct wm_server *server);
 
 /*
  * Restore (de-iconify) the most recently minimized view on the

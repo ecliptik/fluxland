@@ -174,6 +174,18 @@ test_enter_toolbar_guards(void)
 	printf("  PASS: test_enter_toolbar_guards\n");
 }
 
+/* Test: FocusToolbar a second time leaves the toolbar */
+static void
+test_enter_toolbar_toggles(void)
+{
+	setup();
+	wm_focus_nav_enter_toolbar(&test_server);
+	assert(test_server.focus_nav.zone == WM_FOCUS_ZONE_TOOLBAR);
+	wm_focus_nav_enter_toolbar(&test_server);
+	assert(test_server.focus_nav.zone == WM_FOCUS_ZONE_WINDOWS);
+	printf("  PASS: test_enter_toolbar_toggles\n");
+}
+
 /* Test: return_to_windows resets zone and index */
 static void
 test_return_to_windows(void)
@@ -557,6 +569,7 @@ main(void)
 	test_init();
 	test_enter_toolbar();
 	test_enter_toolbar_guards();
+	test_enter_toolbar_toggles();
 	test_return_to_windows();
 	test_return_to_windows_noop();
 	test_return_to_windows_with_view();
