@@ -415,7 +415,7 @@ struct wm_server {
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_new_surface;
 	struct wl_listener xwayland_ready;
-	struct wl_list xwayland_views; /* wm_xwayland_view.link */
+	struct wl_list xwayland_unmanaged; /* wm_xwayland_unmanaged.link */
 	struct wm_xwayland_atoms xwayland_atoms;
 #endif
 

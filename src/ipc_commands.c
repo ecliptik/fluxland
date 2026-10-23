@@ -203,6 +203,9 @@ cmd_get_windows(struct wm_server *server)
 	struct wm_view *view;
 	bool first = true;
 	wl_list_for_each(view, &server->views, link) {
+		/* Not yet mapped, or managed by the slit */
+		if (!view->mapped || view->docked)
+			continue;
 		if (!first) strbuf_append(&sb, ",");
 		first = false;
 
@@ -218,16 +221,12 @@ cmd_get_windows(struct wm_server *server)
 
 		/* Determine role: dialog if has parent, window otherwise */
 		const char *role = "window";
-		if (view->xdg_toplevel->parent)
+		if (wm_view_parent(view))
 			role = "dialog";
 
-		/* Get PID via wl_client_get_credentials */
-		pid_t pid = -1;
-		struct wl_client *client = view->xdg_toplevel->base->resource ?
-			wl_resource_get_client(view->xdg_toplevel->base->resource) : NULL;
-		if (client) {
-			wl_client_get_credentials(client, &pid, NULL, NULL);
-		}
+		pid_t pid = wm_view_pid(view);
+		if (pid <= 0)
+			pid = -1;
 
 		strbuf_appendf(&sb,
 			"{\"id\":%u,\"app_id\":%s,\"title\":%s,"
@@ -235,7 +234,7 @@ cmd_get_windows(struct wm_server *server)
 			"\"maximized\":%s,\"fullscreen\":%s,"
 			"\"minimized\":%s,\"shaded\":%s,\"sticky\":%s,"
 			"\"layer\":\"%s\",\"decorated\":%s,"
-			"\"role\":\"%s\",\"pid\":%d,"
+			"\"role\":\"%s\",\"pid\":%d,\"xwayland\":%s,"
 			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
 			view->id,
 			app_id_esc, title_esc,
@@ -246,47 +245,15 @@ cmd_get_windows(struct wm_server *server)
 			view->decoration && view->decoration->shaded ? "true" : "false",
 			view->sticky ? "true" : "false",
 			view_layer_str(view->layer),
-			view->show_decoration ? "true" : "false",
+			view->decoration && view->show_decoration ?
+				"true" : "false",
 			role, (int)pid,
+			view->type == WM_VIEW_XWAYLAND ? "true" : "false",
 			geo.x, geo.y, geo.width, geo.height);
 		free(title_esc);
 		free(app_id_esc);
 	}
 
-#ifdef WM_HAS_XWAYLAND
-	/* Include XWayland views */
-	struct wm_xwayland_view *xview;
-	wl_list_for_each(xview, &server->xwayland_views, link) {
-		if (!xview->mapped)
-			continue;
-		if (!first) strbuf_append(&sb, ",");
-		first = false;
-
-		char *title_esc = wm_ipc_json_quote(xview->title);
-		char *app_id_esc = wm_ipc_json_quote(xview->app_id);
-
-		pid_t pid = xview->xsurface->pid;
-
-		strbuf_appendf(&sb,
-			"{\"id\":%u,\"app_id\":%s,\"title\":%s,"
-			"\"workspace\":-1,\"focused\":false,"
-			"\"maximized\":%s,\"fullscreen\":%s,"
-			"\"minimized\":false,\"shaded\":false,\"sticky\":false,"
-			"\"layer\":\"Normal\",\"decorated\":false,"
-			"\"role\":\"window\",\"pid\":%d,"
-			"\"xwayland\":true,"
-			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
-			(uint32_t)xview->xsurface->window_id,
-			app_id_esc, title_esc,
-			xview->maximized ? "true" : "false",
-			xview->fullscreen ? "true" : "false",
-			(int)pid,
-			xview->x, xview->y,
-			xview->xsurface->width, xview->xsurface->height);
-		free(title_esc);
-		free(app_id_esc);
-	}
-#endif
 
 	strbuf_append(&sb, "]}");
 	return strbuf_finish(&sb);
@@ -369,10 +336,28 @@ cmd_get_config(struct wm_server *server)
 }
 
 static char *
-cmd_command(struct wm_server *server, const char *action_str)
+cmd_command(struct wm_server *server, const char *action_str,
+	const char *window_str)
 {
 	if (!action_str || !*action_str) {
 		return make_error(_("missing action argument"));
+	}
+
+	/* Optional "window": <id> runs the command on that window */
+	struct wm_view *target = NULL;
+	if (window_str) {
+		int id;
+		if (!safe_atoi(window_str, &id) || id <= 0)
+			return make_error(_("invalid window id"));
+		struct wm_view *v;
+		wl_list_for_each(v, &server->views, link) {
+			if (v->id == (uint32_t)id && v->mapped) {
+				target = v;
+				break;
+			}
+		}
+		if (!target)
+			return make_error(_("no such window"));
 	}
 
 	/* Same command language as key bindings (MacroCmd, If, ...) */
@@ -390,7 +375,7 @@ cmd_command(struct wm_server *server, const char *action_str)
 		return make_error(_("action blocked by --ipc-no-exec"));
 	}
 
-	bool ok = wm_command_execute(server, cmd, NULL);
+	bool ok = wm_command_execute(server, cmd, target);
 	wm_command_destroy(cmd);
 	if (!ok) {
 		return make_error(_("action failed"));
@@ -530,8 +515,10 @@ wm_ipc_handle_command(struct wm_ipc_server *ipc,
 		result = cmd_get_config(server);
 	} else if (strcmp(command, "command") == 0) {
 		char *action = wm_ipc_json_get_string(json_request, "action");
-		result = cmd_command(server, action);
+		char *window = wm_ipc_json_get_string(json_request, "window");
+		result = cmd_command(server, action, window);
 		free(action);
+		free(window);
 	} else if (strcmp(command, "subscribe") == 0) {
 		char *events = wm_ipc_json_get_string(json_request, "events");
 		result = cmd_subscribe(client, events);

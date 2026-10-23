@@ -38,9 +38,8 @@ sync_view_to_group(struct wm_tab_group *group, struct wm_view *view)
 
 	/* Match size */
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(active->xdg_toplevel->base, &geo);
-	wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-		geo.width, geo.height);
+	wm_view_content_geometry(active, &geo);
+	wm_view_set_size(view, geo.width, geo.height);
 }
 
 /*
@@ -254,7 +253,7 @@ wm_tab_group_activate(struct wm_tab_group *group, struct wm_view *view)
 	}
 
 	/* Focus the newly active view */
-	wm_focus_view(view, view->xdg_toplevel->base->surface);
+	wm_focus_view(view, wm_view_surface(view));
 
 	wlr_log(WLR_DEBUG, "activated tab '%s'",
 		view->title ? view->title : "(untitled)");

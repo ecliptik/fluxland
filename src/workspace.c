@@ -407,13 +407,13 @@ wm_workspace_switch(struct wm_server *server, int index)
 		if (view->workspace == target &&
 		    view->scene_tree->node.enabled) {
 			wm_focus_view(view,
-				view->xdg_toplevel->base->surface);
+				wm_view_surface(view));
 			return;
 		}
 		/* Also consider sticky views */
 		if (view->sticky && view->scene_tree->node.enabled) {
 			wm_focus_view(view,
-				view->xdg_toplevel->base->surface);
+				wm_view_surface(view));
 			return;
 		}
 	}
@@ -523,7 +523,7 @@ wm_view_take_to_workspace(struct wm_server *server, struct wm_view *view,
 	}
 
 	wm_workspace_switch(server, index);
-	wm_focus_view(view, view->xdg_toplevel->base->surface);
+	wm_focus_view(view, wm_view_surface(view));
 }
 
 void

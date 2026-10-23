@@ -40,6 +40,14 @@ wm_workspace_get_active(struct wm_server *server)
 	return NULL;
 }
 
+struct wm_view *wm_view_parent(struct wm_view *view);
+struct wm_view *
+wm_view_parent(struct wm_view *view)
+{
+	(void)view;
+	return NULL;
+}
+
 #define TEST_DIR "/tmp/fluxland-test/wm-test-keybind"
 #define TEST_KEYS TEST_DIR "/keys"
 

@@ -524,8 +524,7 @@ static const char *view_get_property(struct wm_view *view,
 	} else if (streqi(property, "title")) {
 		return view->title ? view->title : "";
 	} else if (streqi(property, "transient")) {
-		bool is_transient = view->xdg_toplevel &&
-			view->xdg_toplevel->parent != NULL;
+		bool is_transient = wm_view_parent(view) != NULL;
 		return is_transient ? "yes" : "no";
 	}
 	return "";
@@ -587,9 +586,8 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 		}
 
 		/* Apply dimensions */
-		if (rule->has_dimensions && view->xdg_toplevel) {
-			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-				rule->width, rule->height);
+		if (rule->has_dimensions && wm_view_surface(view)) {
+			wm_view_set_size(view, rule->width, rule->height);
 		}
 
 		/* Apply position */
@@ -629,11 +627,9 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 				if (area.width > 0 && area.height > 0) {
 					/* Get view dimensions */
 					int vw = 0, vh = 0;
-					if (view->xdg_toplevel) {
+					if (wm_view_surface(view)) {
 						struct wlr_box geo;
-						wlr_xdg_surface_get_geometry(
-							view->xdg_toplevel
-							    ->base,
+						wm_view_content_geometry(view,
 							&geo);
 						vw = geo.width;
 						vh = geo.height;
@@ -701,7 +697,7 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 
 		/* Apply maximized */
 		if (rule->has_maximized && rule->maximized &&
-		    view->xdg_toplevel && view->server) {
+		    wm_view_surface(view) && view->server) {
 			/* Save current geometry for later restore */
 			wm_view_get_geometry(view, &view->saved_geometry);
 
@@ -716,25 +712,20 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 				wlr_output_layout_get_box(
 					view->server->output_layout,
 					max_output, &max_box);
-				wlr_xdg_toplevel_set_size(
-					view->xdg_toplevel,
-					max_box.width, max_box.height);
+				wm_view_set_size(view, max_box.width, max_box.height);
 				view->x = max_box.x;
 				view->y = max_box.y;
 			}
 
 			view->maximized = true;
-			wlr_xdg_toplevel_set_maximized(
-				view->xdg_toplevel, true);
+			wm_view_set_maximized_state(view, true);
 		}
 
 		/* Apply fullscreen */
 		if (rule->has_fullscreen && rule->fullscreen) {
 			view->fullscreen = true;
-			if (view->xdg_toplevel) {
-				wlr_xdg_toplevel_set_fullscreen(
-					view->xdg_toplevel, true);
-			}
+			if (wm_view_surface(view))
+				wm_view_set_fullscreen_state(view, true);
 		}
 
 		/* Apply shaded */

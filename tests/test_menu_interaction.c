@@ -993,6 +993,12 @@ PangoDirection find_base_dir(const char *text)
 	return PANGO_DIRECTION_NEUTRAL;
 }
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_CLOSE
+#define VIEW_STUB_KILL
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "pixel_buffer.c"
 #include "menu_parse.c"
 #include "menu_render.c"

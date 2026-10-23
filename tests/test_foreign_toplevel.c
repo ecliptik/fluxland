@@ -522,6 +522,11 @@ wm_view_unminimize(struct wm_view *view)
 
 /* --- Include foreign_toplevel source directly --- */
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_CLOSE
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "foreign_toplevel.c"
 
 /* --- Test helpers --- */

@@ -34,8 +34,8 @@
 
 /* --- Focus Management --- */
 
-void
-wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
+static void
+focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 {
 	if (!view) {
 		return;
@@ -47,7 +47,7 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 
 	/* Callers may pass NULL for "the view's own surface" */
 	if (!surface)
-		surface = view->xdg_toplevel->base->surface;
+		surface = wm_view_surface(view);
 	if (prev_surface == surface) {
 		server->focus_user_initiated = false;
 		return;
@@ -72,11 +72,10 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 
 	/* Deactivate the previously focused toplevel */
 	if (prev_surface) {
-		struct wlr_xdg_toplevel *prev_toplevel =
-			wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
-		if (prev_toplevel) {
-			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
-		}
+		struct wm_view *prev_view =
+			wm_view_from_surface(server, prev_surface);
+		if (prev_view && prev_view != view)
+			wm_view_set_activated(prev_view, false);
 		/* Update decoration on previously focused view */
 		if (server->focused_view && server->focused_view->decoration) {
 			wm_decoration_set_focused(
@@ -92,19 +91,21 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 		}
 	}
 
-	/* Move view to front of the views list (stacking order) */
-	wl_list_remove(&view->link);
-	wl_list_insert(&server->views, &view->link);
+	if (raise) {
+		/* Move view to front of the views list (stacking order) */
+		wl_list_remove(&view->link);
+		wl_list_insert(&server->views, &view->link);
+
+		/* Raise in the scene graph */
+		wlr_scene_node_raise_to_top(&view->scene_tree->node);
+	}
 
 	/* Focus order stays frozen while NextWindow cycling is active */
 	if (!server->focus_cycle.active)
 		view->focus_seq = ++server->focus_seq_counter;
 
-	/* Raise in the scene graph */
-	wlr_scene_node_raise_to_top(&view->scene_tree->node);
-
 	/* Activate the new toplevel */
-	wlr_xdg_toplevel_set_activated(view->xdg_toplevel, true);
+	wm_view_set_activated(view, true);
 
 	/* Track focused view */
 	server->focused_view = view;
@@ -166,22 +167,22 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 	if (keyboard) {
 		wlr_seat_keyboard_notify_enter(seat,
-			view->xdg_toplevel->base->surface,
+			wm_view_surface(view),
 			keyboard->keycodes, keyboard->num_keycodes,
 			&keyboard->modifiers);
 	}
 
 	/* Notify text input relay of focus change for IME */
 	wm_text_input_focus_change(server,
-		view->xdg_toplevel->base->surface);
+		wm_view_surface(view));
 
 	/* Update pointer constraint for the newly focused surface */
 	wm_protocols_update_pointer_constraint(server,
-		view->xdg_toplevel->base->surface);
+		wm_view_surface(view));
 
 	/* Update keyboard shortcuts inhibitor for the newly focused surface */
 	wm_protocols_update_kb_shortcuts_inhibitor(server,
-		view->xdg_toplevel->base->surface);
+		wm_view_surface(view));
 
 	/* Update toolbar icon bar to reflect focus change */
 	wm_toolbar_update_iconbar(server->toolbar);
@@ -191,16 +192,27 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 }
 
 void
+wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
+{
+	focus_view(view, surface, true);
+}
+
+void
+wm_focus_view_noraise(struct wm_view *view)
+{
+	focus_view(view, NULL, false);
+}
+
+void
 wm_unfocus_current(struct wm_server *server)
 {
 	struct wlr_surface *prev_surface =
 		server->seat->keyboard_state.focused_surface;
 	if (prev_surface) {
-		struct wlr_xdg_toplevel *prev_toplevel =
-			wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
-		if (prev_toplevel) {
-			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
-		}
+		struct wm_view *prev_view =
+			wm_view_from_surface(server, prev_surface);
+		if (prev_view)
+			wm_view_set_activated(prev_view, false);
 	}
 	/* Notify text input relay of focus loss for IME */
 	wm_text_input_focus_change(server, NULL);
@@ -231,7 +243,7 @@ wm_focus_fallback(struct wm_server *server, struct wm_view *except)
 			best = v;
 	}
 	if (best)
-		wm_focus_view(best, best->xdg_toplevel->base->surface);
+		wm_focus_view(best, wm_view_surface(best));
 	else
 		wm_unfocus_current(server);
 }
@@ -246,7 +258,7 @@ wm_focus_next_view(struct wm_server *server)
 	/* The last entry in the list is the bottom of the stack */
 	struct wm_view *next = wl_container_of(
 		server->views.prev, next, link);
-	wm_focus_view(next, next->xdg_toplevel->base->surface);
+	wm_focus_view(next, wm_view_surface(next));
 }
 
 void
@@ -265,7 +277,7 @@ wm_focus_prev_view(struct wm_server *server)
 	if (&second->link == &server->views) {
 		return; /* only one view */
 	}
-	wm_focus_view(second, second->xdg_toplevel->base->surface);
+	wm_focus_view(second, wm_view_surface(second));
 }
 
 void
@@ -392,42 +404,8 @@ wm_focus_update_for_cursor(struct wm_server *server,
 		 * Sloppy focus: focus the view under the pointer but
 		 * do NOT raise it. Only raising happens on click.
 		 */
-		struct wlr_seat *seat = server->seat;
-		struct wlr_surface *prev_surface =
-			seat->keyboard_state.focused_surface;
-
-		if (prev_surface) {
-			struct wlr_xdg_toplevel *prev_toplevel =
-				wlr_xdg_toplevel_try_from_wlr_surface(
-					prev_surface);
-			if (prev_toplevel) {
-				wlr_xdg_toplevel_set_activated(
-					prev_toplevel, false);
-			}
-		}
-
-		/* Apply unfocus opacity to previous view */
-		if (server->focused_view) {
-			wm_view_set_opacity(server->focused_view,
-				server->focused_view->unfocus_alpha);
-			wm_foreign_toplevel_set_activated(
-				server->focused_view, false);
-		}
-
-		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, true);
-		server->focused_view = view;
-
-		/* Apply focus opacity to newly focused view */
-		wm_view_set_opacity(view, view->focus_alpha);
-		wm_foreign_toplevel_set_activated(view, true);
-
-		struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-		if (keyboard) {
-			wlr_seat_keyboard_notify_enter(seat,
-				view->xdg_toplevel->base->surface,
-				keyboard->keycodes, keyboard->num_keycodes,
-				&keyboard->modifiers);
-		}
+		server->focus_user_initiated = true;
+		wm_focus_view_noraise(view);
 	}
 }
 
@@ -438,7 +416,8 @@ deiconify_view(struct wm_view *view)
 {
 	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
 	wm_foreign_toplevel_set_minimized(view, false);
-	wm_focus_view(view, view->xdg_toplevel->base->surface);
+	wm_view_set_minimized_state(view, false);
+	wm_focus_view(view, wm_view_surface(view));
 	wm_view_raise(view);
 	wm_toolbar_update_iconbar(view->server->toolbar);
 
@@ -603,7 +582,8 @@ wm_view_deiconify_last(struct wm_server *server)
 		if (view->workspace != ws && !view->sticky) {
 			continue;
 		}
-		if (!view->scene_tree->node.enabled) {
+		if (view->mapped && !view->docked &&
+		    !view->scene_tree->node.enabled) {
 			deiconify_view(view);
 			return;
 		}
@@ -615,10 +595,12 @@ wm_view_deiconify_all(struct wm_server *server)
 {
 	struct wm_view *view;
 	wl_list_for_each(view, &server->views, link) {
-		if (!view->scene_tree->node.enabled) {
+		if (view->mapped && !view->docked &&
+		    !view->scene_tree->node.enabled) {
 			wlr_scene_node_set_enabled(
 				&view->scene_tree->node, true);
 			wm_foreign_toplevel_set_minimized(view, false);
+			wm_view_set_minimized_state(view, false);
 		}
 	}
 	wm_toolbar_update_iconbar(server->toolbar);
@@ -633,10 +615,12 @@ wm_view_deiconify_all_workspace(struct wm_server *server)
 		if (view->workspace != ws && !view->sticky) {
 			continue;
 		}
-		if (!view->scene_tree->node.enabled) {
+		if (view->mapped && !view->docked &&
+		    !view->scene_tree->node.enabled) {
 			wlr_scene_node_set_enabled(
 				&view->scene_tree->node, true);
 			wm_foreign_toplevel_set_minimized(view, false);
+			wm_view_set_minimized_state(view, false);
 		}
 	}
 	wm_toolbar_update_iconbar(server->toolbar);
@@ -699,5 +683,5 @@ wm_view_focus_direction(struct wm_server *server, int dx, int dy)
 	}
 
 	if (best)
-		wm_focus_view(best, best->xdg_toplevel->base->surface);
+		wm_focus_view(best, wm_view_surface(best));
 }

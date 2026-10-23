@@ -869,23 +869,13 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		break;
 
 	case WM_MENU_CLOSE:
-		if (server->focused_view &&
-		    server->focused_view->xdg_toplevel) {
-			wlr_xdg_toplevel_send_close(
-				server->focused_view->xdg_toplevel);
-		}
+		if (server->focused_view)
+			wm_view_close(server->focused_view);
 		break;
 
 	case WM_MENU_KILL:
-		if (server->focused_view &&
-		    server->focused_view->xdg_toplevel &&
-		    server->focused_view->xdg_toplevel->base->resource) {
-			struct wl_client *client = wl_resource_get_client(
-				server->focused_view->xdg_toplevel->base->resource);
-			if (client) {
-				wl_client_destroy(client);
-			}
-		}
+		if (server->focused_view)
+			wm_view_kill(server->focused_view);
 		break;
 
 	case WM_MENU_RAISE:
@@ -964,7 +954,7 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		}
 		/* Focus and raise */
 		wm_focus_view(target,
-			target->xdg_toplevel->base->surface);
+			wm_view_surface(target));
 		wm_view_raise(target);
 		break;
 	}

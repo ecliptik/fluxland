@@ -75,7 +75,7 @@ static void
 view_dims(struct wm_view *view, int *w, int *h)
 {
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+	wm_view_content_geometry(view, &geo);
 	*w = geo.width > 0 ? geo.width : 200;
 	*h = geo.height > 0 ? geo.height : 200;
 }
@@ -551,10 +551,9 @@ arrange_view(struct wm_view *view, int x, int y, int w, int h)
 	view->x = x;
 	view->y = y;
 	/* Tell client it's being tiled so it fills exact size without rounding */
-	wlr_xdg_toplevel_set_tiled(view->xdg_toplevel,
-		WLR_EDGE_TOP | WLR_EDGE_BOTTOM |
+	wm_view_set_tiled_state(view, WLR_EDGE_TOP | WLR_EDGE_BOTTOM |
 		WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
-	wlr_xdg_toplevel_set_size(view->xdg_toplevel, w, h);
+	wm_view_set_size(view, w, h);
 	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
 }
 

@@ -348,6 +348,10 @@ static void
 wm_drm_lease_offer_output(struct wm_server *s, struct wlr_output *o)
 { (void)s; (void)o; }
 
+void
+wm_xwayland_sync_positions(struct wm_server *s)
+{ (void)s; }
+
 static void
 wm_layer_shell_arrange(struct wm_output *o)
 { (void)o; }

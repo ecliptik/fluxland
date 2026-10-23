@@ -28,7 +28,7 @@ handle_request_activate(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view =
 		wl_container_of(listener, view, foreign_toplevel_request_activate);
-	wm_focus_view(view, view->xdg_toplevel->base->surface);
+	wm_focus_view(view, wm_view_surface(view));
 }
 
 static void
@@ -77,7 +77,7 @@ handle_request_close(struct wl_listener *listener, void *data)
 {
 	struct wm_view *view =
 		wl_container_of(listener, view, foreign_toplevel_request_close);
-	wlr_xdg_toplevel_send_close(view->xdg_toplevel);
+	wm_view_close(view);
 }
 
 /* --- Public API --- */

@@ -20,6 +20,12 @@
 #include "view.h"
 #include "workspace.h"
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_xdg_shell.h>
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 /* --- Stub call counters for verification --- */
 
 static int stub_update_iconbar_count;

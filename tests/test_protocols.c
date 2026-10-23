@@ -812,6 +812,10 @@ bool wm_protocols_kb_shortcuts_inhibited(struct wm_server *server);
 
 /* --- Include protocols.c source directly --- */
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "protocols.c"
 
 /* --- Test helpers --- */
@@ -1341,9 +1345,11 @@ test_xdg_activation_focus_view(void)
 	view.title = "test window";
 	wl_list_insert(&server.views, &view.link);
 
+	/* The request names the toplevel's own surface */
+	(void)surface;
 	struct wlr_xdg_activation_v1_request_activate_event event = {
 		.token = &token,
-		.surface = &surface,
+		.surface = &toplevel_surface,
 	};
 
 	server.xdg_activation_request.notify(

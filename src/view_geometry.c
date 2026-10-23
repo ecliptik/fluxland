@@ -63,13 +63,12 @@ get_view_output_area(struct wm_view *view, struct wlr_box *area)
 void
 wm_view_toggle_maximize(struct wm_view *view)
 {
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->maximized) {
 		/* Restore saved geometry */
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			view->saved_geometry.width,
+		wm_view_set_size(view, view->saved_geometry.width,
 			view->saved_geometry.height);
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			view->saved_geometry.x, view->saved_geometry.y);
@@ -115,8 +114,7 @@ wm_view_toggle_maximize(struct wm_view *view)
 				}
 			}
 
-			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-				max_box.width, max_box.height);
+			wm_view_set_size(view, max_box.width, max_box.height);
 			wlr_scene_node_set_position(
 				&view->scene_tree->node,
 				max_box.x, max_box.y);
@@ -126,8 +124,7 @@ wm_view_toggle_maximize(struct wm_view *view)
 		view->maximized = true;
 	}
 
-	wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
-		view->maximized);
+	wm_view_set_maximized_state(view, view->maximized);
 	wm_foreign_toplevel_set_maximized(view, view->maximized);
 }
 
@@ -136,13 +133,12 @@ wm_view_toggle_maximize(struct wm_view *view)
 void
 wm_view_toggle_fullscreen(struct wm_view *view)
 {
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->fullscreen) {
 		/* Restore from fullscreen */
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			view->saved_geometry.width,
+		wm_view_set_size(view, view->saved_geometry.width,
 			view->saved_geometry.height);
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			view->saved_geometry.x, view->saved_geometry.y);
@@ -195,8 +191,7 @@ wm_view_toggle_fullscreen(struct wm_view *view)
 			wlr_output_layout_get_box(
 				view->server->output_layout,
 				output, &output_box);
-			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-				output_box.width, output_box.height);
+			wm_view_set_size(view, output_box.width, output_box.height);
 			wlr_scene_node_set_position(
 				&view->scene_tree->node,
 				output_box.x, output_box.y);
@@ -226,8 +221,7 @@ wm_view_toggle_fullscreen(struct wm_view *view)
 			view->server->layer_overlay);
 	}
 
-	wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel,
-		view->fullscreen);
+	wm_view_set_fullscreen_state(view, view->fullscreen);
 	wm_foreign_toplevel_set_fullscreen(view, view->fullscreen);
 }
 
@@ -240,14 +234,13 @@ wm_view_maximize_vert(struct wm_view *view)
 		return;
 	}
 
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->maximized_vert) {
 		/* Restore saved y and height */
 		view->y = view->saved_geometry.y;
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			0, view->saved_geometry.height);
+		wm_view_set_size(view, 0, view->saved_geometry.height);
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			view->x, view->y);
 		view->maximized_vert = false;
@@ -269,8 +262,7 @@ wm_view_maximize_vert(struct wm_view *view)
 				view->server->output_layout,
 				output, &output_box);
 			view->y = output_box.y;
-			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-				0, output_box.height);
+			wm_view_set_size(view, 0, output_box.height);
 			wlr_scene_node_set_position(
 				&view->scene_tree->node,
 				view->x, view->y);
@@ -286,14 +278,13 @@ wm_view_maximize_horiz(struct wm_view *view)
 		return;
 	}
 
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->maximized_horiz) {
 		/* Restore saved x and width */
 		view->x = view->saved_geometry.x;
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			view->saved_geometry.width, 0);
+		wm_view_set_size(view, view->saved_geometry.width, 0);
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			view->x, view->y);
 		view->maximized_horiz = false;
@@ -315,8 +306,7 @@ wm_view_maximize_horiz(struct wm_view *view)
 				view->server->output_layout,
 				output, &output_box);
 			view->x = output_box.x;
-			wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-				output_box.width, 0);
+			wm_view_set_size(view, output_box.width, 0);
 			wlr_scene_node_set_position(
 				&view->scene_tree->node,
 				view->x, view->y);
@@ -333,15 +323,14 @@ wm_view_lhalf(struct wm_view *view)
 	if (!view)
 		return;
 
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->lhalf) {
 		/* Toggle off — restore saved geometry */
 		view->x = view->saved_geometry.x;
 		view->y = view->saved_geometry.y;
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			view->saved_geometry.width,
+		wm_view_set_size(view, view->saved_geometry.width,
 			view->saved_geometry.height);
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			view->x, view->y);
@@ -360,8 +349,7 @@ wm_view_lhalf(struct wm_view *view)
 	int half_w = area.width / 2;
 	view->x = area.x;
 	view->y = area.y;
-	wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-		half_w, area.height);
+	wm_view_set_size(view, half_w, area.height);
 	wlr_scene_node_set_position(&view->scene_tree->node,
 		view->x, view->y);
 
@@ -376,15 +364,14 @@ wm_view_rhalf(struct wm_view *view)
 	if (!view)
 		return;
 
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	if (view->rhalf) {
 		/* Toggle off — restore saved geometry */
 		view->x = view->saved_geometry.x;
 		view->y = view->saved_geometry.y;
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			view->saved_geometry.width,
+		wm_view_set_size(view, view->saved_geometry.width,
 			view->saved_geometry.height);
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			view->x, view->y);
@@ -403,8 +390,7 @@ wm_view_rhalf(struct wm_view *view)
 	int half_w = area.width / 2;
 	view->x = area.x + half_w;
 	view->y = area.y;
-	wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-		half_w, area.height);
+	wm_view_set_size(view, half_w, area.height);
 	wlr_scene_node_set_position(&view->scene_tree->node,
 		view->x, view->y);
 
@@ -421,7 +407,7 @@ wm_view_resize_by(struct wm_view *view, int dw, int dh)
 	if (!view)
 		return;
 
-	if (!view->xdg_toplevel || !view->scene_tree->node.enabled)
+	if (!wm_view_surface(view) || !view->scene_tree->node.enabled)
 		return;
 
 	struct wlr_box geo;
@@ -429,8 +415,7 @@ wm_view_resize_by(struct wm_view *view, int dw, int dh)
 	int new_w = geo.width + dw;
 	int new_h = geo.height + dh;
 	if (new_w > 10 && new_h > 10)
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			new_w, new_h);
+		wm_view_set_size(view, new_w, new_h);
 }
 
 /* --- Multi-monitor helpers --- */

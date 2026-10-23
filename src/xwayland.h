@@ -42,54 +42,18 @@ struct wm_xwayland_atoms {
 
 /* Classification of an X11 window for compositor management */
 enum wm_xw_window_class {
-	WM_XW_MANAGED,      /* normal managed view with decorations */
-	WM_XW_FLOATING,     /* dialog/utility: floating, possibly modal */
-	WM_XW_SPLASH,       /* splash screen: undecorated, centered */
-	WM_XW_UNMANAGED,    /* tooltip/notification/OR: overlay, no stacking */
+	WM_XW_MANAGED,      /* normal window */
+	WM_XW_FLOATING,     /* dialog/utility/transient: decorated, floating */
+	WM_XW_SPLASH,       /* splash screen: undecorated */
+	WM_XW_POPUP,        /* tooltip/notification/menu (not OR): no frame */
+	WM_XW_DOCK,         /* _NET_WM_WINDOW_TYPE_DOCK: goes to the slit */
+	WM_XW_DESKTOP,      /* _NET_WM_WINDOW_TYPE_DESKTOP: desktop layer */
+	WM_XW_UNMANAGED,    /* override-redirect: drawn, never managed */
 };
 
-struct wm_xwayland_view {
-	struct wm_server *server;
-	struct wlr_xwayland_surface *xsurface;
-	struct wlr_scene_tree *scene_tree;
-
-	/* Position in layout coordinates */
-	int x, y;
-	bool mapped;
-
-	/* Saved geometry for maximize/fullscreen restore */
-	struct wlr_box saved_geometry;
-	bool maximized;
-	bool fullscreen;
-
-	/* Window classification */
-	enum wm_xw_window_class window_class;
-
-	/* Metadata (mirrored from X11 properties) */
-	char *title;
-	char *app_id; /* from WM_CLASS */
-
-	/* Event listeners */
-	struct wl_listener map;
-	struct wl_listener unmap;
-	struct wl_listener destroy;
-	struct wl_listener associate;
-	struct wl_listener dissociate;
-	struct wl_listener request_configure;
-	struct wl_listener request_move;
-	struct wl_listener request_resize;
-	struct wl_listener request_maximize;
-	struct wl_listener request_fullscreen;
-	struct wl_listener request_minimize;
-	struct wl_listener request_activate;
-	struct wl_listener set_title;
-	struct wl_listener set_class;
-	struct wl_listener set_hints;
-	struct wl_listener set_override_redirect;
-
-	/* List membership */
-	struct wl_list link; /* wm_server.xwayland_views */
-};
+enum wm_xw_window_class wm_xwayland_classify(
+	struct wlr_xwayland_surface *xsurface,
+	const struct wm_xwayland_atoms *atoms);
 
 #endif /* WM_HAS_XWAYLAND */
 
@@ -105,5 +69,11 @@ void wm_xwayland_init(struct wm_server *server);
  * No-op when compiled without WM_HAS_XWAYLAND.
  */
 void wm_xwayland_finish(struct wm_server *server);
+
+/*
+ * Send X11 windows their new position after they moved. Called before
+ * each frame, so every code path that moves a window is covered.
+ */
+void wm_xwayland_sync_positions(struct wm_server *server);
 
 #endif /* WM_XWAYLAND_H */

@@ -39,6 +39,11 @@
 #include "workspace.h"
 #include "foreign_toplevel.h"
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_PID
+#define VIEW_STUB_PARENT
+#include "view_backend_stubs.c"
+
 /* --- Screen cast stubs (referenced by ipc_commands.c) --- */
 
 
@@ -226,7 +231,7 @@ setup(void)
 	wl_list_init(&test_server.keybindings);
 	wl_list_init(&test_server.keymodes);
 #ifdef WM_HAS_XWAYLAND
-	wl_list_init(&test_server.xwayland_views);
+	wl_list_init(&test_server.xwayland_unmanaged);
 #endif
 	wl_list_init(&test_ipc.clients);
 
@@ -250,6 +255,7 @@ setup_with_view(void)
 	setup();
 	memset(&mock_view, 0, sizeof(mock_view));
 	mock_view.server = &test_server;
+	mock_view.mapped = true;
 	mock_view.focus_alpha = 255;
 	mock_view.unfocus_alpha = 200;
 	test_server.focused_view = &mock_view;
@@ -1277,6 +1283,7 @@ setup_with_view_list(void)
 		mock_views[i].xdg_toplevel = &mock_toplevels[i];
 		mock_views[i].scene_tree = &mock_scene_trees[i];
 		mock_views[i].workspace = &mock_workspace;
+		mock_views[i].mapped = true;
 		mock_views[i].request_minimize.notify = mock_request_minimize;
 		wl_list_insert(test_server.views.prev, &mock_views[i].link);
 	}
@@ -1548,6 +1555,43 @@ test_subscribe_window_title(void)
 
 
 
+/* Test: "window" targets a specific window by id */
+static void
+test_command_window_target(void)
+{
+	setup_with_view_list();
+	reset_recorded();
+	mock_views[1].id = 7;
+	char *r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Close\","
+		"\"window\":7}");
+	assert(response_is_success(r));
+	free(r);
+	assert(recorded_count == 1);
+	assert(recorded[0].action == WM_ACTION_CLOSE);
+	assert(recorded[0].target == &mock_views[1]);
+
+	/* Unknown, unmapped and malformed ids are errors */
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Close\","
+		"\"window\":99}");
+	assert(response_is_error(r));
+	free(r);
+	mock_views[1].mapped = false;
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Close\","
+		"\"window\":7}");
+	assert(response_is_error(r));
+	free(r);
+	r = wm_ipc_handle_command(&test_ipc, &test_client,
+		"{\"command\":\"command\",\"action\":\"Close\","
+		"\"window\":\"x\"}");
+	assert(response_is_error(r));
+	free(r);
+	assert(recorded_count == 1);
+	printf("  PASS: test_command_window_target\n");
+}
+
 int
 main(void)
 {
@@ -1584,6 +1628,7 @@ main(void)
 	test_command_if_else();
 	test_command_no_exec_blocks();
 	test_command_exec_allowed();
+	test_command_window_target();
 	test_command_action_failure();
 	test_command_malformed();
 

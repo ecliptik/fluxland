@@ -328,7 +328,8 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 		goto err;
 	}
 
-	if (listen(ipc->socket_fd, 8) < 0) {
+	/* Bursts of short-lived clients (bars, scripts) queue up here */
+	if (listen(ipc->socket_fd, SOMAXCONN) < 0) {
 		wlr_log(WLR_ERROR, "IPC: listen() failed: %s",
 			strerror(errno));
 		goto err;

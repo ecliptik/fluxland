@@ -492,6 +492,10 @@ void wm_json_escape(char *dst, size_t dst_size, const char *src)
 
 /* --- Include workspace source directly --- */
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "workspace.c"
 
 /* --- Test helpers --- */

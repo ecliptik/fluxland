@@ -174,21 +174,14 @@ handle_xdg_activation_request(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	struct wlr_xdg_toplevel *toplevel =
-		wlr_xdg_toplevel_try_from_wlr_surface(event->surface);
-	if (!toplevel) {
-		return;
-	}
-
-	/* Find the wm_view for this toplevel */
+	/* Find the window whose surface asked to be activated */
 	struct wm_view *view;
 	wl_list_for_each(view, &server->views, link) {
-		if (view->xdg_toplevel == toplevel) {
+		if (wm_view_surface(view) == event->surface) {
 			wlr_log(WLR_INFO,
 				"xdg-activation: focusing '%s'",
 				view->title ? view->title : "(untitled)");
-			wm_focus_view(view,
-				toplevel->base->surface);
+			wm_focus_view(view, event->surface);
 			return;
 		}
 	}

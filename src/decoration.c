@@ -387,7 +387,7 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 
 	/* Get client surface size */
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, &geo);
+	wm_view_content_geometry(view, &geo);
 	deco->content_width = geo.width > 0 ? geo.width : 640;
 	deco->content_height = geo.height > 0 ? geo.height : 480;
 
@@ -1486,8 +1486,7 @@ wm_decoration_refresh_geometry(struct wm_decoration *decoration,
 	}
 
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(decoration->view->xdg_toplevel->base,
-		&geo);
+	wm_view_content_geometry(decoration->view, &geo);
 	if (geo.width > 0 && geo.height > 0 &&
 	    (geo.width != decoration->content_width ||
 	     geo.height != decoration->content_height)) {

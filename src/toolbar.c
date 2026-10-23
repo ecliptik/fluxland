@@ -475,8 +475,8 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 			break;
 		}
 
-		/* Must have a valid xdg surface to be a real window */
-		if (!view->xdg_toplevel || !view->xdg_toplevel->base) {
+		/* Mapped, managed windows only; apps [IconHidden] skips */
+		if (!view->mapped || view->docked || view->icon_hidden) {
 			continue;
 		}
 

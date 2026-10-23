@@ -1252,6 +1252,13 @@ wm_window_list_finish(struct wm_window_list_spec *spec)
 	(void)spec;
 }
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_CLOSE
+#define VIEW_STUB_KILL
+#define VIEW_STUB_SET_SIZE
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "keyboard_actions.c"
 #include "keyboard.c"
 

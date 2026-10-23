@@ -42,6 +42,14 @@ wm_workspace_get_active(struct wm_server *server)
 	return NULL;
 }
 
+struct wm_view *wm_view_parent(struct wm_view *view);
+struct wm_view *
+wm_view_parent(struct wm_view *view)
+{
+	(void)view;
+	return NULL;
+}
+
 static void
 setup(void)
 {

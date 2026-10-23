@@ -45,6 +45,8 @@ static const char usage[] =
 	"Options:\n"
 	"  -s <path>  Socket path (default: auto-detect via $FLUXLAND_SOCK\n"
 	"             or $XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock)\n"
+	"  -w <id>    Run the action on window <id> (see get_windows)\n"
+	"             instead of the focused window\n"
 	"  -r         Raw output (no pretty printing)\n"
 	"  -h         Show this help\n"
 	"\n"
@@ -52,12 +54,14 @@ static const char usage[] =
 	"  fluxland-ctl action Close\n"
 	"  fluxland-ctl action Workspace 3\n"
 	"  fluxland-ctl action Exec foot\n"
+	"  fluxland-ctl -w 12 action Close\n"
+	"  fluxland-ctl action 'MacroCmd {Raise} {Focus}'\n"
 	"  fluxland-ctl action ArrangeWindows\n"
 	"  fluxland-ctl get_windows\n"
 	"  fluxland-ctl subscribe window\n"
 	"  fluxland-ctl list-actions\n";
 
-/* Available actions table — must match ipc_commands.c action_table */
+/* Action summary for list-actions (the full list is keybind.c's table) */
 struct action_info {
 	const char *name;
 	const char *description;
@@ -292,6 +296,9 @@ read_response(int fd)
 	return buf;
 }
 
+/* -w: window id for "command" requests (NULL = focused window) */
+static const char *target_window;
+
 /* Build a JSON request from command and arguments.
  * The wire command for "action" is "command" (compositor expects "command"). */
 static char *
@@ -328,9 +335,15 @@ build_request(const char *command, int argc, char **argv)
 			if (!new_buf) { free(buf); free(escaped); return NULL; }
 			buf = new_buf;
 		}
-		snprintf(buf, cap,
-			"{\"command\":\"command\",\"action\":%s}\n",
-			escaped);
+		if (target_window)
+			snprintf(buf, cap,
+				"{\"command\":\"command\",\"action\":%s,"
+				"\"window\":%s}\n",
+				escaped, target_window);
+		else
+			snprintf(buf, cap,
+				"{\"command\":\"command\",\"action\":%s}\n",
+				escaped);
 		free(escaped);
 	} else if (strcmp(command, "subscribe") == 0) {
 		/* Build events string from remaining args */
@@ -400,10 +413,20 @@ main(int argc, char *argv[])
 	char *socket_path = NULL;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "s:rh")) != -1) {
+	while ((opt = getopt(argc, argv, "s:w:rh")) != -1) {
 		switch (opt) {
 		case 's':
 			socket_path = strdup(optarg);
+			break;
+		case 'w':
+			/* Digits only: it goes into the JSON request as-is */
+			if (!*optarg || strspn(optarg, "0123456789") !=
+			    strlen(optarg) || strlen(optarg) > 10) {
+				fprintf(stderr, "error: -w needs a window id\n");
+				free(socket_path);
+				return 1;
+			}
+			target_window = optarg;
 			break;
 		case 'r':
 			/* raw mode is default currently */

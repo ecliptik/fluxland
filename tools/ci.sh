@@ -43,7 +43,7 @@ deps)
 		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev xwayland \
 		libsystemd-dev \
 		python3 python3-pytest python3-pytest-timeout python3-pil \
-		foot grim wtype wlrctl fonts-dejavu-core
+		foot grim wtype wlrctl xterm x11-utils fonts-dejavu-core
 	;;
 build)
 	meson setup ci-build --wipe -Dwerror=false

@@ -469,6 +469,10 @@ wm_client_pattern_property(struct wm_server *server, struct wm_view *view,
 
 	switch (prop) {
 	case WM_PROP_NAME:
+		/* X11: WM_CLASS instance; xdg-shell only has the app_id */
+		snprintf(buf, len, "%s", view->instance ? view->instance :
+			view->app_id ? view->app_id : "");
+		break;
 	case WM_PROP_CLASS:
 		snprintf(buf, len, "%s", view->app_id ? view->app_id : "");
 		break;
@@ -476,11 +480,11 @@ wm_client_pattern_property(struct wm_server *server, struct wm_view *view,
 		snprintf(buf, len, "%s", view->title ? view->title : "");
 		break;
 	case WM_PROP_ROLE:
-		/* xdg-shell has no role */
+		/* X11 WM_WINDOW_ROLE; xdg-shell has no role */
+		snprintf(buf, len, "%s", view->role ? view->role : "");
 		break;
 	case WM_PROP_TRANSIENT:
-		snprintf(buf, len, "%s", yes_no(view->xdg_toplevel &&
-			view->xdg_toplevel->parent));
+		snprintf(buf, len, "%s", yes_no(wm_view_parent(view)));
 		break;
 	case WM_PROP_MAXIMIZED:
 		snprintf(buf, len, "%s", yes_no(view->maximized));

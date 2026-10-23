@@ -647,6 +647,10 @@ void wm_perf_probe_reset(struct wm_perf_probe *probe) {
 /* --- Include decoration.c --- */
 
 /* We need decoration.h declarations before including .c */
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_CONTENT_GEOMETRY
+#include "view_backend_stubs.c"
+
 #include "pixel_buffer.c"
 #include "decoration.c"
 

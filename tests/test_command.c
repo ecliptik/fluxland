@@ -77,6 +77,13 @@ wm_workspace_get_active(struct wm_server *server)
 	return server->current_workspace;
 }
 
+struct wm_view *
+wm_view_parent(struct wm_view *view)
+{
+	(void)view;
+	return NULL;
+}
+
 /* --- Fixture --- */
 
 #define NVIEWS 4

@@ -397,6 +397,10 @@ struct wm_view {
 	int focus_alpha;
 	int unfocus_alpha;
 	struct wm_animation *animation;
+	bool mapped;
+	bool docked;
+	bool icon_hidden;
+	bool urgent;
 	struct wm_decoration *decoration;
 };
 
@@ -669,6 +673,10 @@ deiconify_view(struct wm_view *view)
 /* --- Include toolbar source directly --- */
 
 #include "toolbar.h"
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "pixel_buffer.c"
 #include "toolbar.c"
 
@@ -1066,9 +1074,11 @@ make_test_view(int idx, const char *title, struct wm_workspace *ws,
 	view.server = &test_server;
 	view.xdg_toplevel = &test_toplevels[idx];
 	view.scene_tree = &test_view_trees[idx];
+	view.mapped = true;
 	view.title = (char *)title;
 	view.workspace = ws;
 	view.sticky = false;
+	view.mapped = true;
 	return view;
 }
 
@@ -2042,6 +2052,7 @@ test_collect_iconbar_workspace_icons_mode(void)
 	v1.server = &test_server;
 	v1.xdg_toplevel = &tl;
 	v1.scene_tree = &view_tree;
+	v1.mapped = true;
 	v1.workspace = &ws;
 	v1.title = "Iconified";
 
@@ -2055,6 +2066,7 @@ test_collect_iconbar_workspace_icons_mode(void)
 	v2.server = &test_server;
 	v2.xdg_toplevel = &tl;
 	v2.scene_tree = &view_tree2;
+	v2.mapped = true;
 	v2.workspace = &ws;
 	v2.title = "Normal";
 
@@ -2670,6 +2682,7 @@ test_toolbar_render_iconbar_with_entries(void)
 	v1.server = &test_server;
 	v1.xdg_toplevel = &tl;
 	v1.scene_tree = &view_tree;
+	v1.mapped = true;
 	v1.title = "Terminal";
 	v1.app_id = "xterm";
 	v1.workspace = &ws;

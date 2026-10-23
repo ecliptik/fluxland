@@ -473,12 +473,14 @@ class FluxlandIPC:
 
     # -- Command execution --
 
-    def command(self, action):
+    def command(self, action, window=None):
         """Execute a compositor command.
 
         Args:
             action: The action string (e.g. ``"Maximize"``,
                 ``"Workspace 2"``, ``"MoveTo 100 200"``).
+            window: Optional window id (from get_windows) to run the
+                command on instead of the focused window.
 
         Returns:
             The response dict.
@@ -486,7 +488,10 @@ class FluxlandIPC:
         Raises:
             CommandError: If the command fails.
         """
-        response = self._send({"command": "command", "action": action})
+        request = {"command": "command", "action": action}
+        if window is not None:
+            request["window"] = int(window)
+        response = self._send(request)
         self._check_response(response)
         return response
 

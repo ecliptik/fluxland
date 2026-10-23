@@ -229,6 +229,12 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 /* --- Include tabgroup source directly --- */
 
 #include "tabgroup.h"
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_SET_SIZE
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "tabgroup.c"
 
 /* --- Test helpers --- */

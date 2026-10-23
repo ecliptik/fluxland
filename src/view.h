@@ -9,6 +9,7 @@
 #define WM_VIEW_H
 
 #include <stdint.h>
+#include <sys/types.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -30,10 +31,45 @@ enum wm_view_layer {
 	WM_VIEW_LAYER_COUNT, /* sentinel */
 };
 
+struct wlr_xwayland_surface;
+struct wm_view;
+
+enum wm_view_type {
+	WM_VIEW_XDG,        /* xdg-shell toplevel (view.c) */
+	WM_VIEW_XWAYLAND,   /* managed X11 window (xwayland.c) */
+};
+
+/*
+ * Backend operations. Window management code calls the wm_view_*()
+ * wrappers below and never touches xdg_toplevel/xsurface directly.
+ */
+struct wm_view_impl {
+	struct wlr_surface *(*surface)(struct wm_view *view);
+	/* Visible content: offset within the surface, and size */
+	void (*content_geometry)(struct wm_view *view, struct wlr_box *geo);
+	/* Ask the client for a new content size (0 = client's choice) */
+	void (*set_size)(struct wm_view *view, int width, int height);
+	/* view->x/y changed (X11 clients must learn their position) */
+	void (*moved)(struct wm_view *view);
+	void (*set_activated)(struct wm_view *view, bool activated);
+	void (*set_maximized)(struct wm_view *view, bool maximized);
+	void (*set_fullscreen)(struct wm_view *view, bool fullscreen);
+	void (*set_tiled)(struct wm_view *view, uint32_t edges);
+	void (*close)(struct wm_view *view);
+	struct wl_client *(*client)(struct wm_view *view);
+	pid_t (*pid)(struct wm_view *view);
+	struct wm_view *(*parent)(struct wm_view *view);
+	/* Optional: tell the client it was (un)minimized */
+	void (*set_minimized)(struct wm_view *view, bool minimized);
+};
+
 struct wm_view {
 	struct wl_list link; /* wm_server.views */
 	struct wm_server *server;
-	struct wlr_xdg_toplevel *xdg_toplevel;
+	enum wm_view_type type;
+	const struct wm_view_impl *impl;  /* NULL = xdg-shell */
+	struct wlr_xdg_toplevel *xdg_toplevel;    /* WM_VIEW_XDG */
+	struct wlr_xwayland_surface *xsurface;    /* WM_VIEW_XWAYLAND */
 	struct wlr_scene_tree *scene_tree;
 
 	/* Unique view identifier for IPC (monotonically increasing) */
@@ -56,7 +92,14 @@ struct wm_view {
 
 	/* Metadata */
 	char *title;
-	char *app_id;
+	char *app_id;     /* xdg app_id; X11 WM_CLASS class */
+	char *instance;   /* X11 WM_CLASS instance (NULL for xdg) */
+	char *role;       /* X11 WM_WINDOW_ROLE (NULL for xdg) */
+	bool app_id_at_map; /* had an app_id when rules were matched */
+
+	/* Window-type hints from the backend (e.g. X11 splash/tooltip) */
+	bool no_decoration;
+	bool no_focus;
 
 	/* Workspace tracking */
 	struct wm_workspace *workspace;
@@ -119,6 +162,7 @@ struct wm_view {
 	struct wl_listener request_maximize;
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_minimize;
+	struct wl_listener request_show_window_menu;
 	struct wl_listener set_title;
 	struct wl_listener set_app_id;
 };
@@ -145,6 +189,9 @@ void wm_focus_view(struct wm_view *view, struct wlr_surface *surface);
 /*
  * Remove focus from the currently focused view and clear keyboard focus.
  */
+/* Focus without raising (focus follows mouse) */
+void wm_focus_view_noraise(struct wm_view *view);
+
 void wm_unfocus_current(struct wm_server *server);
 
 /*
@@ -238,6 +285,46 @@ void wm_focus_update_for_cursor(struct wm_server *server,
  * Get the bounding box of the view (including XDG geometry offset).
  */
 void wm_view_get_geometry(struct wm_view *view, struct wlr_box *box);
+
+/* xdg-shell backend (view_xdg.c); views with impl == NULL use it */
+extern const struct wm_view_impl wm_xdg_view_impl;
+
+/* --- Lifecycle shared by the xdg-shell and XWayland backends --- */
+
+/* Set defaults, create the (hidden) scene tree, add to server->views */
+bool wm_view_init_common(struct wm_view *view, struct wm_server *server);
+/* Decorations, rules, placement, focus, IPC and taskbar on map */
+void wm_view_map_common(struct wm_view *view, bool want_maximized,
+	bool want_fullscreen);
+void wm_view_unmap_common(struct wm_view *view);
+/* Release shared state; the backend frees the view itself */
+void wm_view_destroy_common(struct wm_view *view);
+void wm_view_set_title(struct wm_view *view, const char *title);
+void wm_view_set_app_id(struct wm_view *view, const char *app_id);
+
+/* --- Backend-neutral accessors (xdg-shell or XWayland) --- */
+
+struct wlr_surface *wm_view_surface(struct wm_view *view);
+void wm_view_content_geometry(struct wm_view *view, struct wlr_box *geo);
+void wm_view_set_size(struct wm_view *view, int width, int height);
+void wm_view_set_activated(struct wm_view *view, bool activated);
+void wm_view_set_maximized_state(struct wm_view *view, bool maximized);
+void wm_view_set_fullscreen_state(struct wm_view *view, bool fullscreen);
+void wm_view_set_tiled_state(struct wm_view *view, uint32_t edges);
+void wm_view_set_minimized_state(struct wm_view *view, bool minimized);
+/* Ask the window to close (WM_DELETE_WINDOW / xdg close) */
+void wm_view_close(struct wm_view *view);
+/* Disconnect the client (X11: kill the owning process) */
+void wm_view_kill(struct wm_view *view);
+struct wl_client *wm_view_client(struct wm_view *view);
+pid_t wm_view_pid(struct wm_view *view);
+/* Transient-for parent, or NULL */
+struct wm_view *wm_view_parent(struct wm_view *view);
+/* The managed window whose main surface is `surface`, or NULL */
+struct wm_view *wm_view_from_surface(struct wm_server *server,
+	struct wlr_surface *surface);
+/* Move the frame to layout coordinates (x, y) */
+void wm_view_move(struct wm_view *view, int x, int y);
 
 /*
  * Begin an interactive move or resize for the given view.

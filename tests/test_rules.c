@@ -19,6 +19,17 @@
 #include "workspace.h"
 #include "view.h"
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_xdg_shell.h>
+#define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_PARENT
+#define VIEW_STUB_SET_FULLSCREEN
+#define VIEW_STUB_SET_MAXIMIZED
+#define VIEW_STUB_SET_SIZE
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 struct wm_workspace *wm_workspace_get(struct wm_server *s, int i)
 	{ (void)s; (void)i; return NULL; }
 void wm_view_move_to_workspace(struct wm_view *v, struct wm_workspace *w)
@@ -221,6 +232,8 @@ setup_anchor_env(struct wm_view *view)
 	g_output_at_result = &s_wlr_output;
 
 	/* XDG toplevel -> surface */
+	static struct wlr_surface s_surface;
+	s_xdg_surface.surface = &s_surface;
 	s_toplevel.base = &s_xdg_surface;
 
 	/* View setup */

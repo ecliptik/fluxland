@@ -59,16 +59,8 @@ def close_window(ipc, window):
     if window is None:
         return
     try:
-        if window.get("xwayland"):
-            # XWayland views: kill by app_id since FocusWindow
-            # may not support X11 window IDs
-            app_id = window.get("app_id", "")
-            if app_id:
-                ipc.command(f"Exec pkill -x {app_id}")
-        else:
-            ipc.command(f"FocusWindow {window['id']}")
-            time.sleep(0.1)
-            ipc.command("Close")
+        # X11 and Wayland windows alike: close that exact window
+        ipc.command("Close", window=window["id"])
         time.sleep(SETTLE)
     except Exception:
         pass

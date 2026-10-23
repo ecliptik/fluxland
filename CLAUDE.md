@@ -30,6 +30,7 @@ packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/
 ## Architecture
 
 - **Scene graph rendering** via wlroots `wlr_scene` API (damage tracking, compositing)
+- **Views have backends**: `view.c` holds window management shared by all windows; `view_xdg.c` (xdg-shell) and `xwayland.c` (X11) implement `struct wm_view_impl`. X11 windows are ordinary `wm_view`s (decorations, rules, tabs, iconbar, commands); override-redirect X11 windows are unmanaged and drawn above windows
 - **Server-side decorations** as scene buffers (NOT wl_surfaces — affects pointer focus)
 - **Text rendering** with Pango/Cairo: `wm_render_text()`, `wm_measure_text_width()`
 - **Command language**: `command.c` parses and runs Fluxbox commands (MacroCmd, ToggleCmd, If/Cond, ForEach/Map, Delay, nested) for key bindings, mouse bindings, menu `[command]` items and IPC alike
@@ -52,6 +53,9 @@ packaging/     PKGBUILD (Arch), fluxland.spec (Fedora), Flatpak, debian/
 | keyboard_actions.c | 1,282 | 110+ WM action handlers |
 
 ## Critical Patterns
+
+### Never touch xdg_toplevel/xsurface outside the backends
+Use `wm_view_surface()`, `wm_view_set_size()`, `wm_view_content_geometry()`, `wm_view_close()`, `wm_view_set_activated()` etc. Code that reaches into `view->xdg_toplevel` silently breaks X11 windows. Unit tests without view.c get these from `tests/view_backend_stubs.c` (opt-in `VIEW_STUB_*` defines).
 
 ### Commands act on a target window
 Window actions run against a target view: the clicked window for mouse bindings, each window for ForEach, the focused window otherwise. Handlers must use the `view` they're given, never `server->focused_view` directly. Add new actions to the single table in `keybind.c` and the dispatcher in `keyboard_actions.c`; keys, mouse, menus and IPC all get them.
@@ -113,5 +117,7 @@ Call `wm_toolbar_update_iconbar()` in BOTH `unmap` and `destroy` handlers.
 User config at `~/.config/fluxland/` with: `init` (settings), `keys` (bindings), `apps` (window rules), `menu` (root menu), `style`, `startup` (autostart). Live reload via `Mod4+r` or `SIGHUP`.
 
 ## IPC
+
+`command` requests take an optional `"window": <id>` to act on that window (`fluxland-ctl -w <id> action ...`).
 
 Socket at `$XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock`. CLI tool: `fluxland-ctl`. Commands: `ping`, `get_windows`, `get_workspaces`, `get_outputs`, `get_config`, `command`, `subscribe`.

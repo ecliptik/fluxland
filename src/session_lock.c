@@ -252,7 +252,7 @@ handle_lock_unlock(struct wl_listener *listener, void *data)
 	/* Restore keyboard focus to the previously focused view */
 	if (lock->server->focused_view) {
 		struct wlr_surface *surface =
-			lock->server->focused_view->xdg_toplevel->base->surface;
+			wm_view_surface(lock->server->focused_view);
 		struct wlr_keyboard *kb =
 			wlr_seat_get_keyboard(lock->server->seat);
 		if (kb) {

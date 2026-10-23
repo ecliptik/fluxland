@@ -1469,6 +1469,10 @@ static void closefrom(int fd) { (void)fd; }
 
 /* --- Include cursor source files directly --- */
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_SET_SIZE
+#include "view_backend_stubs.c"
+
 #include "pixel_buffer.c"
 #include "cursor_snap.c"
 /* --- command.c / keyboard_actions.c: record what mouse bindings run --- */

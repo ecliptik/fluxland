@@ -464,6 +464,10 @@ wlr_seat_pointer_clear_focus(struct wlr_seat *seat)
 }
 
 /* --- Include the source under test --- */
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
+
 #include "session_lock.c"
 
 /* --- Emit helper --- */

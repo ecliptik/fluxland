@@ -191,8 +191,7 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 		view->y = new_y;
 		wlr_scene_node_set_position(&view->scene_tree->node,
 			new_x, new_y);
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel,
-			new_w, new_h);
+		wm_view_set_size(view, new_w, new_h);
 	}
 
 	if (server->show_position) {
@@ -652,9 +651,7 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 				wlr_scene_node_set_position(
 					&sv->scene_tree->node,
 					sv->x, sv->y);
-				wlr_xdg_toplevel_set_size(
-					sv->xdg_toplevel,
-					sb.width, sb.height);
+				wm_view_set_size(sv, sb.width, sb.height);
 
 				snap_preview_destroy(server);
 				if (server->wireframe_active)
@@ -693,9 +690,7 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 					wlr_scene_node_set_position(
 						&wf_view->scene_tree->node,
 						wf_view->x, wf_view->y);
-					wlr_xdg_toplevel_set_size(
-						wf_view->xdg_toplevel,
-						server->wireframe_w,
+					wm_view_set_size(wf_view, server->wireframe_w,
 						server->wireframe_h);
 				}
 				wireframe_hide(server);

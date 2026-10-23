@@ -27,6 +27,7 @@
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
+#include "xwayland.h"
 
 static void
 handle_output_frame(struct wl_listener *listener, void *data)
@@ -34,6 +35,7 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	struct wm_output *output = wl_container_of(listener, output, frame);
 	struct wlr_scene_output *scene_output = output->scene_output;
 
+	wm_xwayland_sync_positions(output->server);
 	wlr_scene_output_commit(scene_output, NULL);
 	wm_session_lock_output_frame(output->server, output);
 

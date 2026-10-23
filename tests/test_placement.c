@@ -288,6 +288,12 @@ wm_workspace_get_active(struct wm_server *server)
 
 /* --- Include placement source directly --- */
 
+/* view.c backend accessors (xdg-only stand-ins) */
+#define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_SET_SIZE
+#define VIEW_STUB_SET_TILED
+#include "view_backend_stubs.c"
+
 #include "../src/placement.c"
 
 /* --- Test helpers --- */

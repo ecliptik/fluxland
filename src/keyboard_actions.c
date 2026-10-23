@@ -94,26 +94,15 @@ static bool
 handle_close(struct wm_view *view)
 {
 	if (view)
-		wlr_xdg_toplevel_send_close(view->xdg_toplevel);
+		wm_view_close(view);
 	return true;
 }
 
 static bool
 handle_kill(struct wm_view *view)
 {
-	if (view) {
-		struct wl_resource *resource =
-			view->xdg_toplevel->base->resource;
-		struct wl_client *client =
-			wl_resource_get_client(resource);
-		if (client) {
-			pid_t pid;
-			wl_client_get_credentials(client,
-				&pid, NULL, NULL);
-			if (pid > 0)
-				kill(pid, SIGKILL);
-		}
-	}
+	if (view)
+		wm_view_kill(view);
 	return true;
 }
 
@@ -235,8 +224,7 @@ handle_resize_to(struct wm_view *view, const char *argument)
 		int w = 0, h = 0;
 		sscanf(argument, "%d %d", &w, &h);
 		if (w > 0 && h > 0)
-			wlr_xdg_toplevel_set_size(
-				view->xdg_toplevel, w, h);
+			wm_view_set_size(view, w, h);
 	}
 	return true;
 }
@@ -295,7 +283,7 @@ handle_show_desktop(struct wm_server *server)
 			wl_list_for_each(v, &server->views, link) {
 				if (v == saved) {
 					wm_focus_view(saved,
-						saved->xdg_toplevel->base->surface);
+						wm_view_surface(saved));
 					break;
 				}
 			}
@@ -531,7 +519,7 @@ handle_goto_window(struct wm_server *server, const char *argument)
 			count++;
 			if (count == n) {
 				wm_focus_view(v,
-					v->xdg_toplevel->base->surface);
+					wm_view_surface(v));
 				break;
 			}
 		}

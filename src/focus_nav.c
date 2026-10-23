@@ -243,7 +243,7 @@ wm_focus_nav_activate(struct wm_server *server)
 			struct wm_view *view = toolbar->ib_entries[0].view;
 			if (view) {
 				wm_focus_view(view,
-					view->xdg_toplevel->base->surface);
+					wm_view_surface(view));
 				/* Return to window zone */
 				wm_focus_nav_return_to_windows(server);
 			}

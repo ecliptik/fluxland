@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -259,11 +260,23 @@ struct wlr_surface {
 };
 
 /* XDG shell */
+enum wlr_xdg_surface_role {
+	WLR_XDG_SURFACE_ROLE_NONE,
+	WLR_XDG_SURFACE_ROLE_TOPLEVEL,
+	WLR_XDG_SURFACE_ROLE_POPUP,
+};
+
+struct wlr_xdg_popup;
+struct wl_resource;
+
 struct wlr_xdg_surface {
 	struct wlr_surface *surface;
 	void *data;
 	bool initial_commit;
 	bool initialized;
+	enum wlr_xdg_surface_role role;
+	struct wlr_xdg_popup *popup;
+	struct wl_resource *resource;
 	/* not needed: events are on surface in 0.18 */
 };
 
@@ -278,9 +291,11 @@ struct wlr_xdg_toplevel {
 	char *title;
 	char *app_id;
 	int width, height;
+	struct wlr_xdg_toplevel *parent;
 	struct wlr_xdg_toplevel_requested requested;
 	struct {
 		struct wl_signal destroy;
+		struct wl_signal request_show_window_menu;
 		struct wl_signal request_move;
 		struct wl_signal request_resize;
 		struct wl_signal request_maximize;
@@ -298,6 +313,14 @@ struct wlr_xdg_toplevel_resize_event {
 struct wlr_xdg_popup {
 	struct wlr_surface *parent;
 	struct wlr_xdg_surface *base;
+	struct {
+		struct wl_signal destroy;
+	} events;
+};
+
+struct wlr_xdg_toplevel_show_window_menu_event {
+	struct wlr_xdg_toplevel *toplevel;
+	int32_t x, y;
 };
 
 struct wlr_xdg_shell {
@@ -539,10 +562,38 @@ struct wm_animation {
 };
 
 /* View struct (must match view.h layout for wl_container_of) */
+struct wm_view;
+struct wl_client;
+struct wlr_xwayland_surface;
+
+enum wm_view_type {
+	WM_VIEW_XDG,
+	WM_VIEW_XWAYLAND,
+};
+
+struct wm_view_impl {
+	struct wlr_surface *(*surface)(struct wm_view *view);
+	void (*content_geometry)(struct wm_view *view, struct wlr_box *geo);
+	void (*set_size)(struct wm_view *view, int width, int height);
+	void (*moved)(struct wm_view *view);
+	void (*set_activated)(struct wm_view *view, bool activated);
+	void (*set_maximized)(struct wm_view *view, bool maximized);
+	void (*set_fullscreen)(struct wm_view *view, bool fullscreen);
+	void (*set_tiled)(struct wm_view *view, uint32_t edges);
+	void (*close)(struct wm_view *view);
+	struct wl_client *(*client)(struct wm_view *view);
+	pid_t (*pid)(struct wm_view *view);
+	struct wm_view *(*parent)(struct wm_view *view);
+	void (*set_minimized)(struct wm_view *view, bool minimized);
+};
+
 struct wm_view {
 	struct wl_list link;
 	struct wm_server *server;
+	enum wm_view_type type;
+	const struct wm_view_impl *impl;
 	struct wlr_xdg_toplevel *xdg_toplevel;
+	struct wlr_xwayland_surface *xsurface;
 	struct wlr_scene_tree *scene_tree;
 	uint32_t id;
 	int x, y;
@@ -556,6 +607,11 @@ struct wm_view {
 	bool show_decoration;
 	char *title;
 	char *app_id;
+	char *instance;
+	char *role;
+	bool app_id_at_map;
+	bool no_decoration;
+	bool no_focus;
 	struct wm_workspace *workspace;
 	bool sticky;
 	enum wm_view_layer layer;
@@ -588,6 +644,7 @@ struct wm_view {
 	struct wl_listener request_maximize;
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_minimize;
+	struct wl_listener request_show_window_menu;
 	struct wl_listener set_title;
 	struct wl_listener set_app_id;
 };
@@ -868,6 +925,7 @@ wlr_scene_tree_create(struct wlr_scene_tree *parent)
 	struct wlr_scene_tree *t = &g_scene_tree_pool[g_scene_tree_next++];
 	memset(t, 0, sizeof(*t));
 	wl_list_init(&t->children);
+	t->node.parent = parent;
 	return t;
 }
 
@@ -935,10 +993,19 @@ wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
 	box->width = 800; box->height = 600;
 }
 
+/* Surface -> xdg_surface lookups registered by popup tests */
+static struct {
+	struct wlr_surface *surface;
+	struct wlr_xdg_surface *xdg;
+} g_xdg_lookup[4];
+
 static struct wlr_xdg_surface *
 wlr_xdg_surface_try_from_wlr_surface(struct wlr_surface *surface)
 {
-	(void)surface;
+	for (int i = 0; i < 4; i++) {
+		if (surface && g_xdg_lookup[i].surface == surface)
+			return g_xdg_lookup[i].xdg;
+	}
 	return NULL;
 }
 
@@ -1179,9 +1246,88 @@ wm_workspace_switch(struct wm_server *s, int idx)
 
 void wm_view_minimize(struct wm_view *view);
 
+/* --- Stubs for the xdg backend (view_xdg.c) and kill path --- */
+
+static int g_client_destroy_count;
+static void
+wl_client_destroy(struct wl_client *client)
+{
+	(void)client;
+	g_client_destroy_count++;
+}
+
+static struct wl_client *
+wl_resource_get_client(struct wl_resource *resource)
+{
+	return (struct wl_client *)resource;
+}
+
+static void
+wl_client_get_credentials(struct wl_client *client, pid_t *pid,
+	uid_t *uid, gid_t *gid)
+{
+	(void)client; (void)uid; (void)gid;
+	if (pid)
+		*pid = 4242;
+}
+
+static uint32_t g_last_tiled_edges;
+static uint32_t
+wlr_xdg_toplevel_set_tiled(struct wlr_xdg_toplevel *tl, uint32_t edges)
+{
+	(void)tl;
+	g_last_tiled_edges = edges;
+	return 0;
+}
+
+static bool
+wlr_scene_node_coords(struct wlr_scene_node *node, int *lx, int *ly)
+{
+	*lx = node->x;
+	*ly = node->y;
+	return node->enabled;
+}
+
+static struct wlr_box g_unconstrain_box;
+static int g_unconstrain_count;
+static void
+wlr_xdg_popup_unconstrain_from_box(struct wlr_xdg_popup *popup,
+	const struct wlr_box *box)
+{
+	(void)popup;
+	g_unconstrain_box = *box;
+	g_unconstrain_count++;
+}
+
+static int g_window_menu_x, g_window_menu_y, g_window_menu_count;
+static void
+wm_menu_show_window(struct wm_server *server, int x, int y)
+{
+	(void)server;
+	g_window_menu_x = x;
+	g_window_menu_y = y;
+	g_window_menu_count++;
+}
+
+/* view.c accessors used by view_focus.c / view_geometry.c */
+struct wlr_surface *wm_view_surface(struct wm_view *view);
+struct wm_view *wm_view_from_surface(struct wm_server *server,
+	struct wlr_surface *surface);
+void wm_view_set_activated(struct wm_view *view, bool activated);
+void wm_view_set_minimized_state(struct wm_view *view, bool minimized);
+void wm_view_set_size(struct wm_view *view, int width, int height);
+void wm_view_set_maximized_state(struct wm_view *view, bool maximized);
+void wm_view_set_fullscreen_state(struct wm_view *view, bool fullscreen);
+void wm_view_set_tiled_state(struct wm_view *view, uint32_t edges);
+void wm_view_content_geometry(struct wm_view *view, struct wlr_box *geo);
+void wm_view_move(struct wm_view *view, int x, int y);
+struct wm_view *wm_view_parent(struct wm_view *view);
+extern const struct wm_view_impl wm_xdg_view_impl;
+
 #include "view_focus.c"
 #include "view_geometry.c"
 #include "view.c"
+#include "view_xdg.c"
 
 /* --- Test helpers --- */
 
@@ -4715,6 +4861,140 @@ test_focus_seq_frozen_during_cycle(void)
 	printf("  PASS: focus_seq_frozen_during_cycle\n");
 }
 
+/* ===== XDG popups (view_xdg.c) ===== */
+
+static void
+reset_popup_fixture(void)
+{
+	memset(g_xdg_lookup, 0, sizeof(g_xdg_lookup));
+	g_unconstrain_count = 0;
+	memset(&g_unconstrain_box, 0, sizeof(g_unconstrain_box));
+}
+
+static void
+init_popup(struct wlr_xdg_popup *popup, struct wlr_xdg_surface *base,
+	struct wlr_surface *surface, struct wlr_surface *parent)
+{
+	memset(popup, 0, sizeof(*popup));
+	memset(base, 0, sizeof(*base));
+	memset(surface, 0, sizeof(*surface));
+	wl_list_init(&surface->events.commit.listener_list);
+	wl_list_init(&popup->events.destroy.listener_list);
+	base->surface = surface;
+	base->role = WLR_XDG_SURFACE_ROLE_POPUP;
+	base->popup = popup;
+	popup->base = base;
+	popup->parent = parent;
+}
+
+static void
+emit(struct wl_signal *signal, void *data)
+{
+	struct wl_list *pos, *tmp;
+	for (pos = signal->listener_list.next, tmp = pos->next;
+	     pos != &signal->listener_list; pos = tmp, tmp = pos->next) {
+		struct wl_listener *l = (struct wl_listener *)
+			((char *)pos - offsetof(struct wl_listener, link));
+		l->notify(l, data);
+	}
+}
+
+static void
+test_popup_without_parent_is_left_to_layer_shell(void)
+{
+	init_test_server();
+	reset_popup_fixture();
+	struct wlr_xdg_popup popup;
+	struct wlr_xdg_surface base;
+	struct wlr_surface surface;
+	init_popup(&popup, &base, &surface, NULL);
+
+	test_server.new_xdg_popup.notify = handle_new_xdg_popup;
+	test_server.new_xdg_popup.notify(&test_server.new_xdg_popup, &popup);
+	assert(base.data == NULL);
+	printf("  PASS: popup_without_parent_is_left_to_layer_shell\n");
+}
+
+static void
+test_popup_nests_and_unconstrains(void)
+{
+	init_test_server();
+	reset_popup_fixture();
+
+	/* A toplevel whose surface tree sits at (100, 50) */
+	struct wlr_surface top_surface;
+	memset(&top_surface, 0, sizeof(top_surface));
+	struct wlr_xdg_surface top;
+	memset(&top, 0, sizeof(top));
+	top.surface = &top_surface;
+	top.role = WLR_XDG_SURFACE_ROLE_TOPLEVEL;
+	struct wlr_scene_tree *top_tree = wlr_scene_tree_create(NULL);
+	top_tree->node.x = 100;
+	top_tree->node.y = 50;
+	top_tree->node.enabled = true;
+	top.data = top_tree;
+	g_xdg_lookup[0].surface = &top_surface;
+	g_xdg_lookup[0].xdg = &top;
+	g_output_at_return = &test_wlr_outputs[0];
+
+	struct wlr_xdg_popup p1, p2;
+	struct wlr_xdg_surface b1, b2;
+	struct wlr_surface s1, s2;
+	init_popup(&p1, &b1, &s1, &top_surface);
+	test_server.new_xdg_popup.notify = handle_new_xdg_popup;
+	test_server.new_xdg_popup.notify(&test_server.new_xdg_popup, &p1);
+	struct wlr_scene_tree *t1 = b1.data;
+	assert(t1 && t1->node.parent == top_tree);
+
+	/* A submenu nests under its parent popup */
+	g_xdg_lookup[1].surface = &s1;
+	g_xdg_lookup[1].xdg = &b1;
+	init_popup(&p2, &b2, &s2, &s1);
+	test_server.new_xdg_popup.notify(&test_server.new_xdg_popup, &p2);
+	struct wlr_scene_tree *t2 = b2.data;
+	assert(t2 && t2->node.parent == t1);
+
+	/* Initial commit: constrained to the output, in toplevel space */
+	b2.initial_commit = true;
+	emit(&s2.events.commit, NULL);
+	assert(g_unconstrain_count == 1);
+	assert(g_unconstrain_box.x == -100 && g_unconstrain_box.y == -50);
+	assert(g_unconstrain_box.width == 1920);
+	assert(g_unconstrain_box.height == 1080);
+	/* Later commits don't re-run it */
+	b2.initial_commit = false;
+	emit(&s2.events.commit, NULL);
+	assert(g_unconstrain_count == 1);
+
+	emit(&p2.events.destroy, NULL);
+	emit(&p1.events.destroy, NULL);
+	g_output_at_return = NULL;
+	printf("  PASS: popup_nests_and_unconstrains\n");
+}
+
+static void
+test_show_window_menu_request(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].x = 200;
+	test_views[0].y = 100;
+	test_views[0].decoration = NULL;
+	g_window_menu_count = 0;
+
+	struct wlr_xdg_toplevel_show_window_menu_event ev = {
+		.toplevel = &test_toplevels[0], .x = 10, .y = 20,
+	};
+	handle_xdg_toplevel_request_show_window_menu(
+		&test_views[0].request_show_window_menu, &ev);
+	assert(g_window_menu_count == 1);
+	assert(g_window_menu_x == 210 && g_window_menu_y == 120);
+	assert(test_server.focused_view == &test_views[0]);
+
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: show_window_menu_request\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -4957,6 +5237,11 @@ main(void)
 	test_cycle_groups_skip_inactive_tabs();
 	test_cycle_switches_workspace();
 	test_focus_seq_frozen_during_cycle();
+
+	/* xdg backend */
+	test_popup_without_parent_is_left_to_layer_shell();
+	test_popup_nests_and_unconstrains();
+	test_show_window_menu_request();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

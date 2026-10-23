@@ -77,6 +77,14 @@ void wm_decoration_update(struct wm_decoration *deco, struct wm_style *style)
 enum wm_action wm_action_from_name(const char *name)
 	{ (void)name; return WM_ACTION_NOP; }
 #include "command.h"
+
+/* view.c backend accessors (xdg-only stand-ins) */
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_xdg_shell.h>
+#define VIEW_STUB_CLOSE
+#define VIEW_STUB_KILL
+#define VIEW_STUB_SURFACE
+#include "view_backend_stubs.c"
 static int stub_command_run_count;
 struct wm_command *wm_command_parse(const char *str)
 {
