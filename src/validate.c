@@ -361,6 +361,10 @@ static const struct init_key_spec init_keys[] = {
 	{"session.menuSearch", VT_ENUM, 0, 0, valid_menu_search},
 	{"session.updateActivationEnvironment", VT_ENUM, 0, 0,
 		valid_activation_env},
+	{"session.switch.lidClose", VT_STRING, 0, 0, NULL},
+	{"session.switch.lidOpen", VT_STRING, 0, 0, NULL},
+	{"session.switch.tabletModeOn", VT_STRING, 0, 0, NULL},
+	{"session.switch.tabletModeOff", VT_STRING, 0, 0, NULL},
 	{"session.screen0.menuDelay", VT_INT, 0, 5000, NULL},
 	{"session.screen0.windowMenu", VT_STRING, 0, 0, NULL},
 

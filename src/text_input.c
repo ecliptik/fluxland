@@ -16,7 +16,9 @@
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_input_method_v2.h>
 #include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
 #include "text_input.h"
@@ -157,6 +159,178 @@ relay_send_im_popup_position(struct wm_text_input_relay *relay,
 	}
 }
 
+/* --- Input method popups (candidate windows) --- */
+
+struct wm_im_popup {
+	struct wm_text_input_relay *relay;
+	struct wlr_input_popup_surface_v2 *popup;
+	struct wlr_scene_tree *tree;
+	struct wl_list link; /* wm_text_input_relay.popups */
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener commit;
+	struct wl_listener destroy;
+};
+
+void
+wm_im_popup_place(const struct wlr_box *cursor, int pw, int ph,
+	const struct wlr_box *usable, int *x, int *y)
+{
+	*x = cursor->x;
+	*y = cursor->y + cursor->height;
+	if (!usable || usable->width <= 0 || usable->height <= 0)
+		return;
+	/* No room below the line: above it */
+	if (*y + ph > usable->y + usable->height)
+		*y = cursor->y - ph;
+	if (*y < usable->y)
+		*y = usable->y;
+	if (*x + pw > usable->x + usable->width)
+		*x = usable->x + usable->width - pw;
+	if (*x < usable->x)
+		*x = usable->x;
+}
+
+/*
+ * Layout position of a surface's origin, for surfaces of windows: the
+ * xdg scene tree holds the window geometry origin, so the surface sits
+ * at -geometry from it.
+ */
+static bool
+surface_layout_origin(struct wlr_surface *surface, int *lx, int *ly)
+{
+	struct wlr_surface *root = wlr_surface_get_root_surface(surface);
+	struct wlr_xdg_surface *xs =
+		wlr_xdg_surface_try_from_wlr_surface(root);
+	if (!xs || !xs->data)
+		return false;
+	struct wlr_scene_tree *tree = xs->data;
+	if (!wlr_scene_node_coords(&tree->node, lx, ly))
+		return false;
+	struct wlr_box geo;
+	wlr_xdg_surface_get_geometry(xs, &geo);
+	*lx -= geo.x;
+	*ly -= geo.y;
+	return true;
+}
+
+static void
+im_popup_update(struct wm_im_popup *p)
+{
+	struct wm_text_input_relay *relay = p->relay;
+	struct wm_text_input_impl *ti = relay_find_focused(relay);
+	if (!ti || !ti->input->focused_surface)
+		return;
+
+	int lx, ly;
+	if (!surface_layout_origin(ti->input->focused_surface, &lx, &ly))
+		return;
+	struct wlr_box cursor = ti->input->current.cursor_rectangle;
+	if (!(ti->input->current.features &
+	      WLR_TEXT_INPUT_V3_FEATURE_CURSOR_RECTANGLE))
+		cursor = (struct wlr_box){0};
+	cursor.x += lx;
+	cursor.y += ly;
+
+	struct wlr_box usable = {0};
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(
+		relay->server->output_layout, cursor.x, cursor.y);
+	struct wm_output *output = wlr_output ?
+		wm_output_from_wlr(relay->server, wlr_output) : NULL;
+	if (output)
+		usable = output->usable_area;
+
+	struct wlr_surface *s = p->popup->surface;
+	int x, y;
+	wm_im_popup_place(&cursor, s->current.width, s->current.height,
+		output ? &usable : NULL, &x, &y);
+	wlr_scene_node_set_position(&p->tree->node, x, y);
+}
+
+static void
+relay_update_popups(struct wm_text_input_relay *relay)
+{
+	struct wm_im_popup *p;
+	wl_list_for_each(p, &relay->popups, link)
+		im_popup_update(p);
+}
+
+static void
+handle_im_popup_map(struct wl_listener *listener, void *data)
+{
+	struct wm_im_popup *p = wl_container_of(listener, p, map);
+	im_popup_update(p);
+	wlr_scene_node_set_enabled(&p->tree->node, true);
+}
+
+static void
+handle_im_popup_unmap(struct wl_listener *listener, void *data)
+{
+	struct wm_im_popup *p = wl_container_of(listener, p, unmap);
+	wlr_scene_node_set_enabled(&p->tree->node, false);
+}
+
+static void
+handle_im_popup_commit(struct wl_listener *listener, void *data)
+{
+	/* Its size may have changed */
+	struct wm_im_popup *p = wl_container_of(listener, p, commit);
+	im_popup_update(p);
+}
+
+static void
+handle_im_popup_destroy(struct wl_listener *listener, void *data)
+{
+	struct wm_im_popup *p = wl_container_of(listener, p, destroy);
+	wl_list_remove(&p->map.link);
+	wl_list_remove(&p->unmap.link);
+	wl_list_remove(&p->commit.link);
+	wl_list_remove(&p->destroy.link);
+	wl_list_remove(&p->link);
+	wlr_scene_node_destroy(&p->tree->node);
+	free(p);
+}
+
+static void
+handle_im_new_popup(struct wl_listener *listener, void *data)
+{
+	struct wm_text_input_relay *relay =
+		wl_container_of(listener, relay, input_method_new_popup);
+	struct wlr_input_popup_surface_v2 *popup = data;
+
+	struct wm_im_popup *p = calloc(1, sizeof(*p));
+	if (!p)
+		return;
+	/* Above everything, fullscreen windows included */
+	p->tree = wlr_scene_tree_create(relay->server->layer_overlay);
+	if (!p->tree || !wlr_scene_subsurface_tree_create(p->tree,
+			popup->surface)) {
+		if (p->tree)
+			wlr_scene_node_destroy(&p->tree->node);
+		free(p);
+		return;
+	}
+	p->relay = relay;
+	p->popup = popup;
+	wlr_scene_node_set_enabled(&p->tree->node, popup->surface->mapped);
+
+	p->map.notify = handle_im_popup_map;
+	wl_signal_add(&popup->surface->events.map, &p->map);
+	p->unmap.notify = handle_im_popup_unmap;
+	wl_signal_add(&popup->surface->events.unmap, &p->unmap);
+	p->commit.notify = handle_im_popup_commit;
+	wl_signal_add(&popup->surface->events.commit, &p->commit);
+	p->destroy.notify = handle_im_popup_destroy;
+	wl_signal_add(&popup->events.destroy, &p->destroy);
+	wl_list_insert(&relay->popups, &p->link);
+
+	/* Tell it where the text cursor is, and place it */
+	struct wm_text_input_impl *ti = relay_find_focused(relay);
+	if (ti)
+		relay_send_im_popup_position(relay, ti->input);
+	im_popup_update(p);
+}
+
 /* --- Text input event handlers --- */
 
 static void
@@ -174,6 +348,7 @@ handle_ti_enable(struct wl_listener *listener, void *data)
 	wlr_input_method_v2_send_activate(im);
 	relay_send_im_state(relay, ti->input);
 	relay_send_im_popup_position(relay, ti->input);
+	relay_update_popups(relay);
 }
 
 static void
@@ -190,6 +365,7 @@ handle_ti_commit(struct wl_listener *listener, void *data)
 
 	relay_send_im_state(relay, ti->input);
 	relay_send_im_popup_position(relay, ti->input);
+	relay_update_popups(relay);
 }
 
 static void
@@ -306,6 +482,7 @@ handle_im_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&relay->input_method_commit.link);
 	wl_list_remove(&relay->input_method_grab_keyboard.link);
 	wl_list_remove(&relay->input_method_destroy.link);
+	wl_list_remove(&relay->input_method_new_popup.link);
 	wl_list_remove(&relay->keyboard_grab_destroy.link);
 	wl_list_init(&relay->keyboard_grab_destroy.link);
 
@@ -394,6 +571,10 @@ handle_new_input_method(struct wl_listener *listener, void *data)
 	relay->input_method_destroy.notify = handle_im_destroy;
 	wl_signal_add(&im->events.destroy, &relay->input_method_destroy);
 
+	relay->input_method_new_popup.notify = handle_im_new_popup;
+	wl_signal_add(&im->events.new_popup_surface,
+		&relay->input_method_new_popup);
+
 	wlr_log(WLR_INFO, "%s", "input method connected");
 
 	/* If there's already a focused+enabled text input, activate */
@@ -448,6 +629,7 @@ wm_text_input_init(struct wm_server *server)
 	relay->input_method = NULL;
 
 	wl_list_init(&relay->text_inputs);
+	wl_list_init(&relay->popups);
 	wl_list_init(&relay->keyboard_grab_destroy.link);
 
 	relay->text_input_mgr =
@@ -482,5 +664,6 @@ wm_text_input_finish(struct wm_server *server)
 		wl_list_remove(&relay->input_method_commit.link);
 		wl_list_remove(&relay->input_method_grab_keyboard.link);
 		wl_list_remove(&relay->input_method_destroy.link);
+		wl_list_remove(&relay->input_method_new_popup.link);
 	}
 }

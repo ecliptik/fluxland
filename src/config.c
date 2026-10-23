@@ -841,6 +841,18 @@ apply_menu_config(struct wm_config *config, struct rc_database *db)
 	if (config->menu_alpha < 0) config->menu_alpha = 0;
 	if (config->menu_alpha > 255) config->menu_alpha = 255;
 
+	static const char *const switch_keys[WM_SWITCH_EVENT_COUNT] = {
+		"session.switch.lidClose",
+		"session.switch.lidOpen",
+		"session.switch.tabletModeOn",
+		"session.switch.tabletModeOff",
+	};
+	for (int i = 0; i < WM_SWITCH_EVENT_COUNT; i++) {
+		free(config->switch_commands[i]);
+		val = rc_get_string(db, switch_keys[i]);
+		config->switch_commands[i] = val && *val ? strdup(val) : NULL;
+	}
+
 	val = rc_get_string(db, "session.updateActivationEnvironment");
 	if (val) {
 		if (strcasecmp(val, "auto") == 0)
@@ -1512,6 +1524,8 @@ config_destroy(struct wm_config *config)
 	free_wallpaper_paths(config);
 	free_input_rules(config);
 	free_output_rules(config);
+	for (int i = 0; i < WM_SWITCH_EVENT_COUNT; i++)
+		free(config->switch_commands[i]);
 	free(config->wallpaper);
 	free(config->wallpaper_color);
 	free(config->titlebar_left);

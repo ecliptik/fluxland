@@ -28,7 +28,9 @@
 /* wlroots */
 #define WLR_UTIL_LOG_H
 #define WLR_BACKEND_LIBINPUT_H
+#define WLR_TYPES_WLR_SWITCH_H
 #define WM_CONFIG_H
+#define WM_COMMAND_H
 #define WM_INPUT_CONFIG_H
 #define WLR_UTIL_BOX_H
 #define WLR_TYPES_WLR_CURSOR_H
@@ -348,11 +350,27 @@ wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y)
 struct wm_server;
 
 static void
-wm_keyboard_setup(struct wm_server *server, struct wlr_input_device *device)
+wm_keyboard_setup(struct wm_server *server, struct wlr_input_device *device,
+	bool is_virtual)
 {
 	(void)server;
 	(void)device;
+	(void)is_virtual;
 	g_keyboard_setup_count++;
+}
+
+static int g_keyboard_group_init_count;
+static void
+wm_keyboard_group_init(struct wm_server *server)
+{
+	(void)server;
+	g_keyboard_group_init_count++;
+}
+
+static void
+wm_keyboard_group_finish(struct wm_server *server)
+{
+	(void)server;
 }
 
 static void
@@ -391,10 +409,55 @@ wm_cursor_finish(struct wm_server *server)
 
 /* config.h / input_config.h stand-ins */
 struct wm_input_rule { int dummy; };
+enum wm_switch_event {
+	WM_SWITCH_LID_CLOSE,
+	WM_SWITCH_LID_OPEN,
+	WM_SWITCH_TABLET_MODE_ON,
+	WM_SWITCH_TABLET_MODE_OFF,
+	WM_SWITCH_EVENT_COUNT,
+};
 struct wm_config {
 	struct wm_input_rule *input_rules;
 	int input_rule_count;
+	char *switch_commands[WM_SWITCH_EVENT_COUNT];
 };
+
+/* wlr_switch.h stand-in */
+enum wlr_switch_type { WLR_SWITCH_TYPE_LID, WLR_SWITCH_TYPE_TABLET_MODE };
+enum wlr_switch_state { WLR_SWITCH_STATE_OFF = 0, WLR_SWITCH_STATE_ON };
+struct wlr_switch_toggle_event {
+	uint32_t time_msec;
+	enum wlr_switch_type switch_type;
+	enum wlr_switch_state switch_state;
+};
+
+struct wlr_input_device;
+struct wlr_switch {
+	struct {
+		struct wl_signal toggle;
+	} events;
+};
+static struct wlr_switch g_switch;
+static struct wlr_switch *
+wlr_switch_from_input_device(struct wlr_input_device *device)
+{
+	(void)device;
+	return &g_switch;
+}
+
+/* command.c stand-in */
+struct wm_server;
+struct wm_view;
+static int g_command_run_count;
+static const char *g_command_run_last;
+static bool
+wm_command_run(struct wm_server *server, const char *str, struct wm_view *t)
+{
+	(void)server; (void)t;
+	g_command_run_count++;
+	g_command_run_last = str;
+	return true;
+}
 struct libinput_device { int dummy; };
 
 static bool g_is_libinput;
@@ -1094,6 +1157,65 @@ test_input_finish(void)
 
 /* --- main --- */
 
+/* --- Switches --- */
+
+static void
+test_switch_events(void)
+{
+	assert(wm_switch_event_for(WLR_SWITCH_TYPE_LID, WLR_SWITCH_STATE_ON) ==
+		WM_SWITCH_LID_CLOSE);
+	assert(wm_switch_event_for(WLR_SWITCH_TYPE_LID, WLR_SWITCH_STATE_OFF) ==
+		WM_SWITCH_LID_OPEN);
+	assert(wm_switch_event_for(WLR_SWITCH_TYPE_TABLET_MODE,
+		WLR_SWITCH_STATE_ON) == WM_SWITCH_TABLET_MODE_ON);
+	assert(wm_switch_event_for(WLR_SWITCH_TYPE_TABLET_MODE,
+		WLR_SWITCH_STATE_OFF) == WM_SWITCH_TABLET_MODE_OFF);
+
+	reset_globals();
+	struct wlr_backend backend = {0};
+	struct wlr_seat seat = {0};
+	struct wlr_cursor cursor = {0};
+	wl_signal_init(&backend.events.new_input);
+	struct wm_config config = {0};
+	char close_cmd[] = "Exec swaylock";
+	config.switch_commands[WM_SWITCH_LID_CLOSE] = close_cmd;
+	struct wm_server server = {
+		.backend = &backend, .seat = &seat, .cursor = &cursor,
+		.config = &config,
+	};
+	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
+
+	struct wlr_input_device device = {
+		.type = WLR_INPUT_DEVICE_SWITCH,
+		.name = "Lid Switch",
+	};
+	wl_signal_init(&device.events.destroy);
+	wl_signal_init(&g_switch.events.toggle);
+	server.new_input.notify = handle_new_input;
+	server.new_input.notify(&server.new_input, &device);
+
+	/* Lid closed: the configured command runs */
+	g_command_run_count = 0;
+	struct wlr_switch_toggle_event ev = {
+		.switch_type = WLR_SWITCH_TYPE_LID,
+		.switch_state = WLR_SWITCH_STATE_ON,
+	};
+	wl_signal_emit(&g_switch.events.toggle, &ev);
+	assert(g_command_run_count == 1);
+	assert(strcmp(g_command_run_last, "Exec swaylock") == 0);
+
+	/* Lid opened: nothing configured, nothing runs */
+	ev.switch_state = WLR_SWITCH_STATE_OFF;
+	wl_signal_emit(&g_switch.events.toggle, &ev);
+	assert(g_command_run_count == 1);
+
+	/* Unplugged: no longer listening */
+	wl_signal_emit(&device.events.destroy, NULL);
+	assert(wl_list_empty(&g_switch.events.toggle.listener_list));
+	printf("PASS: test_switch_events\n");
+}
+
 int
 main(void)
 {
@@ -1114,7 +1236,8 @@ main(void)
 	test_drag_destroy_clears_icon_tree();
 	test_input_init();
 	test_input_finish();
+	test_switch_events();
 
-	printf("\nAll input tests passed! (17/17)\n");
+	printf("\nAll input tests passed! (18/18)\n");
 	return 0;
 }

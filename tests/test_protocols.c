@@ -527,11 +527,14 @@ wlr_cursor_set_xcursor(struct wlr_cursor *cursor,
 	g_cursor_shape_name = name;
 }
 
+static bool g_keyboard_setup_virtual;
 static void
-wm_keyboard_setup(struct wm_server *server, struct wlr_input_device *device)
+wm_keyboard_setup(struct wm_server *server, struct wlr_input_device *device,
+	bool is_virtual)
 {
 	(void)server; (void)device;
 	g_keyboard_setup_count++;
+	g_keyboard_setup_virtual = is_virtual;
 }
 
 static void
@@ -1240,6 +1243,8 @@ test_new_virtual_keyboard(void)
 		&server.new_virtual_keyboard, &vkbd);
 
 	assert(g_keyboard_setup_count == 1);
+	/* Virtual: keeps its client's keymap, stays out of the group */
+	assert(g_keyboard_setup_virtual);
 
 	wm_protocols_finish(&server);
 

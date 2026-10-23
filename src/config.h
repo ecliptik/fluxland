@@ -135,6 +135,15 @@ struct wm_output_rule {
 	int adaptive_sync;  /* -1 unset, else bool */
 };
 
+/* Switch events that can run a command (see switch_commands) */
+enum wm_switch_event {
+	WM_SWITCH_LID_CLOSE,
+	WM_SWITCH_LID_OPEN,
+	WM_SWITCH_TABLET_MODE_ON,
+	WM_SWITCH_TABLET_MODE_OFF,
+	WM_SWITCH_EVENT_COUNT,
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -259,6 +268,12 @@ struct wm_config {
 	 * headless), 0 never, 1 always.
 	 */
 	int update_activation_env;
+
+	/*
+	 * Commands run when a switch flips (session.switch.lidClose,
+	 * lidOpen, tabletModeOn, tabletModeOff); NULL = nothing.
+	 */
+	char *switch_commands[WM_SWITCH_EVENT_COUNT];
 
 	/* Menu alpha (0-255) */
 	int menu_alpha;

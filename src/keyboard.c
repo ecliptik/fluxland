@@ -17,6 +17,7 @@
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_keyboard_group.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
@@ -377,6 +378,7 @@ handle_keyboard_destroy(struct wl_listener *listener, void *data)
 	struct wm_keyboard *keyboard =
 		wl_container_of(listener, keyboard, destroy);
 
+	/* Group members have no event listeners of their own */
 	wl_list_remove(&keyboard->modifiers.link);
 	wl_list_remove(&keyboard->key.link);
 	wl_list_remove(&keyboard->destroy.link);
@@ -384,9 +386,92 @@ handle_keyboard_destroy(struct wl_listener *listener, void *data)
 	free(keyboard);
 }
 
+/* The keymap from session.xkb.*, falling back to the default layout */
+static struct xkb_keymap *
+config_keymap(struct wm_server *server, bool fallback)
+{
+	struct xkb_rule_names rules = { 0 };
+	if (server->config) {
+		rules.rules = server->config->xkb_rules;
+		rules.model = server->config->xkb_model;
+		rules.layout = server->config->xkb_layout;
+		rules.variant = server->config->xkb_variant;
+		rules.options = server->config->xkb_options;
+	}
+
+	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if (!context)
+		return NULL;
+	struct xkb_keymap *keymap = xkb_keymap_new_from_names(
+		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	if (!keymap && fallback) {
+		wlr_log(WLR_ERROR, "%s",
+			"failed to compile XKB keymap with "
+			"configured layout, falling back to default");
+		keymap = xkb_keymap_new_from_names(
+			context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	}
+	xkb_context_unref(context);
+	return keymap;
+}
+
+/* Key and modifier events of a keyboard come to us */
+static void
+listen_events(struct wm_keyboard *keyboard)
+{
+	keyboard->modifiers.notify = handle_modifiers;
+	wl_signal_add(&keyboard->wlr_keyboard->events.modifiers,
+		&keyboard->modifiers);
+	keyboard->key.notify = handle_key;
+	wl_signal_add(&keyboard->wlr_keyboard->events.key, &keyboard->key);
+}
+
+void
+wm_keyboard_group_init(struct wm_server *server)
+{
+	struct wlr_keyboard_group *group = wlr_keyboard_group_create();
+	struct wm_keyboard *keyboard = calloc(1, sizeof(*keyboard));
+	if (!group || !keyboard) {
+		if (group)
+			wlr_keyboard_group_destroy(group);
+		free(keyboard);
+		return;
+	}
+	struct xkb_keymap *keymap = config_keymap(server, true);
+	if (keymap) {
+		wlr_keyboard_set_keymap(&group->keyboard, keymap);
+		xkb_keymap_unref(keymap);
+	}
+	wlr_keyboard_set_repeat_info(&group->keyboard, 25, 600);
+
+	keyboard->server = server;
+	keyboard->wlr_keyboard = &group->keyboard;
+	keyboard->is_group = true;
+	wl_list_init(&keyboard->link);
+	wl_list_init(&keyboard->destroy.link);
+	listen_events(keyboard);
+
+	server->keyboard_group = group;
+	server->group_keyboard = keyboard;
+}
+
+void
+wm_keyboard_group_finish(struct wm_server *server)
+{
+	struct wm_keyboard *keyboard = server->group_keyboard;
+	if (!keyboard)
+		return;
+	wl_list_remove(&keyboard->modifiers.link);
+	wl_list_remove(&keyboard->key.link);
+	free(keyboard);
+	server->group_keyboard = NULL;
+	wlr_keyboard_group_destroy(server->keyboard_group);
+	server->keyboard_group = NULL;
+}
+
 void
 wm_keyboard_setup(struct wm_server *server,
-	struct wlr_input_device *device)
+	struct wlr_input_device *device, bool is_virtual)
 {
 	struct wlr_keyboard *wlr_keyboard =
 		wlr_keyboard_from_input_device(device);
@@ -398,42 +483,31 @@ wm_keyboard_setup(struct wm_server *server,
 	}
 	keyboard->server = server;
 	keyboard->wlr_keyboard = wlr_keyboard;
+	keyboard->is_virtual = is_virtual;
+	wl_list_init(&keyboard->modifiers.link);
+	wl_list_init(&keyboard->key.link);
 
-	/* Build XKB rule names from config (NULL fields use system defaults) */
-	struct xkb_rule_names rules = { 0 };
-	if (server->config) {
-		rules.rules = server->config->xkb_rules;
-		rules.model = server->config->xkb_model;
-		rules.layout = server->config->xkb_layout;
-		rules.variant = server->config->xkb_variant;
-		rules.options = server->config->xkb_options;
+	bool grouped = false;
+	if (!is_virtual && server->keyboard_group) {
+		/* Same keymap as the group, then its events come via it */
+		wlr_keyboard_set_keymap(wlr_keyboard,
+			server->keyboard_group->keyboard.keymap);
+		wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+		grouped = wlr_keyboard_group_add_keyboard(
+			server->keyboard_group, wlr_keyboard);
 	}
-
-	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_keymap *keymap = xkb_keymap_new_from_names(
-		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
-	if (!keymap) {
-		/* Fallback to default layout if configured one fails */
-		wlr_log(WLR_ERROR, "%s",
-			"failed to compile XKB keymap with "
-			"configured layout, falling back to default");
-		keymap = xkb_keymap_new_from_names(
-			context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	if (!grouped) {
+		if (!is_virtual) {
+			/* No group: its own copy of the configured keymap */
+			struct xkb_keymap *keymap = config_keymap(server, true);
+			if (keymap) {
+				wlr_keyboard_set_keymap(wlr_keyboard, keymap);
+				xkb_keymap_unref(keymap);
+			}
+			wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+		}
+		listen_events(keyboard);
 	}
-
-	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
-	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
-
-	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
-
-	/* Connect listeners */
-	keyboard->modifiers.notify = handle_modifiers;
-	wl_signal_add(&wlr_keyboard->events.modifiers,
-		&keyboard->modifiers);
-
-	keyboard->key.notify = handle_key;
-	wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
 
 	keyboard->destroy.notify = handle_keyboard_destroy;
 	wl_signal_add(&device->events.destroy, &keyboard->destroy);
@@ -441,108 +515,85 @@ wm_keyboard_setup(struct wm_server *server,
 	wl_list_insert(&server->keyboards, &keyboard->link);
 
 	/* Let the seat know about this keyboard */
-	wlr_seat_set_keyboard(server->seat, wlr_keyboard);
+	wlr_seat_set_keyboard(server->seat, grouped ?
+		&server->keyboard_group->keyboard : wlr_keyboard);
 
-	wlr_log(WLR_INFO, "new keyboard: %s", device->name);
+	wlr_log(WLR_INFO, "new %skeyboard: %s%s",
+		is_virtual ? "virtual " : "", device->name,
+		grouped ? " (grouped)" : "");
+}
+
+/* Every keyboard whose layout we control: the group and its members */
+static void
+switch_layout(struct wlr_keyboard *kb, int delta)
+{
+	struct xkb_state *state = kb->xkb_state;
+	if (!state || !kb->keymap)
+		return;
+	xkb_layout_index_t num = xkb_keymap_num_layouts(kb->keymap);
+	if (num <= 1)
+		return;
+	xkb_layout_index_t current = 0;
+	for (xkb_layout_index_t i = 0; i < num; i++) {
+		if (xkb_state_layout_index_is_active(state, i,
+				XKB_STATE_LAYOUT_EFFECTIVE)) {
+			current = i;
+			break;
+		}
+	}
+	xkb_layout_index_t next = (current + num + (xkb_layout_index_t)
+		(delta % (int)num + (int)num)) % num;
+	struct wlr_keyboard_modifiers mods = kb->modifiers;
+	wlr_keyboard_notify_modifiers(kb, mods.depressed, mods.latched,
+		mods.locked, next);
+	wlr_log(WLR_INFO, "keyboard layout switched to index %u", next);
+}
+
+static void
+switch_layouts(struct wm_server *server, int delta)
+{
+	struct wm_keyboard *keyboard;
+	wl_list_for_each(keyboard, &server->keyboards, link) {
+		if (!keyboard->is_virtual)
+			switch_layout(keyboard->wlr_keyboard, delta);
+	}
+	if (server->group_keyboard)
+		switch_layout(server->group_keyboard->wlr_keyboard, delta);
 }
 
 void
 wm_keyboard_next_layout(struct wm_server *server)
 {
-	struct wm_keyboard *keyboard;
-	wl_list_for_each(keyboard, &server->keyboards, link) {
-		struct xkb_state *state = keyboard->wlr_keyboard->xkb_state;
-		if (!state)
-			continue;
-		xkb_layout_index_t num_layouts =
-			xkb_keymap_num_layouts(
-				keyboard->wlr_keyboard->keymap);
-		if (num_layouts <= 1)
-			continue;
-		xkb_layout_index_t current = 0;
-		for (xkb_layout_index_t i = 0; i < num_layouts; i++) {
-			if (xkb_state_layout_index_is_active(state, i,
-					XKB_STATE_LAYOUT_EFFECTIVE)) {
-				current = i;
-				break;
-			}
-		}
-		xkb_layout_index_t next = (current + 1) % num_layouts;
-		/* Update layout via wlr_keyboard API */
-		struct wlr_keyboard_modifiers mods =
-			keyboard->wlr_keyboard->modifiers;
-		mods.group = next;
-		wlr_keyboard_notify_modifiers(keyboard->wlr_keyboard,
-			mods.depressed, mods.latched, mods.locked,
-			mods.group);
-		wlr_log(WLR_INFO, "keyboard layout switched to index %u",
-			next);
-	}
+	switch_layouts(server, 1);
 }
 
 void
 wm_keyboard_prev_layout(struct wm_server *server)
 {
-	struct wm_keyboard *keyboard;
-	wl_list_for_each(keyboard, &server->keyboards, link) {
-		struct xkb_state *state = keyboard->wlr_keyboard->xkb_state;
-		if (!state)
-			continue;
-		xkb_layout_index_t num_layouts =
-			xkb_keymap_num_layouts(
-				keyboard->wlr_keyboard->keymap);
-		if (num_layouts <= 1)
-			continue;
-		xkb_layout_index_t current = 0;
-		for (xkb_layout_index_t i = 0; i < num_layouts; i++) {
-			if (xkb_state_layout_index_is_active(state, i,
-					XKB_STATE_LAYOUT_EFFECTIVE)) {
-				current = i;
-				break;
-			}
-		}
-		xkb_layout_index_t prev = (current == 0)
-			? num_layouts - 1 : current - 1;
-		struct wlr_keyboard_modifiers mods =
-			keyboard->wlr_keyboard->modifiers;
-		mods.group = prev;
-		wlr_keyboard_notify_modifiers(keyboard->wlr_keyboard,
-			mods.depressed, mods.latched, mods.locked,
-			mods.group);
-		wlr_log(WLR_INFO, "keyboard layout switched to index %u",
-			prev);
-	}
+	switch_layouts(server, -1);
 }
 
 void
 wm_keyboard_apply_config(struct wm_server *server)
 {
-	struct xkb_rule_names rules = { 0 };
-	if (server->config) {
-		rules.rules = server->config->xkb_rules;
-		rules.model = server->config->xkb_model;
-		rules.layout = server->config->xkb_layout;
-		rules.variant = server->config->xkb_variant;
-		rules.options = server->config->xkb_options;
-	}
-
-	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_keymap *keymap = xkb_keymap_new_from_names(
-		context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	struct xkb_keymap *keymap = config_keymap(server, false);
 	if (!keymap) {
 		wlr_log(WLR_ERROR, "%s",
 			"failed to compile XKB keymap on "
 			"reconfigure, keeping current layout");
-		xkb_context_unref(context);
 		return;
 	}
 
+	/* Not virtual keyboards: their clients chose their keymaps */
 	struct wm_keyboard *keyboard;
 	wl_list_for_each(keyboard, &server->keyboards, link) {
-		wlr_keyboard_set_keymap(keyboard->wlr_keyboard, keymap);
+		if (!keyboard->is_virtual)
+			wlr_keyboard_set_keymap(keyboard->wlr_keyboard, keymap);
 	}
+	if (server->group_keyboard)
+		wlr_keyboard_set_keymap(server->group_keyboard->wlr_keyboard,
+			keymap);
 
 	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
 	wlr_log(WLR_INFO, "%s", "XKB keymap reconfigured");
 }

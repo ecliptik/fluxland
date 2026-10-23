@@ -295,15 +295,14 @@ class CompositorManager:
             f.seek(max(0, f.tell() - max_bytes))
             return f.read().decode(errors="replace")
 
-    def _kill_session_clients(self):
-        """SIGTERM processes started inside this test session.
+    def _session_client_pids(self):
+        """Processes started inside this test session.
 
         They are recognised by XDG_RUNTIME_DIR pointing at our
         temporary runtime directory.
         """
-        if not self._runtime_dir:
-            return
         marker = f"XDG_RUNTIME_DIR={self._runtime_dir}".encode()
+        pids = []
         for entry in os.listdir("/proc"):
             if not entry.isdigit() or int(entry) == os.getpid():
                 continue
@@ -313,10 +312,30 @@ class CompositorManager:
             except OSError:
                 continue
             if marker in env:
-                try:
-                    os.kill(int(entry), signal.SIGTERM)
-                except OSError:
-                    pass
+                pids.append(int(entry))
+        return pids
+
+    def _kill_session_clients(self):
+        """Stop the session's clients: SIGTERM, then SIGKILL survivors.
+
+        Some (pcmanfm) ignore SIGTERM once their display is gone and
+        spin at full CPU, slowing every later test run.
+        """
+        if not self._runtime_dir:
+            return
+        for pid in self._session_client_pids():
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and self._session_client_pids():
+            time.sleep(0.05)
+        for pid in self._session_client_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
 
     def reconfigure(self):
         """Send Reconfigure command via IPC.

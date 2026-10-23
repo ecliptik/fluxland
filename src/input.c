@@ -13,9 +13,11 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_switch.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
+#include "command.h"
 #include "config.h"
 #include "input.h"
 #include "input_config.h"
@@ -80,6 +82,65 @@ wm_input_apply_config(struct wm_server *server)
 		configure_pointer(server, pointer->device);
 }
 
+/* --- Switches (laptop lid, tablet mode) --- */
+
+struct wm_switch {
+	struct wm_server *server;
+	struct wl_listener toggle;
+	struct wl_listener destroy;
+};
+
+enum wm_switch_event
+wm_switch_event_for(enum wlr_switch_type type, enum wlr_switch_state state)
+{
+	bool on = state == WLR_SWITCH_STATE_ON;
+	if (type == WLR_SWITCH_TYPE_LID)
+		return on ? WM_SWITCH_LID_CLOSE : WM_SWITCH_LID_OPEN;
+	return on ? WM_SWITCH_TABLET_MODE_ON : WM_SWITCH_TABLET_MODE_OFF;
+}
+
+static void
+handle_switch_toggle(struct wl_listener *listener, void *data)
+{
+	struct wm_switch *sw = wl_container_of(listener, sw, toggle);
+	struct wlr_switch_toggle_event *event = data;
+	struct wm_server *server = sw->server;
+
+	enum wm_switch_event ev =
+		wm_switch_event_for(event->switch_type, event->switch_state);
+	const char *cmd = server->config ?
+		server->config->switch_commands[ev] : NULL;
+	wlr_log(WLR_INFO, "switch event %d%s%s", ev, cmd ? ": " : "",
+		cmd ? cmd : "");
+	if (cmd)
+		wm_command_run(server, cmd, NULL);
+}
+
+static void
+handle_switch_destroy(struct wl_listener *listener, void *data)
+{
+	(void)data;
+	struct wm_switch *sw = wl_container_of(listener, sw, destroy);
+	wl_list_remove(&sw->toggle.link);
+	wl_list_remove(&sw->destroy.link);
+	free(sw);
+}
+
+static void
+handle_new_switch(struct wm_server *server, struct wlr_input_device *device)
+{
+	struct wm_switch *sw = calloc(1, sizeof(*sw));
+	if (!sw)
+		return;
+	sw->server = server;
+	sw->toggle.notify = handle_switch_toggle;
+	wl_signal_add(&wlr_switch_from_input_device(device)->events.toggle,
+		&sw->toggle);
+	sw->destroy.notify = handle_switch_destroy;
+	wl_signal_add(&device->events.destroy, &sw->destroy);
+	wlr_log(WLR_INFO, "new switch: %s", device->name);
+}
+
 static void
 handle_new_input(struct wl_listener *listener, void *data)
 {
@@ -89,7 +150,7 @@ handle_new_input(struct wl_listener *listener, void *data)
 
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		wm_keyboard_setup(server, device);
+		wm_keyboard_setup(server, device, false);
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		handle_new_pointer(server, device);
@@ -103,6 +164,9 @@ handle_new_input(struct wl_listener *listener, void *data)
 		break;
 	case WLR_INPUT_DEVICE_TABLET_PAD:
 		wm_tablet_pad_setup(server, device);
+		break;
+	case WLR_INPUT_DEVICE_SWITCH:
+		handle_new_switch(server, device);
 		break;
 	default:
 		break;
@@ -227,6 +291,7 @@ wm_input_init(struct wm_server *server)
 {
 	wl_list_init(&server->keyboards);
 	wl_list_init(&server->pointers);
+	wm_keyboard_group_init(server);
 
 	wm_cursor_init(server);
 
@@ -260,5 +325,6 @@ wm_input_finish(struct wm_server *server)
 	wl_list_remove(&server->request_start_drag.link);
 	wl_list_remove(&server->start_drag.link);
 
+	wm_keyboard_group_finish(server);
 	wm_cursor_finish(server);
 }

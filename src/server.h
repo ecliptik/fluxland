@@ -85,6 +85,8 @@ struct wlr_xdg_foreign_registry;
 struct wlr_xdg_foreign_v1;
 struct wlr_xdg_foreign_v2;
 struct wlr_ext_foreign_toplevel_list_v1;
+struct wlr_keyboard_group;
+struct wm_keyboard;
 struct wlr_drm_lease_v1_manager;
 struct wlr_transient_seat_manager_v1;
 struct wlr_linux_drm_syncobj_manager_v1;
@@ -236,6 +238,8 @@ struct wm_server {
 
 	/* Input devices */
 	struct wl_list keyboards; /* wm_keyboard.link */
+	struct wlr_keyboard_group *keyboard_group;
+	struct wm_keyboard *group_keyboard; /* its wm_keyboard */
 	struct wl_list pointers; /* wm_pointer.link (input.c) */
 
 	/* Configuration and keybindings */

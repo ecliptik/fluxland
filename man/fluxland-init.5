@@ -420,6 +420,18 @@ fluxland also sets XDG_CURRENT_DESKTOP=fluxland:wlroots,
 XDG_SESSION_TYPE=wayland, QT_QPA_PLATFORM=wayland;xcb and
 SDL_VIDEODRIVER=wayland,x11 for itself and the programs it starts,
 unless they are already set.
+.TP
+.BR session.switch.lidClose ", " session.switch.lidOpen
+Command run when the laptop lid is closed or opened, in the same
+language as
+.BR fluxland\-keys (5)
+commands, e.g.\&
+.I Exec swaylock
+or
+.IR "Exec wlr\-randr \-\-output eDP\-1 \-\-off" .
+.TP
+.BR session.switch.tabletModeOn ", " session.switch.tabletModeOff
+Command run when a convertible enters or leaves tablet mode.
 .SH OUTPUTS
 Monitors are configured per connector name (as
 .BR wlr\-randr (1)

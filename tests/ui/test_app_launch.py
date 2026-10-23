@@ -136,6 +136,9 @@ class TestBrowserLaunch:
         win = launch_and_verify(
             ipc, "chromium --no-sandbox", timeout=15.0)
         if win is None:
+            # It may still map a window later, in another test's middle
+            ipc.command("Exec pkill -x chromium")
+            time.sleep(0.5)
             pytest.skip(
                 "chromium did not create a window "
                 "(environmental — works via manual IPC Exec)")

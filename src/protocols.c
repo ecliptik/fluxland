@@ -135,7 +135,7 @@ handle_new_virtual_keyboard(struct wl_listener *listener, void *data)
 	struct wlr_virtual_keyboard_v1 *vkbd = data;
 
 	/* Treat the virtual keyboard like any physical keyboard */
-	wm_keyboard_setup(server, &vkbd->keyboard.base);
+	wm_keyboard_setup(server, &vkbd->keyboard.base, true);
 	wlr_log(WLR_INFO, "%s", "new virtual keyboard");
 }
 

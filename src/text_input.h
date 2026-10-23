@@ -40,7 +40,21 @@ struct wm_text_input_relay {
 
 	/* Keyboard grab listeners */
 	struct wl_listener keyboard_grab_destroy;
+
+	/* Candidate windows of the input method (wm_im_popup.link) */
+	struct wl_list popups;
+	struct wl_listener input_method_new_popup;
 };
+
+struct wlr_box;
+
+/*
+ * Where an input-method popup of size pw x ph goes for a text cursor at
+ * cursor (layout coordinates): just below it, above it if it doesn't
+ * fit below, kept inside usable (may be NULL).
+ */
+void wm_im_popup_place(const struct wlr_box *cursor, int pw, int ph,
+	const struct wlr_box *usable, int *x, int *y);
 
 /* Initialize text input and input method protocols */
 void wm_text_input_init(struct wm_server *server);

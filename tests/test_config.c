@@ -1556,6 +1556,33 @@ test_output_rules(void)
 	printf("  PASS: test_output_rules\n");
 }
 
+/* Test: session.switch.* commands */
+static void
+test_switch_commands(void)
+{
+	write_file(TEST_INIT,
+		"session.switch.lidClose: Exec swaylock\n"
+		"session.switch.tabletModeOn: MacroCmd {Exec a} {Exec b}\n"
+		"session.updateActivationEnvironment: false\n");
+	struct wm_config *c = config_create();
+	assert(c->update_activation_env == -1);
+	config_load(c, TEST_INIT);
+	assert(strcmp(c->switch_commands[WM_SWITCH_LID_CLOSE],
+		"Exec swaylock") == 0);
+	assert(c->switch_commands[WM_SWITCH_LID_OPEN] == NULL);
+	assert(strcmp(c->switch_commands[WM_SWITCH_TABLET_MODE_ON],
+		"MacroCmd {Exec a} {Exec b}") == 0);
+	assert(c->update_activation_env == 0);
+
+	/* Removed from init: cleared on reload */
+	write_file(TEST_INIT, "session.updateActivationEnvironment: auto\n");
+	config_load(c, TEST_INIT);
+	assert(c->switch_commands[WM_SWITCH_LID_CLOSE] == NULL);
+	assert(c->update_activation_env == -1);
+	config_destroy(c);
+	printf("  PASS: test_switch_commands\n");
+}
+
 /* Test: iconbar icon width negative clamping */
 static void
 test_iconbar_icon_width_clamp(void)
@@ -1666,6 +1693,7 @@ main(void)
 	test_workspace_warping();
 	test_input_rules();
 	test_output_rules();
+	test_switch_commands();
 	test_iconbar_icon_width_clamp();
 	test_tab_width_and_padding_clamp();
 	test_slit_layer_fallback_to_int();

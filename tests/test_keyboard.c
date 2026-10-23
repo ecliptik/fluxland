@@ -26,6 +26,7 @@
 #define WLR_INTERFACES_WLR_KEYBOARD_H
 #define WLR_TYPES_WLR_INPUT_DEVICE_H
 #define WLR_TYPES_WLR_KEYBOARD_H
+#define WLR_TYPES_WLR_KEYBOARD_GROUP_H
 #define WLR_TYPES_WLR_SEAT_H
 #define WLR_TYPES_WLR_XDG_SHELL_H
 
@@ -510,8 +511,39 @@ static int stub_kb_set_keymap_count;
 static void
 wlr_keyboard_set_keymap(struct wlr_keyboard *kb, struct xkb_keymap *km)
 {
-	(void)kb; (void)km;
+	kb->keymap = km;
 	stub_kb_set_keymap_count++;
+}
+
+/* Keyboard group */
+struct wlr_keyboard_group {
+	struct wlr_keyboard keyboard;
+	int members;
+};
+static struct wlr_keyboard_group stub_group;
+static bool stub_group_add_fail;
+static struct wlr_keyboard_group *
+wlr_keyboard_group_create(void)
+{
+	memset(&stub_group, 0, sizeof(stub_group));
+	wl_list_init(&stub_group.keyboard.events.key.listener_list);
+	wl_list_init(&stub_group.keyboard.events.modifiers.listener_list);
+	return &stub_group;
+}
+static void
+wlr_keyboard_group_destroy(struct wlr_keyboard_group *g)
+{
+	(void)g;
+}
+static bool
+wlr_keyboard_group_add_keyboard(struct wlr_keyboard_group *g,
+	struct wlr_keyboard *kb)
+{
+	/* wlroots requires the same keymap */
+	if (stub_group_add_fail || kb->keymap != g->keyboard.keymap)
+		return false;
+	g->members++;
+	return true;
 }
 
 static void
@@ -535,7 +567,9 @@ wlr_keyboard_notify_modifiers(struct wlr_keyboard *kb,
 static void
 wl_signal_add(void *signal, struct wl_listener *listener)
 {
-	(void)signal; (void)listener;
+	/* Not really added, but safe to remove later */
+	(void)signal;
+	wl_list_init(&listener->link);
 }
 
 /* closefrom stub (used in exec_command child path) */
@@ -871,6 +905,8 @@ struct wm_keyboard {
 	struct wl_list link;
 	struct wm_server *server;
 	struct wlr_keyboard *wlr_keyboard;
+	bool is_virtual;
+	bool is_group;
 	struct wl_listener modifiers;
 	struct wl_listener key;
 	struct wl_listener destroy;
@@ -901,6 +937,8 @@ struct wm_server {
 	struct wl_list workspaces;
 	struct wl_list outputs;
 	struct wl_list keyboards;
+	struct wlr_keyboard_group *keyboard_group;
+	struct wm_keyboard *group_keyboard;
 	struct wl_list keybindings;
 	struct wl_list keymodes;
 	char *current_keymode;
@@ -1174,7 +1212,9 @@ void wm_keyboard_next_layout(struct wm_server *server);
 void wm_keyboard_prev_layout(struct wm_server *server);
 void wm_keyboard_apply_config(struct wm_server *server);
 void wm_keyboard_setup(struct wm_server *server,
-	struct wlr_input_device *device);
+	struct wlr_input_device *device, bool is_virtual);
+void wm_keyboard_group_init(struct wm_server *server);
+void wm_keyboard_group_finish(struct wm_server *server);
 
 /* --- Include keyboard source directly (uses our stubs) --- */
 
@@ -3439,7 +3479,7 @@ test_keyboard_setup(void)
 	wl_list_init(&dev.events.destroy.listener_list);
 
 	int kb_count_before = stub_kb_set_keymap_count;
-	wm_keyboard_setup(&test_server, &dev);
+	wm_keyboard_setup(&test_server, &dev, false);
 	assert(stub_kb_set_keymap_count == kb_count_before + 1);
 	assert(stub_seat_set_keyboard_count == 1);
 	assert(!wl_list_empty(&test_server.keyboards));
@@ -3469,7 +3509,7 @@ test_keyboard_setup_keymap_fail(void)
 	 * fail-then-succeed, just test the non-fail path is fine.
 	 * The fail path in wm_keyboard_setup calls it twice. */
 	stub_keymap_new_fail = false;
-	wm_keyboard_setup(&test_server, &dev);
+	wm_keyboard_setup(&test_server, &dev, false);
 	assert(stub_kb_set_keymap_count == 1);
 
 	struct wm_keyboard *kb = wl_container_of(
@@ -3477,6 +3517,73 @@ test_keyboard_setup_keymap_fail(void)
 	wl_list_remove(&kb->link);
 	free(kb);
 	printf("  PASS: test_keyboard_setup_keymap_fail\n");
+}
+
+
+/* Physical keyboards join the group; virtual ones keep their keymap */
+static void
+test_keyboard_group(void)
+{
+	setup();
+	stub_keymap_new_fail = false;
+	stub_group_add_fail = false;
+	wm_keyboard_group_init(&test_server);
+	assert(test_server.keyboard_group == &stub_group);
+	assert(test_server.group_keyboard->is_group);
+	assert(stub_group.keyboard.keymap == &stub_xkb_keymap);
+	/* The group's key events come to us */
+	assert(test_server.group_keyboard->key.notify == handle_key);
+
+	struct wlr_keyboard *kb = wlr_keyboard_from_input_device(NULL);
+	memset(kb, 0, sizeof(*kb));
+	wl_list_init(&kb->events.key.listener_list);
+	wl_list_init(&kb->events.modifiers.listener_list);
+	struct wlr_input_device dev;
+	memset(&dev, 0, sizeof(dev));
+	dev.name = "AT keyboard";
+	wl_list_init(&dev.events.destroy.listener_list);
+
+	stub_seat_set_keyboard_count = 0;
+	wm_keyboard_setup(&test_server, &dev, false);
+	assert(stub_group.members == 1);
+	assert(kb->keymap == stub_group.keyboard.keymap);
+	/* Its events arrive through the group, not directly */
+	struct wm_keyboard *member = wl_container_of(
+		test_server.keyboards.next, member, link);
+	assert(!member->is_virtual && member->key.notify == NULL);
+	/* (The stub hands out one wlr_keyboard; give the member its own) */
+	static struct wlr_keyboard member_kb;
+	member_kb = *kb;
+	member->wlr_keyboard = &member_kb;
+
+	/* A virtual keyboard: separate, its own keymap untouched */
+	struct xkb_keymap client_keymap;
+	memset(kb, 0, sizeof(*kb));
+	wl_list_init(&kb->events.key.listener_list);
+	wl_list_init(&kb->events.modifiers.listener_list);
+	kb->keymap = &client_keymap;
+	int set_before = stub_kb_set_keymap_count;
+	wm_keyboard_setup(&test_server, &dev, true);
+	assert(stub_group.members == 1);
+	assert(kb->keymap == &client_keymap);
+	assert(stub_kb_set_keymap_count == set_before);
+	struct wm_keyboard *virt = wl_container_of(
+		test_server.keyboards.next, virt, link);
+	assert(virt->is_virtual && virt->key.notify == handle_key);
+
+	/* Reconfigure leaves the virtual keyboard's keymap alone */
+	wm_keyboard_apply_config(&test_server);
+	assert(kb->keymap == &client_keymap);
+	assert(stub_group.keyboard.keymap == &stub_xkb_keymap);
+
+	struct wm_keyboard *k, *tmp;
+	wl_list_for_each_safe(k, tmp, &test_server.keyboards, link) {
+		wl_list_remove(&k->link);
+		free(k);
+	}
+	wm_keyboard_group_finish(&test_server);
+	assert(!test_server.group_keyboard);
+	printf("  PASS: test_keyboard_group\n");
 }
 
 /* ====================================================================
@@ -4062,6 +4169,7 @@ main(void)
 	test_action_unclutter();
 
 	printf("\n  Group O: wm_keyboard_setup()\n");
+	test_keyboard_group();
 	test_keyboard_setup();
 	test_keyboard_setup_keymap_fail();
 

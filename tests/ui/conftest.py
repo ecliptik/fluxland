@@ -270,14 +270,26 @@ def clean_state(compositor):
             pass
 
         # Wait for windows to fully close
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
+        def wait_closed(seconds):
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                try:
+                    if not client.get_windows():
+                        return True
+                except Exception:
+                    return True
+                time.sleep(0.1)
+            return False
+
+        # Apps that ignore Close (busy, slow to start, asking to save)
+        # would leak into the next tests: kill them.
+        if not wait_closed(2.0):
             try:
-                if not client.get_windows():
-                    break
+                for win in client.get_windows():
+                    client.command("Kill", window=win["id"])
             except Exception:
-                break
-            time.sleep(0.1)
+                pass
+            wait_closed(2.0)
         client.close()
     except Exception:
         pass

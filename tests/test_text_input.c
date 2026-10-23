@@ -36,6 +36,8 @@
 #define WLR_TYPES_WLR_INPUT_METHOD_V2_H
 #define WLR_TYPES_WLR_KEYBOARD_H
 #define WLR_TYPES_WLR_SEAT_H
+#define WLR_TYPES_WLR_SCENE_H
+#define WLR_TYPES_WLR_XDG_SHELL_H
 
 /* fluxland */
 #define WM_SERVER_H
@@ -150,6 +152,15 @@ wl_resource_get_client(struct wl_resource *resource)
 
 struct wlr_surface {
 	struct wl_resource *resource;
+	bool mapped;
+	struct {
+		int width, height;
+	} current;
+	struct {
+		struct wl_signal map;
+		struct wl_signal unmap;
+		struct wl_signal commit;
+	} events;
 };
 
 struct wlr_box {
@@ -184,6 +195,10 @@ struct wlr_text_input_v3 {
 
 struct wlr_input_popup_surface_v2 {
 	struct wl_list link;
+	struct wlr_surface *surface;
+	struct {
+		struct wl_signal destroy;
+	} events;
 };
 
 struct wlr_input_method_v2 {
@@ -204,6 +219,7 @@ struct wlr_input_method_v2 {
 		struct wl_signal commit;
 		struct wl_signal grab_keyboard;
 		struct wl_signal destroy;
+		struct wl_signal new_popup_surface;
 	} events;
 };
 
@@ -246,6 +262,85 @@ struct wlr_output_layout {
 struct wlr_output {
 	int dummy;
 };
+
+/* Scene and xdg stand-ins for input-method popups */
+struct wlr_scene_tree;
+struct wlr_scene_node {
+	struct wlr_scene_tree *parent;
+	int x, y;
+	bool enabled;
+};
+struct wlr_scene_tree {
+	struct wlr_scene_node node;
+};
+static struct wlr_scene_tree g_popup_trees[4];
+static int g_popup_tree_count, g_popup_tree_destroyed;
+
+static struct wlr_scene_tree *
+wlr_scene_tree_create(struct wlr_scene_tree *parent)
+{
+	struct wlr_scene_tree *t = &g_popup_trees[g_popup_tree_count++ % 4];
+	memset(t, 0, sizeof(*t));
+	t->node.parent = parent;
+	t->node.enabled = true;
+	return t;
+}
+static struct wlr_scene_tree *
+wlr_scene_subsurface_tree_create(struct wlr_scene_tree *parent,
+	struct wlr_surface *surface)
+{
+	(void)surface;
+	return parent;
+}
+static void
+wlr_scene_node_set_enabled(struct wlr_scene_node *n, bool enabled)
+{
+	n->enabled = enabled;
+}
+static void
+wlr_scene_node_set_position(struct wlr_scene_node *n, int x, int y)
+{
+	n->x = x;
+	n->y = y;
+}
+static void
+wlr_scene_node_destroy(struct wlr_scene_node *n)
+{
+	(void)n;
+	g_popup_tree_destroyed++;
+}
+static bool
+wlr_scene_node_coords(struct wlr_scene_node *n, int *x, int *y)
+{
+	*x = n->x;
+	*y = n->y;
+	return true;
+}
+
+/* The focused window: its xdg tree at (500,300), geometry offset (10,5) */
+struct wlr_xdg_surface {
+	void *data;
+};
+static struct wlr_xdg_surface g_window_xdg;
+static struct wlr_scene_tree g_window_tree;
+static struct wlr_surface *g_window_surface;
+
+static struct wlr_surface *
+wlr_surface_get_root_surface(struct wlr_surface *surface)
+{
+	return surface;
+}
+static struct wlr_xdg_surface *
+wlr_xdg_surface_try_from_wlr_surface(struct wlr_surface *surface)
+{
+	return surface && surface == g_window_surface ? &g_window_xdg : NULL;
+}
+static void
+wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *xs, struct wlr_box *b)
+{
+	(void)xs;
+	*b = (struct wlr_box){10, 5, 800, 600};
+}
 
 /* --- Stub tracking globals --- */
 
@@ -469,6 +564,7 @@ struct wm_server {
 	struct wlr_cursor *cursor;
 	struct wlr_output_layout *output_layout;
 	struct wm_text_input_relay text_input_relay;
+	struct wlr_scene_tree *layer_overlay;
 };
 
 /* Forward declarations */
@@ -696,6 +792,7 @@ test_single_im_per_seat(void)
 	wl_signal_init(&im1.events.commit);
 	wl_signal_init(&im1.events.grab_keyboard);
 	wl_signal_init(&im1.events.destroy);
+	wl_signal_init(&im1.events.new_popup_surface);
 	wl_list_init(&im1.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -740,6 +837,7 @@ test_enable_activates_im(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -843,6 +941,7 @@ test_disable_deactivates_im(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -905,6 +1004,7 @@ test_im_commit_forwards_preedit(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 	im.current.preedit.text = "hello";
 	im.current.preedit.cursor_begin = 0;
@@ -971,6 +1071,7 @@ test_im_commit_no_focused_ti(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 	im.current.preedit.text = "test";
 
@@ -1016,6 +1117,7 @@ test_im_destroy_clears_preedit(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -1191,6 +1293,7 @@ test_focus_change_deactivates_enabled_ti(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -1299,6 +1402,7 @@ test_relay_send_im_state_features(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -1383,6 +1487,7 @@ test_im_connect_activates_focused(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -1419,6 +1524,7 @@ test_keyboard_grab(void)
 	wl_signal_init(&im.events.commit);
 	wl_signal_init(&im.events.grab_keyboard);
 	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
 	wl_list_init(&im.popup_surfaces);
 
 	server.text_input_relay.new_input_method.notify(
@@ -1446,6 +1552,144 @@ test_keyboard_grab(void)
 
 /* --- main --- */
 
+/* --- Input-method popups --- */
+
+static void
+test_im_popup_place(void)
+{
+	struct wlr_box usable = {0, 0, 1920, 1056};
+	struct wlr_box cursor = {100, 200, 2, 20};
+	int x, y;
+
+	/* Below the text line */
+	wm_im_popup_place(&cursor, 300, 150, &usable, &x, &y);
+	assert(x == 100 && y == 220);
+
+	/* No room below: above the line */
+	cursor = (struct wlr_box){100, 1000, 2, 20};
+	wm_im_popup_place(&cursor, 300, 150, &usable, &x, &y);
+	assert(y == 1000 - 150);
+
+	/* Right edge: pulled back in */
+	cursor = (struct wlr_box){1800, 200, 2, 20};
+	wm_im_popup_place(&cursor, 300, 150, &usable, &x, &y);
+	assert(x == 1920 - 300);
+
+	/* Taller than the area: kept at its top */
+	wm_im_popup_place(&cursor, 300, 2000, &usable, &x, &y);
+	assert(y == 0);
+
+	/* No output known: just below the cursor */
+	wm_im_popup_place(&cursor, 300, 150, NULL, &x, &y);
+	assert(x == 1800 && y == 220);
+	printf("PASS: test_im_popup_place\n");
+}
+
+static void
+emit_signal(struct wl_signal *signal, void *data)
+{
+	struct wl_listener *l, *tmp;
+	wl_list_for_each_safe(l, tmp, &signal->listener_list, link)
+		l->notify(l, data);
+}
+
+static void
+test_im_popup_lifecycle(void)
+{
+	reset_globals();
+	struct wl_display display = {0};
+	struct wlr_surface window = {0};
+	struct wlr_seat seat = { .keyboard_state = { .focused_surface = &window } };
+	struct wlr_cursor cursor = {0};
+	struct wlr_output_layout layout = {0};
+	struct wlr_scene_tree overlay = {0};
+	struct wm_server server = {
+		.wl_display = &display,
+		.seat = &seat,
+		.cursor = &cursor,
+		.output_layout = &layout,
+		.layer_overlay = &overlay,
+	};
+	wm_text_input_init(&server);
+
+	/* The focused window's xdg tree sits at (500,300) */
+	g_window_surface = &window;
+	g_window_tree.node.x = 500;
+	g_window_tree.node.y = 300;
+	g_window_xdg.data = &g_window_tree;
+
+	struct wlr_input_method_v2 im = {0};
+	wl_signal_init(&im.events.commit);
+	wl_signal_init(&im.events.grab_keyboard);
+	wl_signal_init(&im.events.destroy);
+	wl_signal_init(&im.events.new_popup_surface);
+	wl_list_init(&im.popup_surfaces);
+	server.text_input_relay.new_input_method.notify(
+		&server.text_input_relay.new_input_method, &im);
+
+	/* An enabled text input in that window, cursor at (40,60) 2x20 */
+	struct wl_client client = { .id = 1 };
+	struct wl_resource resource = { .client = &client };
+	struct wl_resource window_resource = { .client = &client };
+	window.resource = &window_resource;
+	struct wlr_text_input_v3 ti = {0};
+	ti.resource = &resource;
+	ti.focused_surface = &window;
+	ti.current_enabled = true;
+	ti.current.features = WLR_TEXT_INPUT_V3_FEATURE_CURSOR_RECTANGLE;
+	ti.current.cursor_rectangle = (struct wlr_box){40, 60, 2, 20};
+	wl_signal_init(&ti.events.enable);
+	wl_signal_init(&ti.events.commit);
+	wl_signal_init(&ti.events.disable);
+	wl_signal_init(&ti.events.destroy);
+	server.text_input_relay.new_text_input.notify(
+		&server.text_input_relay.new_text_input, &ti);
+
+	/* The IME creates its candidate window */
+	struct wlr_surface psurf = {0};
+	psurf.current.width = 200;
+	psurf.current.height = 100;
+	wl_signal_init(&psurf.events.map);
+	wl_signal_init(&psurf.events.unmap);
+	wl_signal_init(&psurf.events.commit);
+	struct wlr_input_popup_surface_v2 popup = {0};
+	popup.surface = &psurf;
+	wl_signal_init(&popup.events.destroy);
+	g_popup_tree_count = 0;
+	emit_signal(&im.events.new_popup_surface, &popup);
+
+	struct wlr_scene_tree *tree = &g_popup_trees[0];
+	assert(g_popup_tree_count == 1);
+	assert(tree->node.parent == &overlay);
+	assert(!tree->node.enabled);   /* not mapped yet */
+	/* Surface origin = tree (500,300) - geometry (10,5); + cursor */
+	assert(tree->node.x == 490 + 40);
+	assert(tree->node.y == 295 + 60 + 20);
+
+	psurf.mapped = true;
+	emit_signal(&psurf.events.map, NULL);
+	assert(tree->node.enabled);
+
+	/* The text cursor moves: the popup follows */
+	ti.current.cursor_rectangle.x = 140;
+	emit_signal(&ti.events.commit, NULL);
+	assert(tree->node.x == 490 + 140);
+
+	emit_signal(&psurf.events.unmap, NULL);
+	assert(!tree->node.enabled);
+
+	g_popup_tree_destroyed = 0;
+	emit_signal(&popup.events.destroy, NULL);
+	assert(g_popup_tree_destroyed == 1);
+	assert(wl_list_empty(&server.text_input_relay.popups));
+
+	g_window_surface = NULL;
+	emit_signal(&ti.events.destroy, NULL);
+	emit_signal(&im.events.destroy, NULL);
+	wm_text_input_finish(&server);
+	printf("PASS: test_im_popup_lifecycle\n");
+}
+
 int
 main(void)
 {
@@ -1467,7 +1711,9 @@ main(void)
 	test_relay_send_im_state_features();
 	test_im_connect_activates_focused();
 	test_keyboard_grab();
+	test_im_popup_place();
+	test_im_popup_lifecycle();
 
-	printf("\nAll text_input tests passed! (18/18)\n");
+	printf("\nAll text_input tests passed! (20/20)\n");
 	return 0;
 }

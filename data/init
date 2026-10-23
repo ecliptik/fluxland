@@ -111,6 +111,14 @@ session.screen0.toolbar.widthPercent: 72
 # session.output.DP-2.enabled: false
 
 # -------------------------------------------------------------------
+# Laptop lid and tablet-mode switches
+# -------------------------------------------------------------------
+
+# Commands as in the keys file. See fluxland-init(5).
+# session.switch.lidClose: Exec wlr-randr --output eDP-1 --off
+# session.switch.lidOpen: Exec wlr-randr --output eDP-1 --on
+
+# -------------------------------------------------------------------
 # Pointer devices (libinput)
 # -------------------------------------------------------------------
 
