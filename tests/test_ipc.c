@@ -318,6 +318,12 @@ static void mock_request_fullscreen(struct wl_listener *l, void *data)
 static int stub_minimize_called;
 static void mock_request_minimize(struct wl_listener *l, void *data)
 	{ (void)l; (void)data; stub_minimize_called++; }
+void wm_view_toggle_maximize(struct wm_view *v)
+	{ (void)v; stub_maximize_called++; }
+void wm_view_toggle_fullscreen(struct wm_view *v)
+	{ (void)v; stub_fullscreen_called++; }
+void wm_view_minimize(struct wm_view *v)
+	{ (void)v; stub_minimize_called++; }
 
 /*
  * Setup a view with full mock wlroots objects for Group C tests.
@@ -1895,7 +1901,7 @@ test_action_kill(void)
 	printf("  PASS: test_action_kill\n");
 }
 
-/* Test: Maximize action triggers request_maximize listener */
+/* Test: Maximize action toggles maximize */
 static void
 test_action_maximize(void)
 {
@@ -1909,7 +1915,7 @@ test_action_maximize(void)
 	printf("  PASS: test_action_maximize\n");
 }
 
-/* Test: Fullscreen action triggers request_fullscreen listener */
+/* Test: Fullscreen action toggles fullscreen */
 static void
 test_action_fullscreen(void)
 {

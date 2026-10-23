@@ -83,13 +83,19 @@ wm_view_at(struct wm_server *server, double lx, double ly,
 	*surface = scene_surface->surface;
 
 	/*
-	 * Walk up the scene tree to find the wm_view.
-	 * Each view's scene_tree->node.data points to the wm_view.
+	 * Walk up the scene tree to the first node with data set. Only
+	 * xdg views live in server->views; XWayland views and other
+	 * scene users also set node.data, so validate before returning.
 	 */
 	struct wlr_scene_tree *tree = node->parent;
 	while (tree && &tree->node != &server->view_tree->node) {
 		if (tree->node.data) {
-			return tree->node.data;
+			struct wm_view *v;
+			wl_list_for_each(v, &server->views, link) {
+				if (v == tree->node.data)
+					return v;
+			}
+			return NULL;
 		}
 		tree = tree->node.parent;
 	}
@@ -489,7 +495,11 @@ handle_xdg_toplevel_request_maximize(struct wl_listener *listener,
 	 * toplevel->requested and applied at map time */
 	if (!view->xdg_toplevel->base->initialized)
 		return;
-	wm_view_toggle_maximize(view);
+	if (view->xdg_toplevel->requested.maximized != view->maximized)
+		wm_view_toggle_maximize(view);
+	else
+		/* xdg-shell requires a configure in reply to every request */
+		wlr_xdg_surface_schedule_configure(view->xdg_toplevel->base);
 }
 
 static void
@@ -500,7 +510,10 @@ handle_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 		request_fullscreen);
 	if (!view->xdg_toplevel->base->initialized)
 		return;
-	wm_view_toggle_fullscreen(view);
+	if (view->xdg_toplevel->requested.fullscreen != view->fullscreen)
+		wm_view_toggle_fullscreen(view);
+	else
+		wlr_xdg_surface_schedule_configure(view->xdg_toplevel->base);
 }
 
 static void
@@ -514,12 +527,11 @@ minimize_fade_done(struct wm_view *view, bool completed, void *data)
 	wm_toolbar_update_iconbar(view->server->toolbar);
 }
 
-static void
-handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
-	void *data)
+void
+wm_view_minimize(struct wm_view *view)
 {
-	struct wm_view *view = wl_container_of(listener, view,
-		request_minimize);
+	if (!view->scene_tree->node.enabled)
+		return; /* already minimized */
 
 	/* Cancel any running animation */
 	if (view->animation)
@@ -527,18 +539,9 @@ handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
 
 	wm_foreign_toplevel_set_minimized(view, true);
 
-	/* Focus next view */
-	struct wm_view *next;
-	wl_list_for_each(next, &view->server->views, link) {
-		if (next != view && next->xdg_toplevel->base->surface) {
-			wm_focus_view(next,
-				next->xdg_toplevel->base->surface);
-			goto after_focus;
-		}
-	}
-	wlr_seat_keyboard_notify_clear_focus(view->server->seat);
+	if (view == view->server->focused_view)
+		wm_focus_fallback(view->server, view);
 
-after_focus:
 	/* Animate fade-out on minimize if configured */
 	if (view->server->config &&
 	    view->server->config->animate_minimize) {
@@ -551,6 +554,23 @@ after_focus:
 		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
 		wm_toolbar_update_iconbar(view->server->toolbar);
 	}
+}
+
+void
+wm_view_unminimize(struct wm_view *view)
+{
+	if (view->animation)
+		wm_animation_cancel(view->animation);
+	deiconify_view(view);
+}
+
+static void
+handle_xdg_toplevel_request_minimize(struct wl_listener *listener,
+	void *data)
+{
+	struct wm_view *view = wl_container_of(listener, view,
+		request_minimize);
+	wm_view_minimize(view);
 }
 
 static void

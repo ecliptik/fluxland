@@ -516,32 +516,24 @@ handle_deiconify(struct wm_server *server, const char *argument)
 static bool
 handle_maximize(struct wm_view *view)
 {
-	if (view) {
-		struct wl_listener *listener = &view->request_maximize;
-		listener->notify(listener, NULL);
-	}
+	if (view)
+		wm_view_toggle_maximize(view);
 	return true;
 }
 
 static bool
 handle_fullscreen(struct wm_view *view)
 {
-	if (view) {
-		struct wl_listener *listener =
-			&view->request_fullscreen;
-		listener->notify(listener, NULL);
-	}
+	if (view)
+		wm_view_toggle_fullscreen(view);
 	return true;
 }
 
 static bool
 handle_minimize(struct wm_view *view)
 {
-	if (view) {
-		struct wl_listener *listener =
-			&view->request_minimize;
-		listener->notify(listener, NULL);
-	}
+	if (view)
+		wm_view_minimize(view);
 	return true;
 }
 

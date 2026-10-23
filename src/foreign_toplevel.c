@@ -42,12 +42,7 @@ handle_request_maximize(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	/*
-	 * Reuse the XDG toplevel maximize handler signal. Firing the request
-	 * handler toggles the state since it checks view->maximized.
-	 */
-	wl_signal_emit_mutable(
-		&view->xdg_toplevel->events.request_maximize, NULL);
+	wm_view_toggle_maximize(view);
 }
 
 static void
@@ -57,33 +52,10 @@ handle_request_minimize(struct wl_listener *listener, void *data)
 		wl_container_of(listener, view, foreign_toplevel_request_minimize);
 	struct wlr_foreign_toplevel_handle_v1_minimized_event *event = data;
 
-	if (event->minimized) {
-		/* Minimize: hide the view and focus next */
-		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
-		wlr_foreign_toplevel_handle_v1_set_minimized(
-			view->foreign_toplevel_handle, true);
-
-		if (view == view->server->focused_view) {
-			view->server->focused_view = NULL;
-			struct wm_view *next;
-			wl_list_for_each(next, &view->server->views, link) {
-				if (next != view &&
-				    next->xdg_toplevel->base->surface) {
-					wm_focus_view(next,
-						next->xdg_toplevel->base->surface);
-					return;
-				}
-			}
-			wlr_seat_keyboard_notify_clear_focus(
-				view->server->seat);
-		}
-	} else {
-		/* Unminimize: show the view and focus it */
-		wlr_scene_node_set_enabled(&view->scene_tree->node, true);
-		wlr_foreign_toplevel_handle_v1_set_minimized(
-			view->foreign_toplevel_handle, false);
-		wm_focus_view(view, view->xdg_toplevel->base->surface);
-	}
+	if (event->minimized)
+		wm_view_minimize(view);
+	else
+		wm_view_unminimize(view);
 }
 
 static void
@@ -97,8 +69,7 @@ handle_request_fullscreen(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	wl_signal_emit_mutable(
-		&view->xdg_toplevel->events.request_fullscreen, NULL);
+	wm_view_toggle_fullscreen(view);
 }
 
 static void

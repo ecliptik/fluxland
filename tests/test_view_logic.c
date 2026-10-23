@@ -852,6 +852,13 @@ wlr_xdg_toplevel_set_activated(struct wlr_xdg_toplevel *tl, bool act)
 }
 
 static uint32_t
+wlr_xdg_surface_schedule_configure(struct wlr_xdg_surface *s)
+{
+	(void)s;
+	return 0;
+}
+
+static uint32_t
 wlr_xdg_toplevel_set_size(struct wlr_xdg_toplevel *tl, int w, int h)
 {
 	if (tl) { tl->width = w; tl->height = h; }
@@ -3184,6 +3191,24 @@ test_view_send_to_prev_head_no_outputs(void)
 	printf("  PASS: view_send_to_prev_head_no_outputs\n");
 }
 
+/* Simulate an xdg_toplevel set_/unset_ request: wlroots stores the
+ * requested state, then emits the request signal. */
+static void
+client_request_fullscreen(int i, bool on)
+{
+	test_toplevels[i].requested.fullscreen = on;
+	handle_xdg_toplevel_request_fullscreen(
+		&test_views[i].request_fullscreen, NULL);
+}
+
+static void
+client_request_maximize(int i, bool on)
+{
+	test_toplevels[i].requested.maximized = on;
+	handle_xdg_toplevel_request_maximize(
+		&test_views[i].request_maximize, NULL);
+}
+
 /* ===== handle_xdg_toplevel_request_fullscreen tests ===== */
 
 static void
@@ -3210,8 +3235,7 @@ test_fullscreen_enter(void)
 
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].fullscreen == true);
 	assert(test_views[0].x == 0);
@@ -3247,12 +3271,10 @@ test_fullscreen_restore(void)
 	test_views[0].fullscreen = false;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 	assert(test_views[0].fullscreen == true);
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].fullscreen == false);
 	assert(test_views[0].x == 100);
@@ -3289,12 +3311,10 @@ test_fullscreen_sticky_restore(void)
 	test_views[0].sticky = true;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 	assert(test_views[0].fullscreen == true);
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 	assert(test_views[0].fullscreen == false);
 	assert(test_views[0].x == 100);
 	assert(test_views[0].y == 200);
@@ -3323,8 +3343,7 @@ test_fullscreen_no_decoration(void)
 	test_views[0].decoration = NULL;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].fullscreen == true);
 	assert(test_views[0].x == 0);
@@ -3352,8 +3371,7 @@ test_fullscreen_no_output(void)
 	test_views[0].fullscreen = false;
 	g_output_at_return = NULL;
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].fullscreen == true);
 	assert(test_views[0].x == 100);
@@ -3381,8 +3399,7 @@ test_fullscreen_saves_geometry(void)
 	test_views[0].maximized = false;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].saved_geometry.x == 150);
 	assert(test_views[0].saved_geometry.y == 250);
@@ -3418,8 +3435,7 @@ test_fullscreen_enter_with_decoration(void)
 	test_views[0].fullscreen = false;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].fullscreen == true);
 	assert(test_deco_tree.node.enabled == false);
@@ -3463,12 +3479,10 @@ test_fullscreen_restore_with_decoration(void)
 	test_views[0].fullscreen = false;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 	assert(test_deco_tree.node.enabled == false);
 
-	handle_xdg_toplevel_request_fullscreen(
-		&test_views[0].request_fullscreen, NULL);
+	client_request_fullscreen(0, !test_views[0].fullscreen);
 
 	assert(test_views[0].fullscreen == false);
 	assert(test_deco_tree.node.enabled == true);
@@ -3497,8 +3511,7 @@ test_maximize_enter(void)
 	test_config.full_maximization = true;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_maximize(
-		&test_views[0].request_maximize, NULL);
+	client_request_maximize(0, !test_views[0].maximized);
 
 	assert(test_views[0].maximized == true);
 	assert(test_views[0].x == 0);
@@ -3525,8 +3538,7 @@ test_maximize_enter_usable_area(void)
 	test_config.full_maximization = false;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_maximize(
-		&test_views[0].request_maximize, NULL);
+	client_request_maximize(0, !test_views[0].maximized);
 
 	assert(test_views[0].maximized == true);
 	assert(test_views[0].x == 0);
@@ -3553,12 +3565,10 @@ test_maximize_restore(void)
 	test_config.full_maximization = true;
 	g_output_at_return = &test_wlr_outputs[0];
 
-	handle_xdg_toplevel_request_maximize(
-		&test_views[0].request_maximize, NULL);
+	client_request_maximize(0, !test_views[0].maximized);
 	assert(test_views[0].maximized == true);
 
-	handle_xdg_toplevel_request_maximize(
-		&test_views[0].request_maximize, NULL);
+	client_request_maximize(0, !test_views[0].maximized);
 
 	assert(test_views[0].maximized == false);
 	assert(test_views[0].x == 100);
@@ -3583,8 +3593,7 @@ test_maximize_no_output(void)
 	test_views[0].maximized = false;
 	g_output_at_return = NULL;
 
-	handle_xdg_toplevel_request_maximize(
-		&test_views[0].request_maximize, NULL);
+	client_request_maximize(0, !test_views[0].maximized);
 
 	assert(test_views[0].maximized == true);
 	assert(test_views[0].x == 100);
@@ -3592,6 +3601,54 @@ test_maximize_no_output(void)
 
 	wl_list_remove(&test_views[0].link);
 	printf("  PASS: maximize_no_output\n");
+}
+
+static void
+test_maximize_unset_on_normal_window(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	test_views[0].maximized = false;
+
+	/* unset_maximized on a normal window must not maximize it */
+	client_request_maximize(0, false);
+	assert(test_views[0].maximized == false);
+
+	client_request_maximize(0, true);
+	assert(test_views[0].maximized == true);
+	/* A repeated set_maximized keeps it maximized */
+	client_request_maximize(0, true);
+	assert(test_views[0].maximized == true);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: maximize_unset_on_normal_window\n");
+}
+
+static void
+test_fullscreen_unset_on_normal_window(void)
+{
+	init_test_server();
+	setup_fullscreen_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+
+	struct wlr_scene_tree overlay_tree;
+	memset(&overlay_tree, 0, sizeof(overlay_tree));
+	wl_list_init(&overlay_tree.children);
+	test_server.layer_overlay = &overlay_tree;
+	g_output_at_return = &test_wlr_outputs[0];
+	test_views[0].fullscreen = false;
+
+	client_request_fullscreen(0, false);
+	assert(test_views[0].fullscreen == false);
+
+	g_output_at_return = NULL;
+	wl_list_remove(&test_outputs[0].link);
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: fullscreen_unset_on_normal_window\n");
 }
 
 /* ===== handle_xdg_toplevel_request_minimize tests ===== */
@@ -3670,9 +3727,75 @@ test_minimize_last_view_clears_focus(void)
 		&test_views[0].request_minimize, NULL);
 
 	assert(test_views[0].scene_tree->node.enabled == false);
+	assert(test_server.focused_view == NULL);
 
 	wl_list_remove(&test_views[0].link);
 	printf("  PASS: minimize_last_view_clears_focus\n");
+}
+
+static void
+test_minimize_focus_skips_other_workspace(void)
+{
+	static struct wm_workspace other_ws;
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	setup_mock_view(2, &other_ws);
+
+	for (int i = 0; i < 3; i++)
+		test_views[i].scene_tree->node.enabled = true;
+	test_config.animate_minimize = false;
+
+	/* MRU order: 0, 2 (other workspace), 1 */
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	wl_list_insert(&test_server.views, &test_views[1].link);
+	wl_list_insert(&test_server.views, &test_views[2].link);
+	wl_list_insert(&test_server.views, &test_views[0].link);
+	test_server.focused_view = &test_views[0];
+
+	handle_xdg_toplevel_request_minimize(
+		&test_views[0].request_minimize, NULL);
+
+	assert(test_server.focused_view == &test_views[1]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: minimize_focus_skips_other_workspace\n");
+}
+
+static void
+test_minimize_focus_skips_minimized(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	setup_mock_view(2, &test_workspace);
+
+	test_views[0].scene_tree->node.enabled = true;
+	test_views[1].scene_tree->node.enabled = false; /* minimized */
+	test_views[2].scene_tree->node.enabled = true;
+	test_config.animate_minimize = false;
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	wl_list_insert(&test_server.views, &test_views[2].link);
+	wl_list_insert(&test_server.views, &test_views[1].link);
+	wl_list_insert(&test_server.views, &test_views[0].link);
+	test_server.focused_view = &test_views[0];
+
+	handle_xdg_toplevel_request_minimize(
+		&test_views[0].request_minimize, NULL);
+
+	assert(test_server.focused_view == &test_views[2]);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	wl_list_remove(&test_views[2].link);
+	printf("  PASS: minimize_focus_skips_minimized\n");
 }
 
 /* ===== handle_xdg_toplevel_set_title / set_app_id tests ===== */
@@ -3946,14 +4069,13 @@ test_maximize_enter_full_max(void)
 	test_config.full_maximization = true;
 
 	/* Trigger maximize */
-	test_views[0].request_maximize.notify = handle_xdg_toplevel_request_maximize;
-	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+	wm_view_toggle_maximize(&test_views[0]);
 
 	assert(test_views[0].maximized == true);
 	/* full maximization uses output box, not usable area */
 
 	/* Toggle maximize off */
-	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+	wm_view_toggle_maximize(&test_views[0]);
 	assert(test_views[0].maximized == false);
 
 	wl_list_remove(&test_views[0].link);
@@ -3977,8 +4099,7 @@ test_maximize_already_lhalf(void)
 	test_views[0].saved_geometry.width = 400;
 	test_views[0].saved_geometry.height = 300;
 
-	test_views[0].request_maximize.notify = handle_xdg_toplevel_request_maximize;
-	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+	wm_view_toggle_maximize(&test_views[0]);
 
 	/* Should have maximized (lhalf state is preserved, maximize is orthogonal) */
 	assert(test_views[0].maximized == true);
@@ -4004,8 +4125,7 @@ test_maximize_already_rhalf(void)
 	test_views[0].saved_geometry.width = 500;
 	test_views[0].saved_geometry.height = 400;
 
-	test_views[0].request_maximize.notify = handle_xdg_toplevel_request_maximize;
-	test_views[0].request_maximize.notify(&test_views[0].request_maximize, NULL);
+	wm_view_toggle_maximize(&test_views[0]);
 
 	assert(test_views[0].maximized == true);
 
@@ -4282,6 +4402,40 @@ test_view_at_with_node(void)
 	printf("  PASS: view_at_with_node\n");
 }
 
+/* node.data set by a non-view owner (e.g. an XWayland view) */
+static void
+test_view_at_foreign_node_data(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+
+	struct wlr_scene_tree foreign_tree;
+	memset(&foreign_tree, 0, sizeof(foreign_tree));
+	int not_a_view = 42;
+	foreign_tree.node.data = &not_a_view;
+	foreign_tree.node.parent = test_views[0].scene_tree;
+
+	struct wlr_scene_node fake_node;
+	memset(&fake_node, 0, sizeof(fake_node));
+	fake_node.type = WLR_SCENE_NODE_BUFFER;
+	fake_node.parent = &foreign_tree;
+	test_views[0].scene_tree->node.data = &test_views[0];
+	g_stub_scene_surface.surface = test_xdg_surfaces[0].surface;
+	g_scene_node_at_return = &fake_node;
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wm_view *result = wm_view_at(&test_server, 100, 100,
+		&surface, &sx, &sy);
+
+	/* Must not return the foreign pointer or walk past it */
+	assert(result == NULL);
+
+	g_scene_node_at_return = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_at_foreign_node_data\n");
+}
+
 /* ===== Main ===== */
 
 int
@@ -4447,12 +4601,16 @@ main(void)
 	test_maximize_enter_usable_area();
 	test_maximize_restore();
 	test_maximize_no_output();
+	test_maximize_unset_on_normal_window();
+	test_fullscreen_unset_on_normal_window();
 
 	/* minimize */
 	test_minimize_basic();
 	test_minimize_with_animation();
 	test_minimize_focus_transfers();
 	test_minimize_last_view_clears_focus();
+	test_minimize_focus_skips_other_workspace();
+	test_minimize_focus_skips_minimized();
 
 	/* set_title / set_app_id */
 	test_set_title_updates_toolbar();
@@ -4508,6 +4666,7 @@ main(void)
 
 	/* view_at with scene node */
 	test_view_at_with_node();
+	test_view_at_foreign_node_data();
 
 	printf("All view_logic tests passed.\n");
 	return 0;

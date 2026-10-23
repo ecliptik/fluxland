@@ -487,6 +487,39 @@ fullscreen_signal_handler(struct wl_listener *listener, void *data)
 	g_fullscreen_signal_count++;
 }
 
+/* --- View state stubs (real ones live in view.c / view_geometry.c) --- */
+
+static void
+wm_view_toggle_maximize(struct wm_view *view)
+{
+	(void)view;
+	g_maximize_signal_count++;
+}
+
+static void
+wm_view_toggle_fullscreen(struct wm_view *view)
+{
+	(void)view;
+	g_fullscreen_signal_count++;
+}
+
+static void
+wm_view_minimize(struct wm_view *view)
+{
+	wlr_scene_node_set_enabled(&view->scene_tree->node, false);
+	wlr_foreign_toplevel_handle_v1_set_minimized(
+		view->foreign_toplevel_handle, true);
+}
+
+static void
+wm_view_unminimize(struct wm_view *view)
+{
+	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
+	wlr_foreign_toplevel_handle_v1_set_minimized(
+		view->foreign_toplevel_handle, false);
+	wm_focus_view(view, NULL);
+}
+
 /* --- Include foreign_toplevel source directly --- */
 
 #include "foreign_toplevel.c"
@@ -923,7 +956,7 @@ test_request_maximize_on(void)
 	wl_signal_emit_mutable(
 		&v.foreign_toplevel_handle->events.request_maximize, &event);
 
-	/* Should emit the xdg maximize signal */
+	/* Should toggle maximize */
 	assert(g_maximize_signal_count == 1);
 
 	wl_list_remove(&max_listener.link);
@@ -1160,77 +1193,6 @@ test_multiple_toplevels(void)
 }
 
 static void
-test_minimize_focuses_next(void)
-{
-	reset_globals();
-	init_server();
-	test_server.foreign_toplevel_manager = &g_manager;
-
-	struct wm_view v1 = make_view(0, "App1", "app1");
-	struct wm_view v2 = make_view(1, "App2", "app2");
-	wl_list_insert(&test_server.views, &v2.link);
-	wl_list_insert(&test_server.views, &v1.link);
-	test_server.focused_view = &v1;
-
-	wm_foreign_toplevel_handle_create(&v1);
-	wm_foreign_toplevel_handle_create(&v2);
-	reset_counters();
-
-	/* Minimize v1 (the focused view) */
-	struct wlr_foreign_toplevel_handle_v1_minimized_event event = {
-		.toplevel = v1.foreign_toplevel_handle,
-		.minimized = true,
-	};
-	wl_signal_emit_mutable(
-		&v1.foreign_toplevel_handle->events.request_minimize, &event);
-
-	/* Should focus next view (v2) */
-	assert(g_focus_view_count == 1);
-	assert(g_last_focused_view == &v2);
-
-	wl_list_remove(&v1.link);
-	wl_list_remove(&v2.link);
-	wm_foreign_toplevel_handle_destroy(&v1);
-	wm_foreign_toplevel_handle_destroy(&v2);
-	free_view(&v1);
-	free_view(&v2);
-	printf("  PASS: minimize_focuses_next\n");
-}
-
-static void
-test_minimize_clears_focus_no_next(void)
-{
-	reset_globals();
-	init_server();
-	test_server.foreign_toplevel_manager = &g_manager;
-
-	struct wm_view v = make_view(0, "App", "app");
-	wl_list_insert(&test_server.views, &v.link);
-	test_server.focused_view = &v;
-
-	wm_foreign_toplevel_handle_create(&v);
-	reset_counters();
-
-	/* Minimize the only view */
-	struct wlr_foreign_toplevel_handle_v1_minimized_event event = {
-		.toplevel = v.foreign_toplevel_handle,
-		.minimized = true,
-	};
-	wl_signal_emit_mutable(
-		&v.foreign_toplevel_handle->events.request_minimize, &event);
-
-	/* No next view to focus, should clear keyboard focus */
-	assert(g_focus_view_count == 0);
-	assert(g_seat_clear_focus_count == 1);
-	assert(test_server.focused_view == NULL);
-
-	wl_list_remove(&v.link);
-	wm_foreign_toplevel_handle_destroy(&v);
-	free_view(&v);
-	printf("  PASS: minimize_clears_focus_no_next\n");
-}
-
-static void
 test_update_title_null_title(void)
 {
 	reset_globals();
@@ -1323,8 +1285,6 @@ main(void)
 	test_request_fullscreen_noop_same_state();
 	test_request_close();
 	test_multiple_toplevels();
-	test_minimize_focuses_next();
-	test_minimize_clears_focus_no_next();
 	test_update_title_null_title();
 	test_full_lifecycle();
 

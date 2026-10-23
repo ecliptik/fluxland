@@ -139,6 +139,18 @@ void wm_unfocus_current(struct wm_server *server);
  * Used for Alt-Tab / window cycling.
  */
 void wm_focus_next_view(struct wm_server *server);
+
+/*
+ * Focus the most recently used visible view on the active workspace,
+ * skipping `except` (may be NULL). Clears focus if there is none.
+ */
+void wm_focus_fallback(struct wm_server *server, struct wm_view *except);
+
+/* Minimize (iconify) a view, moving focus away if it was focused. */
+void wm_view_minimize(struct wm_view *view);
+
+/* Restore a minimized view, raise and focus it. */
+void wm_view_unminimize(struct wm_view *view);
 void wm_focus_prev_view(struct wm_server *server);
 
 /*

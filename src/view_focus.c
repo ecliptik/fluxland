@@ -203,6 +203,25 @@ wm_unfocus_current(struct wm_server *server)
 }
 
 void
+wm_focus_fallback(struct wm_server *server, struct wm_view *except)
+{
+	struct wm_workspace *ws = wm_workspace_get_active(server);
+	struct wm_view *v;
+
+	/* server->views is kept in most-recently-focused order */
+	wl_list_for_each(v, &server->views, link) {
+		/* Disabled scene node: unmapped or minimized */
+		if (v == except || !v->scene_tree->node.enabled)
+			continue;
+		if (v->workspace != ws && !v->sticky)
+			continue;
+		wm_focus_view(v, v->xdg_toplevel->base->surface);
+		return;
+	}
+	wm_unfocus_current(server);
+}
+
+void
 wm_focus_next_view(struct wm_server *server)
 {
 	if (wl_list_length(&server->views) < 2) {

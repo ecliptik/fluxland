@@ -1359,6 +1359,10 @@ static void wm_view_raise(struct wm_view *view)
 	{ (void)view; g_view_raise_count++; }
 static void wm_view_lower(struct wm_view *view)
 	{ (void)view; }
+static void wm_view_toggle_maximize(struct wm_view *view)
+	{ (void)view; }
+static void wm_view_minimize(struct wm_view *view)
+	{ (void)view; }
 static void wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	{ (void)view; (void)surface; g_focus_view_count++; }
 static void wm_unfocus_current(struct wm_server *server)

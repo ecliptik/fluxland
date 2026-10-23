@@ -548,10 +548,8 @@ handle_action_window_state(struct wm_server *server, struct wm_view *view,
 		return 1;
 
 	case WM_ACTION_MAXIMIZE:
-		if (view) {
-			view->request_maximize.notify(
-				&view->request_maximize, NULL);
-		}
+		if (view)
+			wm_view_toggle_maximize(view);
 		return 1;
 
 	case WM_ACTION_MAXIMIZE_VERT:
@@ -565,17 +563,13 @@ handle_action_window_state(struct wm_server *server, struct wm_view *view,
 		return 1;
 
 	case WM_ACTION_FULLSCREEN:
-		if (view) {
-			view->request_fullscreen.notify(
-				&view->request_fullscreen, NULL);
-		}
+		if (view)
+			wm_view_toggle_fullscreen(view);
 		return 1;
 
 	case WM_ACTION_MINIMIZE:
-		if (view) {
-			view->request_minimize.notify(
-				&view->request_minimize, NULL);
-		}
+		if (view)
+			wm_view_minimize(view);
 		return 1;
 
 	case WM_ACTION_SHADE:

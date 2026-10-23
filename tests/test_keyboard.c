@@ -1044,6 +1044,9 @@ void wm_view_begin_interactive(struct wm_view *v, enum wm_cursor_mode m, uint32_
 void wm_view_maximize_vert(struct wm_view *v) { (void)v; stub_maximize_vert_count++; }
 void wm_view_maximize_horiz(struct wm_view *v) { (void)v; stub_maximize_horiz_count++; }
 void wm_view_toggle_decoration(struct wm_view *v) { (void)v; stub_toggle_decoration_count++; }
+void wm_view_toggle_maximize(struct wm_view *v) { (void)v; stub_maximize_listener_count++; }
+void wm_view_toggle_fullscreen(struct wm_view *v) { (void)v; stub_fullscreen_listener_count++; }
+void wm_view_minimize(struct wm_view *v) { (void)v; stub_minimize_listener_count++; }
 void wm_view_lhalf(struct wm_view *v) { (void)v; stub_lhalf_count++; }
 void wm_view_rhalf(struct wm_view *v) { (void)v; stub_rhalf_count++; }
 void wm_view_resize_by(struct wm_view *v, int w, int h) { (void)v; (void)w; (void)h; stub_resize_by_count++; }

@@ -261,17 +261,13 @@ execute_mouse_action(struct wm_server *server,
 		break;
 
 	case WM_ACTION_MAXIMIZE:
-		if (view) {
-			struct wl_listener *l = &view->request_maximize;
-			l->notify(l, NULL);
-		}
+		if (view)
+			wm_view_toggle_maximize(view);
 		break;
 
 	case WM_ACTION_MINIMIZE:
-		if (view) {
-			struct wl_listener *l = &view->request_minimize;
-			l->notify(l, NULL);
-		}
+		if (view)
+			wm_view_minimize(view);
 		break;
 
 	case WM_ACTION_SHADE:
