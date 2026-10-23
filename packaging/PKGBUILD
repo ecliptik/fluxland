@@ -25,6 +25,8 @@ makedepends=(
 optdepends=(
   'xorg-xwayland: X11 application support'
   'foot: default terminal emulator'
+  'xdg-desktop-portal-wlr: screen sharing and screenshots in apps'
+  'xdg-desktop-portal-gtk: file chooser and other desktop portals'
   'grim: screenshot utility'
   'slurp: region selection'
   'wl-clipboard: clipboard support'

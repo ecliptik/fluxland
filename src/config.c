@@ -430,6 +430,7 @@ config_create(void)
 	config->toolbar_height = 0;
 	config->toolbar_layer = 4; /* Dock */
 	config->toolbar_alpha = 255;
+	config->update_activation_env = -1;
 	config->toolbar_on_head = 0;
 	config->toolbar_tools = strdup(
 		"workspacename prevworkspace nextworkspace iconbar clock");
@@ -509,6 +510,8 @@ config_create(void)
 
 	return config;
 }
+
+static int parse_tristate_bool(const char *val);
 
 static void
 apply_workspace_config(struct wm_config *config, struct rc_database *db)
@@ -837,6 +840,16 @@ apply_menu_config(struct wm_config *config, struct rc_database *db)
 		rc_get_int(db, "session.screen0.menu.alpha", 255);
 	if (config->menu_alpha < 0) config->menu_alpha = 0;
 	if (config->menu_alpha > 255) config->menu_alpha = 255;
+
+	val = rc_get_string(db, "session.updateActivationEnvironment");
+	if (val) {
+		if (strcasecmp(val, "auto") == 0)
+			config->update_activation_env = -1;
+		else
+			config->update_activation_env =
+				parse_tristate_bool(val) == 1 ? 1 :
+				parse_tristate_bool(val) == 0 ? 0 : -1;
+	}
 
 	/* Type-ahead search */
 	val = rc_get_string(db, "session.menuSearch");

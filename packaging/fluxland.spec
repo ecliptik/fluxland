@@ -24,6 +24,8 @@ BuildRequires:  pkgconfig(libsystemd)
 
 Recommends:     xorg-x11-server-Xwayland
 Recommends:     foot
+Recommends:     xdg-desktop-portal-wlr
+Recommends:     xdg-desktop-portal-gtk
 
 %description
 Fluxland is a lightweight Wayland compositor inspired by Fluxbox.
@@ -50,6 +52,7 @@ keybindings, window decorations, workspaces, a toolbar, and menus.
 %{_bindir}/fluxland
 %{_bindir}/fluxland-ctl
 %{_datadir}/wayland-sessions/fluxland.desktop
+%{_datadir}/xdg-desktop-portal/fluxland-portals.conf
 %{_datadir}/fluxland/examples/
 %{_mandir}/man1/fluxland.1*
 %{_mandir}/man5/fluxland-apps.5*

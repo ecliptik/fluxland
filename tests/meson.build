@@ -35,6 +35,16 @@ test_output_config = executable(
 )
 test('output_config', test_output_config)
 
+# --- test_session_env: XDG_CURRENT_DESKTOP, activation environment ---
+test_session_env = executable(
+  'test_session_env',
+  files('test_session_env.c', '../src/session_env.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots],
+  install: false,
+)
+test('session_env', test_session_env)
+
 # --- test_keybind: keybinding parser tests ---
 test_keybind = executable(
   'test_keybind',

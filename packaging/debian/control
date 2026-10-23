@@ -27,7 +27,7 @@ Rules-Requires-Root: no
 Package: fluxland
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Recommends: xwayland, foot
+Recommends: xwayland, foot, xdg-desktop-portal-wlr, xdg-desktop-portal-gtk
 Suggests: grim, slurp, wl-clipboard, swaylock
 Description: Fluxbox-inspired Wayland compositor
  Fluxland is a lightweight Wayland compositor inspired by Fluxbox.

@@ -36,9 +36,21 @@ which captures with screencopy and streams over PipeWire.
 
 Install `xdg-desktop-portal`, `xdg-desktop-portal-wlr` and
 `xdg-desktop-portal-gtk` (for file choosers), and make sure PipeWire is
-running. When fluxland starts it sets `XDG_CURRENT_DESKTOP=fluxland` and
-imports its environment into the D-Bus and systemd user sessions, so the
-portal picks up `fluxland-portals.conf` and the right `WAYLAND_DISPLAY`.
+running. When fluxland starts it sets `XDG_CURRENT_DESKTOP=fluxland:wlroots`
+(unless it is already set) and imports `WAYLAND_DISPLAY`, `DISPLAY`,
+`XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE` and `FLUXLAND_SOCK` into the
+D-Bus and systemd user sessions, so the portal picks up
+`fluxland-portals.conf` and reaches the right display. At exit they are
+emptied again.
+
+A fluxland running nested (inside another session) or headless doesn't
+touch the user session, so it can't take over the outer session's
+portals. `session.updateActivationEnvironment: true` (or `false`) in
+`init` overrides that; see fluxland-init(5).
+
+If screen sharing still shows nothing, check that the portal sees the
+session: `systemctl --user show-environment | grep -E 'WAYLAND|DESKTOP'`,
+and restart it with `systemctl --user restart xdg-desktop-portal`.
 
 Choosing what to share: xdg-desktop-portal-wlr asks with a chooser
 command (slurp by default). See its `config` for `chooser_type`.

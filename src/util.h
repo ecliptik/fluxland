@@ -51,6 +51,12 @@ static inline bool wm_is_blocked_env_var(const char *name) {
  * Sanitizes LD_* environment variables before exec. */
 void wm_spawn_command(const char *cmd);
 
+/*
+ * Run exec_fn(data) in a double-forked child (orphaned, so it needs no
+ * reaping) with a sanitized environment. exec_fn should exec.
+ */
+void wm_spawn(void (*exec_fn)(void *), void *data);
+
 /* Escape a string for safe inclusion in JSON.
  * Writes into dst (up to dst_size bytes including NUL).
  * Escapes backslash, double-quote, and control characters. */

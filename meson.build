@@ -204,6 +204,7 @@ wm_sources = files(
   'src/regex_guard.c',
   'src/command.c',
   'src/server.c',
+  'src/session_env.c',
   'src/output.c',
   'src/output_config.c',
   'src/pixel_buffer.c',
@@ -388,6 +389,12 @@ executable(
 install_data(
   'data/fluxland.desktop',
   install_dir: get_option('datadir') / 'wayland-sessions',
+)
+
+# Portal backends for XDG_CURRENT_DESKTOP=fluxland
+install_data(
+  'data/fluxland-portals.conf',
+  install_dir: get_option('datadir') / 'xdg-desktop-portal',
 )
 
 example_configs = [

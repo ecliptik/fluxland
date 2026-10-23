@@ -404,6 +404,22 @@ Layout variant (e.g.\&
 .B session.xkb.options
 XKB options (e.g.\&
 .IR grp:alt_shift_toggle,caps:escape ).
+.SH SESSION
+.TP
+.B session.updateActivationEnvironment
+Export WAYLAND_DISPLAY, DISPLAY, XDG_CURRENT_DESKTOP, XDG_SESSION_TYPE
+and FLUXLAND_SOCK to D-Bus and systemd user services (desktop portals,
+notification daemons), and empty them again at exit:
+.I auto
+(default: only when not nested in another session or headless),
+.I true
+or
+.IR false .
+.PP
+fluxland also sets XDG_CURRENT_DESKTOP=fluxland:wlroots,
+XDG_SESSION_TYPE=wayland, QT_QPA_PLATFORM=wayland;xcb and
+SDL_VIDEODRIVER=wayland,x11 for itself and the programs it starts,
+unless they are already set.
 .SH OUTPUTS
 Monitors are configured per connector name (as
 .BR wlr\-randr (1)

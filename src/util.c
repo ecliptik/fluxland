@@ -8,8 +8,10 @@
 
 #define _GNU_SOURCE
 
+#include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
@@ -17,11 +19,8 @@
 #include "util.h"
 
 void
-wm_spawn_command(const char *cmd)
+wm_spawn(void (*exec_fn)(void *), void *data)
 {
-	if (!cmd || !*cmd) {
-		return;
-	}
 	/*
 	 * Double-fork: the first child exits immediately and is reaped
 	 * inline.  The grandchild is orphaned and adopted by init, which
@@ -31,7 +30,7 @@ wm_spawn_command(const char *cmd)
 	 */
 	pid_t pid = fork();
 	if (pid < 0) {
-		wlr_log(WLR_ERROR, "fork failed for: %s", cmd);
+		wlr_log(WLR_ERROR, "fork failed: %s", strerror(errno));
 		return;
 	}
 	if (pid == 0) {
@@ -57,10 +56,25 @@ wm_spawn_command(const char *cmd)
 		unsetenv("LD_DEBUG");
 		unsetenv("LD_PROFILE");
 
-		execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
-		_exit(1);
+		exec_fn(data);
+		_exit(127);
 	}
 	waitpid(pid, NULL, 0);
+}
+
+static void
+exec_shell(void *data)
+{
+	execl("/bin/sh", "/bin/sh", "-c", (const char *)data, (char *)NULL);
+}
+
+void
+wm_spawn_command(const char *cmd)
+{
+	if (!cmd || !*cmd) {
+		return;
+	}
+	wm_spawn(exec_shell, (void *)cmd);
 }
 
 void

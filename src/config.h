@@ -253,6 +253,12 @@ struct wm_config {
 
 	/* Root command (run on startup after autostart) */
 	char *root_command;
+	/*
+	 * session.updateActivationEnvironment: export WAYLAND_DISPLAY etc.
+	 * to D-Bus/systemd user services. -1 auto (not when nested or
+	 * headless), 0 never, 1 always.
+	 */
+	int update_activation_env;
 
 	/* Menu alpha (0-255) */
 	int menu_alpha;

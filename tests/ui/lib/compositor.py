@@ -85,7 +85,7 @@ class CompositorManager:
         return binary_path
 
     def start(self, config_set="default", headless=False, outputs=1,
-              init_extra=None):
+              init_extra=None, extra_env=None):
         """Start or connect to the fluxland compositor.
 
         Args:
@@ -95,6 +95,7 @@ class CompositorManager:
             outputs: Number of headless outputs (headless mode only).
             init_extra: Lines appended to the init file before starting
                 (headless mode only).
+            extra_env: Extra environment variables (headless mode only).
 
         Returns:
             subprocess.Popen for headless mode, None for live session mode.
@@ -103,11 +104,13 @@ class CompositorManager:
             CompositorError: If the compositor fails to start or connect.
         """
         if headless:
-            return self._start_headless(config_set, outputs, init_extra)
+            return self._start_headless(config_set, outputs, init_extra,
+                                        extra_env)
         else:
             return self._connect_live_session()
 
-    def _start_headless(self, config_set, outputs=1, init_extra=None):
+    def _start_headless(self, config_set, outputs=1, init_extra=None,
+                        extra_env=None):
         """Launch a new headless compositor instance."""
         # Create temp directory structure matching integration harness
         self._tmp_dir = tempfile.mkdtemp(
@@ -133,6 +136,7 @@ class CompositorManager:
         env["XDG_CONFIG_HOME"] = os.path.join(self._tmp_dir, "config")
         env["HOME"] = self._tmp_dir
         env["WLR_HEADLESS_OUTPUTS"] = str(outputs)
+        env.update(extra_env or {})
 
         # Launch compositor. Log to a file: an unread stderr pipe fills
         # up after ~64 KiB and blocks the compositor in write().

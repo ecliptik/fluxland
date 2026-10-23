@@ -18,6 +18,7 @@
 #include "i18n.h"
 #include "keybind.h"
 #include "server.h"
+#include "session_env.h"
 #include "validate.h"
 
 static const char usage[] = N_(
@@ -116,6 +117,12 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
+	/* Nested in another session, or headless (tests, CI) */
+	bool nested = getenv("WAYLAND_DISPLAY") || getenv("DISPLAY");
+	const char *backends = getenv("WLR_BACKENDS");
+	bool headless = backends && strstr(backends, "headless");
+	wm_session_env_defaults();
+
 	if (!getenv("XDG_RUNTIME_DIR")) {
 		wlr_log(WLR_ERROR, "%s", "XDG_RUNTIME_DIR is not set");
 		return 1;
@@ -137,6 +144,15 @@ main(int argc, char *argv[])
 	setenv("WAYLAND_DISPLAY", server.socket, true);
 	wlr_log(WLR_INFO, "running on WAYLAND_DISPLAY=%s", server.socket);
 
+	/* Portals and other user services find the session this way */
+	int mode = server.config ? server.config->update_activation_env : -1;
+	bool exported = wm_session_env_should_export(
+		mode == 1 ? WM_ACTIVATION_ENV_ALWAYS :
+		mode == 0 ? WM_ACTIVATION_ENV_NEVER : WM_ACTIVATION_ENV_AUTO,
+		nested, headless);
+	if (exported)
+		wm_session_env_export(false);
+
 	/* Run autostart script from config directory */
 	wm_autostart_run(server.config ? server.config->config_dir : NULL,
 		server.socket);
@@ -153,6 +169,8 @@ main(int argc, char *argv[])
 	}
 
 	wm_server_run(&server);
+	if (exported)
+		wm_session_env_export(true);
 	wm_server_destroy(&server);
 
 	return 0;

@@ -215,6 +215,8 @@ static const char *valid_workspace_modes[] = {
 };
 
 /* Valid menu search values */
+static const char *valid_activation_env[] = {
+	"auto", "true", "false", "yes", "no", NULL};
 static const char *valid_menu_search[] = {
 	"nowhere", "itemstart", "somewhere", NULL
 };
@@ -357,6 +359,8 @@ static const struct init_key_spec init_keys[] = {
 	/* Menu */
 	{"session.screen0.menu.alpha", VT_INT, 0, 255, NULL},
 	{"session.menuSearch", VT_ENUM, 0, 0, valid_menu_search},
+	{"session.updateActivationEnvironment", VT_ENUM, 0, 0,
+		valid_activation_env},
 	{"session.screen0.menuDelay", VT_INT, 0, 5000, NULL},
 	{"session.screen0.windowMenu", VT_STRING, 0, 0, NULL},
 
