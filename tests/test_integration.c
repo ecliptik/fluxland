@@ -165,8 +165,11 @@ main(void)
 	 * Find the compositor binary. Check the build directory first
 	 * (for meson test), then fall back to PATH.
 	 */
-	const char *compositor_bin = NULL;
-	if (access("/tmp/fluxland-test/wm-build/fluxland", X_OK) == 0)
+	/* meson sets FLUXLAND_BIN to the freshly built binary */
+	const char *compositor_bin = getenv("FLUXLAND_BIN");
+	if (compositor_bin && access(compositor_bin, X_OK) == 0)
+		; /* use it */
+	else if (access("/tmp/fluxland-test/wm-build/fluxland", X_OK) == 0)
 		compositor_bin = "/tmp/fluxland-test/wm-build/fluxland";
 	else if (access("../fluxland", X_OK) == 0)
 		compositor_bin = "../fluxland";

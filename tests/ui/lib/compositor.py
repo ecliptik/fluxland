@@ -59,6 +59,10 @@ class CompositorManager:
     @staticmethod
     def _resolve_binary(binary_path):
         """Find the fluxland binary, checking common build locations."""
+        # FLUXLAND_BINARY overrides everything (CI builds elsewhere)
+        override = os.environ.get("FLUXLAND_BINARY")
+        if override and os.access(override, os.X_OK):
+            return override
         if os.path.isabs(binary_path) and os.access(binary_path, os.X_OK):
             return binary_path
 
@@ -122,22 +126,21 @@ class CompositorManager:
         env["XDG_CONFIG_HOME"] = os.path.join(self._tmp_dir, "config")
         env["HOME"] = self._tmp_dir
 
-        # Launch compositor
-        self._process = subprocess.Popen(
-            [self._binary_path],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
+        # Launch compositor. Log to a file: an unread stderr pipe fills
+        # up after ~64 KiB and blocks the compositor in write().
+        self._log_path = os.path.join(self._tmp_dir, "compositor.log")
+        with open(self._log_path, "wb") as log:
+            self._process = subprocess.Popen(
+                [self._binary_path],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=log,
+            )
 
         # Wait for Wayland socket to appear
         self._wayland_display = self._wait_for_wayland_socket(timeout=5.0)
         if not self._wayland_display:
-            stderr_output = ""
-            if self._process.poll() is not None:
-                stderr_output = self._process.stderr.read().decode(
-                    errors="replace"
-                )
+            stderr_output = self.log_tail()
             self.stop()
             raise CompositorError(
                 f"Compositor failed to create Wayland socket. "
@@ -256,10 +259,52 @@ class CompositorManager:
         self._process = None
         self._socket_path = None
 
+        # Apps launched by tests outlive the compositor (double fork)
+        self._kill_session_clients()
+
+        # FLUXLAND_TEST_KEEP_LOG=<path>: keep the log for debugging
+        keep = os.environ.get("FLUXLAND_TEST_KEEP_LOG")
+        log = getattr(self, "_log_path", None)
+        if keep and log and os.path.exists(log):
+            shutil.copyfile(log, keep)
+
         # Clean up temp directory
         if self._tmp_dir and os.path.exists(self._tmp_dir):
             shutil.rmtree(self._tmp_dir, ignore_errors=True)
             self._tmp_dir = None
+
+    def log_tail(self, max_bytes=8192):
+        """Return the end of the compositor log (for error messages)."""
+        path = getattr(self, "_log_path", None)
+        if not path or not os.path.exists(path):
+            return ""
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - max_bytes))
+            return f.read().decode(errors="replace")
+
+    def _kill_session_clients(self):
+        """SIGTERM processes started inside this test session.
+
+        They are recognised by XDG_RUNTIME_DIR pointing at our
+        temporary runtime directory.
+        """
+        if not self._runtime_dir:
+            return
+        marker = f"XDG_RUNTIME_DIR={self._runtime_dir}".encode()
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit() or int(entry) == os.getpid():
+                continue
+            try:
+                with open(f"/proc/{entry}/environ", "rb") as f:
+                    env = f.read().split(b"\0")
+            except OSError:
+                continue
+            if marker in env:
+                try:
+                    os.kill(int(entry), signal.SIGTERM)
+                except OSError:
+                    pass
 
     def reconfigure(self):
         """Send Reconfigure command via IPC.

@@ -129,10 +129,13 @@ class WindowHelper:
         if not wait:
             return None
 
+        # Wait until the window is mapped with its real size: a toplevel
+        # can be listed before its first configure has been acked.
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             win = self._ipc.get_window_by_title(title)
-            if win is not None:
+            if win is not None and win.get("width", 0) > 0 \
+                    and win.get("height", 0) > 0:
                 return win
             time.sleep(0.1)
 

@@ -134,9 +134,11 @@ wait_for_socket(int timeout_us)
 pid_t
 harness_start_compositor(const char **out_socket)
 {
-	/* Find the compositor binary */
-	const char *compositor_bin = NULL;
-	if (access("/tmp/fluxland-test/wm-build/fluxland", X_OK) == 0)
+	/* Find the compositor binary: meson sets FLUXLAND_BIN */
+	const char *compositor_bin = getenv("FLUXLAND_BIN");
+	if (compositor_bin && access(compositor_bin, X_OK) == 0)
+		; /* use it */
+	else if (access("/tmp/fluxland-test/wm-build/fluxland", X_OK) == 0)
 		compositor_bin = "/tmp/fluxland-test/wm-build/fluxland";
 	else if (access("../fluxland", X_OK) == 0)
 		compositor_bin = "../fluxland";
@@ -157,8 +159,13 @@ harness_start_compositor(const char **out_socket)
 		setenv("XDG_CONFIG_HOME", test_config_home, 1);
 		setenv("HOME", test_base, 1);
 
+		/* Keep the log for diagnosing skips and failures */
+		char log_path[512];
+		snprintf(log_path, sizeof(log_path), "%s/compositor.log",
+			test_base);
 		freopen("/dev/null", "w", stdout);
-		freopen("/dev/null", "w", stderr);
+		if (!freopen(log_path, "w", stderr))
+			freopen("/dev/null", "w", stderr);
 
 		execl(compositor_bin, "fluxland", (char *)NULL);
 		_exit(127);
