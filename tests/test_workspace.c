@@ -216,6 +216,7 @@ struct wm_output {
 	struct wm_server *server;
 	struct wlr_output *wlr_output;
 	void *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
 };

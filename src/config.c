@@ -1086,6 +1086,166 @@ apply_input_config(struct wm_config *config, struct rc_database *db)
 	}
 }
 
+/* --- Output settings (session.output.<Connector>.*) --- */
+
+static void
+free_output_rules(struct wm_config *config)
+{
+	for (int i = 0; i < config->output_rule_count; i++)
+		free(config->output_rules[i].name);
+	free(config->output_rules);
+	config->output_rules = NULL;
+	config->output_rule_count = 0;
+}
+
+static struct wm_output_rule *
+output_rule_for(struct wm_config *config, const char *name, size_t len)
+{
+	for (int i = 0; i < config->output_rule_count; i++) {
+		struct wm_output_rule *r = &config->output_rules[i];
+		if (strlen(r->name) == len && strncmp(r->name, name, len) == 0)
+			return r;
+	}
+	struct wm_output_rule *rules = realloc(config->output_rules,
+		sizeof(*rules) * (size_t)(config->output_rule_count + 1));
+	if (!rules)
+		return NULL;
+	config->output_rules = rules;
+	struct wm_output_rule *r = &rules[config->output_rule_count];
+	memset(r, 0, sizeof(*r));
+	r->name = strndup(name, len);
+	if (!r->name)
+		return NULL;
+	r->enabled = -1;
+	r->scale = NAN;
+	r->transform = -1;
+	r->adaptive_sync = -1;
+	config->output_rule_count++;
+	return r;
+}
+
+/* "1920x1080" or "1920x1080@60" / "@59.94" */
+bool
+config_parse_output_mode(const char *val, int *w, int *h, int *mhz)
+{
+	char *end;
+	long pw = strtol(val, &end, 10);
+	if (end == val || (*end != 'x' && *end != 'X') || pw <= 0 ||
+	    pw > 32767)
+		return false;
+	const char *p = end + 1;
+	long ph = strtol(p, &end, 10);
+	if (end == p || ph <= 0 || ph > 32767)
+		return false;
+	double hz = 0;
+	if (*end == '@') {
+		p = end + 1;
+		hz = strtod(p, &end);
+		if (end == p || hz <= 0 || hz > 1000)
+			return false;
+		if (strcasecmp(end, "Hz") == 0)
+			end += 2;
+	}
+	if (*end != '\0')
+		return false;
+	*w = (int)pw;
+	*h = (int)ph;
+	*mhz = (int)(hz * 1000 + 0.5);
+	return true;
+}
+
+/* Index into wl_output_transform order, -1 if unknown */
+int
+config_parse_output_transform(const char *val)
+{
+	static const char *const names[] = {
+		"normal", "90", "180", "270",
+		"flipped", "flipped-90", "flipped-180", "flipped-270",
+	};
+	for (int i = 0; i < 8; i++) {
+		if (strcasecmp(val, names[i]) == 0)
+			return i;
+	}
+	return -1;
+}
+
+static bool
+set_output_setting(struct wm_output_rule *r, const char *name,
+	const char *val)
+{
+	if (strcasecmp(name, "enabled") == 0) {
+		r->enabled = parse_tristate_bool(val);
+	} else if (strcasecmp(name, "mode") == 0) {
+		int w, h, mhz;
+		if (config_parse_output_mode(val, &w, &h, &mhz)) {
+			r->width = w;
+			r->height = h;
+			r->refresh_mhz = mhz;
+		}
+	} else if (strcasecmp(name, "scale") == 0) {
+		char *end;
+		double v = strtod(val, &end);
+		if (*end == '\0' && v >= 0.25 && v <= 10.0)
+			r->scale = v;
+	} else if (strcasecmp(name, "position") == 0) {
+		char *end;
+		long x = strtol(val, &end, 10);
+		if (end != val && *end == ',') {
+			const char *p = end + 1;
+			long y = strtol(p, &end, 10);
+			if (end != p && *end == '\0' && labs(x) < 100000 &&
+			    labs(y) < 100000) {
+				r->has_position = true;
+				r->x = (int)x;
+				r->y = (int)y;
+			}
+		}
+	} else if (strcasecmp(name, "transform") == 0) {
+		r->transform = config_parse_output_transform(val);
+	} else if (strcasecmp(name, "adaptiveSync") == 0) {
+		r->adaptive_sync = parse_tristate_bool(val);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+static void
+apply_output_config(struct wm_config *config, struct rc_database *db)
+{
+	free_output_rules(config);
+
+	static const char prefix[] = "session.output.";
+	const size_t plen = sizeof(prefix) - 1;
+	for (int i = 0; i < db->count; i++) {
+		const char *key = db->entries[i].key;
+		const char *val = db->entries[i].value;
+		if (strncmp(key, prefix, plen) != 0 || !val)
+			continue;
+		const char *name = key + plen;
+		const char *dot = strrchr(name, '.');
+		if (!dot || dot == name)
+			continue;
+		struct wm_output_rule *r =
+			output_rule_for(config, name, (size_t)(dot - name));
+		if (r && !set_output_setting(r, dot + 1, val))
+			fprintf(stderr, "fluxland: unknown output setting: %s\n",
+				key);
+	}
+}
+
+const struct wm_output_rule *
+config_find_output_rule(const struct wm_config *config, const char *name)
+{
+	if (!config || !name)
+		return NULL;
+	for (int i = 0; i < config->output_rule_count; i++) {
+		if (strcmp(config->output_rules[i].name, name) == 0)
+			return &config->output_rules[i];
+	}
+	return NULL;
+}
+
 static void
 apply_mouse_config(struct wm_config *config, struct rc_database *db)
 {
@@ -1265,6 +1425,7 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	apply_xkb_config(config, db);
 	apply_mouse_config(config, db);
 	apply_input_config(config, db);
+	apply_output_config(config, db);
 	apply_misc_config(config, db);
 	apply_wallpaper_config(config, db);
 	apply_file_paths_config(config, db);
@@ -1337,6 +1498,7 @@ config_destroy(struct wm_config *config)
 	free_workspace_names(config);
 	free_wallpaper_paths(config);
 	free_input_rules(config);
+	free_output_rules(config);
 	free(config->wallpaper);
 	free(config->wallpaper_color);
 	free(config->titlebar_left);

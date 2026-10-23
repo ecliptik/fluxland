@@ -23,6 +23,7 @@
 
 #include "layer_shell.h"
 #include "output.h"
+#include "view.h"
 #include "server.h"
 
 /*
@@ -61,88 +62,73 @@ output_from_wlr(struct wm_server *server, struct wlr_output *wlr_output)
 }
 
 /*
- * Arrange all layer surfaces on a given output.
- * Iterates through each layer in order, calling
- * wlr_scene_layer_surface_v1_configure() which handles positioning
- * based on anchors/margins and updates the usable_area for
- * exclusive zones.
+ * Position the layer surfaces on an output (full_area, in layout
+ * coordinates) and take their exclusive zones out of usable_area.
+ * Surfaces with an exclusive zone go first so the others fit around
+ * them. Called by wm_output_arrange().
  */
 void
-wm_layer_shell_arrange(struct wm_output *output)
+wm_layer_shell_configure(struct wm_output *output,
+	const struct wlr_box *full, struct wlr_box *usable)
 {
-	struct wlr_box full_area = {0};
-	wlr_output_effective_resolution(output->wlr_output,
-		&full_area.width, &full_area.height);
-
-	struct wlr_box usable_area = full_area;
+	struct wlr_box full_area = *full;
+	struct wlr_box usable_area = *usable;
 
 	struct wm_server *server = output->server;
-	struct wlr_scene_tree *layers[] = {
-		server->layer_overlay,
-		server->layer_top,
-		server->layer_bottom,
-		server->layer_background,
+	static const enum zwlr_layer_shell_v1_layer order[] = {
+		ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+		ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+		ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+		ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
 	};
 
 	/*
-	 * First pass: arrange surfaces with exclusive zones.
-	 * These reserve edge space (e.g., a panel at the top).
+	 * Walk our own list, not the layer scene trees: those also hold
+	 * fullscreen windows and popup trees.
 	 */
-	for (int i = 0; i < 4; i++) {
-		struct wlr_scene_node *node;
-		wl_list_for_each(node, &layers[i]->children, link) {
-			struct wlr_scene_tree *tree;
-			struct wlr_scene_layer_surface_v1 *scene_layer;
-
-			if (node->type != WLR_SCENE_NODE_TREE)
-				continue;
-			tree = wl_container_of(node, tree, node);
-			scene_layer = tree->node.data;
-			if (!scene_layer)
-				continue;
-
-			struct wlr_layer_surface_v1 *lsurface =
-				scene_layer->layer_surface;
-			if (lsurface->output != output->wlr_output)
-				continue;
-			if (lsurface->current.exclusive_zone <= 0)
-				continue;
-
-			wlr_scene_layer_surface_v1_configure(
-				scene_layer, &full_area, &usable_area);
+	for (int exclusive = 1; exclusive >= 0; exclusive--) {
+		for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
+			struct wm_layer_surface *ls;
+			wl_list_for_each(ls, &server->layer_surfaces, link) {
+				struct wlr_layer_surface_v1 *lsurface =
+					ls->layer_surface;
+				if (lsurface->output != output->wlr_output ||
+				    lsurface->current.layer != order[i] ||
+				    !lsurface->initialized)
+					continue;
+				if ((lsurface->current.exclusive_zone > 0) !=
+				    (bool)exclusive)
+					continue;
+				wlr_scene_layer_surface_v1_configure(
+					ls->scene, &full_area, &usable_area);
+			}
 		}
 	}
 
-	/*
-	 * Second pass: arrange surfaces without exclusive zones.
-	 * These use the remaining usable area.
-	 */
-	for (int i = 0; i < 4; i++) {
-		struct wlr_scene_node *node;
-		wl_list_for_each(node, &layers[i]->children, link) {
-			struct wlr_scene_tree *tree;
-			struct wlr_scene_layer_surface_v1 *scene_layer;
+	*usable = usable_area;
 
-			if (node->type != WLR_SCENE_NODE_TREE)
-				continue;
-			tree = wl_container_of(node, tree, node);
-			scene_layer = tree->node.data;
-			if (!scene_layer)
-				continue;
-
-			struct wlr_layer_surface_v1 *lsurface =
-				scene_layer->layer_surface;
-			if (lsurface->output != output->wlr_output)
-				continue;
-			if (lsurface->current.exclusive_zone > 0)
-				continue;
-
-			wlr_scene_layer_surface_v1_configure(
-				scene_layer, &full_area, &usable_area);
-		}
+	/* Popups are placed relative to their layer surface */
+	struct wm_layer_surface *ls;
+	wl_list_for_each(ls, &server->layer_surfaces, link) {
+		if (ls->layer_surface->output != output->wlr_output)
+			continue;
+		wlr_scene_node_set_position(&ls->popup_tree->node,
+			ls->scene->tree->node.x, ls->scene->tree->node.y);
 	}
+}
 
-	output->usable_area = usable_area;
+void
+wm_layer_shell_output_destroyed(struct wm_server *server,
+	struct wlr_output *wlr_output)
+{
+	struct wm_layer_surface *ls, *tmp;
+	wl_list_for_each_safe(ls, tmp, &server->layer_surfaces, link) {
+		if (ls->layer_surface->output != wlr_output)
+			continue;
+		/* The client gets "closed" and may ask for a new surface */
+		ls->layer_surface->output = NULL;
+		wlr_layer_surface_v1_destroy(ls->layer_surface);
+	}
 }
 
 /*
@@ -247,12 +233,20 @@ handle_layer_surface_commit(struct wl_listener *listener, void *data)
 		return;
 	}
 
+	/* Moved to another layer: move its scene tree with it */
+	if (layer_surface->current.committed &
+	    WLR_LAYER_SURFACE_V1_STATE_LAYER) {
+		wlr_scene_node_reparent(&ls->scene->tree->node,
+			get_layer_tree(ls->server,
+				layer_surface->current.layer));
+	}
+
 	/* Re-arrange layers when state changes */
 	if (layer_surface->output) {
 		struct wm_output *output = output_from_wlr(
 			ls->server, layer_surface->output);
 		if (output) {
-			wm_layer_shell_arrange(output);
+			wm_output_arrange(output);
 		}
 	}
 
@@ -275,7 +269,7 @@ handle_layer_surface_map(struct wl_listener *listener, void *data)
 		struct wm_output *output = output_from_wlr(
 			ls->server, ls->layer_surface->output);
 		if (output)
-			wm_layer_shell_arrange(output);
+			wm_output_arrange(output);
 	}
 
 	/* Check if this surface wants keyboard focus */
@@ -296,7 +290,7 @@ handle_layer_surface_unmap(struct wl_listener *listener, void *data)
 		struct wm_output *output = output_from_wlr(
 			ls->server, ls->layer_surface->output);
 		if (output)
-			wm_layer_shell_arrange(output);
+			wm_output_arrange(output);
 	}
 
 	/* If this surface had keyboard focus, try to re-focus */
@@ -323,6 +317,7 @@ handle_layer_surface_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&ls->new_popup.link);
 	wl_list_remove(&ls->commit.link);
 	wl_list_remove(&ls->link);
+	wlr_scene_node_destroy(&ls->popup_tree->node);
 
 	free(ls);
 }
@@ -338,7 +333,11 @@ handle_layer_new_popup(struct wl_listener *listener, void *data)
 		wl_container_of(listener, ls, new_popup);
 	struct wlr_xdg_popup *popup = data;
 
-	/* Create the popup's scene tree under the layer surface's popup tree */
+	/*
+	 * The popup's scene tree goes under the layer surface's popup tree
+	 * (which follows the surface); xdg places it relative to that.
+	 * Setting base->data lets submenus nest under it.
+	 */
 	struct wlr_scene_tree *popup_tree =
 		wlr_scene_xdg_surface_create(ls->popup_tree,
 			popup->base);
@@ -346,12 +345,8 @@ handle_layer_new_popup(struct wl_listener *listener, void *data)
 		wlr_log(WLR_ERROR, "%s", "failed to create popup scene tree");
 		return;
 	}
-
-	/* Position the popup relative to the layer surface */
-	struct wlr_scene_node *layer_node = &ls->scene->tree->node;
-	int lx = layer_node->x;
-	int ly = layer_node->y;
-	wlr_scene_node_set_position(&popup_tree->node, lx, ly);
+	popup->base->data = popup_tree;
+	wm_xdg_popup_track(ls->server, popup);
 
 	wlr_log(WLR_DEBUG, "new layer popup for %s",
 		ls->layer_surface->namespace);
@@ -416,8 +411,14 @@ handle_new_layer_surface(struct wl_listener *listener, void *data)
 	/* Store back-reference for hit testing */
 	ls->scene->tree->node.data = ls->scene;
 
-	/* Create a tree for popups from this layer surface */
-	ls->popup_tree = wlr_scene_tree_create(parent_tree);
+	/*
+	 * Popups (panel menus) open above windows, even for panels in the
+	 * background and bottom layers.
+	 */
+	ls->popup_tree = wlr_scene_tree_create(
+		layer_surface->pending.layer ==
+			ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY ?
+		server->layer_overlay : server->layer_top);
 
 	/* Set up event listeners */
 	ls->map.notify = handle_layer_surface_map;

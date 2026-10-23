@@ -336,6 +336,7 @@ struct wm_output {
 	struct wl_list link;
 	struct wm_server *server;
 	struct wlr_output *wlr_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 };
 
@@ -356,12 +357,36 @@ struct wm_server {
 	struct wm_output_management output_mgmt;
 };
 
-/* --- Stub layer_shell --- */
+/* --- Stub output.c --- */
+
+static struct wm_output *g_place_output;
+static int g_place_x, g_place_y;
+
+static struct wm_output *
+wm_output_from_wlr(struct wm_server *server, struct wlr_output *wlr_output)
+{
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (output->wlr_output == wlr_output)
+			return output;
+	}
+	return NULL;
+}
 
 static void
-wm_layer_shell_arrange(struct wm_output *output)
+wm_output_place(struct wm_output *output, bool has_position, int x, int y)
 {
-	(void)output;
+	(void)has_position;
+	g_place_output = output;
+	g_place_x = x;
+	g_place_y = y;
+	wlr_output_layout_add(NULL, output->wlr_output, x, y);
+}
+
+static void
+wm_output_arrange_all(struct wm_server *server)
+{
+	(void)server;
 	g_layer_shell_arrange_count++;
 }
 
@@ -955,9 +980,9 @@ test_handle_config_commit_success_with_output(void)
 	assert(g_config_send_succeeded_count == 1);
 	assert(g_config_destroy_count == 1);
 
-	/* Verify usable_area was updated */
-	assert(out1.usable_area.width == 1920);
-	assert(out1.usable_area.height == 1080);
+	/* The output was placed where the client asked */
+	assert(g_place_output == &out1);
+	assert(g_place_x == 100 && g_place_y == 200);
 
 	printf("  PASS: test_handle_config_commit_success_with_output\n");
 }

@@ -135,6 +135,7 @@ struct wm_xdg_decoration {
 	struct wm_server *server;
 	struct wl_listener destroy;
 	struct wl_listener request_mode;
+	struct wl_listener surface_commit; /* until the initial commit */
 };
 
 /* --- API --- */

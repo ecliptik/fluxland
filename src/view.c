@@ -424,19 +424,31 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 		}
 	}
 
-	/* Honor pre-map maximize/fullscreen requests from client */
-	if (want_maximized && !view->maximized)
-		wm_view_toggle_maximize(view);
-	if (want_fullscreen && !view->fullscreen)
-		wm_view_toggle_fullscreen(view);
-
 	/* Apply automatic window placement */
 	wm_placement_apply(view->server, view);
 	wm_view_move(view, view->x, view->y);
+	if (view->pending_head > 0) {
+		wm_view_set_head(view, view->pending_head);
+		view->pending_head = 0;
+	}
+
+	/*
+	 * Then the states that fill an output, on the output it was placed
+	 * on: from window rules, or asked for by the client before mapping.
+	 */
+	if ((want_maximized || view->pending_maximize) && !view->maximized)
+		wm_view_toggle_maximize(view);
+	if ((want_fullscreen || view->pending_fullscreen) && !view->fullscreen)
+		wm_view_toggle_fullscreen(view);
+	view->pending_maximize = view->pending_fullscreen = false;
 
 	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
-	if (!view->no_focus)
+	if (view->pending_minimize) {
+		view->pending_minimize = false;
+		wm_view_minimize(view);
+	} else if (!view->no_focus) {
 		wm_focus_view(view, wm_view_surface(view));
+	}
 
 	/* Broadcast window open event via IPC */
 	{

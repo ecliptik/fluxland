@@ -143,6 +143,7 @@ struct wm_server {
 
 	struct wl_list outputs; /* wm_output.link */
 	struct wl_listener new_output;
+	struct wl_listener output_layout_change; /* output.c */
 	struct wlr_output_layout *output_layout;
 
 	/* Input / seat */

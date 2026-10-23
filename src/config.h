@@ -118,6 +118,23 @@ struct wm_input_rule {
 	int send_events;           /* 0 enabled, 1 disabled, 2 off w/ ext mouse */
 };
 
+/*
+ * Output (monitor) settings: session.output.<Connector>.<setting>, where
+ * <Connector> is the output name (eDP-1, HDMI-A-1, DP-2, ...). Unset
+ * fields keep the output's current/preferred state.
+ */
+struct wm_output_rule {
+	char *name;
+	int enabled;        /* -1 unset, else bool */
+	int width, height;  /* mode; 0 = unset */
+	int refresh_mhz;    /* 0 = highest available for the size */
+	double scale;       /* NaN = unset */
+	bool has_position;
+	int x, y;           /* layout position */
+	int transform;      /* -1 unset, else enum wl_output_transform */
+	int adaptive_sync;  /* -1 unset, else bool */
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -227,6 +244,10 @@ struct wm_config {
 	struct wm_input_rule *input_rules;
 	int input_rule_count;
 
+	/* Output settings, one per connector */
+	struct wm_output_rule *output_rules;
+	int output_rule_count;
+
 	/* Double-click interval (ms) */
 	int double_click_interval;
 
@@ -303,6 +324,16 @@ int config_reload(struct wm_config *config);
 
 /* Free all resources */
 void config_destroy(struct wm_config *config);
+
+/* The session.output.<name>.* settings for an output, or NULL */
+const struct wm_output_rule *config_find_output_rule(
+	const struct wm_config *config, const char *name);
+
+/* Parse "WxH[@Hz]" (refresh in mHz, 0 if not given) */
+bool config_parse_output_mode(const char *val, int *w, int *h, int *mhz);
+
+/* "normal", "90", ..., "flipped-270" -> wl_output_transform, or -1 */
+int config_parse_output_transform(const char *val);
 
 /* Check if a config file's mtime has changed since last check.
  * Updates *cached_mtime on change. Returns true if changed or on error. */

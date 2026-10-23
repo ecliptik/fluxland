@@ -25,6 +25,16 @@ test_input_config = executable(
 )
 test('input_config', test_input_config)
 
+# --- test_output_config: session.output.* -> wlr_output_state ---
+test_output_config = executable(
+  'test_output_config',
+  files('test_output_config.c', '../src/output_config.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, wayland_server],
+  install: false,
+)
+test('output_config', test_output_config)
+
 # --- test_keybind: keybinding parser tests ---
 test_keybind = executable(
   'test_keybind',
@@ -174,7 +184,8 @@ test('atspi_bridge', test_atspi_bridge)
 # --- test_validate: config validation tests ---
 test_validate = executable(
   'test_validate',
-  files('test_validate.c', '../src/validate.c', '../src/rcparser.c'),
+  files('test_validate.c', '../src/validate.c', '../src/rcparser.c',
+    '../src/config.c'),
   include_directories: test_inc,
   dependencies: [],
   install: false,

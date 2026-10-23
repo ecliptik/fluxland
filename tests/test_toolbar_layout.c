@@ -361,6 +361,8 @@ struct wm_config {
 	int iconbar_icon_width;
 	int iconbar_wheel_mode;
 	char *iconbar_iconified_pattern;
+	int toolbar_on_head;
+	bool toolbar_max_over;
 };
 
 struct wm_workspace {
@@ -409,8 +411,10 @@ struct wm_output {
 	void *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
+	int lx, ly; /* position in the layout */
 };
 
 struct wm_focus_nav {
@@ -551,6 +555,40 @@ wlr_output_effective_resolution(struct wlr_output *output,
 {
 	*width = output->width;
 	*height = output->height;
+}
+
+/* --- output.c stand-ins --- */
+
+static int g_arrange_count;
+
+static void
+wm_output_layout_box(struct wm_output *output, struct wlr_box *box)
+{
+	box->x = output->lx;
+	box->y = output->ly;
+	box->width = output->wlr_output->width;
+	box->height = output->wlr_output->height;
+}
+
+static void
+wm_output_arrange(struct wm_output *output)
+{
+	(void)output;
+	g_arrange_count++;
+}
+
+static struct wm_output *
+wm_output_by_head(struct wm_server *server, int head)
+{
+	struct wm_output *output;
+	int n = 1;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (n++ == head)
+			return output;
+	}
+	if (wl_list_empty(&server->outputs))
+		return NULL;
+	return wl_container_of(server->outputs.next, output, link);
 }
 
 static struct wl_event_source g_event_source;
@@ -2323,7 +2361,7 @@ test_toolbar_render_not_visible(void)
 	printf("  PASS: toolbar_render_not_visible\n");
 }
 
-/* --- get_primary_output: empty output list --- */
+/* --- toolbar_output: empty output list --- */
 
 static void
 test_get_primary_output_empty(void)
@@ -2334,7 +2372,7 @@ test_get_primary_output_empty(void)
 	wl_list_remove(&test_output.link);
 	wl_list_init(&test_server.outputs);
 
-	struct wm_output *out = get_primary_output(&test_server);
+	struct wm_output *out = toolbar_output(&test_server);
 	assert(out == NULL);
 
 	/* Re-add for other tests */
@@ -2483,6 +2521,122 @@ test_toolbar_render_focus_indicator_hide(void)
 	wm_toolbar_destroy(toolbar);
 	wl_list_remove(&ws.link);
 	printf("  PASS: toolbar_render_focus_indicator_hide\n");
+}
+
+/* --- multi-head: placement and reserved space --- */
+
+static void
+test_toolbar_on_second_head(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+	test_config.toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+	test_config.toolbar_width_percent = 50;
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	/* Head 2: 1280x1024, right of the 1920x1080 head 1 */
+	struct wlr_output wlr2;
+	memset(&wlr2, 0, sizeof(wlr2));
+	wlr2.width = 1280;
+	wlr2.height = 1024;
+	struct wm_output out2;
+	memset(&out2, 0, sizeof(out2));
+	out2.wlr_output = &wlr2;
+	out2.lx = 1920;
+	out2.ly = 0;
+	wl_list_insert(test_server.outputs.prev, &out2.link);
+
+	test_config.toolbar_on_head = 2;
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	assert(toolbar->width == 640);
+	assert(toolbar->x == 1920 + (1280 - 640) / 2);
+	assert(toolbar->y == 1024 - toolbar->height);
+
+	/* Head 0 and out-of-range heads mean head 1 */
+	test_config.toolbar_on_head = 7;
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->x == (1920 - 960) / 2);
+	assert(toolbar->y == 1080 - toolbar->height);
+
+	/* Relayout asks every output to re-arrange (it may have moved) */
+	g_arrange_count = 0;
+	wm_toolbar_relayout(toolbar);
+	assert(g_arrange_count == 2);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&out2.link);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_on_second_head\n");
+}
+
+static void
+test_toolbar_reserve(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+	test_config.toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	int h = toolbar->height;
+
+	/* Bottom: windows stop above it; repeated arranges don't stack */
+	for (int i = 0; i < 3; i++) {
+		struct wlr_box usable = {0, 0, 1920, 1080};
+		wm_toolbar_reserve(toolbar, &test_output, &usable);
+		assert(usable.y == 0 && usable.height == 1080 - h);
+	}
+
+	/* Top: below it, after a layer-shell panel already took 30px */
+	test_config.toolbar_placement = WM_TOOLBAR_TOP_CENTER;
+	wm_toolbar_relayout(toolbar);
+	struct wlr_box usable = {0, 30, 1920, 1050};
+	wm_toolbar_reserve(toolbar, &test_output, &usable);
+	assert(usable.y == 30 && usable.height == 1050);
+	usable = (struct wlr_box){0, 0, 1920, 1080};
+	wm_toolbar_reserve(toolbar, &test_output, &usable);
+	assert(usable.y == h && usable.height == 1080 - h);
+
+	/* Like Fluxbox: auto-hide, maxOver and hidden reserve nothing */
+	toolbar->auto_hide = true;
+	usable = (struct wlr_box){0, 0, 1920, 1080};
+	wm_toolbar_reserve(toolbar, &test_output, &usable);
+	assert(usable.height == 1080);
+	toolbar->auto_hide = false;
+	test_config.toolbar_max_over = true;
+	wm_toolbar_reserve(toolbar, &test_output, &usable);
+	assert(usable.height == 1080);
+	test_config.toolbar_max_over = false;
+	toolbar->visible = false;
+	wm_toolbar_reserve(toolbar, &test_output, &usable);
+	assert(usable.height == 1080);
+	toolbar->visible = true;
+
+	/* Other outputs are untouched */
+	struct wm_output other;
+	memset(&other, 0, sizeof(other));
+	wm_toolbar_reserve(toolbar, &other, &usable);
+	assert(usable.height == 1080);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_reserve\n");
 }
 
 /* --- toolbar relayout placement variants --- */
@@ -2822,6 +2976,8 @@ main(void)
 	test_toolbar_render_zero_dims();
 	test_toolbar_render_not_visible();
 	test_get_primary_output_empty();
+	test_toolbar_on_second_head();
+	test_toolbar_reserve();
 	test_render_tool_zero_width();
 
 	/* additional coverage: focus indicator + relayout placements */

@@ -16,7 +16,6 @@
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/util/log.h>
 
-#include "layer_shell.h"
 #include "output.h"
 #include "output_management.h"
 #include "server.h"
@@ -97,28 +96,20 @@ handle_output_configuration(struct wm_server *server,
 		goto cleanup;
 	}
 
-	/* Apply position changes to the output layout */
+	/*
+	 * Place each output: enabled ones at their new position, disabled
+	 * ones out of the layout. The layout change re-arranges outputs
+	 * and moves windows off outputs that went away.
+	 */
 	struct wlr_output_configuration_head_v1 *head;
 	wl_list_for_each(head, &config->heads, link) {
-		struct wlr_output *wlr_output = head->state.output;
-
-		if (head->state.enabled) {
-			wlr_output_layout_add(server->output_layout, wlr_output,
-				head->state.x, head->state.y);
-		}
-
-		/* Re-arrange layer surfaces on the affected output */
-		struct wm_output *wm_out;
-		wl_list_for_each(wm_out, &server->outputs, link) {
-			if (wm_out->wlr_output == wlr_output) {
-				wlr_output_effective_resolution(wlr_output,
-					&wm_out->usable_area.width,
-					&wm_out->usable_area.height);
-				wm_layer_shell_arrange(wm_out);
-				break;
-			}
-		}
+		struct wm_output *wm_out =
+			wm_output_from_wlr(server, head->state.output);
+		if (wm_out)
+			wm_output_place(wm_out, true, head->state.x,
+				head->state.y);
 	}
+	wm_output_arrange_all(server);
 
 	wlr_output_configuration_v1_send_succeeded(config);
 

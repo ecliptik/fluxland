@@ -28,6 +28,8 @@
 #define VIEW_STUB_SET_MAXIMIZED
 #define VIEW_STUB_SET_SIZE
 #define VIEW_STUB_SURFACE
+#define VIEW_STUB_TOGGLE_STATES
+#define VIEW_STUB_SET_HEAD
 #include "view_backend_stubs.c"
 
 struct wm_workspace *wm_workspace_get(struct wm_server *s, int i)
@@ -190,6 +192,7 @@ struct wm_output {
 	struct wm_server *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
 };
@@ -2014,8 +2017,19 @@ test_apply_fullscreen(void)
 
 	wm_rules_apply(&rules, &view);
 
-	/* Fullscreen flag should be set even without xdg_toplevel */
+	/* Not shown yet: left for map, after placement */
+	assert(view.fullscreen == false);
+	assert(view.pending_fullscreen == true);
+
+	/* A shown window goes fullscreen right away */
+	struct wlr_scene_tree tree;
+	memset(&tree, 0, sizeof(tree));
+	tree.node.enabled = true;
+	view.scene_tree = &tree;
+	view.pending_fullscreen = false;
+	wm_rules_apply(&rules, &view);
 	assert(view.fullscreen == true);
+	assert(view.pending_fullscreen == false);
 
 	wm_rules_finish(&rules);
 	printf("  PASS: test_apply_fullscreen\n");

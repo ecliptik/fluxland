@@ -744,6 +744,7 @@ struct wm_output {
 	void *server;
 	struct wlr_output *wlr_output;
 	void *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	void *active_workspace;
 	struct wl_listener frame;
@@ -1471,6 +1472,7 @@ static void closefrom(int fd) { (void)fd; }
 
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_SET_SIZE
+#define VIEW_STUB_SET_FRAME_BOX
 #include "view_backend_stubs.c"
 
 #include "pixel_buffer.c"

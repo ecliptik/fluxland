@@ -36,26 +36,11 @@
 
 /* --- Helper: get output for slit --- */
 
+/* The slit's head (session.screen0.slit.onhead, from 1) */
 static struct wm_output *
 get_slit_output(struct wm_slit *slit)
 {
-	struct wm_server *server = slit->server;
-	if (wl_list_empty(&server->outputs)) {
-		return NULL;
-	}
-
-	int idx = 0;
-	struct wm_output *output;
-	wl_list_for_each(output, &server->outputs, link) {
-		if (idx == slit->on_head) {
-			return output;
-		}
-		idx++;
-	}
-
-	/* Fallback to primary */
-	return wl_container_of(server->outputs.next,
-		(struct wm_output *)NULL, link);
+	return wm_output_by_head(slit->server, slit->on_head);
 }
 
 /* --- Slit positioning --- */
@@ -891,10 +876,11 @@ wm_slit_reconfigure(struct wm_slit *slit)
 	/* Position based on output and placement */
 	struct wm_output *output = get_slit_output(slit);
 	if (output) {
-		int out_w, out_h;
-		wlr_output_effective_resolution(output->wlr_output,
-			&out_w, &out_h);
-		slit_compute_position(slit, out_w, out_h);
+		struct wlr_box ob;
+		wm_output_layout_box(output, &ob);
+		slit_compute_position(slit, ob.width, ob.height);
+		slit->x += ob.x;
+		slit->y += ob.y;
 	}
 
 	wlr_scene_node_set_position(&slit->scene_tree->node,
@@ -918,80 +904,62 @@ wm_slit_reconfigure(struct wm_slit *slit)
 			&slit->scene_tree->node, false);
 	}
 
-	/* MaxOver: adjust output usable_area to reserve space for slit */
-	if (output && slit->server->config &&
+	/* Windows make room for it (wm_slit_reserve) */
+	int bw2 = 2 * bw;
+	slit->reserved_space = 0;
+	if (has_clients && !slit->hidden && slit->server->config &&
 	    !slit->server->config->slit_max_over) {
-		/* Undo previous reservation */
-		int old_reserved = slit->reserved_space;
-		int new_reserved = 0;
-
-		if (has_clients && !slit->hidden) {
-			int total_w = slit->width + 2 * bw;
-			int total_h = slit->height + 2 * bw;
-
-			switch (slit->placement) {
-			case WM_SLIT_RIGHT_TOP:
-			case WM_SLIT_RIGHT_CENTER:
-			case WM_SLIT_RIGHT_BOTTOM:
-				new_reserved = total_w;
-				output->usable_area.width += old_reserved;
-				output->usable_area.width -= new_reserved;
-				break;
-			case WM_SLIT_LEFT_TOP:
-			case WM_SLIT_LEFT_CENTER:
-			case WM_SLIT_LEFT_BOTTOM:
-				new_reserved = total_w;
-				output->usable_area.x -= old_reserved;
-				output->usable_area.width += old_reserved;
-				output->usable_area.x += new_reserved;
-				output->usable_area.width -= new_reserved;
-				break;
-			case WM_SLIT_TOP_LEFT:
-			case WM_SLIT_TOP_CENTER:
-			case WM_SLIT_TOP_RIGHT:
-				new_reserved = total_h;
-				output->usable_area.y -= old_reserved;
-				output->usable_area.height += old_reserved;
-				output->usable_area.y += new_reserved;
-				output->usable_area.height -= new_reserved;
-				break;
-			case WM_SLIT_BOTTOM_LEFT:
-			case WM_SLIT_BOTTOM_CENTER:
-			case WM_SLIT_BOTTOM_RIGHT:
-				new_reserved = total_h;
-				output->usable_area.height += old_reserved;
-				output->usable_area.height -= new_reserved;
-				break;
-			}
-		} else {
-			/* Slit hidden/no clients: undo reservation */
-			switch (slit->placement) {
-			case WM_SLIT_RIGHT_TOP:
-			case WM_SLIT_RIGHT_CENTER:
-			case WM_SLIT_RIGHT_BOTTOM:
-				output->usable_area.width += old_reserved;
-				break;
-			case WM_SLIT_LEFT_TOP:
-			case WM_SLIT_LEFT_CENTER:
-			case WM_SLIT_LEFT_BOTTOM:
-				output->usable_area.x -= old_reserved;
-				output->usable_area.width += old_reserved;
-				break;
-			case WM_SLIT_TOP_LEFT:
-			case WM_SLIT_TOP_CENTER:
-			case WM_SLIT_TOP_RIGHT:
-				output->usable_area.y -= old_reserved;
-				output->usable_area.height += old_reserved;
-				break;
-			case WM_SLIT_BOTTOM_LEFT:
-			case WM_SLIT_BOTTOM_CENTER:
-			case WM_SLIT_BOTTOM_RIGHT:
-				output->usable_area.height += old_reserved;
-				break;
-			}
-		}
-		slit->reserved_space = new_reserved;
+		bool vertical_edge = slit->placement == WM_SLIT_LEFT_TOP ||
+			slit->placement == WM_SLIT_LEFT_CENTER ||
+			slit->placement == WM_SLIT_LEFT_BOTTOM ||
+			slit->placement == WM_SLIT_RIGHT_TOP ||
+			slit->placement == WM_SLIT_RIGHT_CENTER ||
+			slit->placement == WM_SLIT_RIGHT_BOTTOM;
+		slit->reserved_space = vertical_edge ?
+			slit->width + bw2 : slit->height + bw2;
 	}
+	struct wm_output *o;
+	wl_list_for_each(o, &slit->server->outputs, link)
+		wm_output_arrange(o);
+}
+
+void
+wm_slit_reserve(struct wm_slit *slit, struct wm_output *output,
+	struct wlr_box *usable)
+{
+	if (!slit || slit->reserved_space <= 0 ||
+	    output != get_slit_output(slit))
+		return;
+
+	int r = slit->reserved_space;
+	switch (slit->placement) {
+	case WM_SLIT_LEFT_TOP:
+	case WM_SLIT_LEFT_CENTER:
+	case WM_SLIT_LEFT_BOTTOM:
+		usable->x += r;
+		usable->width -= r;
+		break;
+	case WM_SLIT_RIGHT_TOP:
+	case WM_SLIT_RIGHT_CENTER:
+	case WM_SLIT_RIGHT_BOTTOM:
+		usable->width -= r;
+		break;
+	case WM_SLIT_TOP_LEFT:
+	case WM_SLIT_TOP_CENTER:
+	case WM_SLIT_TOP_RIGHT:
+		usable->y += r;
+		usable->height -= r;
+		break;
+	case WM_SLIT_BOTTOM_LEFT:
+	case WM_SLIT_BOTTOM_CENTER:
+	case WM_SLIT_BOTTOM_RIGHT:
+		usable->height -= r;
+		break;
+	}
+	if (usable->width < 0)
+		usable->width = 0;
+	if (usable->height < 0)
+		usable->height = 0;
 }
 
 void

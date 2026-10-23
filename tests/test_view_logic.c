@@ -501,6 +501,7 @@ struct wm_output {
 	struct wm_server *server;
 	struct wlr_output *wlr_output;
 	void *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
 	struct wl_listener frame;
@@ -612,6 +613,8 @@ struct wm_view {
 	bool app_id_at_map;
 	bool no_decoration;
 	bool no_focus;
+	bool pending_maximize, pending_fullscreen, pending_minimize;
+	int pending_head;
 	struct wm_workspace *workspace;
 	bool sticky;
 	enum wm_view_layer layer;
@@ -1205,6 +1208,81 @@ struct wlr_scene_tree *get_layer_tree(struct wm_server *server,
 	enum wm_view_layer layer);
 bool get_view_output_area(struct wm_view *view, struct wlr_box *area);
 void move_view_to_output(struct wm_view *view, struct wm_output *out);
+void wm_view_refit(struct wm_view *view);
+void wm_view_keep_on_screen(struct wm_view *view);
+void wm_view_frame_extents(struct wm_view *view, int *top, int *bottom,
+	int *left, int *right);
+void wm_view_frame_box(struct wm_view *view, struct wlr_box *box);
+void wm_view_set_frame_box(struct wm_view *view, const struct wlr_box *box);
+bool wm_view_maximize_area(struct wm_view *view, struct wlr_box *area);
+void wm_xdg_popup_track(struct wm_server *server, struct wlr_xdg_popup *popup);
+
+static inline bool
+wlr_box_empty(const struct wlr_box *box)
+{
+	return !box || box->width <= 0 || box->height <= 0;
+}
+
+/* layer-shell: popups parented to a layer surface */
+struct wlr_layer_surface_v1 {
+	struct wlr_output *output;
+};
+static struct wlr_layer_surface_v1 *
+wlr_layer_surface_v1_try_from_wlr_surface(struct wlr_surface *surface)
+{
+	(void)surface;
+	return NULL;
+}
+
+/* output.c stand-ins: the output is whatever output_at returns */
+static struct wm_output *
+wm_output_for_view(struct wm_view *view)
+{
+	struct wm_output *out;
+	wl_list_for_each(out, &view->server->outputs, link) {
+		if (out->wlr_output == g_output_at_return)
+			return out;
+	}
+	return NULL;
+}
+
+static void
+wm_output_layout_box(struct wm_output *output, struct wlr_box *box)
+{
+	wlr_output_layout_get_box(NULL, output->wlr_output, box);
+}
+
+/* Heads: every output in the list, from 1 */
+static struct wm_output *
+wm_output_head(struct wm_server *server, int head)
+{
+	int n = 1;
+	struct wm_output *out;
+	wl_list_for_each(out, &server->outputs, link) {
+		if (n++ == head)
+			return out;
+	}
+	return NULL;
+}
+
+static int
+wm_output_head_count(struct wm_server *server)
+{
+	return wl_list_length(&server->outputs);
+}
+
+static int
+wm_output_head_number(struct wm_output *output)
+{
+	int n = 1;
+	struct wm_output *out;
+	wl_list_for_each(out, &output->server->outputs, link) {
+		if (out == output)
+			return n;
+		n++;
+	}
+	return 0;
+}
 
 /* --- Include view source files directly --- */
 
@@ -2886,8 +2964,8 @@ test_view_set_head_valid(void)
 	setup_mock_output(0, 0, 0, 1920, 1080);
 	setup_mock_output(1, 1920, 0, 1920, 1080);
 
-	/* Move view to head index 1 (second output at 1920,0) */
-	wm_view_set_head(&test_views[0], 1);
+	/* Head 2: the second output, at 1920,0 */
+	wm_view_set_head(&test_views[0], 2);
 
 	/* View should be centered on the second output's usable area.
 	 * Area: 1920,0 1920x1080. View geo: 800x600.
@@ -2913,8 +2991,8 @@ test_view_set_head_first_output(void)
 	setup_mock_output(0, 0, 0, 1920, 1080);
 	setup_mock_output(1, 1920, 0, 1920, 1080);
 
-	/* Move to head 0 */
-	wm_view_set_head(&test_views[0], 0);
+	/* Head 1 (Fluxbox numbers heads from 1) */
+	wm_view_set_head(&test_views[0], 1);
 
 	/* View centered on first output */
 	assert(test_views[0].x == 560);
@@ -2965,7 +3043,7 @@ test_view_set_head_no_outputs(void)
 	test_views[0].y = 200;
 
 	/* No outputs in list */
-	wm_view_set_head(&test_views[0], 0);
+	wm_view_set_head(&test_views[0], 1);
 
 	/* Position unchanged */
 	assert(test_views[0].x == 100);
@@ -2980,7 +3058,7 @@ test_view_set_head_no_outputs(void)
 static void
 test_view_send_to_next_head_null(void)
 {
-	wm_view_send_to_next_head(NULL);
+	wm_view_send_to_head_offset(NULL, 1);
 	printf("  PASS: view_send_to_next_head_null\n");
 }
 
@@ -2998,7 +3076,7 @@ test_view_send_to_next_head_two_outputs(void)
 	/* Make output_at return the first output's wlr_output */
 	g_output_at_return = &test_wlr_outputs[0];
 
-	wm_view_send_to_next_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], 1);
 
 	/* Should have moved to the second output (centered) */
 	assert(test_views[0].x == 2480);
@@ -3025,7 +3103,7 @@ test_view_send_to_next_head_wraps(void)
 	/* View is on second output (index 1); next should wrap to first */
 	g_output_at_return = &test_wlr_outputs[1];
 
-	wm_view_send_to_next_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], 1);
 
 	/* Should wrap to first output */
 	assert(test_views[0].x == 560);
@@ -3049,7 +3127,7 @@ test_view_send_to_next_head_no_outputs(void)
 	/* No outputs, and output_at returns NULL */
 	g_output_at_return = NULL;
 
-	wm_view_send_to_next_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], 1);
 
 	/* No crash, position unchanged (no outputs to move to) */
 	assert(test_views[0].x == 100);
@@ -3064,7 +3142,7 @@ test_view_send_to_next_head_no_outputs(void)
 static void
 test_view_send_to_prev_head_null(void)
 {
-	wm_view_send_to_prev_head(NULL);
+	wm_view_send_to_head_offset(NULL, -1);
 	printf("  PASS: view_send_to_prev_head_null\n");
 }
 
@@ -3082,7 +3160,7 @@ test_view_send_to_prev_head_two_outputs(void)
 	/* View is on second output; prev should go to first */
 	g_output_at_return = &test_wlr_outputs[1];
 
-	wm_view_send_to_prev_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], -1);
 
 	/* Should have moved to first output (centered) */
 	assert(test_views[0].x == 560);
@@ -3106,16 +3184,13 @@ test_view_send_to_prev_head_wraps(void)
 	setup_mock_output(0, 0, 0, 1920, 1080);
 	setup_mock_output(1, 1920, 0, 1920, 1080);
 
-	/* View is on first output; prev wraps. Due to early-break in the loop,
-	 * last_out points to the matched output. The view gets centered on it.
-	 * center x = 0 + (1920 - 800)/2 = 560 */
+	/* View is on head 1; previous wraps around to the last head */
 	g_output_at_return = &test_wlr_outputs[0];
 
-	wm_view_send_to_prev_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], -1);
 
-	/* Wraps to last_out (which is output0 due to break before full iteration).
-	 * Centering: x = 0 + (1920-800)/2 = 560, y = (1080-600)/2 = 240 */
-	assert(test_views[0].x == 560);
+	/* Centered on head 2: x = 1920 + (1920-800)/2, y = (1080-600)/2 */
+	assert(test_views[0].x == 2480);
 	assert(test_views[0].y == 240);
 
 	g_output_at_return = NULL;
@@ -3382,12 +3457,12 @@ test_view_send_to_next_head_three_outputs(void)
 
 	/* View is on first output, send to next should go to second */
 	g_output_at_return = &test_wlr_outputs[0];
-	wm_view_send_to_next_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], 1);
 	assert(test_views[0].x == 2480);
 
 	/* Now on second output, send to next should go to third */
 	g_output_at_return = &test_wlr_outputs[1];
-	wm_view_send_to_next_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], 1);
 	assert(test_views[0].x == 4400);
 
 	g_output_at_return = NULL;
@@ -3410,7 +3485,7 @@ test_view_send_to_prev_head_no_outputs(void)
 
 	g_output_at_return = NULL;
 
-	wm_view_send_to_prev_head(&test_views[0]);
+	wm_view_send_to_head_offset(&test_views[0], -1);
 
 	/* No crash, position unchanged */
 	assert(test_views[0].x == 100);

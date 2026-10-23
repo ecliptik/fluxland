@@ -55,6 +55,7 @@
 #include "toolbar.h"
 #include "util.h"
 #include "view.h"
+#include "view_geometry.h"
 #include "workspace.h"
 
 static void
@@ -646,12 +647,8 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 						geo.height;
 				}
 
-				sv->x = sb.x;
-				sv->y = sb.y;
-				wlr_scene_node_set_position(
-					&sv->scene_tree->node,
-					sv->x, sv->y);
-				wm_view_set_size(sv, sb.width, sb.height);
+				/* The whole frame fills the zone */
+				wm_view_set_frame_box(sv, &sb);
 
 				snap_preview_destroy(server);
 				if (server->wireframe_active)

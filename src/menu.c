@@ -474,13 +474,9 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 		struct wm_output *wm_out;
 		wl_list_for_each(wm_out, &server->outputs, link) {
 			if (wm_out->wlr_output == wlr_output) {
-				/* Get output position in layout */
-				struct wlr_box out_box;
-				wlr_output_layout_get_box(
-					server->output_layout,
-					wlr_output, &out_box);
-				out_x = out_box.x + wm_out->usable_area.x;
-				out_y = out_box.y + wm_out->usable_area.y;
+				/* usable_area is in layout coordinates */
+				out_x = wm_out->usable_area.x;
+				out_y = wm_out->usable_area.y;
 				out_w = wm_out->usable_area.width;
 				out_h = wm_out->usable_area.height;
 				break;
@@ -1003,15 +999,9 @@ submenu_position(struct wm_menu *parent, int item_y_offset,
 		struct wm_output *wm_out;
 		wl_list_for_each(wm_out, &server->outputs, link) {
 			if (wm_out->wlr_output == wlr_output) {
-				struct wlr_box out_box;
-				wlr_output_layout_get_box(
-					server->output_layout,
-					wlr_output, &out_box);
-				int out_right = out_box.x +
-					wm_out->usable_area.x +
+				int out_right = wm_out->usable_area.x +
 					wm_out->usable_area.width;
-				int out_left = out_box.x +
-					wm_out->usable_area.x;
+				int out_left = wm_out->usable_area.x;
 				/* Flip to left side if overflowing right */
 				if (sub_x + parent->width > out_right) {
 					sub_x = parent->x - parent->width;

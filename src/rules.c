@@ -695,37 +695,30 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 			wm_view_set_sticky(view, rule->sticky);
 		}
 
-		/* Apply maximized */
-		if (rule->has_maximized && rule->maximized &&
-		    wm_view_surface(view) && view->server) {
-			/* Save current geometry for later restore */
-			wm_view_get_geometry(view, &view->saved_geometry);
-
-			/* Find output to maximize onto */
-			struct wlr_output *max_output =
-				wlr_output_layout_output_at(
-					view->server->output_layout,
-					view->server->cursor->x,
-					view->server->cursor->y);
-			if (max_output) {
-				struct wlr_box max_box;
-				wlr_output_layout_get_box(
-					view->server->output_layout,
-					max_output, &max_box);
-				wm_view_set_size(view, max_box.width, max_box.height);
-				view->x = max_box.x;
-				view->y = max_box.y;
-			}
-
-			view->maximized = true;
-			wm_view_set_maximized_state(view, true);
+		/*
+		 * Maximized / fullscreen / minimized need the window placed
+		 * first: while it is being mapped they are left for
+		 * wm_view_map_common(); on a shown window they apply now.
+		 */
+		bool shown = view->scene_tree && view->scene_tree->node.enabled;
+		if (rule->has_head) {
+			if (shown)
+				wm_view_set_head(view, rule->head);
+			else
+				view->pending_head = rule->head;
 		}
-
-		/* Apply fullscreen */
-		if (rule->has_fullscreen && rule->fullscreen) {
-			view->fullscreen = true;
-			if (wm_view_surface(view))
-				wm_view_set_fullscreen_state(view, true);
+		if (rule->has_maximized && rule->maximized && !view->maximized) {
+			if (shown)
+				wm_view_toggle_maximize(view);
+			else
+				view->pending_maximize = true;
+		}
+		if (rule->has_fullscreen && rule->fullscreen &&
+		    !view->fullscreen) {
+			if (shown)
+				wm_view_toggle_fullscreen(view);
+			else
+				view->pending_fullscreen = true;
 		}
 
 		/* Apply shaded */
@@ -737,9 +730,10 @@ void wm_rules_apply(struct wm_rules *rules, struct wm_view *view) {
 		/* Apply minimized */
 		if (rule->has_minimized && rule->minimized &&
 		    view->scene_tree) {
-			wlr_scene_node_set_enabled(
-				&view->scene_tree->node, false);
-			wm_foreign_toplevel_set_minimized(view, true);
+			if (shown)
+				wm_view_minimize(view);
+			else
+				view->pending_minimize = true;
 		}
 
 		/* Apply alpha/opacity */

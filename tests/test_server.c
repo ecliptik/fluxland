@@ -1106,6 +1106,13 @@ static void wm_keyboard_apply_config(struct wm_server *server)
 	g_keyboard_apply_config_count++;
 }
 
+static int g_output_apply_config_count;
+static void wm_output_apply_config(struct wm_server *server)
+{
+	(void)server;
+	g_output_apply_config_count++;
+}
+
 static int g_input_apply_config_count;
 static void wm_input_apply_config(struct wm_server *server)
 {

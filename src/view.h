@@ -100,6 +100,9 @@ struct wm_view {
 	/* Window-type hints from the backend (e.g. X11 splash/tooltip) */
 	bool no_decoration;
 	bool no_focus;
+	/* Set by window rules before the window is shown; realized at map */
+	bool pending_maximize, pending_fullscreen, pending_minimize;
+	int pending_head; /* [Head] rule: 0 = none */
 
 	/* Workspace tracking */
 	struct wm_workspace *workspace;
@@ -289,6 +292,14 @@ void wm_view_get_geometry(struct wm_view *view, struct wlr_box *box);
 /* xdg-shell backend (view_xdg.c); views with impl == NULL use it */
 extern const struct wm_view_impl wm_xdg_view_impl;
 
+/*
+ * Keep an xdg popup on screen (unconstrained to its output on its first
+ * commit). Its scene tree must already be in popup->base->data, nested
+ * under the window's or layer surface's tree.
+ */
+struct wlr_xdg_popup;
+void wm_xdg_popup_track(struct wm_server *server, struct wlr_xdg_popup *popup);
+
 /* --- Lifecycle shared by the xdg-shell and XWayland backends --- */
 
 /* Set defaults, create the (hidden) scene tree, add to server->views */
@@ -390,19 +401,15 @@ void wm_view_resize_by(struct wm_view *view, int dw, int dh);
 void wm_view_focus_direction(struct wm_server *server, int dx, int dy);
 
 /*
- * Move the view to the output at the given head index (0-based).
+ * SetHead N: move the window to head N (Fluxbox numbering, from 1).
  */
-void wm_view_set_head(struct wm_view *view, int head_index);
+void wm_view_set_head(struct wm_view *view, int head);
 
 /*
- * Move the view to the next output.
+ * SendToNextHead / SendToPrevHead [offset]: move the window offset heads
+ * on (negative: back), wrapping around.
  */
-void wm_view_send_to_next_head(struct wm_view *view);
-
-/*
- * Move the view to the previous output.
- */
-void wm_view_send_to_prev_head(struct wm_view *view);
+void wm_view_send_to_head_offset(struct wm_view *view, int offset);
 
 /*
  * Close all windows on the current workspace.

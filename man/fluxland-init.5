@@ -186,7 +186,9 @@ Toolbar stacking layer (default: 4, Dock).
 Toolbar opacity (0\-255, default: 255).
 .TP
 .B session.screen0.toolbar.onhead
-Monitor number for toolbar placement (default: 0).
+Head (monitor) the toolbar is on, numbered from 1 as in Fluxbox;
+0 or a missing head means head 1 (default: 0). See
+.BR OUTPUTS .
 .TP
 .B session.screen0.toolbar.tools
 Space-separated list of toolbar components (default:
@@ -310,7 +312,8 @@ or
 .BR AboveDock .
 .TP
 .B session.screen0.slit.onhead
-Monitor number for slit placement (default: 0).
+Head (monitor) the slit is on, numbered from 1 as in Fluxbox;
+0 or a missing head means head 1 (default: 0).
 .TP
 .B session.screen0.slit.alpha
 Slit opacity (0\-255, default: 255).
@@ -401,6 +404,54 @@ Layout variant (e.g.\&
 .B session.xkb.options
 XKB options (e.g.\&
 .IR grp:alt_shift_toggle,caps:escape ).
+.SH OUTPUTS
+Monitors are configured per connector name (as
+.BR wlr\-randr (1)
+lists them: \fIeDP\-1\fR, \fIHDMI\-A\-1\fR, \fIDP\-2\fR, ...):
+.RS
+.nf
+session.output.\fIName\fR.\fIsetting\fR
+.fi
+.RE
+.PP
+Settings left out keep the monitor's preferred mode and defaults. If the
+settings fail (a mode the monitor rejects), the preferred mode is used.
+They are applied when the monitor is plugged in and on reconfigure;
+changes made with
+.BR wlr\-randr (1)
+or
+.BR kanshi (1)
+last until then.
+.PP
+Heads, used by \fBonhead\fR, \fBSetHead\fR and the \fB[Head]\fR window
+rule, are the enabled monitors in the order they were connected, from 1.
+When a monitor is unplugged or turned off, its windows, toolbar and slit
+move to the remaining ones.
+.TP
+.B enabled
+false turns the monitor off.
+.TP
+.B mode
+\fIwidth\fRx\fIheight\fR, optionally @\fIrate\fR (e.g.\&
+.I 2560x1440@143.97
+); without a rate the fastest for that size.
+.TP
+.B scale
+Scale factor, e.g.\&
+.I 1.5
+(0.25\-10).
+.TP
+.B position
+\fIx\fR,\fIy\fR in the layout, e.g.\&
+.IR 1920,0 .
+Monitors without a position are placed to the right of the others.
+.TP
+.B transform
+.IR normal ", " 90 ", " 180 ", " 270 ", " flipped ", " flipped\-90 ,
+.IR flipped\-180 " or " flipped\-270 .
+.TP
+.B adaptiveSync
+Variable refresh rate (true/false).
 .SH INPUT DEVICES (LIBINPUT)
 Pointer settings apply to every device, to a type of device, or to one
 device:

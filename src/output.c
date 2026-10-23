@@ -21,11 +21,14 @@
 #include "ipc.h"
 #include "layer_shell.h"
 #include "output.h"
+#include "output_config.h"
+#include "slit.h"
 #include "session_lock.h"
 #include "server.h"
 #include "toolbar.h"
 #include "util.h"
 #include "view.h"
+#include "view_geometry.h"
 #include "workspace.h"
 #include "xwayland.h"
 
@@ -73,13 +76,228 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 	}
 
 	struct wm_server *server = output->server;
+	struct wlr_output *wlr_output = output->wlr_output;
 	wl_list_remove(&output->link);
 	wl_list_remove(&output->frame.link);
 	wl_list_remove(&output->request_state.link);
 	wl_list_remove(&output->destroy.link);
 	free(output);
 
+	/* Panels and backgrounds on it go away with it */
+	wm_layer_shell_output_destroyed(server, wlr_output);
+
+	/*
+	 * Leaving the layout moves windows, the toolbar and the slit to
+	 * the remaining outputs (handle_layout_change).
+	 */
+	wlr_output_layout_remove(server->output_layout, wlr_output);
+
 	wm_session_lock_output_changed(server);
+}
+
+/*
+ * Outputs were added, removed, moved, rescaled or rotated: move the
+ * toolbar and slit, recompute every usable area (re-fitting maximized
+ * windows) and bring back windows left off-screen.
+ */
+static void
+handle_layout_change(struct wl_listener *listener, void *data)
+{
+	(void)data;
+	struct wm_server *server =
+		wl_container_of(listener, server, output_layout_change);
+
+	if (server->toolbar)
+		wm_toolbar_relayout(server->toolbar);
+	if (server->slit)
+		wm_slit_reconfigure(server->slit);
+	wm_output_arrange_all(server);
+
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (!view->mapped || view->docked)
+			continue;
+		wm_view_keep_on_screen(view);
+		wm_view_refit(view);
+	}
+}
+
+void
+wm_output_layout_box(struct wm_output *output, struct wlr_box *box)
+{
+	wlr_output_layout_get_box(output->server->output_layout,
+		output->wlr_output, box);
+}
+
+void
+wm_output_place(struct wm_output *output, bool has_position, int x, int y)
+{
+	struct wm_server *server = output->server;
+	struct wlr_output *wlr_output = output->wlr_output;
+	bool present = wlr_output_layout_get(server->output_layout,
+		wlr_output) != NULL;
+
+	if (!wlr_output->enabled) {
+		/* Disabled outputs have no place in the layout */
+		if (present)
+			wlr_output_layout_remove(server->output_layout,
+				wlr_output);
+		return;
+	}
+
+	struct wlr_output_layout_output *lo;
+	if (has_position)
+		lo = wlr_output_layout_add(server->output_layout, wlr_output,
+			x, y);
+	else if (!present)
+		lo = wlr_output_layout_add_auto(server->output_layout,
+			wlr_output);
+	else
+		return;
+
+	/* The scene output follows a new layout entry */
+	if (lo && !present && output->scene_output)
+		wlr_scene_output_layout_add_output(server->scene_layout, lo,
+			output->scene_output);
+}
+
+void
+wm_output_arrange(struct wm_output *output)
+{
+	struct wm_server *server = output->server;
+	struct wlr_box full = {0};
+	wm_output_layout_box(output, &full);
+
+	struct wlr_box usable = full;
+	if (!wlr_box_empty(&full)) {
+		wm_layer_shell_configure(output, &full, &usable);
+		wm_toolbar_reserve(server->toolbar, output, &usable);
+		wm_slit_reserve(server->slit, output, &usable);
+	}
+
+	bool changed = !wlr_box_equal(&usable, &output->usable_area) ||
+		!wlr_box_equal(&full, &output->full_area);
+	output->usable_area = usable;
+	output->full_area = full;
+	if (!changed)
+		return;
+
+	/* Maximized and tiled windows on this output follow */
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->mapped && !view->docked &&
+		    wm_output_for_view(view) == output)
+			wm_view_refit(view);
+	}
+}
+
+void
+wm_output_arrange_all(struct wm_server *server)
+{
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link)
+		wm_output_arrange(output);
+}
+
+void
+wm_output_apply_config(struct wm_server *server)
+{
+	if (!server->config)
+		return;
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		const struct wm_output_rule *rule = config_find_output_rule(
+			server->config, output->wlr_output->name);
+		if (!rule)
+			continue;
+		struct wlr_output_state state;
+		wlr_output_state_init(&state);
+		if (wm_output_config_build(output->wlr_output, rule, &state) &&
+		    !wlr_output_commit_state(output->wlr_output, &state))
+			wlr_log(WLR_ERROR, "output %s: cannot apply settings "
+				"from init", output->wlr_output->name);
+		wlr_output_state_finish(&state);
+		wm_output_place(output, rule->has_position, rule->x, rule->y);
+	}
+}
+
+/* Heads are the outputs in the layout (disabled ones don't count) */
+static bool
+is_head(struct wm_output *output)
+{
+	return wlr_output_layout_get(output->server->output_layout,
+		output->wlr_output) != NULL;
+}
+
+struct wm_output *
+wm_output_head(struct wm_server *server, int head)
+{
+	int n = 1;
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (is_head(output) && n++ == head)
+			return output;
+	}
+	return NULL;
+}
+
+struct wm_output *
+wm_output_by_head(struct wm_server *server, int head)
+{
+	struct wm_output *output = wm_output_head(server, head);
+	/* 0 or out of range: the first head */
+	return output ? output : wm_output_head(server, 1);
+}
+
+int
+wm_output_head_count(struct wm_server *server)
+{
+	int n = 0;
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (is_head(output))
+			n++;
+	}
+	return n;
+}
+
+int
+wm_output_head_number(struct wm_output *output)
+{
+	int n = 1;
+	struct wm_output *o;
+	wl_list_for_each(o, &output->server->outputs, link) {
+		if (o == output)
+			return is_head(o) ? n : 0;
+		if (is_head(o))
+			n++;
+	}
+	return 0;
+}
+
+struct wm_output *
+wm_output_for_view(struct wm_view *view)
+{
+	struct wm_server *server = view->server;
+	struct wlr_box geo;
+	wm_view_get_geometry(view, &geo);
+	double cx = view->x + geo.width / 2.0;
+	double cy = view->y + geo.height / 2.0;
+
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(
+		server->output_layout, cx, cy);
+	if (!wlr_output) {
+		double lx, ly;
+		wlr_output_layout_closest_point(server->output_layout, NULL,
+			cx, cy, &lx, &ly);
+		wlr_output = wlr_output_layout_output_at(
+			server->output_layout, lx, ly);
+	}
+	struct wm_output *output = wlr_output ?
+		wm_output_from_wlr(server, wlr_output) : NULL;
+	if (!output && !wl_list_empty(&server->outputs))
+		output = wl_container_of(server->outputs.next, output, link);
+	return output;
 }
 
 static void
@@ -93,17 +311,28 @@ handle_new_output(struct wl_listener *listener, void *data)
 	wlr_output_init_render(wlr_output, server->allocator,
 		server->renderer);
 
-	/* Set preferred mode */
+	/* Preferred mode, then the session.output.<name>.* settings */
+	const struct wm_output_rule *rule = server->config ?
+		config_find_output_rule(server->config, wlr_output->name) :
+		NULL;
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
 	wlr_output_state_set_enabled(&state, true);
-
 	struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
 	if (mode) {
 		wlr_output_state_set_mode(&state, mode);
 	}
-
-	wlr_output_commit_state(wlr_output, &state);
+	wm_output_config_build(wlr_output, rule, &state);
+	if (!wlr_output_commit_state(wlr_output, &state) && rule) {
+		wlr_log(WLR_ERROR, "output %s: settings from init failed, "
+			"using its preferred mode", wlr_output->name);
+		wlr_output_state_finish(&state);
+		wlr_output_state_init(&state);
+		wlr_output_state_set_enabled(&state, true);
+		if (mode)
+			wlr_output_state_set_mode(&state, mode);
+		wlr_output_commit_state(wlr_output, &state);
+	}
 	wlr_output_state_finish(&state);
 
 	/* Allocate our output wrapper */
@@ -127,22 +356,15 @@ handle_new_output(struct wl_listener *listener, void *data)
 	output->destroy.notify = handle_output_destroy;
 	wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
-	wl_list_insert(&server->outputs, &output->link);
+	/* Connection order: head 1 is the first output connected */
+	wl_list_insert(server->outputs.prev, &output->link);
 
-	/* Add output to layout (auto-arranged) */
-	struct wlr_output_layout_output *lo =
-		wlr_output_layout_add_auto(server->output_layout, wlr_output);
-
-	/* Create scene output and attach to layout */
 	output->scene_output = wlr_scene_output_create(
 		server->scene, wlr_output);
-	wlr_scene_output_layout_add_output(
-		server->scene_layout, lo, output->scene_output);
 
-	/* Initialize usable area to full output dimensions */
-	wlr_output_effective_resolution(wlr_output,
-		&output->usable_area.width,
-		&output->usable_area.height);
+	/* Into the layout at its configured position (or auto) */
+	wm_output_place(output, rule && rule->has_position,
+		rule ? rule->x : 0, rule ? rule->y : 0);
 
 	wlr_log(WLR_INFO, "new output: %s (%dx%d)",
 		wlr_output->name,
@@ -167,13 +389,8 @@ handle_new_output(struct wl_listener *listener, void *data)
 	/* Offer output for DRM leasing (VR headsets) */
 	wm_drm_lease_offer_output(server, wlr_output);
 
-	/* Arrange any existing layer surfaces on this output */
-	wm_layer_shell_arrange(output);
-
-	/* Re-layout toolbar now that an output is available */
-	if (server->toolbar) {
-		wm_toolbar_relayout(server->toolbar);
-	}
+	/* Layer surfaces, toolbar and slit (may be the first output) */
+	handle_layout_change(&server->output_layout_change, NULL);
 }
 
 void
@@ -195,6 +412,10 @@ wm_output_init(struct wm_server *server)
 		exit(EXIT_FAILURE);
 	}
 
+	server->output_layout_change.notify = handle_layout_change;
+	wl_signal_add(&server->output_layout->events.change,
+		&server->output_layout_change);
+
 	server->new_output.notify = handle_new_output;
 	wl_signal_add(&server->backend->events.new_output,
 		&server->new_output);
@@ -204,6 +425,20 @@ void
 wm_output_finish(struct wm_server *server)
 {
 	wl_list_remove(&server->new_output.link);
+	wl_list_remove(&server->output_layout_change.link);
+
+	/*
+	 * The backend destroys the outputs later, after the toolbar, slit
+	 * and session lock are gone: stop following them now.
+	 */
+	struct wm_output *output, *tmp;
+	wl_list_for_each_safe(output, tmp, &server->outputs, link) {
+		wl_list_remove(&output->link);
+		wl_list_remove(&output->frame.link);
+		wl_list_remove(&output->request_state.link);
+		wl_list_remove(&output->destroy.link);
+		free(output);
+	}
 }
 
 struct wm_output *
@@ -222,16 +457,10 @@ wm_server_get_focused_output(struct wm_server *server)
 {
 	/* Try output of focused view first */
 	if (server->focused_view) {
-		struct wlr_output *wlr_output = wlr_output_layout_output_at(
-			server->output_layout,
-			server->focused_view->x + 1,
-			server->focused_view->y + 1);
-		if (wlr_output) {
-			struct wm_output *output =
-				wm_output_from_wlr(server, wlr_output);
-			if (output)
-				return output;
-		}
+		struct wm_output *output =
+			wm_output_for_view(server->focused_view);
+		if (output)
+			return output;
 	}
 
 	/* Fallback: output under cursor */

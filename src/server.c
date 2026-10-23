@@ -102,6 +102,7 @@ wm_server_reconfigure(struct wm_server *server)
 		server->focus_policy = server->config->focus_policy;
 		server->show_position = server->config->show_window_position;
 		wm_input_apply_config(server);
+		wm_output_apply_config(server);
 	}
 
 	/* Broadcast config_reloaded event to IPC subscribers */
@@ -602,8 +603,10 @@ wm_server_destroy(struct wm_server *server)
 #endif
 	wm_atspi_bridge_destroy(server->atspi_bridge);
 	wm_slit_destroy(server->slit);
+	server->slit = NULL;
 	wm_wallpaper_destroy(server->wallpaper);
 	wm_toolbar_destroy(server->toolbar);
+	server->toolbar = NULL;
 	wm_ipc_destroy(&server->ipc);
 	wm_menu_destroy(server->root_menu);
 	wm_menu_destroy(server->window_menu);

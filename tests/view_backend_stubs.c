@@ -143,3 +143,48 @@ wm_view_move(struct wm_view *view, int x, int y)
 	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
 }
 #endif
+
+#ifdef VIEW_STUB_SET_FRAME_BOX
+/* No decorations in these tests: the frame is the client */
+void
+wm_view_set_frame_box(struct wm_view *view, const struct wlr_box *box)
+{
+	view->x = box->x;
+	view->y = box->y;
+	wlr_scene_node_set_position(&view->scene_tree->node, box->x, box->y);
+	wm_view_set_size(view, box->width, box->height);
+}
+#endif
+
+#ifdef VIEW_STUB_TOGGLE_STATES
+/* Record the state changes only; their geometry is view_geometry.c's */
+void
+wm_view_toggle_maximize(struct wm_view *view)
+{
+	view->maximized = !view->maximized;
+}
+
+void
+wm_view_toggle_fullscreen(struct wm_view *view)
+{
+	view->fullscreen = !view->fullscreen;
+}
+
+static int g_view_stub_minimize_count;
+void
+wm_view_minimize(struct wm_view *view)
+{
+	(void)view;
+	g_view_stub_minimize_count++;
+}
+#endif
+
+#ifdef VIEW_STUB_SET_HEAD
+static int g_view_stub_head;
+void
+wm_view_set_head(struct wm_view *view, int head)
+{
+	(void)view;
+	g_view_stub_head = head;
+}
+#endif

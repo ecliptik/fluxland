@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/box.h>
 
+struct wm_output;
 struct wm_server;
 struct wm_view;
 
@@ -128,6 +129,14 @@ void wm_toolbar_update_workspace(struct wm_toolbar *toolbar);
 
 /* Update the icon bar window list (call on map/unmap/focus/title change) */
 void wm_toolbar_update_iconbar(struct wm_toolbar *toolbar);
+
+/*
+ * Take the toolbar's space out of an output's usable area (layout
+ * coordinates) when it is on that output and windows should avoid it.
+ */
+struct wlr_box;
+void wm_toolbar_reserve(struct wm_toolbar *toolbar, struct wm_output *output,
+	struct wlr_box *usable);
 
 /* Recalculate toolbar geometry (call on output resize) */
 void wm_toolbar_relayout(struct wm_toolbar *toolbar);

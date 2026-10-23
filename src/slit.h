@@ -91,7 +91,7 @@ struct wm_slit {
 	enum wm_slit_placement placement;
 	enum wm_slit_direction direction;
 	bool auto_hide;
-	int on_head; /* output index, 0 = primary */
+	int on_head; /* Fluxbox head number: 1 = first output, 0 = first */
 	int alpha;   /* 0-255, default 255 */
 
 	/* Geometry */
@@ -107,8 +107,8 @@ struct wm_slit {
 	/* Auto-hide timer */
 	struct wl_event_source *hide_timer;
 
-	/* MaxOver usable_area tracking */
-	int reserved_space; /* pixels subtracted from usable_area */
+	/* Width/height taken from its edge of the usable area (0: none) */
+	int reserved_space;
 
 	/* Slitlist: ordered names for persistent dockapp ordering
 	 * (WM_CLASS for XWayland, app_id for native clients) */
@@ -118,6 +118,15 @@ struct wm_slit {
 
 /* Create the slit and add it to the scene graph */
 struct wm_slit *wm_slit_create(struct wm_server *server);
+
+/*
+ * Take the slit's space out of an output's usable area (layout
+ * coordinates) when it is on that output and windows should avoid it.
+ */
+struct wlr_box;
+struct wm_output;
+void wm_slit_reserve(struct wm_slit *slit, struct wm_output *output,
+	struct wlr_box *usable);
 
 /* Destroy the slit and free resources */
 void wm_slit_destroy(struct wm_slit *slit);

@@ -152,6 +152,7 @@ struct wm_config {
 struct wm_output {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 };
 
@@ -292,6 +293,7 @@ wm_workspace_get_active(struct wm_server *server)
 #define VIEW_STUB_CONTENT_GEOMETRY
 #define VIEW_STUB_SET_SIZE
 #define VIEW_STUB_SET_TILED
+#define VIEW_STUB_SET_FRAME_BOX
 #include "view_backend_stubs.c"
 
 #include "../src/placement.c"

@@ -1,9 +1,10 @@
 /*
- * test_output.c - Unit tests for output utility functions (output.c)
+ * test_output.c - Unit tests for output management (output.c)
  *
- * Includes output.c directly with stub implementations to avoid
- * needing wlroots/wayland libraries at link time. Tests JSON escape,
- * output lookup, and focused output resolution.
+ * Includes output.c directly. wlroots is replaced by a small fake
+ * output layout (outputs at positions, auto placement, output_at,
+ * closest point, change events) so the arrange/place/hotplug logic can
+ * be tested with real geometry.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -37,6 +38,9 @@
 #define WM_TOOLBAR_H
 #define WM_VIEW_H
 #define WM_WORKSPACE_H
+#define WM_OUTPUT_CONFIG_H
+#define WM_SLIT_H
+#define WM_VIEW_GEOMETRY_H
 
 /* --- Stub wayland types --- */
 
@@ -115,6 +119,14 @@ wl_signal_add(struct wl_signal *signal, struct wl_listener *listener)
 	wl_list_insert(signal->listener_list.prev, &listener->link);
 }
 
+static inline void
+wl_signal_emit(struct wl_signal *signal, void *data)
+{
+	struct wl_listener *l, *tmp;
+	wl_list_for_each_safe(l, tmp, &signal->listener_list, link)
+		l->notify(l, data);
+}
+
 struct wl_display { int dummy; };
 struct wl_event_source { int dummy; };
 struct wl_event_loop { int dummy; };
@@ -131,9 +143,23 @@ struct wlr_box {
 	int x, y, width, height;
 };
 
+static inline bool
+wlr_box_empty(const struct wlr_box *b)
+{
+	return !b || b->width <= 0 || b->height <= 0;
+}
+
+static inline bool
+wlr_box_equal(const struct wlr_box *a, const struct wlr_box *b)
+{
+	return a->x == b->x && a->y == b->y && a->width == b->width &&
+		a->height == b->height;
+}
+
 struct wlr_output {
 	int width, height;
 	char *name;
+	bool enabled;
 	struct {
 		struct wl_signal frame;
 		struct wl_signal request_state;
@@ -143,35 +169,167 @@ struct wlr_output {
 
 struct wlr_output_mode { int dummy; };
 
-struct wlr_output_state { int dummy; };
+struct wlr_output_state {
+	bool has_enabled, enabled;
+	int committed;
+};
 
 struct wlr_output_event_request_state {
 	struct wlr_output_state *state;
 };
 
 static void wlr_output_state_init(struct wlr_output_state *s)
-{ (void)s; }
+{ memset(s, 0, sizeof(*s)); }
 
 static void wlr_output_state_set_enabled(struct wlr_output_state *s,
 	bool enabled)
-{ (void)s; (void)enabled; }
+{ s->has_enabled = true; s->enabled = enabled; s->committed |= 1; }
 
 static void wlr_output_state_set_mode(struct wlr_output_state *s,
 	struct wlr_output_mode *m)
-{ (void)s; (void)m; }
+{ (void)m; s->committed |= 2; }
 
 static void wlr_output_state_finish(struct wlr_output_state *s)
 { (void)s; }
 
+/* Commits fail while g_commit_failures > 0 */
+static int g_commit_failures;
+static int g_commit_count;
 static bool wlr_output_commit_state(struct wlr_output *o,
 	const struct wlr_output_state *s)
-{ (void)o; (void)s; return true; }
+{
+	g_commit_count++;
+	if (g_commit_failures > 0) {
+		g_commit_failures--;
+		return false;
+	}
+	if (s->has_enabled)
+		o->enabled = s->enabled;
+	return true;
+}
 
-struct wlr_output_layout {
-	int dummy;
+/* A fake output layout: up to 4 outputs at positions */
+struct wlr_output_layout_output {
+	struct wlr_output *output;
+	int x, y;
+	bool used;
 };
 
-struct wlr_output_layout_output { int dummy; };
+struct wlr_output_layout {
+	struct wlr_output_layout_output outs[4];
+	struct {
+		struct wl_signal change;
+	} events;
+};
+
+static struct wlr_output_layout_output *
+wlr_output_layout_get(struct wlr_output_layout *l, struct wlr_output *o)
+{
+	for (int i = 0; i < 4; i++) {
+		if (l->outs[i].used && l->outs[i].output == o)
+			return &l->outs[i];
+	}
+	return NULL;
+}
+
+static struct wlr_output_layout_output *
+layout_add(struct wlr_output_layout *l, struct wlr_output *o, int x, int y)
+{
+	struct wlr_output_layout_output *lo = wlr_output_layout_get(l, o);
+	for (int i = 0; !lo && i < 4; i++) {
+		if (!l->outs[i].used)
+			lo = &l->outs[i];
+	}
+	assert(lo);
+	lo->used = true;
+	lo->output = o;
+	lo->x = x;
+	lo->y = y;
+	wl_signal_emit(&l->events.change, l);
+	return lo;
+}
+
+static int g_layout_add_count;
+static struct wlr_output_layout_output *
+wlr_output_layout_add(struct wlr_output_layout *l, struct wlr_output *o,
+	int x, int y)
+{
+	g_layout_add_count++;
+	return layout_add(l, o, x, y);
+}
+
+/* Auto placement: right of everything else, like wlroots */
+static struct wlr_output_layout_output *
+wlr_output_layout_add_auto(struct wlr_output_layout *l, struct wlr_output *o)
+{
+	int x = 0;
+	for (int i = 0; i < 4; i++) {
+		if (l->outs[i].used && l->outs[i].output != o &&
+		    l->outs[i].x + l->outs[i].output->width > x)
+			x = l->outs[i].x + l->outs[i].output->width;
+	}
+	return layout_add(l, o, x, 0);
+}
+
+static void
+wlr_output_layout_remove(struct wlr_output_layout *l, struct wlr_output *o)
+{
+	struct wlr_output_layout_output *lo = wlr_output_layout_get(l, o);
+	if (!lo)
+		return;
+	lo->used = false;
+	wl_signal_emit(&l->events.change, l);
+}
+
+static void
+wlr_output_layout_get_box(struct wlr_output_layout *l, struct wlr_output *o,
+	struct wlr_box *box)
+{
+	struct wlr_output_layout_output *lo = wlr_output_layout_get(l, o);
+	if (!lo) {
+		*box = (struct wlr_box){0};
+		return;
+	}
+	*box = (struct wlr_box){lo->x, lo->y, o->width, o->height};
+}
+
+static struct wlr_output *
+wlr_output_layout_output_at(struct wlr_output_layout *l, double lx, double ly)
+{
+	for (int i = 0; i < 4; i++) {
+		struct wlr_output_layout_output *lo = &l->outs[i];
+		if (lo->used && lx >= lo->x && lx < lo->x + lo->output->width &&
+		    ly >= lo->y && ly < lo->y + lo->output->height)
+			return lo->output;
+	}
+	return NULL;
+}
+
+static void
+wlr_output_layout_closest_point(struct wlr_output_layout *l,
+	struct wlr_output *reference, double lx, double ly,
+	double *dest_lx, double *dest_ly)
+{
+	(void)reference;
+	double best = -1;
+	*dest_lx = lx;
+	*dest_ly = ly;
+	for (int i = 0; i < 4; i++) {
+		struct wlr_output_layout_output *lo = &l->outs[i];
+		if (!lo->used)
+			continue;
+		double x = lx < lo->x ? lo->x : lx >= lo->x + lo->output->width ?
+			lo->x + lo->output->width - 1 : lx;
+		double y = ly < lo->y ? lo->y : ly >= lo->y + lo->output->height ?
+			lo->y + lo->output->height - 1 : ly;
+		double d = (x - lx) * (x - lx) + (y - ly) * (y - ly);
+		if (best < 0 || d < best) {
+			best = d;
+			*dest_lx = x;
+			*dest_ly = y;
+		}
+	}
+}
 
 struct wlr_scene_node {
 	int enabled;
@@ -212,16 +370,34 @@ struct wm_output {
 	struct wm_server *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
+	bool lock_blanked;
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
 };
 
 struct wm_view {
-	double x, y;
+	struct wl_list link;
+	struct wm_server *server;
+	int x, y;
+	int width, height;
+	bool mapped, docked;
+	int refits, keep_on_screen;
 };
+
+struct wm_output_rule {
+	char *name;
+	int enabled;
+	bool has_position;
+	int x, y;
+};
+
+struct wm_config { int dummy; };
+struct wm_toolbar { int dummy; };
+struct wm_slit { int dummy; };
 
 /* IPC stub types */
 enum wm_ipc_event {
@@ -254,15 +430,17 @@ struct wm_server {
 	struct wlr_scene_output_layout *scene_layout;
 	struct wl_list outputs;
 	struct wl_listener new_output;
+	struct wl_listener output_layout_change;
 	struct wlr_output_layout *output_layout;
 	struct wlr_cursor *cursor;
 	struct wm_view *focused_view;
 	struct wm_workspace *current_workspace;
 	struct wm_ipc_server ipc;
 	struct wm_toolbar *toolbar;
+	struct wm_slit *slit;
+	struct wm_config *config;
+	struct wl_list views;
 };
-
-struct wm_toolbar { int dummy; };
 
 /* --- Stub wlroots functions used by output.c --- */
 
@@ -272,6 +450,8 @@ static struct wlr_output_layout *
 wlr_output_layout_create(struct wl_display *display)
 {
 	(void)display;
+	memset(&g_stub_output_layout, 0, sizeof(g_stub_output_layout));
+	wl_signal_init(&g_stub_output_layout.events.change);
 	return &g_stub_output_layout;
 }
 
@@ -290,32 +470,14 @@ wlr_output_init_render(struct wlr_output *o, struct wlr_allocator *a,
 	struct wlr_renderer *r)
 { (void)o; (void)a; (void)r; }
 
+static struct wlr_output_mode g_preferred_mode;
 static struct wlr_output_mode *
 wlr_output_preferred_mode(struct wlr_output *o)
-{ (void)o; return NULL; }
+{ (void)o; return &g_preferred_mode; }
 
 static void
 wlr_output_effective_resolution(struct wlr_output *o, int *w, int *h)
 { *w = o->width; *h = o->height; }
-
-static struct wlr_output_layout_output *
-wlr_output_layout_add_auto(struct wlr_output_layout *l,
-	struct wlr_output *o)
-{ (void)l; (void)o; return NULL; }
-
-/*
- * Stub for wlr_output_layout_output_at -- uses a global to control
- * which output is "at" the given coordinates.
- */
-static struct wlr_output *g_output_at_result;
-
-static struct wlr_output *
-wlr_output_layout_output_at(struct wlr_output_layout *l,
-	double lx, double ly)
-{
-	(void)l; (void)lx; (void)ly;
-	return g_output_at_result;
-}
 
 static struct wlr_scene_output g_stub_scene_output;
 
@@ -323,11 +485,12 @@ static struct wlr_scene_output *
 wlr_scene_output_create(struct wlr_scene *s, struct wlr_output *o)
 { (void)s; (void)o; return &g_stub_scene_output; }
 
+static int g_scene_layout_add_count;
 static void
 wlr_scene_output_layout_add_output(struct wlr_scene_output_layout *l,
 	struct wlr_output_layout_output *lo,
 	struct wlr_scene_output *so)
-{ (void)l; (void)lo; (void)so; }
+{ (void)l; (void)lo; (void)so; g_scene_layout_add_count++; }
 
 static void wlr_scene_output_commit(struct wlr_scene_output *so,
 	void *opt)
@@ -352,13 +515,87 @@ void
 wm_xwayland_sync_positions(struct wm_server *s)
 { (void)s; }
 
-static void
-wm_layer_shell_arrange(struct wm_output *o)
-{ (void)o; }
+/* Space taken by a layer-shell panel, the toolbar and the slit */
+static struct wm_output *g_panel_output, *g_toolbar_output, *g_slit_output;
 
 static void
+wm_layer_shell_configure(struct wm_output *o, const struct wlr_box *full,
+	struct wlr_box *usable)
+{
+	(void)full;
+	if (o == g_panel_output) {
+		usable->y += 30;
+		usable->height -= 30;
+	}
+}
+
+static struct wlr_output *g_layer_closed_for;
+static void
+wm_layer_shell_output_destroyed(struct wm_server *s, struct wlr_output *o)
+{ (void)s; g_layer_closed_for = o; }
+
+static void
+wm_toolbar_reserve(struct wm_toolbar *t, struct wm_output *o,
+	struct wlr_box *usable)
+{
+	if (t && o == g_toolbar_output)
+		usable->height -= 24;
+}
+
+static void
+wm_slit_reserve(struct wm_slit *sl, struct wm_output *o,
+	struct wlr_box *usable)
+{
+	if (sl && o == g_slit_output)
+		usable->width -= 64;
+}
+
+static int g_toolbar_relayout_count, g_slit_reconfigure_count;
+static void
 wm_toolbar_relayout(struct wm_toolbar *t)
-{ (void)t; }
+{ (void)t; g_toolbar_relayout_count++; }
+static void
+wm_slit_reconfigure(struct wm_slit *sl)
+{ (void)sl; g_slit_reconfigure_count++; }
+
+/* config.c / output_config.c */
+static struct wm_output_rule g_rules[2];
+static int g_rule_count;
+static const struct wm_output_rule *
+config_find_output_rule(const struct wm_config *c, const char *name)
+{
+	(void)c;
+	for (int i = 0; i < g_rule_count; i++) {
+		if (name && strcmp(g_rules[i].name, name) == 0)
+			return &g_rules[i];
+	}
+	return NULL;
+}
+
+static int g_config_build_count;
+static bool
+wm_output_config_build(struct wlr_output *o, const struct wm_output_rule *r,
+	struct wlr_output_state *state)
+{
+	(void)o;
+	g_config_build_count++;
+	if (r && r->enabled == 0)
+		wlr_output_state_set_enabled(state, false);
+	return r != NULL || state->committed;
+}
+
+/* view.c / view_geometry.c */
+static void
+wm_view_get_geometry(struct wm_view *view, struct wlr_box *box)
+{
+	*box = (struct wlr_box){view->x, view->y, view->width, view->height};
+}
+static void
+wm_view_refit(struct wm_view *view)
+{ view->refits++; }
+static void
+wm_view_keep_on_screen(struct wm_view *view)
+{ view->keep_on_screen++; }
 
 /* --- Stubs for util.h functions --- */
 
@@ -385,8 +622,6 @@ void wm_json_escape(char *dst, size_t dst_size, const char *src)
 	dst[j] = '\0';
 }
 
-/* --- Include output.c source directly --- */
-
 static int g_lock_frame_count;
 static int g_lock_changed_count;
 void
@@ -402,329 +637,365 @@ wm_session_lock_output_changed(struct wm_server *s)
 	g_lock_changed_count++;
 }
 
+/* output.h API (the header is blocked) */
+struct wm_output *wm_output_from_wlr(struct wm_server *server,
+	struct wlr_output *wlr_output);
+struct wm_output *wm_server_get_focused_output(struct wm_server *server);
+void wm_output_layout_box(struct wm_output *output, struct wlr_box *box);
+void wm_output_arrange(struct wm_output *output);
+void wm_output_arrange_all(struct wm_server *server);
+void wm_output_place(struct wm_output *output, bool has_position, int x, int y);
+void wm_output_apply_config(struct wm_server *server);
+struct wm_output *wm_output_by_head(struct wm_server *server, int head);
+struct wm_output *wm_output_for_view(struct wm_view *view);
+void wm_output_init(struct wm_server *server);
+void wm_output_finish(struct wm_server *server);
+
+/* --- Include output.c source directly --- */
+
 #include "output.c"
 
-/* --- Test helpers --- */
+/* --- Fixture: a server with fake backend and layout --- */
+
+static struct wm_server srv;
+static struct wlr_backend backend;
+static struct wlr_cursor cursor;
+static struct wm_config config;
+static struct wm_toolbar toolbar;
+static struct wm_slit slit;
 
 static void
 reset_globals(void)
 {
-	g_output_at_result = NULL;
+	g_commit_failures = 0;
+	g_commit_count = 0;
+	g_layout_add_count = 0;
+	g_scene_layout_add_count = 0;
+	g_panel_output = g_toolbar_output = g_slit_output = NULL;
+	g_layer_closed_for = NULL;
+	g_toolbar_relayout_count = g_slit_reconfigure_count = 0;
+	g_rule_count = 0;
+	g_config_build_count = 0;
+	g_lock_frame_count = g_lock_changed_count = 0;
 }
 
-/* ===== Tests ===== */
-
-/* Test 1: wm_json_escape with a normal string (no special chars) */
 static void
-test_json_escape_normal(void)
-{
-	char buf[128];
-	wm_json_escape(buf, sizeof(buf), "hello world");
-	assert(strcmp(buf, "hello world") == 0);
-
-	printf("  PASS: test_json_escape_normal\n");
-}
-
-/* Test 2: wm_json_escape with double quotes and backslash */
-static void
-test_json_escape_special_chars(void)
-{
-	char buf[128];
-	wm_json_escape(buf, sizeof(buf), "say \"hello\\world\"");
-	assert(strcmp(buf, "say \\\"hello\\\\world\\\"") == 0);
-
-	printf("  PASS: test_json_escape_special_chars\n");
-}
-
-/* Test 3: wm_json_escape strips control characters (newline, tab) */
-static void
-test_json_escape_control_chars(void)
-{
-	char buf[128];
-	wm_json_escape(buf, sizeof(buf), "line1\nline2\ttab");
-	/* Control chars < 0x20 are skipped */
-	assert(strcmp(buf, "line1line2tab") == 0);
-
-	printf("  PASS: test_json_escape_control_chars\n");
-}
-
-/* Test 4: wm_json_escape with NULL input */
-static void
-test_json_escape_null(void)
-{
-	char buf[128];
-	buf[0] = 'X'; /* set a sentinel */
-	wm_json_escape(buf, sizeof(buf), NULL);
-	assert(buf[0] == '\0');
-
-	printf("  PASS: test_json_escape_null\n");
-}
-
-/* Test 5: wm_json_escape truncation when buffer is too small */
-static void
-test_json_escape_truncation(void)
-{
-	char buf[8];
-	wm_json_escape(buf, sizeof(buf), "abcdefghijklmnop");
-	/*
-	 * Buffer is 8 bytes. The loop condition is j + 6 < dst_size,
-	 * so j < 2 for regular chars. Effectively only 1 char fits
-	 * before the guard triggers (j must be < dst_size - 6 = 2).
-	 */
-	size_t len = strlen(buf);
-	assert(len < sizeof(buf));
-	/* Should be truncated but null-terminated */
-	assert(buf[len] == '\0');
-
-	printf("  PASS: test_json_escape_truncation\n");
-}
-
-/* Test 6: wm_json_escape with empty string */
-static void
-test_json_escape_empty(void)
-{
-	char buf[128];
-	buf[0] = 'X';
-	wm_json_escape(buf, sizeof(buf), "");
-	assert(buf[0] == '\0');
-
-	printf("  PASS: test_json_escape_empty\n");
-}
-
-/* Test 7: wm_output_from_wlr finds matching output */
-static void
-test_output_from_wlr_found(void)
-{
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
-
-	struct wlr_output wlr1, wlr2;
-	memset(&wlr1, 0, sizeof(wlr1));
-	memset(&wlr2, 0, sizeof(wlr2));
-
-	struct wm_output out1, out2;
-	memset(&out1, 0, sizeof(out1));
-	memset(&out2, 0, sizeof(out2));
-	out1.wlr_output = &wlr1;
-	out1.server = &server;
-	out2.wlr_output = &wlr2;
-	out2.server = &server;
-
-	wl_list_insert(&server.outputs, &out1.link);
-	wl_list_insert(&server.outputs, &out2.link);
-
-	struct wm_output *found = wm_output_from_wlr(&server, &wlr1);
-	assert(found == &out1);
-
-	found = wm_output_from_wlr(&server, &wlr2);
-	assert(found == &out2);
-
-	printf("  PASS: test_output_from_wlr_found\n");
-}
-
-/* Test 8: wm_output_from_wlr returns NULL when not found */
-static void
-test_output_from_wlr_not_found(void)
-{
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
-
-	struct wlr_output wlr1, wlr_unknown;
-	memset(&wlr1, 0, sizeof(wlr1));
-	memset(&wlr_unknown, 0, sizeof(wlr_unknown));
-
-	struct wm_output out1;
-	memset(&out1, 0, sizeof(out1));
-	out1.wlr_output = &wlr1;
-	wl_list_insert(&server.outputs, &out1.link);
-
-	struct wm_output *found =
-		wm_output_from_wlr(&server, &wlr_unknown);
-	assert(found == NULL);
-
-	printf("  PASS: test_output_from_wlr_not_found\n");
-}
-
-/* Test 9: wm_output_from_wlr returns NULL on empty list */
-static void
-test_output_from_wlr_empty_list(void)
-{
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
-
-	struct wlr_output wlr1;
-	memset(&wlr1, 0, sizeof(wlr1));
-
-	struct wm_output *found = wm_output_from_wlr(&server, &wlr1);
-	assert(found == NULL);
-
-	printf("  PASS: test_output_from_wlr_empty_list\n");
-}
-
-/* Test 10: wm_server_get_focused_output with focused view */
-static void
-test_focused_output_with_view(void)
+setup(void)
 {
 	reset_globals();
-
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
-
-	struct wlr_output wlr1;
-	memset(&wlr1, 0, sizeof(wlr1));
-
-	struct wm_output out1;
-	memset(&out1, 0, sizeof(out1));
-	out1.wlr_output = &wlr1;
-	out1.server = &server;
-	wl_list_insert(&server.outputs, &out1.link);
-
-	struct wlr_output_layout layout;
-	memset(&layout, 0, sizeof(layout));
-	server.output_layout = &layout;
-
-	struct wm_view view;
-	memset(&view, 0, sizeof(view));
-	view.x = 100;
-	view.y = 200;
-	server.focused_view = &view;
-
-	/* Make output_at return wlr1 for the focused view coords */
-	g_output_at_result = &wlr1;
-
-	struct wm_output *result = wm_server_get_focused_output(&server);
-	assert(result == &out1);
-
-	printf("  PASS: test_focused_output_with_view\n");
-}
-
-/* Test 11: wm_server_get_focused_output cursor fallback */
-static void
-test_focused_output_cursor_fallback(void)
-{
-	reset_globals();
-
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
-
-	struct wlr_output wlr1;
-	memset(&wlr1, 0, sizeof(wlr1));
-
-	struct wm_output out1;
-	memset(&out1, 0, sizeof(out1));
-	out1.wlr_output = &wlr1;
-	out1.server = &server;
-	wl_list_insert(&server.outputs, &out1.link);
-
-	struct wlr_output_layout layout;
-	memset(&layout, 0, sizeof(layout));
-	server.output_layout = &layout;
-
-	struct wlr_cursor cursor;
+	memset(&srv, 0, sizeof(srv));
+	memset(&backend, 0, sizeof(backend));
 	memset(&cursor, 0, sizeof(cursor));
-	cursor.x = 500;
-	cursor.y = 300;
-	server.cursor = &cursor;
-
-	/* No focused view */
-	server.focused_view = NULL;
-
-	/* output_at returns wlr1 for cursor coords */
-	g_output_at_result = &wlr1;
-
-	struct wm_output *result = wm_server_get_focused_output(&server);
-	assert(result == &out1);
-
-	printf("  PASS: test_focused_output_cursor_fallback\n");
+	wl_signal_init(&backend.events.new_output);
+	srv.backend = &backend;
+	srv.cursor = &cursor;
+	srv.config = &config;
+	srv.toolbar = &toolbar;
+	srv.slit = &slit;
+	wl_list_init(&srv.views);
+	wm_output_init(&srv);
 }
 
-/* Test 12: wm_server_get_focused_output first output fallback */
 static void
-test_focused_output_first_fallback(void)
+init_wlr_output(struct wlr_output *o, char *name, int w, int h)
 {
-	reset_globals();
-
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
-
-	struct wlr_output wlr1;
-	memset(&wlr1, 0, sizeof(wlr1));
-
-	struct wm_output out1;
-	memset(&out1, 0, sizeof(out1));
-	out1.wlr_output = &wlr1;
-	out1.server = &server;
-	wl_list_insert(&server.outputs, &out1.link);
-
-	struct wlr_output_layout layout;
-	memset(&layout, 0, sizeof(layout));
-	server.output_layout = &layout;
-
-	struct wlr_cursor cursor;
-	memset(&cursor, 0, sizeof(cursor));
-	server.cursor = &cursor;
-	server.focused_view = NULL;
-
-	/* output_at returns NULL for both checks */
-	g_output_at_result = NULL;
-
-	struct wm_output *result = wm_server_get_focused_output(&server);
-	assert(result == &out1);
-
-	printf("  PASS: test_focused_output_first_fallback\n");
+	memset(o, 0, sizeof(*o));
+	o->name = name;
+	o->width = w;
+	o->height = h;
+	wl_signal_init(&o->events.frame);
+	wl_signal_init(&o->events.request_state);
+	wl_signal_init(&o->events.destroy);
 }
 
-/* Test 13: wm_server_get_focused_output returns NULL on empty list */
-static void
-test_focused_output_empty_list(void)
+/* Plug in a monitor */
+static struct wm_output *
+plug(struct wlr_output *o)
 {
-	reset_globals();
+	wl_signal_emit(&backend.events.new_output, o);
+	return wm_output_from_wlr(&srv, o);
+}
 
-	struct wm_server server;
-	memset(&server, 0, sizeof(server));
-	wl_list_init(&server.outputs);
+static void
+unplug(struct wlr_output *o)
+{
+	wl_signal_emit(&o->events.destroy, o);
+}
 
-	struct wlr_output_layout layout;
-	memset(&layout, 0, sizeof(layout));
-	server.output_layout = &layout;
+static void
+add_view(struct wm_view *v, int x, int y, int w, int h)
+{
+	memset(v, 0, sizeof(*v));
+	v->server = &srv;
+	v->x = x;
+	v->y = y;
+	v->width = w;
+	v->height = h;
+	v->mapped = true;
+	wl_list_insert(srv.views.prev, &v->link);
+}
 
-	struct wlr_cursor cursor;
-	memset(&cursor, 0, sizeof(cursor));
-	server.cursor = &cursor;
-	server.focused_view = NULL;
-	g_output_at_result = NULL;
+/* --- Tests --- */
 
-	struct wm_output *result = wm_server_get_focused_output(&server);
-	assert(result == NULL);
+static void
+test_hotplug_order_and_auto_layout(void)
+{
+	setup();
+	struct wlr_output a, b;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "HDMI-A-1", 1280, 1024);
 
-	printf("  PASS: test_focused_output_empty_list\n");
+	struct wm_output *oa = plug(&a);
+	struct wm_output *ob = plug(&b);
+	assert(oa && ob && a.enabled && b.enabled);
+
+	/* Connection order: head 1 is the first output plugged in */
+	assert(wm_output_by_head(&srv, 1) == oa);
+	assert(wm_output_by_head(&srv, 2) == ob);
+	assert(wm_output_by_head(&srv, 0) == oa);
+	assert(wm_output_by_head(&srv, 9) == oa);
+
+	/* Auto layout, and the scene follows each new layout entry */
+	assert(oa->full_area.x == 0 && oa->full_area.width == 1920);
+	assert(ob->full_area.x == 1920 && ob->full_area.height == 1024);
+	assert(g_scene_layout_add_count == 2);
+
+	/* Toolbar and slit move whenever the layout changes */
+	assert(g_toolbar_relayout_count >= 2 && g_slit_reconfigure_count >= 2);
+
+	unplug(&b);
+	unplug(&a);
+	assert(wl_list_empty(&srv.outputs));
+	assert(wm_output_by_head(&srv, 1) == NULL);
+	printf("  PASS: hotplug_order_and_auto_layout\n");
+}
+
+static void
+test_arrange_usable_area(void)
+{
+	setup();
+	struct wlr_output a, b;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "DP-1", 2560, 1440);
+	struct wm_output *oa = plug(&a);
+	struct wm_output *ob = plug(&b);
+
+	struct wm_view on_a, on_b;
+	add_view(&on_a, 100, 100, 800, 600);
+	add_view(&on_b, 2500, 100, 800, 600);
+
+	/* Panel and toolbar on the second head, slit on the first */
+	g_panel_output = ob;
+	g_toolbar_output = ob;
+	g_slit_output = oa;
+	on_a.refits = on_b.refits = 0;
+	wm_output_arrange_all(&srv);
+
+	/* Layout coordinates, minus each reservation */
+	assert(ob->usable_area.x == 1920 && ob->usable_area.y == 30);
+	assert(ob->usable_area.width == 2560);
+	assert(ob->usable_area.height == 1440 - 30 - 24);
+	assert(oa->usable_area.x == 0 && oa->usable_area.width == 1920 - 64);
+	assert(oa->usable_area.height == 1080);
+
+	/* Windows on a changed output are re-fitted, once */
+	assert(on_a.refits == 1 && on_b.refits == 1);
+
+	/* Arranging again changes nothing and re-fits nothing */
+	wm_output_arrange_all(&srv);
+	assert(ob->usable_area.height == 1440 - 54);
+	assert(on_a.refits == 1 && on_b.refits == 1);
+
+	/* Only the output whose area changed */
+	g_slit_output = NULL;
+	wm_output_arrange_all(&srv);
+	assert(oa->usable_area.width == 1920);
+	assert(on_a.refits == 2 && on_b.refits == 1);
+
+	unplug(&b);
+	unplug(&a);
+	printf("  PASS: arrange_usable_area\n");
+}
+
+static void
+test_place_and_disable(void)
+{
+	setup();
+	struct wlr_output a, b;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "HDMI-A-1", 1280, 1024);
+	struct wm_output *oa = plug(&a);
+	struct wm_output *ob = plug(&b);
+
+	/* Explicit position: moves, scene association kept */
+	int scene_adds = g_scene_layout_add_count;
+	wm_output_place(ob, true, -1280, 56);
+	assert(ob->full_area.x == -1280 && ob->full_area.y == 56);
+	assert(g_scene_layout_add_count == scene_adds);
+
+	/* No position, already placed: stays put */
+	wm_output_place(ob, false, 0, 0);
+	assert(ob->full_area.x == -1280);
+
+	/* Disabled: out of the layout, its windows come back */
+	struct wm_view stranded;
+	add_view(&stranded, -1000, 200, 640, 480);
+	b.enabled = false;
+	wm_output_place(ob, false, 0, 0);
+	assert(wlr_output_layout_get(srv.output_layout, &b) == NULL);
+	assert(wlr_box_empty(&ob->usable_area));
+	assert(stranded.keep_on_screen >= 1);
+	assert(wm_output_for_view(&stranded) == oa);
+
+	/* Re-enabled: back in, with a new scene association */
+	b.enabled = true;
+	wm_output_place(ob, false, 0, 0);
+	assert(ob->full_area.x == 1920);
+	assert(g_scene_layout_add_count == scene_adds + 1);
+
+	unplug(&b);
+	unplug(&a);
+	printf("  PASS: place_and_disable\n");
+}
+
+static void
+test_output_for_view(void)
+{
+	setup();
+	struct wlr_output a, b;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "DP-1", 1920, 1080);
+	struct wm_output *oa = plug(&a);
+	struct wm_output *ob = plug(&b);
+
+	struct wm_view v;
+	add_view(&v, 1500, 100, 800, 600);   /* center x = 1900: head 1 */
+	assert(wm_output_for_view(&v) == oa);
+	v.x = 1600;                          /* center x = 2000: head 2 */
+	assert(wm_output_for_view(&v) == ob);
+	v.x = 5000;                          /* off to the right */
+	assert(wm_output_for_view(&v) == ob);
+	v.x = -3000;                         /* off to the left */
+	assert(wm_output_for_view(&v) == oa);
+
+	/* Focused output: the focused window's own output */
+	v.x = 2500;
+	srv.focused_view = &v;
+	assert(wm_server_get_focused_output(&srv) == ob);
+	srv.focused_view = NULL;
+	cursor.x = 10;
+	assert(wm_server_get_focused_output(&srv) == oa);
+
+	unplug(&b);
+	unplug(&a);
+	printf("  PASS: output_for_view\n");
+}
+
+static void
+test_unplug_moves_everything(void)
+{
+	setup();
+	struct wlr_output a, b;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "HDMI-A-1", 1920, 1080);
+	plug(&a);
+	plug(&b);
+
+	struct wm_view v, docked;
+	add_view(&v, 2500, 300, 800, 600);
+	add_view(&docked, 2600, 0, 64, 64);
+	docked.docked = true;
+	int relayouts = g_toolbar_relayout_count;
+
+	unplug(&b);
+	/* Its panels are closed, it leaves the layout, windows come back */
+	assert(g_layer_closed_for == &b);
+	assert(wlr_output_layout_get(srv.output_layout, &b) == NULL);
+	assert(v.keep_on_screen >= 1 && v.refits >= 1);
+	assert(docked.keep_on_screen == 0);
+	assert(g_toolbar_relayout_count > relayouts);
+	assert(g_lock_changed_count == 1);
+	assert(srv.outputs.next->next == &srv.outputs);
+
+	unplug(&a);
+	printf("  PASS: unplug_moves_everything\n");
+}
+
+static void
+test_rules_at_hotplug_and_reconfigure(void)
+{
+	setup();
+	g_rules[0] = (struct wm_output_rule){
+		.name = "HDMI-A-1", .enabled = -1, .has_position = true,
+		.x = -1280, .y = 0,
+	};
+	g_rules[1] = (struct wm_output_rule){
+		.name = "DP-9", .enabled = 0,
+	};
+	g_rule_count = 2;
+
+	struct wlr_output a, b, c;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "HDMI-A-1", 1280, 1024);
+	init_wlr_output(&c, "DP-9", 1920, 1080);
+	plug(&a);
+	struct wm_output *ob = plug(&b);
+	struct wm_output *oc = plug(&c);
+
+	/* Positioned from init; DP-9 disabled and not in the layout */
+	assert(ob->full_area.x == -1280);
+	assert(!c.enabled && oc != NULL);
+	assert(wlr_output_layout_get(srv.output_layout, &c) == NULL);
+
+	/* A rule that fails to commit falls back to the preferred mode */
+	g_rules[1].enabled = -1;
+	struct wlr_output d;
+	init_wlr_output(&d, "DP-9", 800, 600);
+	unplug(&c);
+	g_commit_failures = 1;
+	g_commit_count = 0;
+	struct wm_output *od = plug(&d);
+	assert(g_commit_count == 2 && d.enabled);
+	assert(od->full_area.width == 800);
+
+	/* Reconfigure re-applies the rules: move HDMI-A-1 */
+	g_rules[0].x = 1920 + 800;
+	wm_output_apply_config(&srv);
+	assert(ob->full_area.x == 2720);
+
+	unplug(&d);
+	unplug(&b);
+	unplug(&a);
+	printf("  PASS: rules_at_hotplug_and_reconfigure\n");
+}
+
+static void
+test_output_from_wlr(void)
+{
+	setup();
+	struct wlr_output a, unknown;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&unknown, "X", 1, 1);
+	assert(wm_output_from_wlr(&srv, &a) == NULL);
+	struct wm_output *oa = plug(&a);
+	assert(wm_output_from_wlr(&srv, &a) == oa);
+	assert(wm_output_from_wlr(&srv, &unknown) == NULL);
+	unplug(&a);
+	assert(wm_server_get_focused_output(&srv) == NULL);
+	printf("  PASS: output_from_wlr\n");
 }
 
 int
 main(void)
 {
 	printf("test_output:\n");
-
-	test_json_escape_normal();
-	test_json_escape_special_chars();
-	test_json_escape_control_chars();
-	test_json_escape_null();
-	test_json_escape_truncation();
-	test_json_escape_empty();
-	test_output_from_wlr_found();
-	test_output_from_wlr_not_found();
-	test_output_from_wlr_empty_list();
-	test_focused_output_with_view();
-	test_focused_output_cursor_fallback();
-	test_focused_output_first_fallback();
-	test_focused_output_empty_list();
-
+	test_output_from_wlr();
+	test_hotplug_order_and_auto_layout();
+	test_arrange_usable_area();
+	test_place_and_disable();
+	test_output_for_view();
+	test_unplug_moves_everything();
+	test_rules_at_hotplug_and_reconfigure();
 	printf("All output tests passed.\n");
 	return 0;
 }

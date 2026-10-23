@@ -446,6 +446,7 @@ wlr_output_layout_output_at(struct wlr_output_layout *layout,
 struct wm_server;
 
 struct wm_output {
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 };
 

@@ -99,6 +99,18 @@ session.screen0.toolbar.widthPercent: 72
 # session.xkb.options: grp:win_space_toggle
 
 # -------------------------------------------------------------------
+# Outputs (monitors)
+# -------------------------------------------------------------------
+
+# session.output.<Connector>.<setting>, connector names as wlr-randr
+# lists them. See fluxland-init(5).
+
+# session.output.eDP-1.scale: 1.25
+# session.output.HDMI-A-1.mode: 2560x1440@59.95
+# session.output.HDMI-A-1.position: 1536,0
+# session.output.DP-2.enabled: false
+
+# -------------------------------------------------------------------
 # Pointer devices (libinput)
 # -------------------------------------------------------------------
 

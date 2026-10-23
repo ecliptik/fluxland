@@ -1896,7 +1896,21 @@ handle_xdg_decoration_destroy(struct wl_listener *listener, void *data)
 		wl_container_of(listener, deco, destroy);
 	wl_list_remove(&deco->destroy.link);
 	wl_list_remove(&deco->request_mode.link);
+	wl_list_remove(&deco->surface_commit.link);
 	free(deco);
+}
+
+/*
+ * Always server-side. The mode goes out with a configure, which an
+ * xdg_surface may only get from its initial commit on.
+ */
+static void
+xdg_decoration_send_mode(struct wm_xdg_decoration *deco)
+{
+	if (!deco->wlr_decoration->toplevel->base->initialized)
+		return;
+	wlr_xdg_toplevel_decoration_v1_set_mode(deco->wlr_decoration,
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 static void
@@ -1904,10 +1918,20 @@ handle_xdg_decoration_request_mode(struct wl_listener *listener, void *data)
 {
 	struct wm_xdg_decoration *deco =
 		wl_container_of(listener, deco, request_mode);
+	xdg_decoration_send_mode(deco);
+}
 
-	/* Always request server-side decorations */
-	wlr_xdg_toplevel_decoration_v1_set_mode(deco->wlr_decoration,
-		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+static void
+handle_xdg_decoration_surface_commit(struct wl_listener *listener,
+	void *data)
+{
+	struct wm_xdg_decoration *deco =
+		wl_container_of(listener, deco, surface_commit);
+	if (!deco->wlr_decoration->toplevel->base->initial_commit)
+		return;
+	xdg_decoration_send_mode(deco);
+	wl_list_remove(&deco->surface_commit.link);
+	wl_list_init(&deco->surface_commit.link);
 }
 
 static void
@@ -1931,9 +1955,14 @@ handle_new_xdg_decoration(struct wl_listener *listener, void *data)
 	deco->request_mode.notify = handle_xdg_decoration_request_mode;
 	wl_signal_add(&wlr_deco->events.request_mode, &deco->request_mode);
 
-	/* Set initial mode to server-side */
-	wlr_xdg_toplevel_decoration_v1_set_mode(wlr_deco,
-		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	/* Before the initial commit, the mode waits for it */
+	deco->surface_commit.notify = handle_xdg_decoration_surface_commit;
+	if (wlr_deco->toplevel->base->initialized)
+		wl_list_init(&deco->surface_commit.link);
+	else
+		wl_signal_add(&wlr_deco->toplevel->base->surface->events.commit,
+			&deco->surface_commit);
+	xdg_decoration_send_mode(deco);
 }
 
 void

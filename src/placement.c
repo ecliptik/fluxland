@@ -24,6 +24,7 @@
 #include "placement.h"
 #include "server.h"
 #include "view.h"
+#include "view_geometry.h"
 #include "workspace.h"
 
 /* Cascade offset in pixels */
@@ -548,13 +549,12 @@ collect_visible_views(struct wm_server *server, struct wm_view **out,
 static void
 arrange_view(struct wm_view *view, int x, int y, int w, int h)
 {
-	view->x = x;
-	view->y = y;
 	/* Tell client it's being tiled so it fills exact size without rounding */
 	wm_view_set_tiled_state(view, WLR_EDGE_TOP | WLR_EDGE_BOTTOM |
 		WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
-	wm_view_set_size(view, w, h);
-	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
+	/* The cell holds the whole frame, decorations included */
+	struct wlr_box cell = {x, y, w, h};
+	wm_view_set_frame_box(view, &cell);
 }
 
 void

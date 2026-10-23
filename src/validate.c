@@ -11,6 +11,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "config.h"
 #include "validate.h"
 #include "i18n.h"
 #include "rcparser.h"
@@ -452,6 +453,53 @@ find_input_setting(const char *key)
 	return NULL;
 }
 
+/* session.output.<Connector>.<setting> */
+static void
+validate_output_setting(struct config_result *result, const char *path,
+	int lineno, const char *key, const char *value)
+{
+	const char *name = key + strlen("session.output.");
+	const char *setting = strrchr(name, '.');
+	if (!setting || setting == name) {
+		config_result_add_warning(result, path, lineno,
+			"'%s': expected session.output.<Connector>.<setting>",
+			key);
+		return;
+	}
+	setting++;
+
+	bool ok = true;
+	if (strcasecmp(setting, "enabled") == 0 ||
+	    strcasecmp(setting, "adaptiveSync") == 0) {
+		ok = is_valid_bool(value);
+	} else if (strcasecmp(setting, "mode") == 0) {
+		int w, h, mhz;
+		ok = config_parse_output_mode(value, &w, &h, &mhz);
+	} else if (strcasecmp(setting, "scale") == 0) {
+		char *end;
+		double v = strtod(value, &end);
+		ok = end != value && *end == '\0' && v >= 0.25 && v <= 10.0;
+	} else if (strcasecmp(setting, "position") == 0) {
+		char *end;
+		strtol(value, &end, 10);
+		ok = end != value && *end == ',';
+		if (ok) {
+			const char *p = end + 1;
+			strtol(p, &end, 10);
+			ok = end != p && *end == '\0';
+		}
+	} else if (strcasecmp(setting, "transform") == 0) {
+		ok = config_parse_output_transform(value) >= 0;
+	} else {
+		config_result_add_warning(result, path, lineno,
+			"unknown key '%s'", key);
+		return;
+	}
+	if (!ok)
+		config_result_add_error(result, path, lineno,
+			"'%s' invalid value '%s'", key, value);
+}
+
 /* Resolve a config path value (handles ~ expansion) for existence check */
 static char *
 resolve_check_path(const char *config_dir, const char *value)
@@ -535,6 +583,12 @@ validate_init_file(const char *path, struct config_result *result)
 
 		if (*key == '\0')
 			continue;
+
+		if (strncmp(key, "session.output.", 15) == 0) {
+			validate_output_setting(result, path, lineno, key,
+				value);
+			continue;
+		}
 
 		bool input_key = strncmp(key, "session.input.", 14) == 0;
 		const struct init_key_spec *spec = input_key ?

@@ -84,13 +84,17 @@ class CompositorManager:
 
         return binary_path
 
-    def start(self, config_set="default", headless=False):
+    def start(self, config_set="default", headless=False, outputs=1,
+              init_extra=None):
         """Start or connect to the fluxland compositor.
 
         Args:
             config_set: Name of the config set directory under config_base_dir.
             headless: If True, launch a new headless compositor.
                 If False, connect to the existing session on WAYLAND_DISPLAY.
+            outputs: Number of headless outputs (headless mode only).
+            init_extra: Lines appended to the init file before starting
+                (headless mode only).
 
         Returns:
             subprocess.Popen for headless mode, None for live session mode.
@@ -99,11 +103,11 @@ class CompositorManager:
             CompositorError: If the compositor fails to start or connect.
         """
         if headless:
-            return self._start_headless(config_set)
+            return self._start_headless(config_set, outputs, init_extra)
         else:
             return self._connect_live_session()
 
-    def _start_headless(self, config_set):
+    def _start_headless(self, config_set, outputs=1, init_extra=None):
         """Launch a new headless compositor instance."""
         # Create temp directory structure matching integration harness
         self._tmp_dir = tempfile.mkdtemp(
@@ -117,6 +121,9 @@ class CompositorManager:
 
         # Copy config files
         self.set_config(config_set)
+        if init_extra:
+            with open(os.path.join(self._config_dir, "init"), "a") as f:
+                f.write("\n" + "\n".join(init_extra) + "\n")
 
         # Build environment for compositor
         env = os.environ.copy()
@@ -125,6 +132,7 @@ class CompositorManager:
         env["XDG_RUNTIME_DIR"] = self._runtime_dir
         env["XDG_CONFIG_HOME"] = os.path.join(self._tmp_dir, "config")
         env["HOME"] = self._tmp_dir
+        env["WLR_HEADLESS_OUTPUTS"] = str(outputs)
 
         # Launch compositor. Log to a file: an unread stderr pipe fills
         # up after ~64 KiB and blocks the compositor in write().
@@ -392,6 +400,11 @@ class CompositorManager:
     def socket_path(self):
         """Return the IPC socket path."""
         return self._socket_path
+
+    @property
+    def config_dir(self):
+        """Return the fluxland config directory (headless mode)."""
+        return self._config_dir
 
     @property
     def runtime_dir(self):

@@ -1002,13 +1002,15 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		}
 		return true;
 	case WM_ACTION_SEND_TO_NEXT_HEAD:
-		if (view)
-			wm_view_send_to_next_head(view);
+	case WM_ACTION_SEND_TO_PREV_HEAD: {
+		int offset = 1;
+		if (argument && *argument && !safe_atoi(argument, &offset))
+			offset = 1;
+		if (action == WM_ACTION_SEND_TO_PREV_HEAD)
+			offset = -offset;
+		wm_view_send_to_head_offset(view, offset);
 		return true;
-	case WM_ACTION_SEND_TO_PREV_HEAD:
-		if (view)
-			wm_view_send_to_prev_head(view);
-		return true;
+	}
 
 	/* Misc view actions */
 	case WM_ACTION_CLOSE_ALL_WINDOWS:

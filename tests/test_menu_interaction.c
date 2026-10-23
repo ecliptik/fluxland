@@ -389,6 +389,7 @@ struct wm_config {
 struct wm_output {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 };
 

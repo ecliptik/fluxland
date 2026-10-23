@@ -262,8 +262,10 @@ struct wm_output {
 	void *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
+	int lx, ly; /* position in the layout */
 };
 
 struct wm_server {
@@ -414,6 +416,46 @@ wlr_output_effective_resolution(struct wlr_output *output,
 	*height = output->height;
 }
 
+/* --- output.c stand-ins --- */
+
+static void
+wm_output_layout_box(struct wm_output *output, struct wlr_box *box)
+{
+	box->x = output->lx;
+	box->y = output->ly;
+	box->width = output->wlr_output->width;
+	box->height = output->wlr_output->height;
+}
+
+/* The slit being tested: arrange recomputes usable areas with it */
+static struct wm_slit *g_arrange_slit;
+struct wm_slit;
+void wm_slit_reserve(struct wm_slit *slit, struct wm_output *output,
+	struct wlr_box *usable);
+
+static void
+wm_output_arrange(struct wm_output *output)
+{
+	struct wlr_box usable;
+	wm_output_layout_box(output, &usable);
+	wm_slit_reserve(g_arrange_slit, output, &usable);
+	output->usable_area = usable;
+}
+
+static struct wm_output *
+wm_output_by_head(struct wm_server *server, int head)
+{
+	struct wm_output *output;
+	int n = 1;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (n++ == head)
+			return output;
+	}
+	if (wl_list_empty(&server->outputs))
+		return NULL;
+	return wl_container_of(server->outputs.next, output, link);
+}
+
 static struct wl_event_source g_event_source;
 
 static struct wl_event_source *
@@ -487,6 +529,7 @@ static struct wl_event_loop test_event_loop;
 static void
 reset_globals(void)
 {
+	g_arrange_slit = NULL;
 	g_scene_tree_create_count = 0;
 	g_scene_tree_idx = 0;
 	g_scene_rect_create_count = 0;
@@ -1063,6 +1106,7 @@ test_slit_create_basic(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->server == &test_server);
 	assert(slit->placement == WM_SLIT_RIGHT_CENTER);
@@ -1086,6 +1130,7 @@ test_slit_create_with_config(void)
 	test_config.slit_alpha = 128;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->auto_hide == true);
 	assert(slit->placement == WM_SLIT_LEFT_TOP);
@@ -1105,6 +1150,7 @@ test_slit_toggle_hidden(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit->auto_hide == false);
 
 	wm_slit_toggle_hidden(slit);
@@ -1128,6 +1174,7 @@ test_slit_apply_alpha_basic(void)
 	test_config.slit_alpha = 128;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->alpha == 128);
 
@@ -1203,6 +1250,7 @@ test_slit_add_client_basic(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->client_count == 0);
 
@@ -1247,6 +1295,7 @@ test_slit_add_remove_multiple_clients(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 
 	/* Create two clients */
 	struct wlr_surface ws1, ws2;
@@ -1298,6 +1347,7 @@ test_slit_add_client_default_size(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 
 	/* Client with zero-size xwayland surface should get default 64x64 */
 	struct wlr_surface ws;
@@ -1333,6 +1383,7 @@ test_slit_reconfigure_with_clients(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Add and "map" a client manually */
@@ -1379,6 +1430,7 @@ test_slit_reconfigure_max_over_off(void)
 	test_config.slit_placement = WM_SLIT_RIGHT_CENTER;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Add a mapped client so slit becomes visible */
@@ -1406,6 +1458,13 @@ test_slit_reconfigure_max_over_off(void)
 	assert(test_output.usable_area.width < orig_width);
 	assert(slit->reserved_space > 0);
 
+	/* Reconfiguring again reserves the same space, not twice as much */
+	int reserved_width = test_output.usable_area.width;
+	wm_slit_reconfigure(slit);
+	wm_slit_reconfigure(slit);
+	assert(test_output.usable_area.width == reserved_width);
+	assert(reserved_width == orig_width - slit->reserved_space);
+
 	wm_slit_remove_client(client);
 	wm_slit_destroy(slit);
 	printf("  PASS: slit_reconfigure_max_over_off\n");
@@ -1421,6 +1480,7 @@ test_slit_reconfigure_different_placements(void)
 	test_config.slit_placement = WM_SLIT_LEFT_CENTER;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 
 	struct wlr_surface ws;
 	memset(&ws, 0, sizeof(ws));
@@ -1458,6 +1518,7 @@ test_slit_toggle_above(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->scene_tree != NULL);
 
@@ -1488,6 +1549,7 @@ test_slit_toggle_above_bottom_layer(void)
 	test_config.slit_layer = 2; /* Bottom layer */
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	slit->scene_tree->node.parent = &test_layer_bottom;
 
 	reset_globals();
@@ -1513,6 +1575,7 @@ test_slit_relayout(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Change config values */
@@ -1544,6 +1607,7 @@ test_slit_relayout_layer_change(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Change to overlay layer */
@@ -1758,6 +1822,7 @@ test_slit_get_output_second_head(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Add a second output */
@@ -1768,12 +1833,13 @@ test_slit_get_output_second_head(void)
 	second_output.usable_area = (struct wlr_box){0, 0, 1920, 1080};
 	wl_list_insert(test_server.outputs.prev, &second_output.link);
 
-	/* Set on_head = 1 to target the second output */
-	slit->on_head = 1;
+	/* Fluxbox numbering: head 2 is the second output */
+	second_output.lx = 1920;
+	slit->on_head = 2;
 	wm_slit_reconfigure(slit);
 
-	/* Slit should be positioned based on second output */
-	/* (just verifying no crash with multi-head) */
+	/* Positioned on the second output */
+	assert(slit->x >= 1920);
 
 	wl_list_remove(&second_output.link);
 	wm_slit_destroy(slit);
@@ -1790,6 +1856,7 @@ test_slit_create_overlay_layer(void)
 
 	test_config.slit_layer = 6; /* AboveDock/Overlay */
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	wm_slit_destroy(slit);
@@ -1804,6 +1871,7 @@ test_slit_create_bottom_layer(void)
 
 	test_config.slit_layer = 2; /* Bottom */
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	wm_slit_destroy(slit);
@@ -1820,6 +1888,7 @@ test_slit_create_with_alpha(void)
 
 	test_config.slit_alpha = 128;
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->alpha == 128);
 
@@ -1838,6 +1907,7 @@ test_slit_create_with_border(void)
 	test_style.slit_border_width = 2;
 	test_style.slit_border_color = (struct wm_color){128, 128, 128, 255};
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->border_rect != NULL);
 
@@ -1855,6 +1925,7 @@ test_slit_reconfigure_max_over_left_placements(void)
 	test_config.slit_max_over = false;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Add a mapped client so has_clients is true */
@@ -1900,6 +1971,7 @@ test_slit_reconfigure_hidden_undo_reservation(void)
 	test_config.slit_max_over = false;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Simulate previous reservation */
@@ -1924,6 +1996,7 @@ test_slit_relayout_bottom_layer(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Change to bottom layer */
@@ -1949,6 +2022,7 @@ test_slit_relayout_updates_colors(void)
 	test_style.slit_border_color = (struct wm_color){255, 0, 0, 255};
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Change colors in style and relayout */
@@ -1975,6 +2049,7 @@ test_slit_relayout_with_alpha(void)
 	test_config.slit_alpha = 200;
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	reset_globals();
@@ -1996,6 +2071,7 @@ test_slit_toggle_above_overlay_to_base(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Move to overlay first */
@@ -2021,6 +2097,7 @@ test_slit_toggle_hidden_cycle(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 	assert(slit->auto_hide == false);
 
@@ -2046,6 +2123,7 @@ test_slit_client_map_basic(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	/* Create a fake xwayland surface */
@@ -2088,6 +2166,7 @@ test_slit_client_map_with_alpha(void)
 	test_config.slit_alpha = 128; /* partial alpha */
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	struct wlr_surface fake_surface;
@@ -2129,6 +2208,7 @@ test_slit_client_unmap_basic(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	struct wlr_surface fake_surface;
@@ -2174,6 +2254,7 @@ test_slit_client_destroy_basic(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	struct wlr_surface fake_surface;
@@ -2208,6 +2289,7 @@ test_slit_client_configure_basic(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	struct wlr_surface fake_surface;
@@ -2247,6 +2329,7 @@ test_slit_client_configure_while_mapped(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	struct wlr_surface fake_surface;
@@ -2289,6 +2372,7 @@ test_slit_client_map_no_title(void)
 	setup_test_server();
 
 	struct wm_slit *slit = wm_slit_create(&test_server);
+	g_arrange_slit = slit;
 	assert(slit != NULL);
 
 	struct wlr_surface fake_surface;

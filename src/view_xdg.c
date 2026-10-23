@@ -16,6 +16,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
@@ -405,31 +406,38 @@ struct wm_popup {
 };
 
 /*
- * Keep a popup on screen: constrain it to the output its toplevel is
- * on. The box is in the toplevel's window-geometry coordinates, which
- * is where the toplevel's xdg scene tree has its origin.
+ * Keep a popup on screen: constrain it to the output its window (or
+ * layer surface) is on. Popup coordinates are relative to the tree the
+ * first popup of the chain hangs off: the toplevel's xdg tree (its
+ * window-geometry origin) or the layer surface's popup tree.
  */
 static void
 popup_unconstrain(struct wm_popup *p)
 {
-	struct wlr_xdg_popup *popup = p->popup;
-	struct wlr_xdg_surface *xs =
-		wlr_xdg_surface_try_from_wlr_surface(popup->parent);
-	while (xs && xs->role == WLR_XDG_SURFACE_ROLE_POPUP && xs->popup)
-		xs = wlr_xdg_surface_try_from_wlr_surface(xs->popup->parent);
-	if (!xs || xs->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL || !xs->data)
-		return;
+	struct wlr_xdg_popup *top = p->popup;
+	struct wlr_xdg_surface *xs;
+	while ((xs = wlr_xdg_surface_try_from_wlr_surface(top->parent)) &&
+	       xs->role == WLR_XDG_SURFACE_ROLE_POPUP && xs->popup)
+		top = xs->popup;
 
-	struct wlr_scene_tree *tree = xs->data;
+	struct wlr_scene_tree *top_tree = top->base->data;
+	if (!top_tree || !top_tree->node.parent)
+		return;
 	int lx, ly;
-	if (!wlr_scene_node_coords(&tree->node, &lx, &ly))
+	if (!wlr_scene_node_coords(&top_tree->node.parent->node, &lx, &ly))
 		return;
 
-	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(xs, &geo);
-	struct wlr_output *output = wlr_output_layout_output_at(
-		p->server->output_layout, lx + geo.width / 2.0,
-		ly + geo.height / 2.0);
+	struct wlr_output *output = NULL;
+	struct wlr_layer_surface_v1 *layer =
+		wlr_layer_surface_v1_try_from_wlr_surface(top->parent);
+	if (layer) {
+		output = layer->output;
+	} else if (xs && xs->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+		struct wlr_box geo;
+		wlr_xdg_surface_get_geometry(xs, &geo);
+		output = wlr_output_layout_output_at(p->server->output_layout,
+			lx + geo.width / 2.0, ly + geo.height / 2.0);
+	}
 	if (!output)
 		output = wlr_output_layout_output_at(p->server->output_layout,
 			p->server->cursor->x, p->server->cursor->y);
@@ -444,7 +452,7 @@ popup_unconstrain(struct wm_popup *p)
 		.width = ob.width,
 		.height = ob.height,
 	};
-	wlr_xdg_popup_unconstrain_from_box(popup, &box);
+	wlr_xdg_popup_unconstrain_from_box(p->popup, &box);
 }
 
 static void
@@ -490,7 +498,12 @@ handle_new_xdg_popup(struct wl_listener *listener, void *data)
 	if (!popup_tree)
 		return;
 	popup->base->data = popup_tree;
+	wm_xdg_popup_track(server, popup);
+}
 
+void
+wm_xdg_popup_track(struct wm_server *server, struct wlr_xdg_popup *popup)
+{
 	struct wm_popup *p = calloc(1, sizeof(*p));
 	if (!p)
 		return;

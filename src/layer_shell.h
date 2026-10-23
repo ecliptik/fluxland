@@ -49,11 +49,16 @@ void wm_layer_shell_init(struct wm_server *server);
 void wm_layer_shell_finish(struct wm_server *server);
 
 /*
- * Arrange all layer surfaces on the given output.
- * Computes exclusive zones and updates the output's usable_area.
- * Called on layer surface map/unmap/commit and output resize.
+ * Position the layer surfaces on an output (full, in layout coords) and
+ * subtract their exclusive zones from usable. Use wm_output_arrange() to
+ * re-arrange an output.
  */
-void wm_layer_shell_arrange(struct wm_output *output);
+void wm_layer_shell_configure(struct wm_output *output,
+	const struct wlr_box *full, struct wlr_box *usable);
+
+/* Close the layer surfaces on an output that is going away */
+void wm_layer_shell_output_destroyed(struct wm_server *server,
+	struct wlr_output *wlr_output);
 
 /*
  * Try to focus a layer surface that requests keyboard interactivity.

@@ -156,10 +156,15 @@ struct wlr_box {
 
 struct wlr_surface {
 	int dummy;
+	struct {
+		struct wl_signal commit;
+	} events;
 };
 
 struct wlr_xdg_surface {
 	struct wlr_surface *surface;
+	bool initialized;
+	bool initial_commit;
 };
 
 struct wlr_xdg_toplevel {
@@ -168,6 +173,7 @@ struct wlr_xdg_toplevel {
 };
 
 struct wlr_xdg_toplevel_decoration_v1 {
+	struct wlr_xdg_toplevel *toplevel;
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal request_mode;
@@ -498,10 +504,12 @@ static void wl_signal_add(struct wl_signal *signal, struct wl_listener *listener
 	(void)signal; (void)listener;
 }
 
+static int g_deco_set_mode_count;
 static void wlr_xdg_toplevel_decoration_v1_set_mode(
 	struct wlr_xdg_toplevel_decoration_v1 *deco, int mode)
 {
 	(void)deco; (void)mode;
+	g_deco_set_mode_count++;
 }
 
 static struct wlr_xdg_decoration_manager_v1 *
@@ -3286,8 +3294,14 @@ test_xdg_decoration_init_error(void)
 static void
 test_xdg_decoration_request_mode_handler(void)
 {
+	struct wlr_xdg_surface base;
+	memset(&base, 0, sizeof(base));
+	struct wlr_xdg_toplevel toplevel;
+	memset(&toplevel, 0, sizeof(toplevel));
+	toplevel.base = &base;
 	struct wlr_xdg_toplevel_decoration_v1 wlr_deco;
 	memset(&wlr_deco, 0, sizeof(wlr_deco));
+	wlr_deco.toplevel = &toplevel;
 
 	struct wm_xdg_decoration *deco = calloc(1, sizeof(*deco));
 	assert(deco != NULL);
@@ -3295,9 +3309,23 @@ test_xdg_decoration_request_mode_handler(void)
 	deco->server = &test_server;
 	wl_list_init(&deco->destroy.link);
 	wl_list_init(&deco->request_mode.link);
+	wl_list_init(&deco->surface_commit.link);
 
-	/* Call request_mode handler — should set server-side mode (stub no-op) */
+	/* Before the initial commit, the mode can't be sent yet */
+	g_deco_set_mode_count = 0;
 	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
+	assert(g_deco_set_mode_count == 0);
+
+	/* It goes out with the initial commit's configure */
+	base.initialized = true;
+	base.initial_commit = true;
+	handle_xdg_decoration_surface_commit(&deco->surface_commit, NULL);
+	assert(g_deco_set_mode_count == 1);
+
+	/* Later requests are answered directly */
+	base.initial_commit = false;
+	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
+	assert(g_deco_set_mode_count == 2);
 
 	free(deco);
 	printf("  PASS: xdg_decoration_request_mode_handler\n");
@@ -3318,6 +3346,7 @@ test_xdg_decoration_destroy_handler(void)
 	/* Must init links so wl_list_remove doesn't crash */
 	wl_list_init(&deco->destroy.link);
 	wl_list_init(&deco->request_mode.link);
+	wl_list_init(&deco->surface_commit.link);
 
 	/* Destroy handler frees deco */
 	handle_xdg_decoration_destroy(&deco->destroy, NULL);

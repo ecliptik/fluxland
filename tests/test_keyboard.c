@@ -800,6 +800,7 @@ struct wm_slit {
 
 struct wm_output {
 	struct wlr_output *wlr_output;
+	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wl_list link;
 };
@@ -1049,8 +1050,16 @@ void wm_view_rhalf(struct wm_view *v) { (void)v; stub_rhalf_count++; }
 void wm_view_resize_by(struct wm_view *v, int w, int h) { (void)v; (void)w; (void)h; stub_resize_by_count++; }
 void wm_view_focus_direction(struct wm_server *s, int dx, int dy) { (void)s; (void)dx; (void)dy; stub_focus_direction_count++; }
 void wm_view_set_head(struct wm_view *v, int h) { (void)v; (void)h; stub_set_head_count++; }
-void wm_view_send_to_next_head(struct wm_view *v) { (void)v; stub_send_next_head_count++; }
-void wm_view_send_to_prev_head(struct wm_view *v) { (void)v; stub_send_prev_head_count++; }
+static int stub_head_offset;
+void wm_view_send_to_head_offset(struct wm_view *v, int offset)
+{
+	(void)v;
+	stub_head_offset = offset;
+	if (offset > 0)
+		stub_send_next_head_count++;
+	else
+		stub_send_prev_head_count++;
+}
 void wm_view_close_all(struct wm_server *s) { (void)s; stub_close_all_count++; }
 void wm_focus_cycle(struct wm_server *s, const struct wm_window_list_spec *spec,
 	bool reverse)

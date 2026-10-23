@@ -274,17 +274,24 @@ cmd_get_outputs(struct wm_server *server)
 
 		char *name_esc = wm_ipc_json_quote(output->wlr_output->name);
 
-		int width = output->wlr_output->width;
-		int height = output->wlr_output->height;
-
-		double ox = 0, oy = 0;
-		wlr_output_layout_output_coords(server->output_layout,
-			output->wlr_output, &ox, &oy);
+		struct wlr_output *wo = output->wlr_output;
+		/* Position and usable area are layout coordinates */
+		struct wlr_box box = {0};
+		wm_output_layout_box(output, &box);
+		struct wlr_box u = output->usable_area;
 
 		strbuf_appendf(&sb,
 			"{\"name\":%s,\"width\":%d,\"height\":%d,"
-			"\"x\":%d,\"y\":%d}",
-			name_esc, width, height, (int)ox, (int)oy);
+			"\"x\":%d,\"y\":%d,\"enabled\":%s,"
+			"\"scale\":%.3g,\"refresh\":%d,"
+			"\"layout\":{\"x\":%d,\"y\":%d,\"width\":%d,"
+			"\"height\":%d},"
+			"\"usable\":{\"x\":%d,\"y\":%d,\"width\":%d,"
+			"\"height\":%d}}",
+			name_esc, wo->width, wo->height, box.x, box.y,
+			wo->enabled ? "true" : "false", wo->scale, wo->refresh,
+			box.x, box.y, box.width, box.height,
+			u.x, u.y, u.width, u.height);
 		free(name_esc);
 	}
 

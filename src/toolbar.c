@@ -36,14 +36,12 @@
 
 /* --- Helper: get primary output --- */
 
+/* The toolbar's head (session.screen0.toolbar.onhead, from 1) */
 static struct wm_output *
-get_primary_output(struct wm_server *server)
+toolbar_output(struct wm_server *server)
 {
-	if (wl_list_empty(&server->outputs)) {
-		return NULL;
-	}
-	return wl_container_of(server->outputs.next, (struct wm_output *)NULL,
-		link);
+	return wm_output_by_head(server,
+		server->config ? server->config->toolbar_on_head : 0);
 }
 
 /* --- Tool parsing --- */
@@ -1012,16 +1010,6 @@ hide_timer_cb(void *data)
 	toolbar->shown = false;
 	wlr_scene_node_set_enabled(&toolbar->scene_tree->node, false);
 
-	/* Remove exclusive zone */
-	struct wm_output *output = get_primary_output(server);
-	if (output) {
-		wlr_output_effective_resolution(output->wlr_output,
-			&output->usable_area.width,
-			&output->usable_area.height);
-		output->usable_area.x = 0;
-		output->usable_area.y = 0;
-	}
-
 	return 0;
 }
 
@@ -1281,7 +1269,7 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 		return;
 	}
 
-	struct wm_output *output = get_primary_output(toolbar->server);
+	struct wm_output *output = toolbar_output(toolbar->server);
 	if (!output) {
 		return;
 	}
@@ -1329,9 +1317,9 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	wlr_scene_node_set_enabled(&toolbar->scene_tree->node,
 		scene_visible);
 
-	int output_width, output_height;
-	wlr_output_effective_resolution(output->wlr_output,
-		&output_width, &output_height);
+	struct wlr_box ob;
+	wm_output_layout_box(output, &ob);
+	int output_width = ob.width, output_height = ob.height;
 
 	/* Apply width percentage */
 	int width_pct = config ? config->toolbar_width_percent : 100;
@@ -1369,23 +1357,46 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 		toolbar->y = output_height - toolbar->height;
 	}
 
+	/* Output-relative so far; the scene works in layout coordinates */
+	toolbar->x += ob.x;
+	toolbar->y += ob.y;
 	wlr_scene_node_set_position(&toolbar->scene_tree->node,
 		toolbar->x, toolbar->y);
 
-	/* Adjust usable area (only when visible and not in auto-hide mode,
-	 * or when auto-hide is active and toolbar is shown) */
-	bool takes_space = toolbar->visible &&
-		(!toolbar->auto_hide || toolbar->shown);
-	if (takes_space) {
-		if (toolbar->on_top) {
-			output->usable_area.y += toolbar->height;
-			output->usable_area.height -= toolbar->height;
-		} else {
-			output->usable_area.height -= toolbar->height;
-		}
-	}
-
 	toolbar_render(toolbar);
+
+	/* Windows make room for it (wm_toolbar_reserve) */
+	struct wm_output *o;
+	wl_list_for_each(o, &toolbar->server->outputs, link)
+		wm_output_arrange(o);
+}
+
+void
+wm_toolbar_reserve(struct wm_toolbar *toolbar, struct wm_output *output,
+	struct wlr_box *usable)
+{
+	/*
+	 * Like Fluxbox: a hidden, auto-hiding or maxOver toolbar leaves
+	 * the space to windows.
+	 */
+	if (!toolbar || !toolbar->visible || toolbar->auto_hide ||
+	    output != toolbar_output(toolbar->server))
+		return;
+	struct wm_config *config = toolbar->server->config;
+	if (config && config->toolbar_max_over)
+		return;
+
+	if (toolbar->on_top) {
+		int bottom = toolbar->y + toolbar->height;
+		if (bottom > usable->y) {
+			usable->height -= bottom - usable->y;
+			usable->y = bottom;
+		}
+	} else if (toolbar->y < usable->y + usable->height) {
+		usable->height = toolbar->y - usable->y;
+	}
+	if (usable->height < 0)
+		usable->height = 0;
 }
 
 bool
@@ -1539,22 +1550,22 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 		return;
 	}
 
-	struct wm_output *output = get_primary_output(toolbar->server);
+	struct wm_output *output = toolbar_output(toolbar->server);
 	if (!output) {
 		return;
 	}
 
-	int output_width, output_height;
-	wlr_output_effective_resolution(output->wlr_output,
-		&output_width, &output_height);
+	struct wlr_box ob;
+	wm_output_layout_box(output, &ob);
 
 	/* Define trigger zone: 1px strip at the edge where toolbar lives */
 	bool in_trigger_zone = false;
+	bool in_columns = lx >= ob.x && lx < ob.x + ob.width;
 	if (toolbar->on_top) {
-		in_trigger_zone = (ly <= 1 && lx >= 0 && lx < output_width);
+		in_trigger_zone = in_columns && ly <= ob.y + 1 && ly >= ob.y;
 	} else {
-		in_trigger_zone = (ly >= output_height - 1 &&
-			lx >= 0 && lx < output_width);
+		in_trigger_zone = in_columns &&
+			ly >= ob.y + ob.height - 1 && ly < ob.y + ob.height;
 	}
 
 	/* Check if pointer is within the toolbar area (when shown) */
@@ -1570,19 +1581,6 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 		/* Show toolbar */
 		toolbar->shown = true;
 		wlr_scene_node_set_enabled(&toolbar->scene_tree->node, true);
-
-		/* Recalculate usable area to include exclusive zone */
-		wlr_output_effective_resolution(output->wlr_output,
-			&output->usable_area.width,
-			&output->usable_area.height);
-		output->usable_area.x = 0;
-		output->usable_area.y = 0;
-		if (toolbar->on_top) {
-			output->usable_area.y += toolbar->height;
-			output->usable_area.height -= toolbar->height;
-		} else {
-			output->usable_area.height -= toolbar->height;
-		}
 
 		toolbar_render(toolbar);
 

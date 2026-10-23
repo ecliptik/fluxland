@@ -1502,6 +1502,60 @@ test_input_rules(void)
 	printf("  PASS: test_input_rules\n");
 }
 
+/* Test: session.output.<Connector>.* */
+static void
+test_output_rules(void)
+{
+	int w, h, mhz;
+	assert(config_parse_output_mode("2560x1440@143.97", &w, &h, &mhz));
+	assert(w == 2560 && h == 1440 && mhz == 143970);
+	assert(config_parse_output_mode("800X600", &w, &h, &mhz) && mhz == 0);
+	assert(config_parse_output_mode("1920x1080@60Hz", &w, &h, &mhz));
+	assert(mhz == 60000);
+	assert(!config_parse_output_mode("1920", &w, &h, &mhz));
+	assert(!config_parse_output_mode("1920x", &w, &h, &mhz));
+	assert(!config_parse_output_mode("0x0", &w, &h, &mhz));
+	assert(!config_parse_output_mode("1920x1080@", &w, &h, &mhz));
+	assert(config_parse_output_transform("flipped-90") == 5);
+	assert(config_parse_output_transform("Normal") == 0);
+	assert(config_parse_output_transform("45") == -1);
+
+	write_file(TEST_INIT,
+		"session.output.HDMI-A-1.mode: 2560x1440@59.95\n"
+		"session.output.HDMI-A-1.position: -2560,120\n"
+		"session.output.HDMI-A-1.transform: 270\n"
+		"session.output.eDP-1.scale: 1.25\n"
+		"session.output.eDP-1.adaptiveSync: yes\n"
+		"session.output.DP-2.enabled: false\n"
+		"session.output.DP-2.scale: 99\n"
+		"session.output.DP-2.position: 10\n"
+		"session.output.DP-2.wobble: 1\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->output_rule_count == 3);
+
+	const struct wm_output_rule *hdmi =
+		config_find_output_rule(c, "HDMI-A-1");
+	assert(hdmi && hdmi->width == 2560 && hdmi->height == 1440);
+	assert(hdmi->refresh_mhz == 59950);
+	assert(hdmi->has_position && hdmi->x == -2560 && hdmi->y == 120);
+	assert(hdmi->transform == 3 && hdmi->enabled == -1);
+	assert(isnan(hdmi->scale));
+
+	const struct wm_output_rule *edp = config_find_output_rule(c, "eDP-1");
+	assert(edp && edp->scale == 1.25 && edp->adaptive_sync == 1);
+	assert(edp->width == 0 && !edp->has_position);
+
+	/* Bad values are ignored, the rest still applies */
+	const struct wm_output_rule *dp = config_find_output_rule(c, "DP-2");
+	assert(dp && dp->enabled == 0 && isnan(dp->scale));
+	assert(!dp->has_position);
+	assert(config_find_output_rule(c, "DP-3") == NULL);
+	config_destroy(c);
+
+	printf("  PASS: test_output_rules\n");
+}
+
 /* Test: iconbar icon width negative clamping */
 static void
 test_iconbar_icon_width_clamp(void)
@@ -1611,6 +1665,7 @@ main(void)
 	test_slit_max_over();
 	test_workspace_warping();
 	test_input_rules();
+	test_output_rules();
 	test_iconbar_icon_width_clamp();
 	test_tab_width_and_padding_clamp();
 	test_slit_layer_fallback_to_int();

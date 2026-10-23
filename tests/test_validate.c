@@ -152,6 +152,38 @@ test_input_settings(void)
 }
 
 static void
+test_output_settings(void)
+{
+	write_file(TEST_INIT,
+		"session.output.eDP-1.scale: 1.5\n"
+		"session.output.eDP-1.mode: 1920x1080@60\n"
+		"session.output.HDMI-A-1.position: -1920,0\n"
+		"session.output.HDMI-A-1.transform: flipped-90\n"
+		"session.output.DP-1.enabled: false\n"
+		"session.output.DP-1.adaptiveSync: true\n"
+	);
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(result.count == 0);
+	config_result_destroy(&result);
+
+	write_file(TEST_INIT,
+		"session.output.eDP-1.scale: 20\n"       /* out of range */
+		"session.output.eDP-1.mode: big\n"       /* bad mode */
+		"session.output.eDP-1.position: 10\n"    /* no y */
+		"session.output.eDP-1.transform: 45\n"   /* bad transform */
+		"session.output.eDP-1.enabled: maybe\n"  /* bad bool */
+		"session.output.eDP-1.colour: red\n"     /* unknown: warning */
+	);
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(result.count == 6);
+	config_result_destroy(&result);
+	printf("  PASS: test_output_settings\n");
+}
+
+static void
 test_invalid_workspace_count(void)
 {
 	write_file(TEST_INIT,
@@ -1059,6 +1091,7 @@ main(void)
 	/* Init file validation */
 	test_valid_init_file();
 	test_input_settings();
+	test_output_settings();
 	test_invalid_workspace_count();
 	test_invalid_alpha();
 	test_invalid_focus_model();

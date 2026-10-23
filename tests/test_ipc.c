@@ -76,8 +76,7 @@ void wm_view_resize_by(struct wm_view *v, int w, int h)
 void wm_view_focus_direction(struct wm_server *s, int dx, int dy)
 	{ (void)s; (void)dx; (void)dy; }
 void wm_view_set_head(struct wm_view *v, int h) { (void)v; (void)h; }
-void wm_view_send_to_next_head(struct wm_view *v) { (void)v; }
-void wm_view_send_to_prev_head(struct wm_view *v) { (void)v; }
+void wm_view_send_to_head_offset(struct wm_view *v, int o) { (void)v; (void)o; }
 void wm_view_close_all(struct wm_server *s) { (void)s; }
 void wm_view_cycle_next(struct wm_server *s) { (void)s; }
 void wm_view_cycle_prev(struct wm_server *s) { (void)s; }
@@ -209,9 +208,14 @@ void wl_display_terminate(struct wl_display *d)
 struct wl_client *wl_resource_get_client(struct wl_resource *r)
 	{ (void)r; return NULL; }
 void wl_client_destroy(struct wl_client *c) { (void)c; }
-void wlr_output_layout_output_coords(struct wlr_output_layout *l,
-	struct wlr_output *o, double *ox, double *oy)
-	{ (void)l; (void)o; *ox = 0; *oy = 0; }
+/* Outputs sit side by side at their usable area's x */
+void wm_output_layout_box(struct wm_output *o, struct wlr_box *box)
+{
+	box->x = o->usable_area.x;
+	box->y = 0;
+	box->width = o->wlr_output->width;
+	box->height = o->wlr_output->height;
+}
 
 /* --- Test helpers --- */
 
