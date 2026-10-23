@@ -16,6 +16,8 @@
 #include <wayland-server-core.h>
 
 struct wm_server;
+struct wm_output;
+struct wlr_surface;
 
 struct wm_lock_surface {
 	struct wlr_session_lock_surface_v1 *lock_surface;
@@ -35,9 +37,15 @@ struct wm_session_lock {
 	struct wlr_session_lock_manager_v1 *manager;
 	struct wlr_session_lock_v1 *active_lock;
 	bool locked;
+	bool sent_locked; /* `locked` event sent to active_lock */
+
+	/* Topmost scene tree: blanking rect + lock surfaces */
+	struct wlr_scene_tree *tree;
+	struct wlr_scene_rect *blank;
 
 	struct wl_listener new_lock;
 	struct wl_listener manager_destroy;
+	struct wl_listener layout_change;
 
 	/* Per-lock listeners (only active when locked) */
 	struct wl_listener lock_new_surface;
@@ -64,5 +72,16 @@ void wm_session_lock_finish(struct wm_server *server);
  * Used by input handlers to guard normal operations.
  */
 bool wm_session_is_locked(struct wm_server *server);
+
+/* Called after an output commits a frame; sends `locked` when ready. */
+void wm_session_lock_output_frame(struct wm_server *server,
+	struct wm_output *output);
+
+/* Called when outputs are added, removed or reconfigured. */
+void wm_session_lock_output_changed(struct wm_server *server);
+
+/* Lock surface under layout coordinates, or NULL. */
+struct wlr_surface *wm_session_lock_surface_at(struct wm_server *server,
+	double lx, double ly, double *sx, double *sy);
 
 #endif /* WM_SESSION_LOCK_H */

@@ -252,6 +252,16 @@ do_lock(struct lock_client *c, struct lock_state *state)
 	ext_session_lock_v1_add_listener(lock, &lock_listener, state);
 	wl_display_roundtrip(c->display);
 
+	/*
+	 * The compositor only sends `locked` after every output has
+	 * rendered a blanked frame, so wait for it (up to ~2s).
+	 */
+	for (int i = 0; i < 200 && !state->got_locked &&
+	     !state->got_finished; i++) {
+		usleep(10000);
+		wl_display_roundtrip(c->display);
+	}
+
 	return lock;
 }
 

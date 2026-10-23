@@ -6,15 +6,21 @@
  *
  * Implements the ext-session-lock-v1 protocol for screen lockers.
  * When a lock is active:
- *  - Lock surfaces cover each output in the overlay layer
- *  - Keyboard input is directed exclusively to the lock surface
+ *  - A dedicated scene tree above everything else holds an opaque
+ *    blanking rect and the lock surfaces
+ *  - `locked` is only sent once every enabled output has rendered a
+ *    blanked frame
+ *  - Keyboard and pointer input go exclusively to lock surfaces
  *  - All normal window interaction is blocked
  *  - Only VT switch keybindings are allowed
+ *  - If the lock client dies, the outputs stay blanked and the session
+ *    stays locked until a new lock client unlocks it
  */
 
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_session_lock_v1.h>
@@ -24,6 +30,36 @@
 #include "output.h"
 #include "server.h"
 #include "view.h"
+
+static const float blank_color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+/* Size the blanking rect to cover the whole output layout. */
+static void
+update_blank(struct wm_session_lock *lock)
+{
+	if (!lock->blank)
+		return;
+	struct wlr_box box;
+	wlr_output_layout_get_box(lock->server->output_layout, NULL, &box);
+	wlr_scene_node_set_position(&lock->blank->node, box.x, box.y);
+	wlr_scene_rect_set_size(lock->blank, box.width, box.height);
+}
+
+/* Send `locked` once every enabled output has shown a blanked frame. */
+static void
+maybe_send_locked(struct wm_session_lock *lock)
+{
+	if (!lock->active_lock || lock->sent_locked)
+		return;
+	struct wm_output *output;
+	wl_list_for_each(output, &lock->server->outputs, link) {
+		if (output->wlr_output->enabled && !output->lock_blanked)
+			return;
+	}
+	wlr_session_lock_v1_send_locked(lock->active_lock);
+	lock->sent_locked = true;
+	wlr_log(WLR_INFO, "%s", "session locked (all outputs blanked)");
+}
 
 /*
  * Focus the first mapped lock surface for keyboard input.
@@ -143,9 +179,9 @@ handle_new_lock_surface(struct wl_listener *listener, void *data)
 	/* Store server reference for use in callbacks */
 	lock_surface->data = lock->server;
 
-	/* Create scene tree in the overlay layer */
+	/* Lock surfaces sit in the lock tree, above the blanking rect */
 	ls->scene_tree = wlr_scene_subsurface_tree_create(
-		lock->server->layer_overlay, lock_surface->surface);
+		lock->tree, lock_surface->surface);
 	if (!ls->scene_tree) {
 		wlr_log(WLR_ERROR, "%s", "failed to create lock surface scene tree");
 		free(ls);
@@ -202,6 +238,8 @@ handle_lock_unlock(struct wl_listener *listener, void *data)
 
 	lock->locked = false;
 	lock->active_lock = NULL;
+	lock->sent_locked = false;
+	wlr_scene_node_set_enabled(&lock->tree->node, false);
 
 	/* Remove per-lock listeners */
 	wl_list_remove(&lock->lock_new_surface.link);
@@ -242,8 +280,8 @@ handle_lock_destroy(struct wl_listener *listener, void *data)
 
 	/*
 	 * If the lock client crashes while we're locked, we stay locked
-	 * (security measure). The user must VT switch and kill the compositor
-	 * or start a new lock client.
+	 * and the blanking rect stays up (security measure). The user can
+	 * start a new lock client (e.g. from a VT) to unlock.
 	 */
 	if (lock->locked) {
 		wlr_log(WLR_ERROR, "%s",
@@ -252,6 +290,7 @@ handle_lock_destroy(struct wl_listener *listener, void *data)
 	}
 
 	lock->active_lock = NULL;
+	lock->sent_locked = false;
 
 	wl_list_remove(&lock->lock_new_surface.link);
 	wl_list_remove(&lock->lock_unlock.link);
@@ -280,8 +319,23 @@ handle_new_lock(struct wl_listener *listener, void *data)
 
 	wlr_log(WLR_INFO, "%s", "new session lock requested");
 
+	/* Already blanked from an abandoned lock: nothing new to render */
+	bool was_blanked = lock->locked;
+
 	lock->active_lock = wlr_lock;
 	lock->locked = true;
+	lock->sent_locked = false;
+
+	/* Blank every output above all other content */
+	update_blank(lock);
+	wlr_scene_node_raise_to_top(&lock->tree->node);
+	wlr_scene_node_set_enabled(&lock->tree->node, true);
+	struct wm_output *output;
+	wl_list_for_each(output, &lock->server->outputs, link) {
+		output->lock_blanked = was_blanked;
+		if (output->wlr_output->enabled)
+			wlr_output_schedule_frame(output->wlr_output);
+	}
 
 	/* Set up per-lock listeners */
 	lock->lock_new_surface.notify = handle_new_lock_surface;
@@ -294,17 +348,25 @@ handle_new_lock(struct wl_listener *listener, void *data)
 	lock->lock_destroy.notify = handle_lock_destroy;
 	wl_signal_add(&wlr_lock->events.destroy, &lock->lock_destroy);
 
-	/* Tell the lock client we're locked — it can now create surfaces */
-	wlr_session_lock_v1_send_locked(wlr_lock);
-
 	/* Clear keyboard focus from normal views */
 	wlr_seat_keyboard_clear_focus(lock->server->seat);
 	wlr_seat_pointer_clear_focus(lock->server->seat);
+
+	/* Sent now if nothing needs re-rendering (or no outputs) */
+	maybe_send_locked(lock);
 }
 
 /*
  * Handle the session lock manager being destroyed.
  */
+static void
+handle_layout_change(struct wl_listener *listener, void *data)
+{
+	struct wm_session_lock *lock =
+		wl_container_of(listener, lock, layout_change);
+	wm_session_lock_output_changed(lock->server);
+}
+
 static void
 handle_manager_destroy(struct wl_listener *listener, void *data)
 {
@@ -331,6 +393,18 @@ wm_session_lock_init(struct wm_server *server)
 	wl_list_init(&lock->lock_new_surface.link);
 	wl_list_init(&lock->lock_unlock.link);
 	wl_list_init(&lock->lock_destroy.link);
+
+	lock->layout_change.notify = handle_layout_change;
+	wl_signal_add(&server->output_layout->events.change,
+		&lock->layout_change);
+
+	/* Hidden until a lock is requested; raised to the top on lock */
+	lock->tree = wlr_scene_tree_create(&server->scene->tree);
+	if (lock->tree) {
+		lock->blank = wlr_scene_rect_create(lock->tree, 0, 0,
+			blank_color);
+		wlr_scene_node_set_enabled(&lock->tree->node, false);
+	}
 
 	lock->manager = wlr_session_lock_manager_v1_create(
 		server->wl_display);
@@ -359,10 +433,50 @@ wm_session_lock_finish(struct wm_server *server)
 	wl_list_remove(&lock->lock_new_surface.link);
 	wl_list_remove(&lock->lock_unlock.link);
 	wl_list_remove(&lock->lock_destroy.link);
+	wl_list_remove(&lock->layout_change.link);
 }
 
 bool
 wm_session_is_locked(struct wm_server *server)
 {
 	return server->session_lock.locked;
+}
+
+void
+wm_session_lock_output_frame(struct wm_server *server,
+	struct wm_output *output)
+{
+	struct wm_session_lock *lock = &server->session_lock;
+	if (!lock->locked || !lock->active_lock || lock->sent_locked)
+		return;
+	output->lock_blanked = true;
+	maybe_send_locked(lock);
+}
+
+void
+wm_session_lock_output_changed(struct wm_server *server)
+{
+	struct wm_session_lock *lock = &server->session_lock;
+	if (!lock->locked)
+		return;
+	update_blank(lock);
+	/* A removed or disabled output may have been the last holdout */
+	maybe_send_locked(lock);
+}
+
+struct wlr_surface *
+wm_session_lock_surface_at(struct wm_server *server, double lx, double ly,
+	double *sx, double *sy)
+{
+	struct wm_session_lock *lock = &server->session_lock;
+	if (!lock->locked || !lock->tree)
+		return NULL;
+	struct wlr_scene_node *node =
+		wlr_scene_node_at(&lock->tree->node, lx, ly, sx, sy);
+	if (!node || node->type != WLR_SCENE_NODE_BUFFER)
+		return NULL;
+	struct wlr_scene_surface *scene_surface =
+		wlr_scene_surface_try_from_buffer(
+			wlr_scene_buffer_from_node(node));
+	return scene_surface ? scene_surface->surface : NULL;
 }

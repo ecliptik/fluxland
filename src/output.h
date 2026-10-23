@@ -28,6 +28,9 @@ struct wm_output {
 	/* Per-output workspace state (used in per-output workspace mode) */
 	struct wm_workspace *active_workspace;
 
+	/* Rendered a blanked frame since the session was locked */
+	bool lock_blanked;
+
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;

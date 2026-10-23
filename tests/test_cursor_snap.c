@@ -1393,6 +1393,10 @@ static void wm_decoration_set_shaded(struct wm_decoration *d, bool s,
 	struct wm_style *st) { (void)d; (void)s; (void)st; }
 static bool wm_session_is_locked(struct wm_server *server)
 	{ return server->session_lock.locked; }
+static struct wlr_surface *wm_session_lock_surface_at(
+	struct wm_server *server, double lx, double ly,
+	double *sx, double *sy)
+	{ (void)server; *sx = lx; *sy = ly; return NULL; }
 static void wm_idle_notify_activity(struct wm_server *server)
 	{ (void)server; }
 static void wm_toolbar_notify_pointer_motion(struct wm_toolbar *tb,

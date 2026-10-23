@@ -383,6 +383,21 @@ void wm_json_escape(char *dst, size_t dst_size, const char *src)
 
 /* --- Include output.c source directly --- */
 
+static int g_lock_frame_count;
+static int g_lock_changed_count;
+void
+wm_session_lock_output_frame(struct wm_server *s, struct wm_output *o)
+{
+	(void)s; (void)o;
+	g_lock_frame_count++;
+}
+void
+wm_session_lock_output_changed(struct wm_server *s)
+{
+	(void)s;
+	g_lock_changed_count++;
+}
+
 #include "output.c"
 
 /* --- Test helpers --- */

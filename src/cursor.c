@@ -323,11 +323,20 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	}
 
 	/*
-	 * When locked, don't interact with normal views.
-	 * Just clear pointer focus (lock surfaces use keyboard only).
+	 * When locked, don't interact with normal views. Lock surfaces
+	 * (e.g. gtklock's buttons) still get pointer input.
 	 */
 	if (wm_session_is_locked(server)) {
-		wlr_seat_pointer_clear_focus(server->seat);
+		double sx, sy;
+		struct wlr_surface *ls = wm_session_lock_surface_at(server,
+			server->cursor->x, server->cursor->y, &sx, &sy);
+		if (ls) {
+			wlr_seat_pointer_notify_enter(server->seat, ls, sx, sy);
+			wlr_seat_pointer_notify_motion(server->seat, time,
+				sx, sy);
+		} else {
+			wlr_seat_pointer_clear_focus(server->seat);
+		}
 		return;
 	}
 
@@ -496,9 +505,12 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 
 	wm_idle_notify_activity(server);
 
-	/* When locked, block all button interaction with normal views */
-	if (wm_session_is_locked(server))
+	/* When locked, buttons only reach the lock surface (if focused) */
+	if (wm_session_is_locked(server)) {
+		wlr_seat_pointer_notify_button(server->seat,
+			event->time_msec, event->button, event->state);
 		return;
+	}
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		/* Dispatch button release to any open menus */

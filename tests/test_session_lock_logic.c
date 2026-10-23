@@ -22,6 +22,7 @@
 #define WAYLAND_UTIL_H
 #define WLR_UTIL_LOG_H
 #define WLR_TYPES_WLR_OUTPUT_H
+#define WLR_TYPES_WLR_OUTPUT_LAYOUT_H
 #define WLR_TYPES_WLR_SCENE_H
 #define WLR_TYPES_WLR_SEAT_H
 #define WLR_TYPES_WLR_SESSION_LOCK_H
@@ -109,8 +110,22 @@ wl_signal_add(struct wl_signal *signal, struct wl_listener *listener)
 
 /* --- Stub wlr types --- */
 
-struct wlr_scene_node { int x, y; };
+enum wlr_scene_node_type {
+	WLR_SCENE_NODE_TREE,
+	WLR_SCENE_NODE_RECT,
+	WLR_SCENE_NODE_BUFFER,
+};
+struct wlr_scene_node {
+	enum wlr_scene_node_type type;
+	int x, y;
+	bool enabled;
+	int raise_count;
+};
 struct wlr_scene_tree { struct wlr_scene_node node; };
+struct wlr_scene_rect { struct wlr_scene_node node; int width, height; };
+struct wlr_scene_buffer { struct wlr_scene_node node; };
+struct wlr_scene_surface { struct wlr_surface *surface; };
+struct wlr_scene { struct wlr_scene_tree tree; };
 struct wlr_keyboard_modifiers { uint32_t dummy; };
 
 struct wlr_keyboard {
@@ -120,7 +135,11 @@ struct wlr_keyboard {
 };
 
 struct wlr_seat { int dummy; };
-struct wlr_output_layout { int dummy; };
+struct wlr_output_layout {
+	struct {
+		struct wl_signal change;
+	} events;
+};
 struct wlr_box { int x, y, width, height; };
 
 struct wlr_surface {
@@ -133,6 +152,8 @@ struct wlr_surface {
 
 struct wlr_output {
 	char *name;
+	bool enabled;
+	int frames_scheduled;
 	struct {
 		struct wl_signal commit;
 	} events;
@@ -189,14 +210,25 @@ struct wm_view {
 	struct wlr_xdg_toplevel *xdg_toplevel;
 };
 
+struct wm_output {
+	struct wl_list link;
+	struct wlr_output *wlr_output;
+	bool lock_blanked;
+};
+
 struct wm_session_lock {
 	struct wm_server *server;
 	struct wlr_session_lock_manager_v1 *manager;
 	struct wlr_session_lock_v1 *active_lock;
 	bool locked;
+	bool sent_locked;
+
+	struct wlr_scene_tree *tree;
+	struct wlr_scene_rect *blank;
 
 	struct wl_listener new_lock;
 	struct wl_listener manager_destroy;
+	struct wl_listener layout_change;
 
 	struct wl_listener lock_new_surface;
 	struct wl_listener lock_unlock;
@@ -212,7 +244,15 @@ struct wm_server {
 	struct wlr_scene_tree *layer_overlay;
 	struct wlr_output_layout *output_layout;
 	struct wl_display *wl_display;
+	struct wlr_scene *scene;
+	struct wl_list outputs;
 };
+
+void wm_session_lock_output_changed(struct wm_server *server);
+void wm_session_lock_output_frame(struct wm_server *server,
+	struct wm_output *output);
+struct wlr_surface *wm_session_lock_surface_at(struct wm_server *server,
+	double lx, double ly, double *sx, double *sy);
 
 /* --- Stub wlroots functions with call counters --- */
 
@@ -283,6 +323,81 @@ wlr_scene_subsurface_tree_create(struct wlr_scene_tree *parent,
 	(void)surface;
 	scene_tree_create_count++;
 	return stub_scene_tree_ret;
+}
+
+static struct wlr_scene_tree g_lock_tree;
+static struct wlr_scene_rect g_blank_rect;
+
+static struct wlr_scene_tree *
+wlr_scene_tree_create(struct wlr_scene_tree *parent)
+{
+	(void)parent;
+	memset(&g_lock_tree, 0, sizeof(g_lock_tree));
+	g_lock_tree.node.enabled = true;
+	return &g_lock_tree;
+}
+
+static struct wlr_scene_rect *
+wlr_scene_rect_create(struct wlr_scene_tree *parent, int w, int h,
+	const float color[4])
+{
+	(void)parent; (void)color;
+	memset(&g_blank_rect, 0, sizeof(g_blank_rect));
+	g_blank_rect.width = w;
+	g_blank_rect.height = h;
+	return &g_blank_rect;
+}
+
+static void
+wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int w, int h)
+{
+	rect->width = w;
+	rect->height = h;
+}
+
+static void
+wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled)
+{
+	node->enabled = enabled;
+}
+
+static void
+wlr_scene_node_raise_to_top(struct wlr_scene_node *node)
+{
+	node->raise_count++;
+}
+
+static struct wlr_scene_node *stub_node_at_ret;
+
+static struct wlr_scene_node *
+wlr_scene_node_at(struct wlr_scene_node *node, double lx, double ly,
+	double *nx, double *ny)
+{
+	(void)node;
+	*nx = lx;
+	*ny = ly;
+	return stub_node_at_ret;
+}
+
+static struct wlr_scene_buffer *
+wlr_scene_buffer_from_node(struct wlr_scene_node *node)
+{
+	return (struct wlr_scene_buffer *)node;
+}
+
+static struct wlr_scene_surface *stub_scene_surface_ret;
+
+static struct wlr_scene_surface *
+wlr_scene_surface_try_from_buffer(struct wlr_scene_buffer *buffer)
+{
+	(void)buffer;
+	return stub_scene_surface_ret;
+}
+
+static void
+wlr_output_schedule_frame(struct wlr_output *output)
+{
+	output->frames_scheduled++;
 }
 
 static int scene_set_pos_count;
@@ -386,11 +501,15 @@ static struct wlr_scene_tree g_overlay;
 static struct wlr_output_layout g_layout;
 static struct wl_display g_display;
 static struct wlr_session_lock_manager_v1 g_manager;
+static struct wlr_scene g_scene;
 
 static void
 setup_server(struct wm_server *server)
 {
 	memset(server, 0, sizeof(*server));
+	wl_signal_init(&g_layout.events.change);
+	wl_list_init(&server->outputs);
+	server->scene = &g_scene;
 	server->seat = &g_seat;
 	server->layer_overlay = &g_overlay;
 	server->output_layout = &g_layout;
@@ -492,6 +611,204 @@ test_new_lock(void)
 	emit_signal(&lock.events.unlock, NULL);
 	wm_session_lock_finish(&server);
 	printf("  PASS: test_new_lock\n");
+}
+
+/* --- Blanking / deferred `locked` --- */
+
+static void
+init_lock(struct wlr_session_lock_v1 *lock)
+{
+	wl_signal_init(&lock->events.new_surface);
+	wl_signal_init(&lock->events.unlock);
+	wl_signal_init(&lock->events.destroy);
+}
+
+static void
+test_lock_blanks_before_locked(void)
+{
+	struct wm_server server;
+	setup_server(&server);
+	reset_counters();
+	stub_manager_ret = &g_manager;
+	stub_output_box = (struct wlr_box){ 0, 0, 3840, 1080 };
+	wm_session_lock_init(&server);
+
+	struct wlr_output wo1 = { .name = "A", .enabled = true };
+	struct wlr_output wo2 = { .name = "B", .enabled = true };
+	struct wm_output o1 = { .wlr_output = &wo1 };
+	struct wm_output o2 = { .wlr_output = &wo2 };
+	wl_list_insert(&server.outputs, &o1.link);
+	wl_list_insert(&server.outputs, &o2.link);
+
+	/* Blank tree is hidden until locked */
+	assert(server.session_lock.tree->node.enabled == false);
+
+	struct wlr_session_lock_v1 lock;
+	init_lock(&lock);
+	emit_signal(&g_manager.events.new_lock, &lock);
+
+	/* Blanked and raised, but `locked` waits for both outputs */
+	assert(server.session_lock.tree->node.enabled == true);
+	assert(server.session_lock.tree->node.raise_count == 1);
+	assert(server.session_lock.blank->width == 3840);
+	assert(server.session_lock.blank->height == 1080);
+	assert(wo1.frames_scheduled == 1 && wo2.frames_scheduled == 1);
+	assert(send_locked_count == 0);
+
+	wm_session_lock_output_frame(&server, &o1);
+	assert(send_locked_count == 0);
+	wm_session_lock_output_frame(&server, &o2);
+	assert(send_locked_count == 1);
+	/* Further frames don't resend */
+	wm_session_lock_output_frame(&server, &o1);
+	assert(send_locked_count == 1);
+
+	emit_signal(&lock.events.unlock, NULL);
+	assert(server.session_lock.locked == false);
+	assert(server.session_lock.tree->node.enabled == false);
+
+	wl_list_remove(&o1.link);
+	wl_list_remove(&o2.link);
+	wm_session_lock_finish(&server);
+	printf("  PASS: test_lock_blanks_before_locked\n");
+}
+
+static void
+test_lock_ignores_disabled_output(void)
+{
+	struct wm_server server;
+	setup_server(&server);
+	reset_counters();
+	stub_manager_ret = &g_manager;
+	wm_session_lock_init(&server);
+
+	struct wlr_output wo1 = { .name = "A", .enabled = true };
+	struct wlr_output wo2 = { .name = "B", .enabled = false };
+	struct wm_output o1 = { .wlr_output = &wo1 };
+	struct wm_output o2 = { .wlr_output = &wo2 };
+	wl_list_insert(&server.outputs, &o1.link);
+	wl_list_insert(&server.outputs, &o2.link);
+
+	struct wlr_session_lock_v1 lock;
+	init_lock(&lock);
+	emit_signal(&g_manager.events.new_lock, &lock);
+	assert(send_locked_count == 0);
+	wm_session_lock_output_frame(&server, &o1);
+	assert(send_locked_count == 1);
+
+	emit_signal(&lock.events.unlock, NULL);
+	wl_list_remove(&o1.link);
+	wl_list_remove(&o2.link);
+	wm_session_lock_finish(&server);
+	printf("  PASS: test_lock_ignores_disabled_output\n");
+}
+
+static void
+test_lock_output_removed_while_pending(void)
+{
+	struct wm_server server;
+	setup_server(&server);
+	reset_counters();
+	stub_manager_ret = &g_manager;
+	wm_session_lock_init(&server);
+
+	struct wlr_output wo1 = { .name = "A", .enabled = true };
+	struct wlr_output wo2 = { .name = "B", .enabled = true };
+	struct wm_output o1 = { .wlr_output = &wo1 };
+	struct wm_output o2 = { .wlr_output = &wo2 };
+	wl_list_insert(&server.outputs, &o1.link);
+	wl_list_insert(&server.outputs, &o2.link);
+
+	struct wlr_session_lock_v1 lock;
+	init_lock(&lock);
+	emit_signal(&g_manager.events.new_lock, &lock);
+	wm_session_lock_output_frame(&server, &o1);
+	assert(send_locked_count == 0);
+
+	/* o2 unplugged before it ever rendered */
+	wl_list_remove(&o2.link);
+	wm_session_lock_output_changed(&server);
+	assert(send_locked_count == 1);
+
+	emit_signal(&lock.events.unlock, NULL);
+	wl_list_remove(&o1.link);
+	wm_session_lock_finish(&server);
+	printf("  PASS: test_lock_output_removed_while_pending\n");
+}
+
+static void
+test_lock_client_crash_stays_blank(void)
+{
+	struct wm_server server;
+	setup_server(&server);
+	reset_counters();
+	stub_manager_ret = &g_manager;
+	wm_session_lock_init(&server);
+
+	struct wlr_output wo1 = { .name = "A", .enabled = true };
+	struct wm_output o1 = { .wlr_output = &wo1 };
+	wl_list_insert(&server.outputs, &o1.link);
+
+	struct wlr_session_lock_v1 lock1;
+	init_lock(&lock1);
+	emit_signal(&g_manager.events.new_lock, &lock1);
+	wm_session_lock_output_frame(&server, &o1);
+	assert(send_locked_count == 1);
+
+	/* Locker dies without unlocking */
+	emit_signal(&lock1.events.destroy, NULL);
+	assert(server.session_lock.locked == true);
+	assert(server.session_lock.tree->node.enabled == true);
+	assert(server.session_lock.active_lock == NULL);
+
+	/* A new locker can take over; already blank, so `locked` at once */
+	struct wlr_session_lock_v1 lock2;
+	init_lock(&lock2);
+	emit_signal(&g_manager.events.new_lock, &lock2);
+	assert(server.session_lock.active_lock == &lock2);
+	assert(send_locked_count == 2);
+
+	emit_signal(&lock2.events.unlock, NULL);
+	assert(server.session_lock.locked == false);
+	assert(server.session_lock.tree->node.enabled == false);
+
+	wl_list_remove(&o1.link);
+	wm_session_lock_finish(&server);
+	printf("  PASS: test_lock_client_crash_stays_blank\n");
+}
+
+static void
+test_lock_surface_at(void)
+{
+	struct wm_server server;
+	setup_server(&server);
+	reset_counters();
+	stub_manager_ret = &g_manager;
+	wm_session_lock_init(&server);
+
+	double sx, sy;
+	struct wlr_surface surf;
+	struct wlr_scene_surface ss = { .surface = &surf };
+	struct wlr_scene_buffer buf = { .node.type = WLR_SCENE_NODE_BUFFER };
+	stub_node_at_ret = &buf.node;
+	stub_scene_surface_ret = &ss;
+
+	/* Not locked: never returns a surface */
+	assert(wm_session_lock_surface_at(&server, 5, 5, &sx, &sy) == NULL);
+
+	server.session_lock.locked = true;
+	assert(wm_session_lock_surface_at(&server, 5, 5, &sx, &sy) == &surf);
+
+	/* Blank rect (not a buffer) under the cursor */
+	struct wlr_scene_rect rect = { .node.type = WLR_SCENE_NODE_RECT };
+	stub_node_at_ret = &rect.node;
+	assert(wm_session_lock_surface_at(&server, 5, 5, &sx, &sy) == NULL);
+
+	stub_node_at_ret = NULL;
+	stub_scene_surface_ret = NULL;
+	server.session_lock.locked = false;
+	wm_session_lock_finish(&server);
+	printf("  PASS: test_lock_surface_at\n");
 }
 
 static void
@@ -1224,6 +1541,11 @@ main(void)
 	test_finish();
 	test_is_locked();
 	test_new_lock();
+	test_lock_blanks_before_locked();
+	test_lock_ignores_disabled_output();
+	test_lock_output_removed_while_pending();
+	test_lock_client_crash_stays_blank();
+	test_lock_surface_at();
 	test_double_lock_rejected();
 	test_unlock_with_focused_view_and_keyboard();
 	test_unlock_no_focused_view();

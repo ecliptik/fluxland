@@ -21,6 +21,7 @@
 #include "ipc.h"
 #include "layer_shell.h"
 #include "output.h"
+#include "session_lock.h"
 #include "server.h"
 #include "toolbar.h"
 #include "util.h"
@@ -34,6 +35,7 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	struct wlr_scene_output *scene_output = output->scene_output;
 
 	wlr_scene_output_commit(scene_output, NULL);
+	wm_session_lock_output_frame(output->server, output);
 
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
@@ -68,11 +70,14 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 			WM_IPC_EVENT_OUTPUT_REMOVE, buf);
 	}
 
+	struct wm_server *server = output->server;
 	wl_list_remove(&output->link);
 	wl_list_remove(&output->frame.link);
 	wl_list_remove(&output->request_state.link);
 	wl_list_remove(&output->destroy.link);
 	free(output);
+
+	wm_session_lock_output_changed(server);
 }
 
 static void
