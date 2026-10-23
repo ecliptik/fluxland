@@ -131,6 +131,7 @@ struct wm_server {
 
 	/* xdg-decoration protocol (SSD negotiation) */
 	struct wlr_xdg_decoration_manager_v1 *xdg_decoration_mgr;
+	struct wlr_server_decoration_manager *kde_decoration_mgr;
 	struct wl_listener new_xdg_decoration;
 
 	/* Layer shell protocol (panels, wallpaper, lock screens) */

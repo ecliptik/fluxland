@@ -41,6 +41,7 @@
 #define WM_OUTPUT_CONFIG_H
 #define WM_SLIT_H
 #define WM_VIEW_GEOMETRY_H
+#define WM_FOREIGN_TOPLEVEL_H
 
 /* --- Stub wayland types --- */
 
@@ -529,6 +530,12 @@ wm_layer_shell_configure(struct wm_output *o, const struct wlr_box *full,
 	}
 }
 
+void wm_foreign_toplevel_sync_outputs(struct wm_server *s) { (void)s; }
+static struct wlr_output *g_foreign_forgot;
+void
+wm_foreign_toplevel_output_destroyed(struct wm_server *s, struct wlr_output *o)
+{ (void)s; g_foreign_forgot = o; }
+
 static struct wlr_output *g_layer_closed_for;
 static void
 wm_layer_shell_output_destroyed(struct wm_server *s, struct wlr_output *o)
@@ -910,6 +917,7 @@ test_unplug_moves_everything(void)
 	unplug(&b);
 	/* Its panels are closed, it leaves the layout, windows come back */
 	assert(g_layer_closed_for == &b);
+	assert(g_foreign_forgot == &b);
 	assert(wlr_output_layout_get(srv.output_layout, &b) == NULL);
 	assert(v.keep_on_screen >= 1 && v.refits >= 1);
 	assert(docked.keep_on_screen == 0);

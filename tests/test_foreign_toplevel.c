@@ -28,6 +28,8 @@
 #define WM_VIEW_H
 #define WM_SERVER_H
 #define WM_FOREIGN_TOPLEVEL_H
+#define WLR_TYPES_WLR_FOREIGN_TOPLEVEL_LIST_V1_H
+#define WM_OUTPUT_H
 
 /* --- Stub wayland types --- */
 
@@ -212,6 +214,7 @@ struct wm_server {
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
+	struct wlr_ext_foreign_toplevel_list_v1 *ext_foreign_toplevel_list;
 	struct wm_view *focused_view;
 	struct wl_list views;
 };
@@ -241,6 +244,9 @@ struct wm_view {
 	int focus_protection;
 	bool ignore_size_hints;
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
+	struct wlr_ext_foreign_toplevel_handle_v1 *ext_toplevel_handle;
+	struct wlr_output *foreign_output;
+	struct wlr_box foreign_box;
 	struct wl_listener foreign_toplevel_request_activate;
 	struct wl_listener foreign_toplevel_request_maximize;
 	struct wl_listener foreign_toplevel_request_minimize;
@@ -283,6 +289,8 @@ static struct wlr_foreign_toplevel_handle_v1 g_handles[8];
 static int g_handle_idx;
 static struct wlr_foreign_toplevel_manager_v1 g_manager;
 
+static void reset_new_globals(void);
+
 static void
 reset_counters(void)
 {
@@ -293,6 +301,7 @@ reset_counters(void)
 	g_handle_destroy_count = 0;
 	g_set_title_count = 0;
 	g_last_title[0] = '\0';
+	reset_new_globals();
 	g_set_app_id_count = 0;
 	g_last_app_id[0] = '\0';
 	g_set_maximized_count = 0;
@@ -423,16 +432,103 @@ wlr_foreign_toplevel_handle_v1_output_enter(
 	g_output_enter_count++;
 }
 
-static struct wlr_output *
-wlr_output_layout_output_at(struct wlr_output_layout *layout,
-	double lx, double ly)
+static int g_output_leave_count;
+static void
+wlr_foreign_toplevel_handle_v1_output_leave(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel,
+	struct wlr_output *output)
 {
-	(void)layout;
-	(void)lx;
-	(void)ly;
-	/* Return a fake output */
-	static struct wlr_output fake_output;
-	return &fake_output;
+	(void)toplevel;
+	(void)output;
+	g_output_leave_count++;
+}
+
+/* Two outputs side by side, 1920 wide; NULL when nothing is set up */
+static struct wlr_output g_out_left, g_out_right;
+static bool g_no_outputs;
+
+static inline bool
+wlr_box_equal(const struct wlr_box *a, const struct wlr_box *b)
+{
+	return a->x == b->x && a->y == b->y && a->width == b->width &&
+		a->height == b->height;
+}
+
+struct wm_output {
+	struct wlr_output *wlr_output;
+};
+static struct wm_output g_wm_left = { &g_out_left };
+static struct wm_output g_wm_right = { &g_out_right };
+
+static void
+wm_view_get_geometry(struct wm_view *view, struct wlr_box *box)
+{
+	*box = (struct wlr_box){view->x, view->y, 800, 600};
+}
+
+static struct wm_output *
+wm_output_for_view(struct wm_view *view)
+{
+	if (g_no_outputs)
+		return NULL;
+	return view->x + 400 < 1920 ? &g_wm_left : &g_wm_right;
+}
+
+/* ext-foreign-toplevel-list */
+struct wlr_ext_foreign_toplevel_list_v1 { int dummy; };
+struct wlr_ext_foreign_toplevel_handle_v1 {
+	char title[64], app_id[64];
+};
+struct wlr_ext_foreign_toplevel_handle_v1_state {
+	const char *title;
+	const char *app_id;
+};
+static struct wlr_ext_foreign_toplevel_list_v1 g_ext_list;
+static struct wlr_ext_foreign_toplevel_handle_v1 g_ext_handle;
+static int g_ext_create_count, g_ext_destroy_count, g_ext_update_count;
+
+static struct wlr_ext_foreign_toplevel_handle_v1 *
+wlr_ext_foreign_toplevel_handle_v1_create(
+	struct wlr_ext_foreign_toplevel_list_v1 *list,
+	const struct wlr_ext_foreign_toplevel_handle_v1_state *state)
+{
+	(void)list;
+	g_ext_create_count++;
+	snprintf(g_ext_handle.title, sizeof(g_ext_handle.title), "%s",
+		state->title);
+	snprintf(g_ext_handle.app_id, sizeof(g_ext_handle.app_id), "%s",
+		state->app_id);
+	return &g_ext_handle;
+}
+
+static void
+wlr_ext_foreign_toplevel_handle_v1_destroy(
+	struct wlr_ext_foreign_toplevel_handle_v1 *h)
+{
+	(void)h;
+	g_ext_destroy_count++;
+}
+
+static void
+wlr_ext_foreign_toplevel_handle_v1_update_state(
+	struct wlr_ext_foreign_toplevel_handle_v1 *h,
+	const struct wlr_ext_foreign_toplevel_handle_v1_state *state)
+{
+	g_ext_update_count++;
+	snprintf(h->title, sizeof(h->title), "%s", state->title);
+	snprintf(h->app_id, sizeof(h->app_id), "%s", state->app_id);
+}
+
+void wm_foreign_toplevel_sync_outputs(struct wm_server *server);
+void wm_foreign_toplevel_output_destroyed(struct wm_server *server,
+	struct wlr_output *output);
+
+static void
+reset_new_globals(void)
+{
+	g_output_leave_count = 0;
+	g_no_outputs = false;
+	g_ext_create_count = g_ext_destroy_count = g_ext_update_count = 0;
 }
 
 static void
@@ -1261,6 +1357,73 @@ test_full_lifecycle(void)
 	printf("  PASS: full_lifecycle\n");
 }
 
+static void
+test_ext_list_handles(void)
+{
+	reset_globals();
+	init_server();
+	test_server.foreign_toplevel_manager = &g_manager;
+	test_server.ext_foreign_toplevel_list = &g_ext_list;
+
+	struct wm_view v = make_view(0, "Terminal", "org.terminal");
+	wm_foreign_toplevel_handle_create(&v);
+	assert(g_ext_create_count == 1 && v.ext_toplevel_handle);
+	assert(strcmp(g_ext_handle.title, "Terminal") == 0);
+	assert(strcmp(g_ext_handle.app_id, "org.terminal") == 0);
+
+	free(v.title);
+	v.title = strdup("vim");
+	wm_foreign_toplevel_update_title(&v);
+	assert(g_ext_update_count == 1);
+	assert(strcmp(g_ext_handle.title, "vim") == 0);
+
+	wm_foreign_toplevel_handle_destroy(&v);
+	assert(g_ext_destroy_count == 1 && !v.ext_toplevel_handle);
+	free_view(&v);
+	printf("  PASS: ext_list_handles\n");
+}
+
+static void
+test_output_follows_window(void)
+{
+	reset_globals();
+	init_server();
+	test_server.foreign_toplevel_manager = &g_manager;
+
+	struct wm_view v = make_view(0, "Terminal", "org.terminal");
+	v.x = 100;
+	wl_list_insert(&test_server.views, &v.link);
+	wm_foreign_toplevel_handle_create(&v);
+	assert(g_output_enter_count == 1 && v.foreign_output == &g_out_left);
+
+	/* Unchanged: nothing sent */
+	wm_foreign_toplevel_sync_outputs(&test_server);
+	assert(g_output_enter_count == 1 && g_output_leave_count == 0);
+
+	/* Moved within the output: nothing sent */
+	v.x = 300;
+	wm_foreign_toplevel_sync_outputs(&test_server);
+	assert(g_output_enter_count == 1 && g_output_leave_count == 0);
+
+	/* Onto the other output: leave + enter */
+	v.x = 2500;
+	wm_foreign_toplevel_sync_outputs(&test_server);
+	assert(g_output_leave_count == 1 && g_output_enter_count == 2);
+	assert(v.foreign_output == &g_out_right);
+
+	/* That output goes away: forgotten without a leave */
+	wm_foreign_toplevel_output_destroyed(&test_server, &g_out_right);
+	assert(v.foreign_output == NULL);
+	g_no_outputs = true;
+	wm_foreign_toplevel_sync_outputs(&test_server);
+	assert(g_output_leave_count == 1);
+
+	wl_list_remove(&v.link);
+	wm_foreign_toplevel_handle_destroy(&v);
+	free_view(&v);
+	printf("  PASS: output_follows_window\n");
+}
+
 int
 main(void)
 {
@@ -1292,6 +1455,8 @@ main(void)
 	test_multiple_toplevels();
 	test_update_title_null_title();
 	test_full_lifecycle();
+	test_ext_list_handles();
+	test_output_follows_window();
 
 	printf("All foreign_toplevel tests passed.\n");
 	return 0;

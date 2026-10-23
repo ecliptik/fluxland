@@ -21,6 +21,7 @@ struct wm_tab_group;
 struct wm_decoration;
 struct wm_animation;
 struct wlr_foreign_toplevel_handle_v1;
+struct wlr_ext_foreign_toplevel_handle_v1;
 
 /* Fluxbox-inspired window layers (bottom to top) */
 enum wm_view_layer {
@@ -146,6 +147,10 @@ struct wm_view {
 
 	/* Foreign toplevel handle (for external taskbars) */
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
+	struct wlr_ext_foreign_toplevel_handle_v1 *ext_toplevel_handle;
+	/* Output the taskbar handle was told about, and the box it was for */
+	struct wlr_output *foreign_output;
+	struct wlr_box foreign_box;
 	struct wl_listener foreign_toplevel_request_activate;
 	struct wl_listener foreign_toplevel_request_maximize;
 	struct wl_listener foreign_toplevel_request_minimize;

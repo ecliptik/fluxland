@@ -40,4 +40,15 @@ void wm_foreign_toplevel_set_fullscreen(struct wm_view *view, bool fullscreen);
 /* Update minimized state */
 void wm_foreign_toplevel_set_minimized(struct wm_view *view, bool minimized);
 
+/*
+ * Tell taskbars which output each window is on (output_enter/leave)
+ * when it has moved. Cheap for windows that haven't; run every frame.
+ */
+void wm_foreign_toplevel_sync_outputs(struct wm_server *server);
+
+/* Forget an output that is going away */
+struct wlr_output;
+void wm_foreign_toplevel_output_destroyed(struct wm_server *server,
+	struct wlr_output *output);
+
 #endif /* WM_FOREIGN_TOPLEVEL_H */

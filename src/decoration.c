@@ -22,6 +22,7 @@
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
@@ -1979,4 +1980,15 @@ wm_xdg_decoration_init(struct wm_server *server)
 	wl_signal_add(
 		&server->xdg_decoration_mgr->events.new_toplevel_decoration,
 		&server->new_xdg_decoration);
+
+	/*
+	 * KDE's older server-decoration protocol, which GTK3 and Qt check:
+	 * tell them the compositor draws the frame.
+	 */
+	server->kde_decoration_mgr =
+		wlr_server_decoration_manager_create(server->wl_display);
+	if (server->kde_decoration_mgr)
+		wlr_server_decoration_manager_set_default_mode(
+			server->kde_decoration_mgr,
+			WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 }

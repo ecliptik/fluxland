@@ -18,6 +18,7 @@
 
 #include "config.h"
 #include "drm_lease.h"
+#include "foreign_toplevel.h"
 #include "ipc.h"
 #include "layer_shell.h"
 #include "output.h"
@@ -39,6 +40,7 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	struct wlr_scene_output *scene_output = output->scene_output;
 
 	wm_xwayland_sync_positions(output->server);
+	wm_foreign_toplevel_sync_outputs(output->server);
 	wlr_scene_output_commit(scene_output, NULL);
 	wm_session_lock_output_frame(output->server, output);
 
@@ -85,6 +87,7 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 
 	/* Panels and backgrounds on it go away with it */
 	wm_layer_shell_output_destroyed(server, wlr_output);
+	wm_foreign_toplevel_output_destroyed(server, wlr_output);
 
 	/*
 	 * Leaving the layout moves windows, the toolbar and the slit to
