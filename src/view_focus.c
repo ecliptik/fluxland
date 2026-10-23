@@ -24,6 +24,7 @@
 #include "foreign_toplevel.h"
 #include "ipc.h"
 #include "output.h"
+#include "rules.h"
 #include "server.h"
 #include "text_input.h"
 #include "toolbar.h"
@@ -68,6 +69,12 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 			server->focus_user_initiated = false;
 			return;
 		}
+	}
+
+	/* It has the user's attention now */
+	if (view->urgent) {
+		view->urgent = false;
+		wm_toolbar_update_iconbar(server->toolbar);
 	}
 
 	/* Deactivate the previously focused toplevel */
@@ -564,6 +571,63 @@ wm_focus_cycle(struct wm_server *server,
 
 	if (!held)
 		wm_focus_cycle_end(server);
+}
+
+void
+wm_view_set_urgent(struct wm_view *view, bool urgent)
+{
+	if (view->urgent == urgent)
+		return;
+	view->urgent = urgent;
+	wm_toolbar_update_iconbar(view->server->toolbar);
+}
+
+void
+wm_view_present(struct wm_view *view)
+{
+	struct wm_server *server = view->server;
+
+	/* On another workspace: go there */
+	if (!view->sticky && view->workspace &&
+	    view->workspace != wm_workspace_get_active(server))
+		wm_workspace_switch(server, view->workspace->index);
+
+	/* A background tab becomes the visible one */
+	if (view->tab_group && view->tab_group->active_view != view)
+		wm_tab_group_activate(view->tab_group, view);
+
+	server->focus_user_initiated = true;
+	if (!view->scene_tree->node.enabled) {
+		wm_view_unminimize(view);
+	} else {
+		wm_focus_view(view, NULL);
+		wm_view_raise(view);
+	}
+}
+
+bool
+wm_view_request_activate(struct wm_view *view, bool allowed)
+{
+	if (!view || !view->mapped || view->docked || view->no_focus)
+		return false;
+	struct wm_view *focused = view->server->focused_view;
+
+	/* [FocusProtection]: Deny never claims focus; nothing beats Lock */
+	if (view->focus_protection & WM_FOCUS_PROT_DENY)
+		allowed = false;
+	if (focused && focused != view &&
+	    (focused->focus_protection & WM_FOCUS_PROT_LOCK) ==
+	    WM_FOCUS_PROT_LOCK)
+		allowed = false;
+
+	if (!allowed) {
+		/* Not now: the iconbar shows it wants attention */
+		if (focused != view)
+			wm_view_set_urgent(view, true);
+		return false;
+	}
+	wm_view_present(view);
+	return true;
 }
 
 void

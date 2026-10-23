@@ -366,12 +366,42 @@ place_under_mouse(struct wm_server *server, struct wm_view *view,
 	view->y = y;
 }
 
+/* Center a dialog over its parent window, kept on the parent's output */
+static void
+place_over_parent(struct wm_view *view, struct wm_view *parent)
+{
+	struct wlr_box pf, vf, area;
+	wm_view_frame_box(parent, &pf);
+	wm_view_frame_box(view, &vf);
+	int x = pf.x + (pf.width - vf.width) / 2;
+	int y = pf.y + (pf.height - vf.height) / 2;
+	if (get_view_output_area(parent, &area)) {
+		if (x + vf.width > area.x + area.width)
+			x = area.x + area.width - vf.width;
+		if (y + vf.height > area.y + area.height)
+			y = area.y + area.height - vf.height;
+		if (x < area.x)
+			x = area.x;
+		if (y < area.y)
+			y = area.y;
+	}
+	view->x = x;
+	view->y = y;
+}
+
 void
 wm_placement_apply(struct wm_server *server, struct wm_view *view)
 {
 	/* Skip if view already has a position set by rules */
 	if (view->x != 0 || view->y != 0)
 		return;
+
+	/* Dialogs open centered over the window they belong to */
+	struct wm_view *parent = wm_view_parent(view);
+	if (parent && parent != view && parent->mapped) {
+		place_over_parent(view, parent);
+		return;
+	}
 
 	struct wlr_box area;
 	if (!get_cursor_output_area(server, &area)) {

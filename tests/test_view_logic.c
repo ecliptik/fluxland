@@ -1323,6 +1323,10 @@ wm_workspace_switch(struct wm_server *s, int idx)
 }
 
 void wm_view_minimize(struct wm_view *view);
+void wm_view_unminimize(struct wm_view *view);
+void wm_view_set_urgent(struct wm_view *view, bool urgent);
+void wm_view_present(struct wm_view *view);
+bool wm_view_request_activate(struct wm_view *view, bool allowed);
 
 /* --- Stubs for the xdg backend (view_xdg.c) and kill path --- */
 
@@ -4936,6 +4940,84 @@ test_focus_seq_frozen_during_cycle(void)
 	printf("  PASS: focus_seq_frozen_during_cycle\n");
 }
 
+/* ===== Activation requests (xdg-activation, _NET_ACTIVE_WINDOW) ===== */
+
+static void
+test_activate_presents_window(void)
+{
+	init_test_server();
+	struct wm_workspace other;
+	memset(&other, 0, sizeof(other));
+	other.index = 3;
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &other);
+	test_server.focused_view = &test_views[0];
+
+	/* Minimized, on another workspace, a background tab */
+	struct wm_tab_group tg;
+	memset(&tg, 0, sizeof(tg));
+	tg.active_view = &test_views[0];
+	test_views[1].tab_group = &tg;
+	test_scene_trees[1].node.enabled = false;
+	g_ws_switch_count = 0;
+	g_tab_activate_count = 0;
+
+	assert(wm_view_request_activate(&test_views[1], true));
+	assert(g_ws_switch_count == 1 && g_ws_switch_index == 3);
+	assert(g_tab_activate_count == 1);
+	assert(test_scene_trees[1].node.enabled);
+	assert(test_server.focused_view == &test_views[1]);
+	assert(!test_views[1].urgent);
+
+	test_views[1].tab_group = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: activate_presents_window\n");
+}
+
+static void
+test_activate_refused_marks_urgent(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	test_server.focused_view = &test_views[0];
+
+	assert(!wm_view_request_activate(&test_views[1], false));
+	assert(test_server.focused_view == &test_views[0]);
+	assert(test_views[1].urgent);
+
+	/* Focusing it (the user clicked it) clears the attention flag */
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[1], NULL);
+	assert(!test_views[1].urgent);
+
+	/* [FocusProtection] Deny: never takes focus this way */
+	test_views[0].focus_protection = WM_FOCUS_PROT_DENY;
+	assert(!wm_view_request_activate(&test_views[0], true));
+	assert(test_views[0].urgent);
+	test_views[0].focus_protection = 0;
+	test_views[0].urgent = false;
+
+	/* Lock on the focused window: nobody else gets it */
+	test_views[1].focus_protection = WM_FOCUS_PROT_LOCK;
+	assert(!wm_view_request_activate(&test_views[0], true));
+	assert(test_views[0].urgent);
+	assert(test_server.focused_view == &test_views[1]);
+	test_views[1].focus_protection = 0;
+
+	/* Unmapped or no-focus windows are ignored entirely */
+	test_views[0].urgent = false;
+	test_views[0].no_focus = true;
+	assert(!wm_view_request_activate(&test_views[0], false));
+	assert(!test_views[0].urgent);
+	assert(!wm_view_request_activate(NULL, true));
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: activate_refused_marks_urgent\n");
+}
+
 /* ===== XDG popups (view_xdg.c) ===== */
 
 static void
@@ -5314,6 +5396,8 @@ main(void)
 	test_focus_seq_frozen_during_cycle();
 
 	/* xdg backend */
+	test_activate_presents_window();
+	test_activate_refused_marks_urgent();
 	test_popup_without_parent_is_left_to_layer_shell();
 	test_popup_nests_and_unconstrains();
 	test_show_window_menu_request();

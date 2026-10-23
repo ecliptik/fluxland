@@ -728,6 +728,33 @@ wm_view_unminimize(struct wm_view *view)
 	g_unminimize_count++;
 }
 
+void wm_focus_view(struct wm_view *view, struct wlr_surface *surface);
+void wm_toolbar_update_iconbar(struct wm_toolbar *toolbar);
+
+void
+wm_view_set_urgent(struct wm_view *view, bool urgent)
+{
+	view->urgent = urgent;
+	wm_toolbar_update_iconbar(view->server->toolbar);
+}
+
+/* view_focus.c's policy, reduced to what the X11 backend decides */
+static bool g_last_activate_allowed;
+bool
+wm_view_request_activate(struct wm_view *view, bool allowed)
+{
+	g_last_activate_allowed = allowed;
+	if (!allowed) {
+		wm_view_set_urgent(view, true);
+		return false;
+	}
+	if (!view->scene_tree->node.enabled)
+		wm_view_unminimize(view);
+	else
+		wm_focus_view(view, NULL);
+	return true;
+}
+
 void
 wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 {

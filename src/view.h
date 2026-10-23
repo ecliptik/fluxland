@@ -214,6 +214,23 @@ void wm_view_minimize(struct wm_view *view);
 
 /* Restore a minimized view, raise and focus it. */
 void wm_view_unminimize(struct wm_view *view);
+
+/* Mark a window as demanding attention (shown in the iconbar) */
+void wm_view_set_urgent(struct wm_view *view, bool urgent);
+
+/*
+ * Bring a window to the user: switch to its workspace, make it the
+ * visible tab, restore it if minimized, raise and focus it.
+ */
+void wm_view_present(struct wm_view *view);
+
+/*
+ * A client asked for its window to be activated (xdg-activation,
+ * _NET_ACTIVE_WINDOW). allowed: the request passed focus-stealing
+ * prevention. Presents the window, or marks it urgent when refused (or
+ * blocked by [FocusProtection] Deny/Lock). Returns true if presented.
+ */
+bool wm_view_request_activate(struct wm_view *view, bool allowed);
 void wm_focus_prev_view(struct wm_server *server);
 
 struct wm_window_list_spec;

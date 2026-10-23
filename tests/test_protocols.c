@@ -814,7 +814,21 @@ bool wm_protocols_kb_shortcuts_inhibited(struct wm_server *server);
 
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_SURFACE
+#define VIEW_STUB_FROM_SURFACE
 #include "view_backend_stubs.c"
+
+/* view_focus.c's activation policy: present only when allowed */
+static int g_activate_count;
+static bool g_activate_allowed;
+bool
+wm_view_request_activate(struct wm_view *view, bool allowed)
+{
+	g_activate_count++;
+	g_activate_allowed = allowed;
+	if (allowed)
+		wm_focus_view(view, NULL);
+	return allowed;
+}
 
 #include "protocols.c"
 

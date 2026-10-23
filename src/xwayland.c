@@ -381,8 +381,7 @@ update_urgency(struct wm_view *view)
 		(xs->hints->flags & XCB_ICCCM_WM_HINT_X_URGENCY);
 	if (urgent == view->urgent)
 		return;
-	view->urgent = urgent;
-	wm_toolbar_update_iconbar(view->server->toolbar);
+	wm_view_set_urgent(view, urgent);
 }
 
 static void
@@ -686,25 +685,15 @@ handle_request_activate(struct wl_listener *listener, void *data)
 	struct wm_view *view = &xview->view;
 	struct wm_server *server = view->server;
 
-	if (!view->mapped || view->no_focus)
-		return;
-
 	/*
 	 * Focus stealing prevention: an X11 client may move focus between
 	 * its own windows, or take it when nothing is focused. Anything
 	 * else only marks the window as demanding attention.
 	 */
 	struct wm_view *focused = server->focused_view;
-	if (!focused || (focused->type == WM_VIEW_XWAYLAND &&
-	    focused->xsurface->pid == view->xsurface->pid)) {
-		if (!view->scene_tree->node.enabled)
-			wm_view_unminimize(view);
-		else
-			wm_focus_view(view, wm_view_surface(view));
-		return;
-	}
-	view->urgent = true;
-	wm_toolbar_update_iconbar(server->toolbar);
+	bool allowed = !focused || (focused->type == WM_VIEW_XWAYLAND &&
+		focused->xsurface->pid == view->xsurface->pid);
+	wm_view_request_activate(view, allowed);
 }
 
 static void

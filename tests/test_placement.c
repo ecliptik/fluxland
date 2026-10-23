@@ -185,6 +185,8 @@ struct wm_view {
 	struct wm_tab_group *tab_group;
 	struct wl_list tab_link;
 	struct wm_decoration *decoration;
+	bool mapped;
+	struct wm_view *parent; /* transient-for */
 };
 
 /* --- Stub tracking globals --- */
@@ -295,6 +297,28 @@ wm_workspace_get_active(struct wm_server *server)
 #define VIEW_STUB_SET_TILED
 #define VIEW_STUB_SET_FRAME_BOX
 #include "view_backend_stubs.c"
+
+struct wm_view *
+wm_view_parent(struct wm_view *view)
+{
+	return view->parent;
+}
+
+/* No decorations here: the frame is the client */
+void
+wm_view_frame_box(struct wm_view *view, struct wlr_box *box)
+{
+	wm_view_get_geometry(view, box);
+}
+
+/* The parent's output: the layout box stub */
+bool
+get_view_output_area(struct wm_view *view, struct wlr_box *area)
+{
+	(void)view;
+	*area = g_layout_box;
+	return area->width > 0;
+}
 
 #include "../src/placement.c"
 
@@ -411,6 +435,40 @@ add_view_to_server(int idx)
 }
 
 /* ===== Tests ===== */
+
+/*
+ * Test: a dialog opens centered over its parent, kept on its output
+ */
+static void
+test_transient_centered_on_parent(void)
+{
+	setup();
+	init_view(0);
+	init_view(1);
+	test_views[0].mapped = true;
+	test_views[0].x = 200;
+	test_views[0].y = 100;
+	test_views[1].parent = &test_views[0];
+
+	/* Same 400x300 size: exactly on top */
+	wm_placement_apply(&test_server, &test_views[1]);
+	assert(test_views[1].x == 200 && test_views[1].y == 100);
+
+	/* Parent near the right edge: clamped onto the output */
+	test_views[0].x = 1700;
+	test_views[1].x = test_views[1].y = 0;
+	wm_placement_apply(&test_server, &test_views[1]);
+	assert(test_views[1].x == 1920 - 400);
+	assert(test_views[1].y == 100);
+
+	/* An unmapped parent doesn't count: normal placement */
+	test_views[0].mapped = false;
+	test_views[1].x = test_views[1].y = 0;
+	g_set_position_count = 0;
+	wm_placement_apply(&test_server, &test_views[1]);
+	assert(test_views[1].x != 1520 || test_views[1].y != 100);
+	printf("  PASS: test_transient_centered_on_parent\n");
+}
 
 /*
  * Test: place_cascade positions first window and advances
@@ -2006,6 +2064,7 @@ main(void)
 	test_try_snap_boundary();
 
 	/* Placement strategies */
+	test_transient_centered_on_parent();
 	test_cascade_basic();
 	test_cascade_wrapping();
 	test_cascade_wrapping_y();

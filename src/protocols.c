@@ -163,28 +163,20 @@ handle_xdg_activation_request(struct wl_listener *listener, void *data)
 		xdg_activation_request);
 	struct wlr_xdg_activation_v1_request_activate_event *event = data;
 
-	/*
-	 * Focus-stealing prevention: only honor activation if the
-	 * requesting token has a valid seat (i.e., originated from an
-	 * app that had user interaction).
-	 */
-	if (!event->token->seat) {
-		wlr_log(WLR_DEBUG,
-			"%s", "xdg-activation: denied request without seat");
+	struct wm_view *view = wm_view_from_surface(server, event->surface);
+	if (!view)
 		return;
-	}
 
-	/* Find the window whose surface asked to be activated */
-	struct wm_view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (wm_view_surface(view) == event->surface) {
-			wlr_log(WLR_INFO,
-				"xdg-activation: focusing '%s'",
-				view->title ? view->title : "(untitled)");
-			wm_focus_view(view, event->surface);
-			return;
-		}
-	}
+	/*
+	 * Focus-stealing prevention: a token with a seat came from an
+	 * app the user was interacting with (the launcher, the app
+	 * handing over focus). A token without one only gets attention.
+	 */
+	bool allowed = event->token->seat != NULL;
+	bool presented = wm_view_request_activate(view, allowed);
+	wlr_log(WLR_INFO, "xdg-activation: %s '%s'",
+		presented ? "activated" : "marked urgent",
+		view->title ? view->title : "(untitled)");
 }
 
 /* --- Tearing control --- */
