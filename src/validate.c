@@ -397,6 +397,61 @@ find_init_key(const char *key)
 	return NULL;
 }
 
+/* --- session.input.* (libinput) settings --- */
+
+static const char *valid_tap_maps[] = {"lrm", "lmr", NULL};
+static const char *valid_accel_profiles[] = {"flat", "adaptive", NULL};
+static const char *valid_scroll_methods[] = {
+	"none", "twoFinger", "edge", "button", NULL};
+static const char *valid_click_methods[] = {
+	"none", "buttonAreas", "clickFinger", NULL};
+static const char *valid_send_events[] = {
+	"enabled", "disabled", "disabledOnExternalMouse", NULL};
+
+/* Settings after session.input[.touchpad|.pointer|.device.<Name>]. */
+static const struct init_key_spec input_settings[] = {
+	{"tap", VT_BOOL, 0, 0, NULL},
+	{"tapDrag", VT_BOOL, 0, 0, NULL},
+	{"tapDragLock", VT_BOOL, 0, 0, NULL},
+	{"tapButtonMap", VT_ENUM, 0, 0, valid_tap_maps},
+	{"naturalScroll", VT_BOOL, 0, 0, NULL},
+	{"leftHanded", VT_BOOL, 0, 0, NULL},
+	{"disableWhileTyping", VT_BOOL, 0, 0, NULL},
+	{"middleEmulation", VT_BOOL, 0, 0, NULL},
+	{"accelProfile", VT_ENUM, 0, 0, valid_accel_profiles},
+	{"accelSpeed", VT_STRING, 0, 0, NULL}, /* -1.0 .. 1.0, below */
+	{"scrollMethod", VT_ENUM, 0, 0, valid_scroll_methods},
+	{"scrollButton", VT_INT, 1, 0x2ff, NULL},
+	{"clickMethod", VT_ENUM, 0, 0, valid_click_methods},
+	{"sendEvents", VT_ENUM, 0, 0, valid_send_events},
+};
+
+/*
+ * Map session.input.* to its setting spec; NULL if the scope or the
+ * setting name is unknown.
+ */
+static const struct init_key_spec *
+find_input_setting(const char *key)
+{
+	const char *rest = key + strlen("session.input.");
+	if (strncmp(rest, "touchpad.", 9) == 0)
+		rest += 9;
+	else if (strncmp(rest, "pointer.", 8) == 0)
+		rest += 8;
+	else if (strncmp(rest, "device.", 7) == 0) {
+		const char *dot = strrchr(rest + 7, '.');
+		if (!dot || dot == rest + 7)
+			return NULL;
+		rest = dot + 1;
+	}
+	for (size_t i = 0; i < sizeof(input_settings) /
+	     sizeof(input_settings[0]); i++) {
+		if (strcasecmp(rest, input_settings[i].key) == 0)
+			return &input_settings[i];
+	}
+	return NULL;
+}
+
 /* Resolve a config path value (handles ~ expansion) for existence check */
 static char *
 resolve_check_path(const char *config_dir, const char *value)
@@ -481,7 +536,18 @@ validate_init_file(const char *path, struct config_result *result)
 		if (*key == '\0')
 			continue;
 
-		const struct init_key_spec *spec = find_init_key(key);
+		bool input_key = strncmp(key, "session.input.", 14) == 0;
+		const struct init_key_spec *spec = input_key ?
+			find_input_setting(key) : find_init_key(key);
+		if (input_key && spec && strcasecmp(spec->key, "accelSpeed") == 0) {
+			char *end;
+			double v = strtod(value, &end);
+			if (*value == '\0' || *end != '\0' || v < -1.0 || v > 1.0)
+				config_result_add_error(result, path, lineno,
+					"'%s' expects a number from -1 to 1, "
+					"got '%s'", key, value);
+			continue;
+		}
 		if (!spec) {
 			config_result_add_warning(result, path, lineno,
 				"unknown key '%s'", key);

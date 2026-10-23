@@ -121,6 +121,37 @@ test_valid_init_file(void)
 }
 
 static void
+test_input_settings(void)
+{
+	write_file(TEST_INIT,
+		"session.input.naturalScroll: true\n"
+		"session.input.touchpad.tap: yes\n"
+		"session.input.pointer.accelSpeed: -0.3\n"
+		"session.input.device.SynPS_2_Synaptics_TouchPad.clickMethod: "
+		"clickFinger\n"
+	);
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(result.count == 0);
+	config_result_destroy(&result);
+
+	write_file(TEST_INIT,
+		"session.input.tap: maybe\n"           /* bad bool */
+		"session.input.accelSpeed: 2\n"        /* out of range */
+		"session.input.scrollMethod: diagonal\n" /* bad enum */
+		"session.input.tapp: true\n"           /* unknown setting */
+		"session.input.device..tap: true\n"    /* no device name */
+	);
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(result.count == 5);
+	assert(config_result_has_errors(&result));
+	config_result_destroy(&result);
+	printf("  PASS: test_input_settings\n");
+}
+
+static void
 test_invalid_workspace_count(void)
 {
 	write_file(TEST_INIT,
@@ -1027,6 +1058,7 @@ main(void)
 
 	/* Init file validation */
 	test_valid_init_file();
+	test_input_settings();
 	test_invalid_workspace_count();
 	test_invalid_alpha();
 	test_invalid_focus_model();

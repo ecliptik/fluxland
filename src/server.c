@@ -101,6 +101,7 @@ wm_server_reconfigure(struct wm_server *server)
 		config_reload(server->config);
 		server->focus_policy = server->config->focus_policy;
 		server->show_position = server->config->show_window_position;
+		wm_input_apply_config(server);
 	}
 
 	/* Broadcast config_reloaded event to IPC subscribers */

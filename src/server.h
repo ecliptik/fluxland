@@ -234,6 +234,7 @@ struct wm_server {
 
 	/* Input devices */
 	struct wl_list keyboards; /* wm_keyboard.link */
+	struct wl_list pointers; /* wm_pointer.link (input.c) */
 
 	/* Configuration and keybindings */
 	struct wm_config *config;

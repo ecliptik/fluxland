@@ -16,4 +16,7 @@ void wm_input_init(struct wm_server *server);
 /* Remove input listeners */
 void wm_input_finish(struct wm_server *server);
 
+/* Re-apply session.input.* settings to every pointer (reconfigure) */
+void wm_input_apply_config(struct wm_server *server);
+
 #endif /* WM_INPUT_H */

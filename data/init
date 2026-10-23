@@ -99,6 +99,25 @@ session.screen0.toolbar.widthPercent: 72
 # session.xkb.options: grp:win_space_toggle
 
 # -------------------------------------------------------------------
+# Pointer devices (libinput)
+# -------------------------------------------------------------------
+
+# session.input.<setting> applies to every pointer,
+# session.input.touchpad.<setting> / session.input.pointer.<setting> to
+# touchpads / other pointers, and session.input.device.<Name>.<setting>
+# to one device (its `libinput list-devices` name with every
+# non-alphanumeric character replaced by _). See fluxland-init(5).
+
+# session.input.touchpad.tap: true
+# session.input.touchpad.naturalScroll: true
+# session.input.touchpad.disableWhileTyping: true
+# session.input.touchpad.clickMethod: clickFinger
+# session.input.pointer.accelProfile: flat
+# session.input.pointer.accelSpeed: 0.0
+# session.input.device.Logitech_USB_Trackball.scrollMethod: button
+# session.input.device.Logitech_USB_Trackball.scrollButton: 276
+
+# -------------------------------------------------------------------
 # Mouse button remapping
 # -------------------------------------------------------------------
 

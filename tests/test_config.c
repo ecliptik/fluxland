@@ -7,6 +7,7 @@
 #include "config.h"
 #include <assert.h>
 #include <linux/input-event-codes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1443,6 +1444,64 @@ test_workspace_warping(void)
 	printf("  PASS: test_workspace_warping\n");
 }
 
+/* Test: session.input.* scopes and settings */
+static void
+test_input_rules(void)
+{
+	write_file(TEST_INIT,
+		"session.input.naturalScroll: true\n"
+		"session.input.touchpad.tap: true\n"
+		"session.input.touchpad.tapButtonMap: lmr\n"
+		"session.input.touchpad.scrollMethod: twoFinger\n"
+		"session.input.touchpad.clickMethod: clickFinger\n"
+		"session.input.pointer.accelProfile: flat\n"
+		"session.input.pointer.accelSpeed: -0.5\n"
+		"session.input.device.Logitech_USB_Trackball.scrollMethod: button\n"
+		"session.input.device.Logitech_USB_Trackball.scrollButton: 276\n"
+		"session.input.device.Logitech_USB_Trackball.leftHanded: yes\n"
+		"session.input.sendEvents: disabledOnExternalMouse\n");
+	struct wm_config *c = config_create();
+	assert(c->input_rule_count == 0);
+	config_load(c, TEST_INIT);
+	assert(c->input_rule_count == 4);
+
+	struct wm_input_rule *all = NULL, *tp = NULL, *ptr = NULL, *dev = NULL;
+	for (int i = 0; i < c->input_rule_count; i++) {
+		struct wm_input_rule *r = &c->input_rules[i];
+		switch (r->scope) {
+		case WM_INPUT_SCOPE_ALL: all = r; break;
+		case WM_INPUT_SCOPE_TOUCHPAD: tp = r; break;
+		case WM_INPUT_SCOPE_POINTER: ptr = r; break;
+		case WM_INPUT_SCOPE_DEVICE: dev = r; break;
+		}
+	}
+	assert(all && tp && ptr && dev);
+	assert(all->natural_scroll == 1 && all->send_events == 2);
+	assert(all->tap == -1 && isnan(all->accel_speed));
+	assert(tp->tap == 1 && tp->tap_button_map == 1);
+	assert(tp->scroll_method == 1 && tp->click_method == 2);
+	assert(tp->natural_scroll == -1);
+	assert(ptr->accel_profile == 0 && ptr->accel_speed == -0.5);
+	assert(strcmp(dev->device, "Logitech_USB_Trackball") == 0);
+	assert(dev->scroll_method == 3 && dev->scroll_button == 276);
+	assert(dev->left_handed == 1);
+
+	/* Reload replaces the rules instead of accumulating them */
+	write_file(TEST_INIT, "session.input.tap: false\n"
+		"session.input.accelSpeed: 3\n"
+		"session.input.scrollMethod: sideways\n"
+		"session.input.bogus: 1\n");
+	config_load(c, TEST_INIT);
+	assert(c->input_rule_count == 1);
+	assert(c->input_rules[0].tap == 0);
+	/* Out of range / unknown values leave libinput's default */
+	assert(isnan(c->input_rules[0].accel_speed));
+	assert(c->input_rules[0].scroll_method == -1);
+	config_destroy(c);
+
+	printf("  PASS: test_input_rules\n");
+}
+
 /* Test: iconbar icon width negative clamping */
 static void
 test_iconbar_icon_width_clamp(void)
@@ -1551,6 +1610,7 @@ main(void)
 	test_animation_booleans();
 	test_slit_max_over();
 	test_workspace_warping();
+	test_input_rules();
 	test_iconbar_icon_width_clamp();
 	test_tab_width_and_padding_clamp();
 	test_slit_layer_fallback_to_int();

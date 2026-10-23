@@ -27,6 +27,9 @@
 
 /* wlroots */
 #define WLR_UTIL_LOG_H
+#define WLR_BACKEND_LIBINPUT_H
+#define WM_CONFIG_H
+#define WM_INPUT_CONFIG_H
 #define WLR_UTIL_BOX_H
 #define WLR_TYPES_WLR_CURSOR_H
 #define WLR_TYPES_WLR_DATA_DEVICE_H
@@ -113,6 +116,14 @@ static inline void
 wl_signal_add(struct wl_signal *signal, struct wl_listener *listener)
 {
 	wl_list_insert(signal->listener_list.prev, &listener->link);
+}
+
+static inline void
+wl_signal_emit(struct wl_signal *signal, void *data)
+{
+	struct wl_listener *l, *tmp;
+	wl_list_for_each_safe(l, tmp, &signal->listener_list, link)
+		l->notify(l, data);
 }
 
 /* --- Stub wlr types --- */
@@ -378,12 +389,50 @@ wm_cursor_finish(struct wm_server *server)
 
 /* --- Minimal wm_server struct --- */
 
+/* config.h / input_config.h stand-ins */
+struct wm_input_rule { int dummy; };
+struct wm_config {
+	struct wm_input_rule *input_rules;
+	int input_rule_count;
+};
+struct libinput_device { int dummy; };
+
+static bool g_is_libinput;
+static struct libinput_device g_libinput_dev;
+static int g_config_apply_count;
+static const char *g_config_apply_name;
+
+static bool
+wlr_input_device_is_libinput(struct wlr_input_device *device)
+{
+	(void)device;
+	return g_is_libinput;
+}
+
+static struct libinput_device *
+wlr_libinput_get_device_handle(struct wlr_input_device *device)
+{
+	(void)device;
+	return &g_libinput_dev;
+}
+
+static void
+wm_input_config_apply(struct libinput_device *d, const char *name,
+	const struct wm_input_rule *rules, int count)
+{
+	(void)d; (void)rules; (void)count;
+	g_config_apply_count++;
+	g_config_apply_name = name;
+}
+
 struct wm_server {
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
 	struct wlr_seat *seat;
 	struct wlr_xcursor_manager *cursor_mgr;
 	struct wl_list keyboards;
+	struct wl_list pointers;
+	struct wm_config *config;
 
 	struct wlr_scene_tree *layer_overlay;
 	struct wlr_scene_tree *drag_icon_tree;
@@ -443,6 +492,7 @@ test_new_input_keyboard(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 
 	/* Add a fake keyboard item to the list so caps include KEYBOARD */
 	struct wl_list fake_kb;
@@ -482,11 +532,18 @@ test_new_input_pointer(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 
 	struct wlr_input_device device = {
 		.type = WLR_INPUT_DEVICE_POINTER,
 		.name = "test-pointer",
 	};
+	wl_signal_init(&device.events.destroy);
+
+	struct wm_config config = {0};
+	server.config = &config;
+	g_is_libinput = true;
+	g_config_apply_count = 0;
 
 	server.new_input.notify = handle_new_input;
 	server.new_input.notify(&server.new_input, &device);
@@ -495,6 +552,19 @@ test_new_input_pointer(void)
 	/* No keyboards in list, so no keyboard cap */
 	assert(!(g_seat_last_caps & WL_SEAT_CAPABILITY_KEYBOARD));
 	assert(g_seat_last_caps & WL_SEAT_CAPABILITY_POINTER);
+
+	/* libinput settings applied on hotplug and on reconfigure */
+	assert(g_config_apply_count == 1);
+	assert(strcmp(g_config_apply_name, "test-pointer") == 0);
+	wm_input_apply_config(&server);
+	assert(g_config_apply_count == 2);
+
+	/* Unplugged: no longer tracked */
+	wl_signal_emit(&device.events.destroy, NULL);
+	assert(wl_list_empty(&server.pointers));
+	wm_input_apply_config(&server);
+	assert(g_config_apply_count == 2);
+	g_is_libinput = false;
 
 	printf("PASS: test_new_input_pointer\n");
 }
@@ -515,6 +585,7 @@ test_new_input_touch(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 
 	struct wlr_input_device device = {
 		.type = WLR_INPUT_DEVICE_TOUCH,
@@ -547,6 +618,7 @@ test_new_input_tablet(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 
 	struct wlr_input_device device = {
 		.type = WLR_INPUT_DEVICE_TABLET,
@@ -577,6 +649,7 @@ test_new_input_tablet_pad(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 
 	struct wlr_input_device device = {
 		.type = WLR_INPUT_DEVICE_TABLET_PAD,
@@ -607,18 +680,21 @@ test_caps_no_keyboard(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 	/* keyboards list is empty */
 
 	struct wlr_input_device device = {
 		.type = WLR_INPUT_DEVICE_POINTER,
 		.name = "ptr",
 	};
+	wl_signal_init(&device.events.destroy);
 
 	server.new_input.notify = handle_new_input;
 	server.new_input.notify(&server.new_input, &device);
 
 	/* No keyboard cap when list empty */
 	assert(!(g_seat_last_caps & WL_SEAT_CAPABILITY_KEYBOARD));
+	wl_signal_emit(&device.events.destroy, NULL);
 	/* Pointer always advertised */
 	assert(g_seat_last_caps & WL_SEAT_CAPABILITY_POINTER);
 	/* No touch */
@@ -643,6 +719,7 @@ test_touch_cap_sticky(void)
 		.cursor = &cursor,
 	};
 	wl_list_init(&server.keyboards);
+	wl_list_init(&server.pointers);
 
 	/* First add a touch device */
 	struct wlr_input_device touch_dev = {
@@ -658,8 +735,10 @@ test_touch_cap_sticky(void)
 		.type = WLR_INPUT_DEVICE_POINTER,
 		.name = "ptr",
 	};
+	wl_signal_init(&ptr_dev.events.destroy);
 	server.new_input.notify(&server.new_input, &ptr_dev);
 	assert(g_seat_last_caps & WL_SEAT_CAPABILITY_TOUCH);
+	wl_signal_emit(&ptr_dev.events.destroy, NULL);
 
 	printf("PASS: test_touch_cap_sticky\n");
 }

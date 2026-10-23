@@ -12,6 +12,7 @@
 #include "i18n.h"
 #include "rcparser.h"
 #include <linux/input-event-codes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -909,6 +910,182 @@ apply_xkb_config(struct wm_config *config, struct rc_database *db)
 	}
 }
 
+/* --- libinput settings (session.input.*) --- */
+
+static void
+input_rule_init(struct wm_input_rule *r)
+{
+	memset(r, 0, sizeof(*r));
+	r->tap = r->tap_drag = r->tap_drag_lock = -1;
+	r->tap_button_map = -1;
+	r->natural_scroll = r->left_handed = -1;
+	r->disable_while_typing = r->middle_emulation = -1;
+	r->accel_profile = -1;
+	r->accel_speed = NAN;
+	r->scroll_method = -1;
+	r->scroll_button = -1;
+	r->click_method = -1;
+	r->send_events = -1;
+}
+
+static void
+free_input_rules(struct wm_config *config)
+{
+	for (int i = 0; i < config->input_rule_count; i++)
+		free(config->input_rules[i].device);
+	free(config->input_rules);
+	config->input_rules = NULL;
+	config->input_rule_count = 0;
+}
+
+/* Find or add the rule for a scope (and device name) */
+static struct wm_input_rule *
+input_rule_for(struct wm_config *config, enum wm_input_scope scope,
+	const char *device, size_t device_len)
+{
+	for (int i = 0; i < config->input_rule_count; i++) {
+		struct wm_input_rule *r = &config->input_rules[i];
+		if (r->scope != scope)
+			continue;
+		if (scope != WM_INPUT_SCOPE_DEVICE ||
+		    (strlen(r->device) == device_len &&
+		     strncmp(r->device, device, device_len) == 0))
+			return r;
+	}
+	struct wm_input_rule *rules = realloc(config->input_rules,
+		sizeof(*rules) * (size_t)(config->input_rule_count + 1));
+	if (!rules)
+		return NULL;
+	config->input_rules = rules;
+	struct wm_input_rule *r = &rules[config->input_rule_count];
+	input_rule_init(r);
+	r->scope = scope;
+	if (scope == WM_INPUT_SCOPE_DEVICE) {
+		r->device = strndup(device, device_len);
+		if (!r->device)
+			return NULL;
+	}
+	config->input_rule_count++;
+	return r;
+}
+
+static int
+parse_tristate_bool(const char *val)
+{
+	if (strcasecmp(val, "true") == 0 || strcasecmp(val, "yes") == 0 ||
+	    strcmp(val, "1") == 0 || strcasecmp(val, "on") == 0)
+		return 1;
+	if (strcasecmp(val, "false") == 0 || strcasecmp(val, "no") == 0 ||
+	    strcmp(val, "0") == 0 || strcasecmp(val, "off") == 0)
+		return 0;
+	return -1;
+}
+
+static int
+parse_choice(const char *val, const char *const *names, int count)
+{
+	for (int i = 0; i < count; i++) {
+		if (strcasecmp(val, names[i]) == 0)
+			return i;
+	}
+	return -1;
+}
+
+/* Returns false for an unknown setting name */
+static bool
+set_input_setting(struct wm_input_rule *r, const char *name,
+	const char *val)
+{
+	static const char *const tap_maps[] = { "lrm", "lmr" };
+	static const char *const profiles[] = { "flat", "adaptive" };
+	static const char *const scroll[] = {
+		"none", "twoFinger", "edge", "button" };
+	static const char *const clicks[] = {
+		"none", "buttonAreas", "clickFinger" };
+	static const char *const sends[] = {
+		"enabled", "disabled", "disabledOnExternalMouse" };
+
+	if (strcasecmp(name, "tap") == 0)
+		r->tap = parse_tristate_bool(val);
+	else if (strcasecmp(name, "tapDrag") == 0)
+		r->tap_drag = parse_tristate_bool(val);
+	else if (strcasecmp(name, "tapDragLock") == 0)
+		r->tap_drag_lock = parse_tristate_bool(val);
+	else if (strcasecmp(name, "tapButtonMap") == 0)
+		r->tap_button_map = parse_choice(val, tap_maps, 2);
+	else if (strcasecmp(name, "naturalScroll") == 0)
+		r->natural_scroll = parse_tristate_bool(val);
+	else if (strcasecmp(name, "leftHanded") == 0)
+		r->left_handed = parse_tristate_bool(val);
+	else if (strcasecmp(name, "disableWhileTyping") == 0)
+		r->disable_while_typing = parse_tristate_bool(val);
+	else if (strcasecmp(name, "middleEmulation") == 0)
+		r->middle_emulation = parse_tristate_bool(val);
+	else if (strcasecmp(name, "accelProfile") == 0)
+		r->accel_profile = parse_choice(val, profiles, 2);
+	else if (strcasecmp(name, "accelSpeed") == 0) {
+		char *end;
+		double v = strtod(val, &end);
+		if (*end == '\0' && v >= -1.0 && v <= 1.0)
+			r->accel_speed = v;
+	} else if (strcasecmp(name, "scrollMethod") == 0)
+		r->scroll_method = parse_choice(val, scroll, 4);
+	else if (strcasecmp(name, "scrollButton") == 0) {
+		char *end;
+		long b = strtol(val, &end, 10);
+		if (*end == '\0' && b > 0 && b < 0x300)
+			r->scroll_button = (int)b;
+	} else if (strcasecmp(name, "clickMethod") == 0)
+		r->click_method = parse_choice(val, clicks, 3);
+	else if (strcasecmp(name, "sendEvents") == 0)
+		r->send_events = parse_choice(val, sends, 3);
+	else
+		return false;
+	return true;
+}
+
+static void
+apply_input_config(struct wm_config *config, struct rc_database *db)
+{
+	free_input_rules(config);
+
+	static const char prefix[] = "session.input.";
+	const size_t plen = sizeof(prefix) - 1;
+	for (int i = 0; i < db->count; i++) {
+		const char *key = db->entries[i].key;
+		const char *val = db->entries[i].value;
+		if (strncmp(key, prefix, plen) != 0 || !val)
+			continue;
+		const char *rest = key + plen;
+
+		enum wm_input_scope scope = WM_INPUT_SCOPE_ALL;
+		const char *device = NULL;
+		size_t device_len = 0;
+		if (strncmp(rest, "touchpad.", 9) == 0) {
+			scope = WM_INPUT_SCOPE_TOUCHPAD;
+			rest += 9;
+		} else if (strncmp(rest, "pointer.", 8) == 0) {
+			scope = WM_INPUT_SCOPE_POINTER;
+			rest += 8;
+		} else if (strncmp(rest, "device.", 7) == 0) {
+			/* device.<Name>.<setting>: the setting is the last part */
+			device = rest + 7;
+			const char *dot = strrchr(device, '.');
+			if (!dot || dot == device)
+				continue;
+			scope = WM_INPUT_SCOPE_DEVICE;
+			device_len = (size_t)(dot - device);
+			rest = dot + 1;
+		}
+
+		struct wm_input_rule *r =
+			input_rule_for(config, scope, device, device_len);
+		if (r && !set_input_setting(r, rest, val))
+			fprintf(stderr, "fluxland: unknown input setting: %s\n",
+				key);
+	}
+}
+
 static void
 apply_mouse_config(struct wm_config *config, struct rc_database *db)
 {
@@ -1087,6 +1264,7 @@ apply_rc_to_config(struct wm_config *config, struct rc_database *db)
 	apply_menu_config(config, db);
 	apply_xkb_config(config, db);
 	apply_mouse_config(config, db);
+	apply_input_config(config, db);
 	apply_misc_config(config, db);
 	apply_wallpaper_config(config, db);
 	apply_file_paths_config(config, db);
@@ -1158,6 +1336,7 @@ config_destroy(struct wm_config *config)
 
 	free_workspace_names(config);
 	free_wallpaper_paths(config);
+	free_input_rules(config);
 	free(config->wallpaper);
 	free(config->wallpaper_color);
 	free(config->titlebar_left);

@@ -7,6 +7,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
@@ -15,11 +16,42 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
+#include "config.h"
 #include "input.h"
+#include "input_config.h"
 #include "keyboard.h"
 #include "cursor.h"
 #include "server.h"
 #include "tablet.h"
+
+/* A pointer device, kept so settings can be re-applied on reconfigure */
+struct wm_pointer {
+	struct wm_server *server;
+	struct wlr_input_device *device;
+	struct wl_listener destroy;
+	struct wl_list link; /* wm_server.pointers */
+};
+
+static void
+configure_pointer(struct wm_server *server, struct wlr_input_device *device)
+{
+	if (!server->config || !wlr_input_device_is_libinput(device))
+		return;
+	wm_input_config_apply(wlr_libinput_get_device_handle(device),
+		device->name, server->config->input_rules,
+		server->config->input_rule_count);
+}
+
+static void
+handle_pointer_destroy(struct wl_listener *listener, void *data)
+{
+	(void)data;
+	struct wm_pointer *pointer =
+		wl_container_of(listener, pointer, destroy);
+	wl_list_remove(&pointer->destroy.link);
+	wl_list_remove(&pointer->link);
+	free(pointer);
+}
 
 static void
 handle_new_pointer(struct wm_server *server,
@@ -28,6 +60,24 @@ handle_new_pointer(struct wm_server *server,
 	/* Attach the pointer to the cursor */
 	wlr_cursor_attach_input_device(server->cursor, device);
 	wlr_log(WLR_INFO, "new pointer: %s", device->name);
+
+	struct wm_pointer *pointer = calloc(1, sizeof(*pointer));
+	if (pointer) {
+		pointer->server = server;
+		pointer->device = device;
+		pointer->destroy.notify = handle_pointer_destroy;
+		wl_signal_add(&device->events.destroy, &pointer->destroy);
+		wl_list_insert(&server->pointers, &pointer->link);
+	}
+	configure_pointer(server, device);
+}
+
+void
+wm_input_apply_config(struct wm_server *server)
+{
+	struct wm_pointer *pointer;
+	wl_list_for_each(pointer, &server->pointers, link)
+		configure_pointer(server, pointer->device);
 }
 
 static void
@@ -176,6 +226,7 @@ void
 wm_input_init(struct wm_server *server)
 {
 	wl_list_init(&server->keyboards);
+	wl_list_init(&server->pointers);
 
 	wm_cursor_init(server);
 

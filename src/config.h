@@ -83,6 +83,41 @@ enum wm_wallpaper_mode {
 	WM_WALLPAPER_FILL,       /* scale to fill, maintain aspect ratio */
 };
 
+/*
+ * libinput settings for one scope (init keys, see fluxland-init(5)):
+ *   session.input.<key>                  every device
+ *   session.input.touchpad.<key>         touchpads
+ *   session.input.pointer.<key>          other pointers (mice, trackballs)
+ *   session.input.device.<Name>.<key>    one device; non-alphanumeric
+ *                                        characters in its name become _
+ * More specific scopes win. -1 / NaN means "leave libinput's default".
+ */
+enum wm_input_scope {
+	WM_INPUT_SCOPE_ALL,
+	WM_INPUT_SCOPE_TOUCHPAD,
+	WM_INPUT_SCOPE_POINTER,
+	WM_INPUT_SCOPE_DEVICE,
+};
+
+struct wm_input_rule {
+	enum wm_input_scope scope;
+	char *device;              /* WM_INPUT_SCOPE_DEVICE: sanitized name */
+	int tap;                   /* bool */
+	int tap_drag;              /* bool */
+	int tap_drag_lock;         /* bool */
+	int tap_button_map;        /* 0 lrm, 1 lmr */
+	int natural_scroll;        /* bool */
+	int left_handed;           /* bool */
+	int disable_while_typing;  /* bool */
+	int middle_emulation;      /* bool */
+	int accel_profile;         /* 0 flat, 1 adaptive */
+	double accel_speed;        /* -1.0 .. 1.0 */
+	int scroll_method;         /* 0 none, 1 twofinger, 2 edge, 3 button */
+	int scroll_button;         /* linux button code for scrollMethod button */
+	int click_method;          /* 0 none, 1 buttonareas, 2 clickfinger */
+	int send_events;           /* 0 enabled, 1 disabled, 2 off w/ ext mouse */
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -187,6 +222,10 @@ struct wm_config {
 	char *xkb_layout;   /* e.g., "us,de" (comma-separated for multi) */
 	char *xkb_variant;  /* e.g., ",nodeadkeys" */
 	char *xkb_options;  /* e.g., "grp:alt_shift_toggle,caps:escape" */
+
+	/* libinput settings, in file order */
+	struct wm_input_rule *input_rules;
+	int input_rule_count;
 
 	/* Double-click interval (ms) */
 	int double_click_interval;

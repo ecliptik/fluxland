@@ -13,6 +13,18 @@ test_config = executable(
 )
 test('config', test_config)
 
+# --- test_input_config: session.input.* applied to libinput devices ---
+# libinput is faked by the test itself, so only its headers are used.
+test_input_config = executable(
+  'test_input_config',
+  files('test_input_config.c', '../src/input_config.c'),
+  include_directories: test_inc,
+  dependencies: [input.partial_dependency(compile_args: true)],
+  link_args: ['-lm'],
+  install: false,
+)
+test('input_config', test_input_config)
+
 # --- test_keybind: keybinding parser tests ---
 test_keybind = executable(
   'test_keybind',

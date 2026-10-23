@@ -401,6 +401,84 @@ Layout variant (e.g.\&
 .B session.xkb.options
 XKB options (e.g.\&
 .IR grp:alt_shift_toggle,caps:escape ).
+.SH INPUT DEVICES (LIBINPUT)
+Pointer settings apply to every device, to a type of device, or to one
+device:
+.RS
+.nf
+session.input.\fIsetting\fR               every device
+session.input.touchpad.\fIsetting\fR      touchpads
+session.input.pointer.\fIsetting\fR       other pointers (mice, trackballs)
+session.input.device.\fIName\fR.\fIsetting\fR one device
+.fi
+.RE
+.PP
+A more specific scope wins, wherever it appears in the file.
+.I Name
+is the device name as
+.BR libinput (1)
+.B list-devices
+shows it, with every character other than a letter or digit replaced by
+.BR _ ,
+so
+.I SynPS/2 Synaptics TouchPad
+becomes
+.IR SynPS_2_Synaptics_TouchPad .
+Settings a device does not support are ignored; settings left out keep
+libinput's default. Changes apply on reconfigure.
+.TP
+.BR tap ", " tapDrag ", " tapDragLock
+Tap to click, tap and drag, and drag lock (true/false; touchpads).
+.TP
+.B tapButtonMap
+.I lrm
+(one/two/three fingers = left/right/middle) or
+.IR lmr .
+.TP
+.B naturalScroll
+Content follows the fingers (true/false).
+.TP
+.B leftHanded
+Swap the primary buttons (true/false).
+.TP
+.B disableWhileTyping
+Ignore the touchpad while typing (true/false).
+.TP
+.B middleEmulation
+Left and right together act as middle (true/false).
+.TP
+.B accelProfile
+.I flat
+or
+.IR adaptive .
+.TP
+.B accelSpeed
+Pointer speed from \-1.0 to 1.0.
+.TP
+.B scrollMethod
+.IR none ", " twoFinger ", " edge
+or
+.I button
+(scroll while holding
+.BR scrollButton ).
+.TP
+.B scrollButton
+Linux button code for button scrolling (e.g.\&
+.I 274
+for middle,
+.I 276
+for back).
+.TP
+.B clickMethod
+.IR none ", " buttonAreas
+or
+.IR clickFinger .
+.TP
+.B sendEvents
+.IR enabled ", " disabled
+or
+.I disabledOnExternalMouse
+(touchpads).
 .SH FILE PATHS
 These override the default locations of other configuration files.
 Absolute paths, tilde-expanded paths, and relative paths (resolved from

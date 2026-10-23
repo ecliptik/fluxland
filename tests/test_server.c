@@ -1106,6 +1106,13 @@ static void wm_keyboard_apply_config(struct wm_server *server)
 	g_keyboard_apply_config_count++;
 }
 
+static int g_input_apply_config_count;
+static void wm_input_apply_config(struct wm_server *server)
+{
+	(void)server;
+	g_input_apply_config_count++;
+}
+
 static struct wm_toolbar *wm_toolbar_create(struct wm_server *server)
 {
 	(void)server;
@@ -1244,6 +1251,7 @@ static void
 reset_globals(void)
 {
 	g_config_reload_count = 0;
+	g_input_apply_config_count = 0;
 	g_ipc_broadcast_count = 0;
 	g_keybind_destroy_all_count = 0;
 	g_keybind_destroy_list_count = 0;
@@ -1343,6 +1351,7 @@ test_handle_sighup(void)
 	int ret = handle_sighup(SIGHUP, server);
 	assert(ret == 0);
 	assert(g_config_reload_count == 1);
+	assert(g_input_apply_config_count == 1);
 
 	destroy_test_server(server);
 	printf("  PASS: test_handle_sighup\n");
