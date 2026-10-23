@@ -303,7 +303,7 @@ wlr_scene_tree_create(struct wlr_scene_tree *parent)
 	memset(&g_scene_trees[idx], 0, sizeof(g_scene_trees[idx]));
 	g_scene_tree_idx++;
 	g_scene_tree_create_count++;
-	return &g_scene_trees[idx - 1];
+	return &g_scene_trees[idx];
 }
 
 static struct wlr_scene_rect g_scene_rects[8];

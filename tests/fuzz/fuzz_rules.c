@@ -22,6 +22,7 @@
 #include "workspace.h"
 #include "view.h"
 #include "decoration.h"
+#include "foreign_toplevel.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -37,6 +38,10 @@ void wm_view_set_sticky(struct wm_view *v, bool s)
 	{ (void)v; (void)s; }
 void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
 	{ (void)v; if (b) { b->x = 0; b->y = 0; b->width = 0; b->height = 0; } }
+void wm_view_set_layer(struct wm_view *v, enum wm_view_layer l)
+	{ (void)v; (void)l; }
+void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
+	{ (void)v; (void)m; }
 void wm_view_move_to_workspace(struct wm_view *v, struct wm_workspace *w)
 	{ (void)v; (void)w; }
 struct wm_workspace *wm_workspace_get(struct wm_server *s, int i)

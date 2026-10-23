@@ -16,6 +16,8 @@
 
 #include "keybind.h"
 
+#include <wlr/types/wlr_keyboard.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

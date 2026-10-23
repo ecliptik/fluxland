@@ -3898,6 +3898,8 @@ test_set_title_updates_toolbar(void)
 	assert(test_views[0].title != NULL);
 	assert(strcmp(test_views[0].title, "New Title") == 0);
 
+	free(test_views[0].title);
+	test_views[0].title = NULL;
 	wl_list_remove(&test_views[0].link);
 	printf("  PASS: set_title_updates_toolbar\n");
 }
@@ -3935,6 +3937,8 @@ test_set_app_id_stored(void)
 	assert(test_views[0].app_id != NULL);
 	assert(strcmp(test_views[0].app_id, "org.example.app") == 0);
 
+	free(test_views[0].app_id);
+	test_views[0].app_id = NULL;
 	wl_list_remove(&test_views[0].link);
 	printf("  PASS: set_app_id_stored\n");
 }

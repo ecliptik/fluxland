@@ -1,0 +1,1 @@
+If {And {Some Matches (firefox)} {Not {Every Matches (layer=Normal)}} {Xor {Matches (focused=yes)} {Matches (urgent=yes)}}} {Raise}

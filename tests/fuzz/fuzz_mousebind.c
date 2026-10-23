@@ -21,6 +21,8 @@
 
 #include "mousebind.h"
 
+#include <wlr/types/wlr_keyboard.h>
+
 #include <linux/input-event-codes.h>
 #include <stdint.h>
 #include <stdio.h>

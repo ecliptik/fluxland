@@ -31,6 +31,7 @@
 #define PATH_MAX_BUF 1024
 
 static char test_base[PATH_MAX_BUF];
+static bool compositor_failed;
 static char test_runtime[PATH_MAX_BUF];
 static char test_config_home[PATH_MAX_BUF];
 static char test_config_dir[PATH_MAX_BUF];
@@ -98,10 +99,19 @@ harness_cleanup(void)
 	unlink(ipc_path);
 
 	unlink(test_init_file);
+	char log_path[PATH_MAX_BUF + 32];
+	snprintf(log_path, sizeof(log_path), "%s/compositor.log", test_base);
+	unlink(log_path);
 	rmdir(test_config_dir);
 	rmdir(test_config_home);
 	rmdir(test_runtime);
 	rmdir(test_base);
+
+	if (compositor_failed) {
+		fprintf(stderr, "harness: failing: compositor did not exit "
+			"cleanly\n");
+		exit(1);
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -202,7 +212,34 @@ harness_stop_compositor(pid_t pid)
 	if (pid <= 0)
 		return;
 	kill(pid, SIGTERM);
-	waitpid(pid, NULL, 0);
+	int status = 0;
+	if (waitpid(pid, &status, 0) < 0)
+		return;
+
+	/*
+	 * The compositor exits 0 on SIGTERM. Anything else is a crash or
+	 * a sanitizer report (LeakSanitizer exits 23): show the log and
+	 * fail the test from harness_cleanup().
+	 */
+	bool clean = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+	if (!clean) {
+		compositor_failed = true;
+		fprintf(stderr, "harness: compositor exited uncleanly "
+			"(%s %d); log follows\n",
+			WIFEXITED(status) ? "status" : "signal",
+			WIFEXITED(status) ? WEXITSTATUS(status) :
+			WTERMSIG(status));
+		char log_path[PATH_MAX_BUF + 32];
+		snprintf(log_path, sizeof(log_path), "%s/compositor.log",
+			test_base);
+		FILE *f = fopen(log_path, "r");
+		if (f) {
+			char line[512];
+			while (fgets(line, sizeof(line), f))
+				fputs(line, stderr);
+			fclose(f);
+		}
+	}
 }
 
 /* ------------------------------------------------------------------ */

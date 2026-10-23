@@ -1127,12 +1127,20 @@ wlr_scene_buffer_set_buffer(struct wlr_scene_buffer *sbuf,
 	(void)sbuf; (void)buf;
 }
 
+static bool g_rect_create_fail;
+
 static struct wlr_scene_rect *
 wlr_scene_rect_create(struct wlr_scene_tree *parent, int w, int h,
 	const float color[4])
 {
+	static struct wlr_scene_rect rects[16];
+	static int next;
 	(void)parent; (void)w; (void)h; (void)color;
-	return NULL;
+	if (g_rect_create_fail)
+		return NULL;
+	struct wlr_scene_rect *r = &rects[next++ % 16];
+	memset(r, 0, sizeof(*r));
+	return r;
 }
 
 static void
@@ -1537,6 +1545,10 @@ setup(void)
 	test_server.cursor = &test_cursor;
 	test_server.seat = &test_seat;
 	test_server.config = &test_config;
+
+	static struct wlr_scene test_scene;
+	memset(&test_scene, 0, sizeof(test_scene));
+	test_server.scene = &test_scene;
 
 	wl_list_init(&test_server.outputs);
 	wl_list_init(&test_server.views);
@@ -2408,9 +2420,7 @@ test_wireframe_hide(void)
 }
 
 /*
- * Test 48: wireframe_show sets state even though stubs return NULL rects.
- * The function calls wlr_scene_rect_create (returns NULL in stubs)
- * but still updates position/size state.
+ * Test 48: wireframe_show creates the outline and records its geometry.
  */
 static void
 test_wireframe_show_state(void)
@@ -2424,6 +2434,22 @@ test_wireframe_show_state(void)
 	assert(test_server.wireframe_w == 300);
 	assert(test_server.wireframe_h == 400);
 	printf("  PASS: wireframe_show_state\n");
+}
+
+/* Test 48b: if the rects can't be allocated, nothing is drawn */
+static void
+test_wireframe_show_alloc_failure(void)
+{
+	setup();
+	memset(test_server.wireframe_rects, 0,
+		sizeof(test_server.wireframe_rects));
+	test_server.wireframe_active = false;
+	g_rect_create_fail = true;
+	wireframe_show(&test_server, 10, 20, 300, 400);
+	g_rect_create_fail = false;
+	assert(test_server.wireframe_rects[0] == NULL);
+	assert(test_server.wireframe_active == false);
+	printf("  PASS: wireframe_show_alloc_failure\n");
 }
 
 /*
@@ -3683,6 +3709,7 @@ main(void)
 	test_snap_preview_destroy();
 	test_wireframe_hide();
 	test_wireframe_show_state();
+	test_wireframe_show_alloc_failure();
 	test_wireframe_show_min_size();
 
 	/* pixel buffer tests */

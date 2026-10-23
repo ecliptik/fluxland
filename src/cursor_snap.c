@@ -134,6 +134,17 @@ wireframe_show(struct wm_server *server, int x, int y, int w, int h)
 			server->layer_overlay, w, b, color);
 		server->wireframe_rects[3] = wlr_scene_rect_create(
 			server->layer_overlay, b, h, color);
+		/* Allocation failure: drop the partial set, skip drawing */
+		if (!server->wireframe_rects[0] || !server->wireframe_rects[1] ||
+		    !server->wireframe_rects[2] || !server->wireframe_rects[3]) {
+			for (int i = 0; i < 4; i++) {
+				if (server->wireframe_rects[i])
+					wlr_scene_node_destroy(
+						&server->wireframe_rects[i]->node);
+				server->wireframe_rects[i] = NULL;
+			}
+			return;
+		}
 	} else {
 		/* Resize existing rects */
 		wlr_scene_rect_set_size(server->wireframe_rects[0], w, b);

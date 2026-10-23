@@ -113,7 +113,9 @@ void harness_destroy_toplevel(struct test_client *client,
 void harness_disconnect(struct test_client *client);
 
 /*
- * Send SIGTERM to the compositor and wait for it to exit.
+ * Send SIGTERM to the compositor and wait for it to exit. An unclean
+ * exit (crash, sanitizer report) prints the compositor log and makes
+ * harness_cleanup() exit(1).
  */
 void harness_stop_compositor(pid_t pid);
 

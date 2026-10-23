@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: MIT
+#
+# Build and test fluxland. Runs on GitHub Actions and Forgejo Actions
+# (Forgejo also reads .github/workflows). Every job calls tools/ci.sh,
+# so the same steps run locally: tools/ci.sh build|sanitize|fuzz|ui.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build + unit tests
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/ci.sh deps
+      - run: tools/ci.sh build
+
+  sanitize:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/ci.sh deps
+      - run: tools/ci.sh sanitize
+
+  fuzz:
+    name: fuzz (short run)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/ci.sh deps
+      - run: tools/ci.sh fuzz
+        env:
+          FUZZ_SECONDS: "30"
+
+  ui:
+    name: UI tests (headless)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/ci.sh deps
+      - run: tools/ci.sh ui
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-results
+          path: tests/ui/results/

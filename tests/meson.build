@@ -382,7 +382,7 @@ if wayland_client.found()
     dependencies: [wayland_client],
     install: false,
   )
-  test('integration', test_integration, env: test_main_env, depends: fluxland_exe, timeout: 30)
+  test('integration', test_integration, env: test_main_env, depends: fluxland_exe, timeout: 30, suite: 'integration')
 
   # --- XDG shell client protocol (client-side header for tests) ---
   wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
@@ -504,7 +504,7 @@ if wayland_client.found()
     dependencies: [wayland_client, harness_dep],
     install: false,
   )
-  test('xdg_shell', test_xdg_shell, env: test_main_env, depends: fluxland_exe, timeout: 30)
+  test('xdg_shell', test_xdg_shell, env: test_main_env, depends: fluxland_exe, timeout: 30, suite: 'integration')
 
   # --- test_multi_client: multi-client integration tests ---
   test_multi_client = executable(
@@ -515,7 +515,7 @@ if wayland_client.found()
     dependencies: [wayland_client, harness_dep],
     install: false,
   )
-  test('multi_client', test_multi_client, env: test_main_env, depends: fluxland_exe, timeout: 30)
+  test('multi_client', test_multi_client, env: test_main_env, depends: fluxland_exe, timeout: 30, suite: 'integration')
 
   # --- test_layer_shell: layer shell protocol tests ---
   test_layer_shell = executable(
@@ -528,7 +528,7 @@ if wayland_client.found()
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
-  test('layer_shell', test_layer_shell, env: test_main_env, depends: fluxland_exe, timeout: 10)
+  test('layer_shell', test_layer_shell, env: test_main_env, depends: fluxland_exe, timeout: 10, suite: 'integration')
 
   # --- test_session_lock: session lock protocol tests ---
   test_session_lock = executable('test_session_lock',
@@ -539,7 +539,7 @@ if wayland_client.found()
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
-  test('session_lock', test_session_lock, env: test_main_env, depends: fluxland_exe, timeout: 10)
+  test('session_lock', test_session_lock, env: test_main_env, depends: fluxland_exe, timeout: 10, suite: 'integration')
 
   # --- test_idle: idle inhibit protocol tests ---
   test_idle = executable('test_idle',
@@ -550,7 +550,7 @@ if wayland_client.found()
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
-  test('idle', test_idle, env: test_main_env, depends: fluxland_exe, timeout: 10)
+  test('idle', test_idle, env: test_main_env, depends: fluxland_exe, timeout: 10, suite: 'integration')
 endif
 
 # --- Visual regression tests (decoration rendering) ---
