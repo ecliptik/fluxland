@@ -22,6 +22,12 @@ server_protocols = [
   wl_protocol_dir / 'unstable/pointer-constraints/pointer-constraints-unstable-v1.xml',
   wl_protocol_dir / 'staging/tearing-control/tearing-control-v1.xml',
   wl_protocol_dir / 'stable/tablet/tablet-v2.xml',
+  wl_protocol_dir / 'staging/ext-data-control/ext-data-control-v1.xml',
+  wl_protocol_dir / 'staging/ext-image-capture-source/ext-image-capture-source-v1.xml',
+  wl_protocol_dir / 'staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml',
+  wl_protocol_dir / 'staging/xdg-dialog/xdg-dialog-v1.xml',
+  wl_protocol_dir / 'staging/xdg-system-bell/xdg-system-bell-v1.xml',
+  wl_protocol_dir / 'staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml',
   'wlr-layer-shell-unstable-v1.xml',
   'wlr-output-power-management-unstable-v1.xml',
 ]

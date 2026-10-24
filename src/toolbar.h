@@ -64,6 +64,7 @@ struct wm_iconbar_entry {
 	struct wm_view *view;
 	bool focused;
 	bool iconified; /* minimized / scene node disabled */
+	void *icon;     /* view->icon when collected (cache key) */
 };
 
 struct wm_toolbar {

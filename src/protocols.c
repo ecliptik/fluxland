@@ -28,7 +28,13 @@
 #include <wlr/types/wlr_tearing_control_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
+#include <wlr/types/wlr_ext_data_control_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
+#include <wlr/types/wlr_xdg_dialog_v1.h>
+#include <wlr/types/wlr_xdg_system_bell_v1.h>
+#include <wlr/types/wlr_xdg_toplevel_icon_v1.h>
 #include <wlr/types/wlr_xdg_foreign_registry.h>
 #include <wlr/types/wlr_xdg_foreign_v1.h>
 #include <wlr/types/wlr_xdg_foreign_v2.h>
@@ -38,6 +44,8 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/util/log.h>
 
+#include "icon.h"
+#include "ipc.h"
 #include "protocols.h"
 #include "server.h"
 #include "view.h"
@@ -177,6 +185,139 @@ handle_xdg_activation_request(struct wl_listener *listener, void *data)
 	wlr_log(WLR_INFO, "xdg-activation: %s '%s'",
 		presented ? "activated" : "marked urgent",
 		view->title ? view->title : "(untitled)");
+}
+
+/* --- System bell (xdg-system-bell-v1) --- */
+
+static void
+handle_system_bell_ring(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, system_bell_ring);
+	struct wlr_xdg_system_bell_v1_ring_event *event = data;
+
+	/* A window's bell asks for attention unless it has it already */
+	struct wm_view *view = event->surface ? wm_view_from_surface(server,
+		wlr_surface_get_root_surface(event->surface)) : NULL;
+	if (view && view != server->focused_view)
+		wm_view_set_urgent(view, true);
+	wm_ipc_broadcast_event(&server->ipc, WM_IPC_EVENT_BELL,
+		"{\"event\":\"bell\"}");
+}
+
+/* --- Dialogs (xdg-dialog-v1) --- */
+
+struct wm_dialog {
+	struct wm_server *server;
+	struct wlr_xdg_dialog_v1 *dialog;
+	struct wl_listener set_modal;
+	struct wl_listener destroy;
+};
+
+static struct wm_view *
+dialog_view(struct wm_dialog *d)
+{
+	struct wm_view *view;
+	wl_list_for_each(view, &d->server->views, link) {
+		if (view->xdg_toplevel == d->dialog->xdg_toplevel)
+			return view;
+	}
+	return NULL;
+}
+
+static void
+handle_dialog_set_modal(struct wl_listener *listener, void *data)
+{
+	(void)data;
+	struct wm_dialog *d = wl_container_of(listener, d, set_modal);
+	struct wm_view *view = dialog_view(d);
+	if (!view)
+		return;
+	view->modal = d->dialog->modal;
+	/* Now modal while its parent has focus: it takes over */
+	struct wm_view *parent = wm_view_parent(view);
+	if (view->modal && view->mapped && parent &&
+	    parent == d->server->focused_view)
+		wm_focus_view(view, NULL);
+}
+
+static void
+handle_dialog_destroy(struct wl_listener *listener, void *data)
+{
+	(void)data;
+	struct wm_dialog *d = wl_container_of(listener, d, destroy);
+	struct wm_view *view = dialog_view(d);
+	if (view)
+		view->modal = false;
+	wl_list_remove(&d->set_modal.link);
+	wl_list_remove(&d->destroy.link);
+	free(d);
+}
+
+static void
+handle_new_dialog(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, new_dialog);
+	struct wlr_xdg_dialog_v1 *dialog = data;
+
+	struct wm_dialog *d = calloc(1, sizeof(*d));
+	if (!d)
+		return;
+	d->server = server;
+	d->dialog = dialog;
+	d->set_modal.notify = handle_dialog_set_modal;
+	wl_signal_add(&dialog->events.set_modal, &d->set_modal);
+	d->destroy.notify = handle_dialog_destroy;
+	wl_signal_add(&dialog->events.destroy, &d->destroy);
+	handle_dialog_set_modal(&d->set_modal, NULL);
+}
+
+/* --- Window icons (xdg-toplevel-icon-v1) --- */
+
+static void
+handle_set_toplevel_icon(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, set_toplevel_icon);
+	struct wlr_xdg_toplevel_icon_manager_v1_set_icon_event *event = data;
+
+	struct wm_view *view = NULL, *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->xdg_toplevel == event->toplevel) {
+			view = v;
+			break;
+		}
+	}
+	if (!view)
+		return;
+
+	cairo_surface_t *icon = NULL;
+	if (event->icon) {
+		/* The smallest buffer at least WM_ICON_SIZE, else the largest */
+		struct wlr_xdg_toplevel_icon_v1_buffer *best = NULL, *b;
+		wl_list_for_each(b, &event->icon->buffers, link) {
+			int size = b->buffer->width;
+			int best_size = best ? best->buffer->width : 0;
+			if (!best ||
+			    (size >= WM_ICON_SIZE &&
+			     (best_size < WM_ICON_SIZE || size < best_size)) ||
+			    (best_size < WM_ICON_SIZE && size > best_size))
+				best = b;
+		}
+		if (best)
+			icon = wm_icon_from_buffer(best->buffer, WM_ICON_SIZE);
+		if (!icon && event->icon->name)
+			icon = wm_icon_lookup(event->icon->name, WM_ICON_SIZE);
+	}
+	if (icon) {
+		wm_view_set_icon(view, icon, true);
+		cairo_surface_destroy(icon);
+	} else {
+		/* Unset (or unusable): back to the desktop file's icon */
+		view->icon_from_client = false;
+		wm_view_update_icon(view);
+	}
 }
 
 /* --- Tearing control --- */
@@ -458,6 +599,50 @@ wm_protocols_init(struct wm_server *server)
 	/* Data control (wlr-data-control-v1 for clipboard managers) */
 	server->data_control_mgr =
 		wlr_data_control_manager_v1_create(server->wl_display);
+	/* ...and its standardized successor */
+	server->ext_data_control_mgr =
+		wlr_ext_data_control_manager_v1_create(server->wl_display, 1);
+
+	/*
+	 * Screen capture (ext-image-copy-capture-v1) of outputs: newer
+	 * xdg-desktop-portal-wlr, grim and OBS use it.
+	 */
+	server->image_copy_capture_mgr =
+		wlr_ext_image_copy_capture_manager_v1_create(
+			server->wl_display, 1);
+	server->output_capture_source_mgr =
+		wlr_ext_output_image_capture_source_manager_v1_create(
+			server->wl_display, 1);
+
+	/* System bell (xdg-system-bell-v1): urgency for the window */
+	server->system_bell = wlr_xdg_system_bell_v1_create(
+		server->wl_display, 1);
+	if (server->system_bell) {
+		server->system_bell_ring.notify = handle_system_bell_ring;
+		wl_signal_add(&server->system_bell->events.ring,
+			&server->system_bell_ring);
+	}
+
+	/* Window icons (xdg-toplevel-icon-v1) for the iconbar */
+	server->toplevel_icon_mgr =
+		wlr_xdg_toplevel_icon_manager_v1_create(server->wl_display, 1);
+	if (server->toplevel_icon_mgr) {
+		int sizes[] = { 16, 24, 32, 48, 64 };
+		wlr_xdg_toplevel_icon_manager_v1_set_sizes(
+			server->toplevel_icon_mgr, sizes,
+			sizeof(sizes) / sizeof(sizes[0]));
+		server->set_toplevel_icon.notify = handle_set_toplevel_icon;
+		wl_signal_add(&server->toplevel_icon_mgr->events.set_icon,
+			&server->set_toplevel_icon);
+	}
+
+	/* Dialogs (xdg-dialog-v1): modal dialogs */
+	server->wm_dialog = wlr_xdg_wm_dialog_v1_create(server->wl_display, 1);
+	if (server->wm_dialog) {
+		server->new_dialog.notify = handle_new_dialog;
+		wl_signal_add(&server->wm_dialog->events.new_dialog,
+			&server->new_dialog);
+	}
 
 	/* XDG activation (app launch focus tokens) */
 	server->xdg_activation =
@@ -562,4 +747,10 @@ wm_protocols_finish(struct wm_server *server)
 	wl_list_remove(&server->request_set_primary_selection.link);
 	wl_list_remove(&server->new_pointer_constraint.link);
 	wl_list_remove(&server->pointer_constraint_destroy.link);
+	if (server->system_bell)
+		wl_list_remove(&server->system_bell_ring.link);
+	if (server->wm_dialog)
+		wl_list_remove(&server->new_dialog.link);
+	if (server->toplevel_icon_mgr)
+		wl_list_remove(&server->set_toplevel_icon.link);
 }

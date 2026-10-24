@@ -8,6 +8,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <signal.h>
+#include <cairo.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -32,6 +33,7 @@
 #include "text_input.h"
 #include "toolbar.h"
 #include "util.h"
+#include "icon.h"
 #include "view.h"
 #include "view_focus.h"
 #include "view_geometry.h"
@@ -579,6 +581,7 @@ wm_view_destroy_common(struct wm_view *view)
 		}
 	}
 
+	wm_view_set_icon(view, NULL, false);
 	if (view == view->server->focused_view)
 		view->server->focused_view = NULL;
 	if (view == view->server->grabbed_view) {
@@ -706,6 +709,7 @@ wm_view_set_app_id(struct wm_view *view, const char *app_id)
 
 	/* Update foreign toplevel handle */
 	wm_foreign_toplevel_update_app_id(view);
+	wm_view_update_icon(view);
 
 	/*
 	 * Some clients only set their app_id after mapping. Rules are
@@ -719,6 +723,34 @@ wm_view_set_app_id(struct wm_view *view, const char *app_id)
 		wm_view_move(view, view->x, view->y);
 	}
 	wm_toolbar_update_iconbar(view->server->toolbar);
+}
+
+/* --- Icon --- */
+
+void
+wm_view_set_icon(struct wm_view *view, cairo_surface_t *icon,
+	bool from_client)
+{
+	if (icon)
+		cairo_surface_reference(icon);
+	if (view->icon)
+		cairo_surface_destroy(view->icon);
+	view->icon = icon;
+	view->icon_from_client = icon && from_client;
+	if (view->mapped)
+		wm_toolbar_update_iconbar(view->server->toolbar);
+}
+
+void
+wm_view_update_icon(struct wm_view *view)
+{
+	if (view->icon_from_client)
+		return;
+	cairo_surface_t *icon = wm_icon_for_app_id(view->app_id,
+		WM_ICON_SIZE);
+	wm_view_set_icon(view, icon, false);
+	if (icon)
+		cairo_surface_destroy(icon);
 }
 
 /* --- Toggle decoration --- */

@@ -229,6 +229,7 @@ wm_sources = files(
   'src/command.c',
   'src/server.c',
   'src/session_env.c',
+  'src/icon.c',
   'src/output.c',
   'src/output_config.c',
   'src/pixel_buffer.c',

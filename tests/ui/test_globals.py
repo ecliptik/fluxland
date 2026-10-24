@@ -37,6 +37,14 @@ EXPECTED = {
     "zwp_keyboard_shortcuts_inhibit_manager_v1", "wp_cursor_shape_manager_v1",
     # Clipboard
     "zwp_primary_selection_device_manager_v1", "zwlr_data_control_manager_v1",
+    "ext_data_control_manager_v1",
+    # Screen capture for portals and recorders (wlroots 0.19)
+    "ext_image_copy_capture_manager_v1",
+    "ext_output_image_capture_source_manager_v1",
+    # Dialogs and bells (wlroots 0.19)
+    "xdg_wm_dialog_v1", "xdg_system_bell_v1",
+    # Window icons for the iconbar (wlroots 0.19)
+    "xdg_toplevel_icon_manager_v1",
     # Presentation
     "wp_viewporter", "wp_fractional_scale_manager_v1", "wp_presentation",
     "wp_single_pixel_buffer_manager_v1", "wp_tearing_control_manager_v1",

@@ -103,6 +103,14 @@ struct wm_view {
 	bool no_focus;
 	/* Set by window rules before the window is shown; realized at map */
 	bool pending_maximize, pending_fullscreen, pending_minimize;
+	/* xdg-dialog: a modal dialog takes focus from its parent */
+	bool modal;
+	/*
+	 * Iconbar icon (WM_ICON_SIZE px, cairo_surface_t): the client's own
+	 * (xdg-toplevel-icon) or its desktop file's.
+	 */
+	struct _cairo_surface *icon;
+	bool icon_from_client;
 	int pending_head; /* [Head] rule: 0 = none */
 
 	/* Workspace tracking */
@@ -223,6 +231,19 @@ void wm_view_unminimize(struct wm_view *view);
 
 /* Mark a window as demanding attention (shown in the iconbar) */
 void wm_view_set_urgent(struct wm_view *view, bool urgent);
+
+/* Icon size kept for the iconbar (scaled down when drawn) */
+#define WM_ICON_SIZE 32
+
+/*
+ * Set the window's icon (takes a reference; NULL clears). from_client:
+ * the client sent it, so app_id changes don't replace it.
+ */
+void wm_view_set_icon(struct wm_view *view, struct _cairo_surface *icon,
+	bool from_client);
+
+/* Use the desktop file icon for the app_id (unless the client set one) */
+void wm_view_update_icon(struct wm_view *view);
 
 /*
  * Bring a window to the user: switch to its workspace, make it the

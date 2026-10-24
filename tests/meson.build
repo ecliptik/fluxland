@@ -45,6 +45,16 @@ test_session_env = executable(
 )
 test('session_env', test_session_env)
 
+# --- test_icon: iconbar icons (theme / desktop file lookup, client pixels) ---
+test_icon = executable(
+  'test_icon',
+  files('test_icon.c', '../src/icon.c'),
+  include_directories: test_inc,
+  dependencies: [wlroots, pangocairo, libdrm],
+  install: false,
+)
+test('icon', test_icon)
+
 # --- test_keybind: keybinding parser tests ---
 test_keybind = executable(
   'test_keybind',
@@ -153,7 +163,7 @@ test_view_logic = executable(
   'test_view_logic',
   files('test_view_logic.c'),
   include_directories: test_inc,
-  dependencies: [wlroots, math],
+  dependencies: [wlroots, math, pangocairo],
   install: false,
 )
 test('view_logic', test_view_logic)
@@ -400,7 +410,7 @@ test_protocols = executable(
   'test_protocols',
   files('test_protocols.c'),
   include_directories: test_inc,
-  dependencies: [wlroots],
+  dependencies: [wlroots, pangocairo],
   install: false,
 )
 test('protocols', test_protocols)
@@ -510,6 +520,18 @@ if wayland_client.found()
     command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
   )
 
+  # ext-image-copy-capture + ext-image-capture-source client protocols
+  image_capture_client = []
+  foreach name : ['ext-image-capture-source', 'ext-image-copy-capture']
+    xml = wl_protocol_dir / 'staging' / name / name + '-v1.xml'
+    image_capture_client += custom_target(name + '-v1-client-protocol.h',
+      input: xml, output: name + '-v1-client-protocol.h',
+      command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
+    image_capture_client += custom_target(name + '-v1-protocol.c',
+      input: xml, output: name + '-v1-protocol.c',
+      command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
+  endforeach
+
   # --- Integration test harness library ---
   integration_inc = include_directories('integration')
   harness_lib = static_library(
@@ -584,6 +606,16 @@ if wayland_client.found()
     install: false,
   )
   test('idle', test_idle, env: test_main_env, depends: fluxland_exe, timeout: 10, suite: 'integration')
+
+  # --- test_image_capture: ext-image-copy-capture of an output ---
+  test_image_capture = executable('test_image_capture',
+    files('test_image_capture.c'),
+    image_capture_client, foreign_toplevel_list_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('image_capture', test_image_capture, env: test_main_env, depends: fluxland_exe, timeout: 20, suite: 'integration')
 endif
 
 # --- Visual regression tests (decoration rendering) ---

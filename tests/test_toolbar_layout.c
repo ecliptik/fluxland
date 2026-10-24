@@ -253,6 +253,23 @@ static void cairo_line_to(cairo_t *cr, double x, double y) {
 	(void)cr; (void)x; (void)y;
 }
 static void cairo_stroke(cairo_t *cr) { (void)cr; }
+/* iconbar icons */
+typedef int cairo_filter_t;
+typedef struct _cairo_pattern cairo_pattern_t;
+#define CAIRO_FILTER_GOOD 1
+static int g_icon_paint_count;
+static void cairo_save(cairo_t *cr) { (void)cr; }
+static void cairo_restore(cairo_t *cr) { (void)cr; }
+static void cairo_translate(cairo_t *cr, double x, double y) {
+	(void)cr; (void)x; (void)y; }
+static void cairo_scale(cairo_t *cr, double x, double y) {
+	(void)cr; (void)x; (void)y; }
+static cairo_pattern_t *cairo_get_source(cairo_t *cr) {
+	(void)cr; return NULL; }
+static void cairo_pattern_set_filter(cairo_pattern_t *p, cairo_filter_t f) {
+	(void)p; (void)f; }
+static void cairo_paint_with_alpha(cairo_t *cr, double a) {
+	(void)cr; (void)a; g_icon_paint_count++; }
 static void cairo_set_source_surface(cairo_t *cr, cairo_surface_t *s,
 	double x, double y) { (void)cr; (void)s; (void)x; (void)y; }
 
@@ -363,6 +380,7 @@ struct wm_config {
 	char *iconbar_iconified_pattern;
 	int toolbar_on_head;
 	bool toolbar_max_over;
+	bool iconbar_use_pixmap;
 };
 
 struct wm_workspace {
@@ -404,6 +422,7 @@ struct wm_view {
 	bool icon_hidden;
 	bool urgent;
 	struct wm_decoration *decoration;
+	struct _cairo_surface *icon;
 };
 
 struct wm_output {

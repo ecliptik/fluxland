@@ -86,6 +86,12 @@ struct wlr_xdg_foreign_v1;
 struct wlr_xdg_foreign_v2;
 struct wlr_ext_foreign_toplevel_list_v1;
 struct wlr_keyboard_group;
+struct wlr_ext_data_control_manager_v1;
+struct wlr_ext_image_copy_capture_manager_v1;
+struct wlr_ext_output_image_capture_source_manager_v1;
+struct wlr_xdg_system_bell_v1;
+struct wlr_xdg_wm_dialog_v1;
+struct wlr_xdg_toplevel_icon_manager_v1;
 struct wm_keyboard;
 struct wlr_drm_lease_v1_manager;
 struct wlr_transient_seat_manager_v1;
@@ -282,6 +288,15 @@ struct wm_server {
 
 	/* Data control (clipboard managers: cliphist, wl-clipboard, etc.) */
 	struct wlr_data_control_manager_v1 *data_control_mgr;
+	struct wlr_ext_data_control_manager_v1 *ext_data_control_mgr;
+	struct wlr_ext_image_copy_capture_manager_v1 *image_copy_capture_mgr;
+	struct wlr_ext_output_image_capture_source_manager_v1 *output_capture_source_mgr;
+	struct wlr_xdg_system_bell_v1 *system_bell;
+	struct wl_listener system_bell_ring;
+	struct wlr_xdg_wm_dialog_v1 *wm_dialog;
+	struct wl_listener new_dialog;
+	struct wlr_xdg_toplevel_icon_manager_v1 *toplevel_icon_mgr;
+	struct wl_listener set_toplevel_icon;
 
 	/* Pointer constraints (lock/confine for games) */
 	struct wlr_pointer_constraints_v1 *pointer_constraints;

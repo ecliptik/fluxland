@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <assert.h>
+#include <cairo.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -59,6 +60,14 @@
 #define WM_SERVER_H
 #define WM_VIEW_H
 #define WM_KEYBOARD_H
+#define WM_IPC_H
+#define WLR_TYPES_WLR_EXT_DATA_CONTROL_V1_H
+#define WLR_TYPES_WLR_EXT_IMAGE_CAPTURE_SOURCE_V1_H
+#define WLR_TYPES_WLR_EXT_IMAGE_COPY_CAPTURE_V1_H
+#define WLR_TYPES_WLR_XDG_DIALOG_V1_H
+#define WLR_TYPES_WLR_XDG_SYSTEM_BELL_V1_H
+#define WLR_TYPES_WLR_XDG_TOPLEVEL_ICON_V1_H
+#define WM_ICON_H
 
 /* --- Stub wayland types --- */
 
@@ -128,6 +137,19 @@ static inline void
 wl_signal_add(struct wl_signal *signal, struct wl_listener *listener)
 {
 	wl_list_insert(signal->listener_list.prev, &listener->link);
+}
+
+static inline void
+wl_signal_emit(struct wl_signal *signal, void *data)
+{
+	struct wl_list *pos = signal->listener_list.next;
+	while (pos != &signal->listener_list) {
+		struct wl_list *next = pos->next;
+		struct wl_listener *l = (struct wl_listener *)
+			((char *)pos - offsetof(struct wl_listener, link));
+		l->notify(l, data);
+		pos = next;
+	}
 }
 
 struct wl_display { int dummy; };
@@ -333,9 +355,133 @@ struct wm_view {
 	struct wl_list link;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	char *title;
+	bool mapped;
+	bool modal;
+	bool urgent;
+	struct wm_view *parent;
+	cairo_surface_t *icon;
+	bool icon_from_client;
+};
+
+/* xdg-toplevel-icon stand-ins */
+#define WM_ICON_SIZE 32
+struct wlr_buffer { int width, height; };
+struct wlr_xdg_toplevel_icon_v1_buffer {
+	struct wlr_buffer *buffer;
+	int scale;
+	struct wl_list link;
+};
+struct wlr_xdg_toplevel_icon_v1 {
+	char *name;
+	struct wl_list buffers;
+};
+struct wlr_xdg_toplevel_icon_manager_v1 {
+	struct { struct wl_signal set_icon; } events;
+};
+struct wlr_xdg_toplevel_icon_manager_v1_set_icon_event {
+	struct wlr_xdg_toplevel *toplevel;
+	struct wlr_xdg_toplevel_icon_v1 *icon;
+};
+static struct wlr_xdg_toplevel_icon_manager_v1 g_icon_mgr;
+static struct wlr_xdg_toplevel_icon_manager_v1 *
+wlr_xdg_toplevel_icon_manager_v1_create(struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	wl_signal_init(&g_icon_mgr.events.set_icon);
+	return &g_icon_mgr;
+}
+static void
+wlr_xdg_toplevel_icon_manager_v1_set_sizes(
+	struct wlr_xdg_toplevel_icon_manager_v1 *m, int *sizes, size_t n)
+{
+	(void)m; (void)sizes; (void)n;
+}
+
+/* icon.c stand-ins: an icon is a real 1x1 surface tagged by size */
+static int g_from_buffer_size, g_lookup_count;
+static cairo_surface_t *
+wm_icon_from_buffer(struct wlr_buffer *buffer, int size)
+{
+	(void)size;
+	g_from_buffer_size = buffer->width;
+	return cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+}
+static cairo_surface_t *
+wm_icon_lookup(const char *name, int size)
+{
+	(void)size;
+	g_lookup_count++;
+	return name && strcmp(name, "known") == 0 ?
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) : NULL;
+}
+
+/* view.c stand-ins */
+static int g_update_icon_count;
+static void
+wm_view_set_icon(struct wm_view *view, cairo_surface_t *icon, bool client)
+{
+	if (icon)
+		cairo_surface_reference(icon);
+	if (view->icon)
+		cairo_surface_destroy(view->icon);
+	view->icon = icon;
+	view->icon_from_client = icon && client;
+}
+static void
+wm_view_update_icon(struct wm_view *view)
+{
+	(void)view;
+	g_update_icon_count++;
+}
+
+/* ipc.h stand-in */
+enum wm_ipc_event { WM_IPC_EVENT_BELL = (1 << 11) };
+struct wm_ipc_server { int dummy; };
+static int g_bell_broadcast_count;
+static void
+wm_ipc_broadcast_event(struct wm_ipc_server *ipc, enum wm_ipc_event event,
+	const char *json)
+{
+	(void)ipc; (void)json;
+	if (event == WM_IPC_EVENT_BELL)
+		g_bell_broadcast_count++;
+}
+
+/* wlroots 0.19 protocol stand-ins */
+struct wlr_ext_data_control_manager_v1 { int dummy; };
+struct wlr_ext_image_copy_capture_manager_v1 { int dummy; };
+struct wlr_ext_output_image_capture_source_manager_v1 { int dummy; };
+struct wlr_xdg_system_bell_v1 {
+	struct { struct wl_signal ring; } events;
+};
+struct wlr_xdg_system_bell_v1_ring_event {
+	struct wl_client *client;
+	struct wlr_surface *surface;
+};
+struct wlr_xdg_wm_dialog_v1 {
+	struct { struct wl_signal new_dialog; } events;
+};
+struct wlr_xdg_dialog_v1 {
+	struct wlr_xdg_toplevel *xdg_toplevel;
+	bool modal;
+	struct {
+		struct wl_signal destroy;
+		struct wl_signal set_modal;
+	} events;
 };
 
 struct wm_server {
+	struct wm_ipc_server ipc;
+	struct wlr_ext_data_control_manager_v1 *ext_data_control_mgr;
+	struct wlr_ext_image_copy_capture_manager_v1 *image_copy_capture_mgr;
+	struct wlr_ext_output_image_capture_source_manager_v1 *output_capture_source_mgr;
+	struct wlr_xdg_system_bell_v1 *system_bell;
+	struct wl_listener system_bell_ring;
+	struct wlr_xdg_wm_dialog_v1 *wm_dialog;
+	struct wl_listener new_dialog;
+	struct wlr_xdg_toplevel_icon_manager_v1 *toplevel_icon_mgr;
+	struct wl_listener set_toplevel_icon;
+	struct wm_view *focused_view;
 	struct wl_display *wl_display;
 	struct wlr_seat *seat;
 	struct wlr_cursor *cursor;
@@ -680,6 +826,62 @@ wlr_virtual_pointer_manager_v1_create(struct wl_display *display)
 	return &g_stub_vptr_mgr;
 }
 
+static struct wlr_ext_data_control_manager_v1 g_ext_data_control;
+static struct wlr_ext_data_control_manager_v1 *
+wlr_ext_data_control_manager_v1_create(struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	return &g_ext_data_control;
+}
+
+static struct wlr_ext_image_copy_capture_manager_v1 g_copy_capture;
+static struct wlr_ext_image_copy_capture_manager_v1 *
+wlr_ext_image_copy_capture_manager_v1_create(struct wl_display *d,
+	uint32_t v)
+{
+	(void)d; (void)v;
+	return &g_copy_capture;
+}
+
+static struct wlr_ext_output_image_capture_source_manager_v1 g_output_source;
+static struct wlr_ext_output_image_capture_source_manager_v1 *
+wlr_ext_output_image_capture_source_manager_v1_create(struct wl_display *d,
+	uint32_t v)
+{
+	(void)d; (void)v;
+	return &g_output_source;
+}
+
+static struct wlr_xdg_system_bell_v1 g_bell;
+static struct wlr_xdg_system_bell_v1 *
+wlr_xdg_system_bell_v1_create(struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	wl_signal_init(&g_bell.events.ring);
+	return &g_bell;
+}
+
+static struct wlr_xdg_wm_dialog_v1 g_wm_dialog;
+static struct wlr_xdg_wm_dialog_v1 *
+wlr_xdg_wm_dialog_v1_create(struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	wl_signal_init(&g_wm_dialog.events.new_dialog);
+	return &g_wm_dialog;
+}
+
+static struct wlr_surface *
+wlr_surface_get_root_surface(struct wlr_surface *surface)
+{
+	return surface;
+}
+
+static void
+wm_view_set_urgent(struct wm_view *view, bool urgent)
+{
+	view->urgent = urgent;
+}
+
 static struct wlr_data_control_manager_v1 *
 wlr_data_control_manager_v1_create(struct wl_display *display)
 {
@@ -819,6 +1021,12 @@ bool wm_protocols_kb_shortcuts_inhibited(struct wm_server *server);
 #define VIEW_STUB_SURFACE
 #define VIEW_STUB_FROM_SURFACE
 #include "view_backend_stubs.c"
+
+struct wm_view *
+wm_view_parent(struct wm_view *view)
+{
+	return view->parent;
+}
 
 /* view_focus.c's activation policy: present only when allowed */
 static int g_activate_count;
@@ -2044,6 +2252,166 @@ test_kb_inhibited_no_focused_surface(void)
 	printf("  PASS: test_kb_inhibited_no_focused_surface\n");
 }
 
+/* The bell marks its window urgent (unless focused) and is broadcast */
+static void
+test_system_bell(void)
+{
+	reset_globals();
+	struct wm_server server;
+	init_server(&server);
+	wm_protocols_init(&server);
+
+	struct wlr_surface surface = { .id = 7 };
+	struct wlr_xdg_surface xs;
+	memset(&xs, 0, sizeof(xs));
+	xs.surface = &surface;
+	struct wlr_xdg_toplevel tl;
+	memset(&tl, 0, sizeof(tl));
+	tl.base = &xs;
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.xdg_toplevel = &tl;
+	view.mapped = true;
+	wl_list_insert(&server.views, &view.link);
+
+	g_bell_broadcast_count = 0;
+	struct wlr_xdg_system_bell_v1_ring_event ev = { .surface = &surface };
+	wl_signal_emit(&g_bell.events.ring, &ev);
+	assert(view.urgent);
+	assert(g_bell_broadcast_count == 1);
+
+	/* The focused window's bell: no urgency needed */
+	view.urgent = false;
+	server.focused_view = &view;
+	wl_signal_emit(&g_bell.events.ring, &ev);
+	assert(!view.urgent);
+
+	/* A bell without a surface is still broadcast */
+	ev.surface = NULL;
+	wl_signal_emit(&g_bell.events.ring, &ev);
+	assert(g_bell_broadcast_count == 3);
+
+	wl_list_remove(&view.link);
+	wm_protocols_finish(&server);
+	printf("  PASS: test_system_bell\n");
+}
+
+/* xdg-dialog: the modal flag follows the client; a modal dialog of the
+ * focused window takes the focus */
+static void
+test_modal_dialog(void)
+{
+	reset_globals();
+	struct wm_server server;
+	init_server(&server);
+	wm_protocols_init(&server);
+
+	struct wlr_xdg_toplevel parent_tl, dialog_tl;
+	memset(&parent_tl, 0, sizeof(parent_tl));
+	memset(&dialog_tl, 0, sizeof(dialog_tl));
+	struct wm_view parent, dialog_view;
+	memset(&parent, 0, sizeof(parent));
+	memset(&dialog_view, 0, sizeof(dialog_view));
+	parent.xdg_toplevel = &parent_tl;
+	parent.mapped = true;
+	dialog_view.xdg_toplevel = &dialog_tl;
+	dialog_view.mapped = true;
+	dialog_view.parent = &parent;
+	wl_list_insert(&server.views, &parent.link);
+	wl_list_insert(&server.views, &dialog_view.link);
+	server.focused_view = &parent;
+
+	struct wlr_xdg_dialog_v1 dialog;
+	memset(&dialog, 0, sizeof(dialog));
+	dialog.xdg_toplevel = &dialog_tl;
+	wl_signal_init(&dialog.events.destroy);
+	wl_signal_init(&dialog.events.set_modal);
+	wl_signal_emit(&g_wm_dialog.events.new_dialog, &dialog);
+	assert(!dialog_view.modal);
+
+	g_focus_view_count = 0;
+	dialog.modal = true;
+	wl_signal_emit(&dialog.events.set_modal, NULL);
+	assert(dialog_view.modal);
+	assert(g_focus_view_count == 1 && g_focus_view_arg == &dialog_view);
+
+	dialog.modal = false;
+	wl_signal_emit(&dialog.events.set_modal, NULL);
+	assert(!dialog_view.modal);
+
+	dialog.modal = true;
+	wl_signal_emit(&dialog.events.set_modal, NULL);
+	wl_signal_emit(&dialog.events.destroy, NULL);
+	assert(!dialog_view.modal);
+
+	wl_list_remove(&parent.link);
+	wl_list_remove(&dialog_view.link);
+	wm_protocols_finish(&server);
+	printf("  PASS: test_modal_dialog\n");
+}
+
+/* xdg-toplevel-icon: the best client buffer, else the name, else back
+ * to the desktop file icon */
+static void
+test_toplevel_icon(void)
+{
+	reset_globals();
+	struct wm_server server;
+	init_server(&server);
+	wm_protocols_init(&server);
+
+	struct wlr_xdg_toplevel tl;
+	memset(&tl, 0, sizeof(tl));
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.xdg_toplevel = &tl;
+	wl_list_insert(&server.views, &view.link);
+
+	struct wlr_buffer b16 = { 16, 16 }, b48 = { 48, 48 }, b128 = { 128, 128 };
+	struct wlr_xdg_toplevel_icon_v1_buffer i16 = { .buffer = &b16 },
+		i48 = { .buffer = &b48 }, i128 = { .buffer = &b128 };
+	struct wlr_xdg_toplevel_icon_v1 icon = { .name = NULL };
+	wl_list_init(&icon.buffers);
+	wl_list_insert(icon.buffers.prev, &i16.link);
+	wl_list_insert(icon.buffers.prev, &i128.link);
+	wl_list_insert(icon.buffers.prev, &i48.link);
+
+	struct wlr_xdg_toplevel_icon_manager_v1_set_icon_event ev = {
+		.toplevel = &tl, .icon = &icon,
+	};
+	/* Smallest buffer of at least 32px: the 48 */
+	wl_signal_emit(&g_icon_mgr.events.set_icon, &ev);
+	assert(g_from_buffer_size == 48);
+	assert(view.icon && view.icon_from_client);
+
+	/* Only small buffers: the largest */
+	wl_list_remove(&i48.link);
+	wl_list_remove(&i128.link);
+	wl_signal_emit(&g_icon_mgr.events.set_icon, &ev);
+	assert(g_from_buffer_size == 16);
+
+	/* A name only */
+	wl_list_remove(&i16.link);
+	icon.name = "known";
+	g_lookup_count = 0;
+	wl_signal_emit(&g_icon_mgr.events.set_icon, &ev);
+	assert(g_lookup_count == 1 && view.icon_from_client);
+
+	/* Unknown name, or icon unset: back to the desktop file's */
+	icon.name = "unknown";
+	g_update_icon_count = 0;
+	wl_signal_emit(&g_icon_mgr.events.set_icon, &ev);
+	assert(!view.icon_from_client && g_update_icon_count == 1);
+	ev.icon = NULL;
+	wl_signal_emit(&g_icon_mgr.events.set_icon, &ev);
+	assert(g_update_icon_count == 2);
+
+	wm_view_set_icon(&view, NULL, false);
+	wl_list_remove(&view.link);
+	wm_protocols_finish(&server);
+	printf("  PASS: test_toplevel_icon\n");
+}
+
 int
 main(void)
 {
@@ -2086,6 +2454,9 @@ main(void)
 	test_update_pointer_constraint_same_surface();
 	test_update_kb_inhibitor_same_surface();
 	test_kb_inhibited_no_focused_surface();
+	test_system_bell();
+	test_modal_dialog();
+	test_toplevel_icon();
 
 	printf("All protocols tests passed (37/37).\n");
 	return 0;

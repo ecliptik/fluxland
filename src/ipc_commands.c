@@ -433,6 +433,8 @@ cmd_subscribe(struct wm_ipc_client *client, const char *events_str)
 		} else if (strcasecmp(token, "menu") == 0) {
 			client->subscribed_events |=
 				WM_IPC_EVENT_MENU;
+		} else if (strcasecmp(token, "bell") == 0) {
+			client->subscribed_events |= WM_IPC_EVENT_BELL;
 		} else if (strcasecmp(token, "accessibility") == 0) {
 			/* Subscribe to all accessibility events */
 			client->subscribed_events |=

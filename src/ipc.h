@@ -33,6 +33,7 @@ enum wm_ipc_event {
 	WM_IPC_EVENT_CONFIG_RELOADED = (1 << 8),
 	WM_IPC_EVENT_FOCUS_CHANGED  = (1 << 9),
 	WM_IPC_EVENT_MENU           = (1 << 10),
+	WM_IPC_EVENT_BELL           = (1 << 11),
 };
 
 struct wm_ipc_client {

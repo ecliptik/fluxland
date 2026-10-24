@@ -35,11 +35,36 @@
 
 /* --- Focus Management --- */
 
+/* A mapped modal dialog (xdg-dialog) of this window, innermost first */
+static struct wm_view *
+modal_child(struct wm_view *view, int depth)
+{
+	if (depth > 8)
+		return NULL;
+	struct wm_view *v;
+	wl_list_for_each(v, &view->server->views, link) {
+		if (v != view && v->modal && v->mapped &&
+		    wm_view_parent(v) == view) {
+			struct wm_view *inner = modal_child(v, depth + 1);
+			return inner ? inner : v;
+		}
+	}
+	return NULL;
+}
+
 static void
 focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 {
 	if (!view) {
 		return;
+	}
+	/* The modal dialog keeps the focus while it is open */
+	struct wm_view *modal = modal_child(view, 0);
+	if (modal) {
+		if (raise)
+			wm_view_raise(view);
+		view = modal;
+		surface = NULL;
 	}
 	struct wm_server *server = view->server;
 	struct wlr_seat *seat = server->seat;

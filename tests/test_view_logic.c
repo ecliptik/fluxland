@@ -615,6 +615,9 @@ struct wm_view {
 	bool no_focus;
 	bool pending_maximize, pending_fullscreen, pending_minimize;
 	int pending_head;
+	bool modal;
+	struct _cairo_surface *icon;
+	bool icon_from_client;
 	struct wm_workspace *workspace;
 	bool sticky;
 	enum wm_view_layer layer;
@@ -1320,6 +1323,20 @@ void wm_view_unminimize(struct wm_view *view);
 void wm_view_set_urgent(struct wm_view *view, bool urgent);
 void wm_view_present(struct wm_view *view);
 bool wm_view_request_activate(struct wm_view *view, bool allowed);
+#define WM_ICON_SIZE 32
+void wm_view_set_icon(struct wm_view *view, struct _cairo_surface *icon,
+	bool from_client);
+void wm_view_update_icon(struct wm_view *view);
+/* icon.c stand-in: no desktop files here */
+static int g_icon_lookup_count;
+static struct _cairo_surface *
+wm_icon_for_app_id(const char *app_id, int size)
+{
+	(void)app_id; (void)size;
+	g_icon_lookup_count++;
+	return NULL;
+}
+#define WM_ICON_H
 
 /* --- Stubs for the xdg backend (view_xdg.c) and kill path --- */
 
@@ -5011,6 +5028,33 @@ test_activate_refused_marks_urgent(void)
 	printf("  PASS: activate_refused_marks_urgent\n");
 }
 
+/* xdg-dialog: focusing a window with an open modal dialog focuses the
+ * dialog instead */
+static void
+test_modal_dialog_keeps_focus(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	test_toplevels[1].parent = &test_toplevels[0];
+	test_views[1].modal = true;
+
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[0], NULL);
+	assert(test_server.focused_view == &test_views[1]);
+
+	/* Not modal any more: the parent can have it */
+	test_views[1].modal = false;
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[0], NULL);
+	assert(test_server.focused_view == &test_views[0]);
+
+	test_toplevels[1].parent = NULL;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: modal_dialog_keeps_focus\n");
+}
+
 /* ===== XDG popups (view_xdg.c) ===== */
 
 static void
@@ -5391,6 +5435,7 @@ main(void)
 	/* xdg backend */
 	test_activate_presents_window();
 	test_activate_refused_marks_urgent();
+	test_modal_dialog_keeps_focus();
 	test_popup_without_parent_is_left_to_layer_shell();
 	test_popup_nests_and_unconstrains();
 	test_show_window_menu_request();

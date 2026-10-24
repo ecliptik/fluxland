@@ -512,6 +512,7 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 		entry->view = view;
 		entry->focused = (view == server->focused_view);
 		entry->iconified = is_iconified;
+		entry->icon = view->icon;
 		count++;
 	}
 
@@ -718,15 +719,34 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 				"%s", raw_title);
 		}
 
+		/* Icon (session.screen0.iconbar.usePixmap), then the title */
+		int icon_w = 0;
+		cairo_surface_t *icon = entry->view->icon;
+		int isize = height - 4;
+		if (icon && (!cfg || cfg->iconbar_use_pixmap) && isize >= 8 &&
+		    ew > isize * 2) {
+			int isrc = cairo_image_surface_get_width(icon);
+			cairo_save(cr);
+			cairo_translate(cr, ex + 3, (height - isize) / 2);
+			cairo_scale(cr, (double)isize / isrc,
+				(double)isize / isrc);
+			cairo_set_source_surface(cr, icon, 0, 0);
+			cairo_pattern_set_filter(cairo_get_source(cr),
+				CAIRO_FILTER_GOOD);
+			cairo_paint_with_alpha(cr, entry->iconified ? 0.5 : 1.0);
+			cairo_restore(cr);
+			icon_w = isize + 4;
+		}
+
 		/* Render text */
 		int tw, th;
 		cairo_surface_t *text = wm_render_text(title_buf,
 			&style->toolbar_font, text_color,
-			ew - 6, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
+			ew - 6 - icon_w, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
 		if (text) {
-			int tx = ex + (ew - tw) / 2;
+			int tx = ex + icon_w + (ew - icon_w - tw) / 2;
 			int ty = (height - th) / 2;
-			if (tx < ex + 2) tx = ex + 2;
+			if (tx < ex + icon_w + 2) tx = ex + icon_w + 2;
 			if (ty < 0) ty = 0;
 			cairo_set_source_surface(cr, text, tx, ty);
 			cairo_paint(cr);
@@ -1204,7 +1224,8 @@ iconbar_entries_match_cache(struct wm_toolbar *toolbar)
 		struct wm_iconbar_entry *cached = &toolbar->ib_cached_entries[i];
 		if (cur->view != cached->view ||
 		    cur->focused != cached->focused ||
-		    cur->iconified != cached->iconified) {
+		    cur->iconified != cached->iconified ||
+		    cur->icon != cached->icon) {
 			return false;
 		}
 		/* Compare titles: pointer match is fast path */
