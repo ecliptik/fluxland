@@ -33,12 +33,17 @@ fi
 
 case "$step" in
 deps)
+	# wlroots 0.19 is built from subprojects/wlroots.wrap
 	apt-get update
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		build-essential clang libclang-rt-dev meson ninja-build pkg-config \
 		git ca-certificates \
-		libwlroots-0.18-dev libwayland-dev wayland-protocols \
+		libwayland-dev wayland-protocols \
 		libxkbcommon-dev libinput-dev libpixman-1-dev libdrm-dev \
+		libegl-dev libgles-dev libgbm-dev libseat-dev libudev-dev \
+		libdisplay-info-dev libliftoff-dev hwdata liblcms2-dev \
+		libxcb-composite0-dev libxcb-res0-dev libxcb-xfixes0-dev \
+		libxcb-render0-dev libxcb-errors-dev \
 		libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev \
 		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev xwayland \
 		libsystemd-dev \

@@ -164,7 +164,7 @@ handle_tool_axis(struct wl_listener *listener, void *data)
 	tablet_view_at(server, lx, ly, &surface, &sx, &sy);
 
 	if (surface && wlr_surface_accepts_tablet_v2(
-			tablet->tablet_v2, surface)) {
+			surface, tablet->tablet_v2)) {
 		if (tool_v2->focused_surface != surface) {
 			wlr_send_tablet_v2_tablet_tool_proximity_in(
 				tool_v2, tablet->tablet_v2, surface);
@@ -246,7 +246,7 @@ handle_tool_proximity(struct wl_listener *listener, void *data)
 		&surface, &sx, &sy);
 
 	if (surface && wlr_surface_accepts_tablet_v2(
-			tablet->tablet_v2, surface)) {
+			surface, tablet->tablet_v2)) {
 		wlr_send_tablet_v2_tablet_tool_proximity_in(
 			tool_v2, tablet->tablet_v2, surface);
 	}

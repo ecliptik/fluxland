@@ -225,7 +225,7 @@ wlr_output_layout_get_box(struct wlr_output_layout *layout,
 }
 
 static void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
+test_xdg_geometry(struct wlr_xdg_surface *surface,
 	struct wlr_box *box)
 {
 	(void)surface;
@@ -293,6 +293,7 @@ wm_workspace_get_active(struct wm_server *server)
 
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_GEOMETRY_FN test_xdg_geometry
 #define VIEW_STUB_SET_SIZE
 #define VIEW_STUB_SET_TILED
 #define VIEW_STUB_SET_FRAME_BOX

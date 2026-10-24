@@ -1992,3 +1992,10 @@ wm_xdg_decoration_init(struct wm_server *server)
 			server->kde_decoration_mgr,
 			WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 }
+
+void
+wm_xdg_decoration_finish(struct wm_server *server)
+{
+	if (server->xdg_decoration_mgr)
+		wl_list_remove(&server->new_xdg_decoration.link);
+}

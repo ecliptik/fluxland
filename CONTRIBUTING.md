@@ -13,12 +13,11 @@ that your contributions will be licensed under the same terms.
 
 Install the following development dependencies:
 
-**Debian/Ubuntu:**
-```sh
-sudo apt install meson ninja-build pkg-config libwlroots-0.18-dev \
-  libwayland-dev wayland-protocols libxkbcommon-dev libinput-dev \
-  libpixman-1-dev libpango1.0-dev libdrm-dev
-```
+**Debian/Ubuntu:** see
+[docs/QUICKSTART.md](docs/QUICKSTART.md#1-install-build-dependencies) for the
+package list. wlroots 0.19 isn't installed separately: meson builds the
+pinned version from `subprojects/` (network access needed on the first
+`meson setup`).
 
 **Optional (XWayland support):**
 ```sh

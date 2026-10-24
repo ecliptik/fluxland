@@ -180,6 +180,7 @@ struct wm_view {
  * Must be called after wm_server_init().
  */
 void wm_view_init(struct wm_server *server);
+void wm_view_finish(struct wm_server *server);
 
 /*
  * Find the topmost view at the given layout coordinates.

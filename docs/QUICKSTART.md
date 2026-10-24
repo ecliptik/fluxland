@@ -1,10 +1,13 @@
 # Quick Start Guide
 
-Test-drive fluxland on **Debian Trixie** (13) or newer.
+Test-drive fluxland on **Debian Trixie** (13), **Ubuntu 24.04 / Linux Mint 22** or newer.
 
-> **⚠️ Linux Mint / Ubuntu 24.04 users:** These distributions ship wlroots 0.17,
-> but fluxland requires wlroots 0.18. See the [wlroots 0.18 installation section](#installing-wlroots-018-on-ubuntu-2404linux-mint-223)
-> below for workarounds.
+fluxland is built against wlroots 0.19, which it builds itself: the first
+`meson setup` downloads the pinned wlroots release (and, on older
+distributions, the newer libdrm, pixman and wayland-protocols it needs)
+and links it in statically. You don't install wlroots yourself, but the
+first build needs network access (or run `meson subprojects download`
+beforehand).
 
 ---
 
@@ -14,69 +17,34 @@ Test-drive fluxland on **Debian Trixie** (13) or newer.
 
 ## 1. Install build dependencies
 
-### On Debian Trixie (13)
+### Debian Trixie (13), Ubuntu 24.04, Linux Mint 22 and newer
 
 ```sh
 sudo apt update
 sudo apt install -y \
-  meson ninja-build pkg-config gcc \
-  libwlroots-0.18-dev libwayland-dev wayland-protocols \
-  libxkbcommon-dev libinput-dev libpixman-1-dev \
-  libpango1.0-dev libdrm-dev
-```
-
-### Installing wlroots 0.18 on Ubuntu 24.04/Linux Mint 22.3
-
-Ubuntu 24.04 and Linux Mint 22.3 ship wlroots 0.17, but fluxland requires 0.18.
-
-**Option A: Build wlroots 0.18 from source** (recommended)
-
-```sh
-# Install dependencies
-sudo apt update
-sudo apt install -y \
-  meson ninja-build pkg-config gcc \
+  meson ninja-build pkg-config gcc git \
   libwayland-dev wayland-protocols \
-  libxkbcommon-dev libinput-dev libpixman-1-dev \
-  libdrm-dev libgbm-dev libseat-dev libudev-dev \
-  libvulkan-dev libvulkan-volk-dev glslang-tools \
-  libxcb1-dev libxcb-composite0-dev libxcb-render0-dev \
-  libxcb-xfixes0-dev hwdata
-
-# Clone and build wlroots 0.18
-git clone https://gitlab.freedesktop.org/wlroots/wlroots.git -b 0.18
-cd wlroots
-meson setup build --prefix=/usr/local --buildtype=release
-ninja -C build
-sudo ninja -C build install
-sudo ldconfig
-cd ..
+  libxkbcommon-dev libinput-dev libpixman-1-dev libdrm-dev \
+  libpango1.0-dev libcairo2-dev \
+  libegl-dev libgles-dev libgbm-dev libseat-dev libudev-dev \
+  libdisplay-info-dev libliftoff-dev hwdata liblcms2-dev \
+  libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev \
+  libxcb-composite0-dev libxcb-res0-dev libxcb-xfixes0-dev \
+  libxcb-render0-dev xwayland
 ```
 
-**Option B: Wait for distribution upgrade**
+The `libxcb-*` packages and `xwayland` are for running X11 applications.
+On Debian also install `libxcb-errors-dev` (readable X11 error messages;
+Ubuntu 24.04 doesn't have it).
+Where a distribution's libdrm, pixman, wayland-protocols, libdisplay-info
+or libliftoff is too old (or missing), meson builds the right version
+from `subprojects/`.
 
-Ubuntu 24.10+ and future Linux Mint releases will include wlroots 0.18.
+### Using a system wlroots instead
 
-**Option C: Use a PPA** (if available)
-
-Check [wlroots PPAs](https://launchpad.net/ubuntu/+ppas?name_filter=wlroots) for
-community-maintained packages. Use at your own risk.
-
-### XWayland support (optional - for running X11 apps)
-
-```sh
-sudo apt install -y xwayland libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev
-```
-
-### Verify wlroots version
-
-After installation, confirm you have wlroots 0.18:
-
-```sh
-pkg-config --modversion wlroots-0.18
-```
-
-Expected output: `0.18.x`
+If your distribution has wlroots 0.19 (`pkg-config --modversion
+wlroots-0.19`), meson uses it instead of building its own. To insist on
+the bundled one: `meson setup build --force-fallback-for=wlroots`.
 
 ### Useful runtime tools (recommended)
 
@@ -105,13 +73,13 @@ ninja -C build
 Verify everything works:
 
 ```sh
-ninja -C build test        # run all 53 test suites
+ninja -C build test        # run all the C test suites
 ```
 
-You should see all tests pass:
+You should see all tests pass (no `Fail`):
 
 ```
-Ok:                 53
+Ok:                 57
 Expected Fail:      0
 Fail:               0
 ```
@@ -132,7 +100,7 @@ sudo checkinstall --pkgname=fluxland \
   --backup=no \
   --deldoc=yes \
   --default \
-  ninja -C build install
+  meson install -C build --skip-subprojects
 ```
 
 This creates `fluxland_1.1.0-1_amd64.deb` in the current directory and
@@ -153,7 +121,7 @@ sudo dpkg -r fluxland
 If you prefer a direct install:
 
 ```sh
-sudo ninja -C build install
+sudo meson install -C build --skip-subprojects
 ```
 
 This installs:
@@ -334,8 +302,7 @@ Use this template:
 <!-- paste output of: cat /proc/driver/nvidia/version (if NVIDIA) -->
 
 **wlroots version:**
-<!-- paste output of: pkg-config --modversion wlroots-0.18 -->
-<!-- If you built from source: /usr/local/lib/pkgconfig/wlroots-0.18.pc -->
+<!-- paste output of: fluxland --version -->
 
 **Steps to reproduce:**
 1. Start fluxland with `fluxland -d` (debug mode)
@@ -377,7 +344,7 @@ uname -a >> /tmp/wm-bugreport.txt
 echo "=== GPU ===" >> /tmp/wm-bugreport.txt
 lspci | grep -i vga >> /tmp/wm-bugreport.txt
 echo "=== wlroots ===" >> /tmp/wm-bugreport.txt
-pkg-config --modversion wlroots-0.18 >> /tmp/wm-bugreport.txt
+fluxland --version >> /tmp/wm-bugreport.txt
 
 cat /tmp/wm-bugreport.txt
 ```

@@ -1236,15 +1236,6 @@ wlr_xdg_toplevel_send_close(struct wlr_xdg_toplevel *toplevel)
 }
 
 static void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
-	struct wlr_box *box)
-{
-	(void)surface;
-	box->x = 0; box->y = 0;
-	box->width = 800; box->height = 600;
-}
-
-static void
 wlr_seat_pointer_notify_enter(struct wlr_seat *seat,
 	struct wlr_surface *surf, double sx, double sy)
 {

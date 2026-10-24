@@ -279,8 +279,7 @@ wm_view_begin_interactive(struct wm_view *view,
 		server->grab_geobox.height = 0;
 	} else {
 		struct wlr_box geo;
-		wlr_xdg_surface_get_geometry(view->xdg_toplevel->base,
-			&geo);
+		geo = view->xdg_toplevel->base->geometry;
 
 		double border_x = (view->x + geo.x) +
 			((edges & WLR_EDGE_RIGHT) ? geo.width : 0);

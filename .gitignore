@@ -38,3 +38,7 @@ __pycache__/
 core
 core.*
 vgcore.*
+
+# Meson subprojects (fetched from their .wrap files)
+subprojects/*/
+subprojects/packagecache/

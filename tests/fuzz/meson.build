@@ -53,7 +53,7 @@ if have_fuzzer
   # --- fuzz_menu: menu file parser fuzzer ---
   executable(
     'fuzz_menu',
-    files('fuzz_menu.c', 'menu_stubs.c', '../../src/menu.c',
+    files('fuzz_menu.c', 'menu_stubs.c', 'view_stubs.c', '../../src/menu.c',
       '../../src/menu_parse.c', '../../src/menu_render.c',
       '../../src/pixel_buffer.c', '../../src/perf.c'),
     include_directories: fuzz_inc,
@@ -78,7 +78,7 @@ if have_fuzzer
   executable(
     'fuzz_rules',
     files('fuzz_rules.c', '../../src/rules.c',
-      '../../src/regex_guard.c'),
+      '../../src/regex_guard.c', 'view_stubs.c'),
     include_directories: fuzz_inc,
     c_args: fuzz_args,
     link_args: fuzz_link_args,

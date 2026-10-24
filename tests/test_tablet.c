@@ -449,8 +449,8 @@ wlr_scene_surface_try_from_buffer(struct wlr_scene_buffer *buffer)
 }
 
 static bool
-wlr_surface_accepts_tablet_v2(struct wlr_tablet_v2_tablet *tablet,
-	struct wlr_surface *surface)
+wlr_surface_accepts_tablet_v2(struct wlr_surface *surface,
+	struct wlr_tablet_v2_tablet *tablet)
 {
 	(void)tablet;
 	(void)surface;

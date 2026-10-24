@@ -483,7 +483,7 @@ wlr_scene_tree_from_node(struct wlr_scene_node *node)
 	return (struct wlr_scene_tree *)node;
 }
 
-static void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
+static void test_xdg_geometry(struct wlr_xdg_surface *surface,
 	struct wlr_box *box)
 {
 	(void)surface;
@@ -658,6 +658,7 @@ void wm_perf_probe_reset(struct wm_perf_probe *probe) {
 /* We need decoration.h declarations before including .c */
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_GEOMETRY_FN test_xdg_geometry
 #include "view_backend_stubs.c"
 
 #include "pixel_buffer.c"

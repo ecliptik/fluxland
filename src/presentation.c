@@ -21,7 +21,7 @@ void
 wm_presentation_init(struct wm_server *server)
 {
 	server->presentation = wlr_presentation_create(
-		server->wl_display, server->backend);
+		server->wl_display, server->backend, 2);
 	if (!server->presentation) {
 		wlr_log(WLR_ERROR, "%s", "failed to create wp-presentation-time");
 		return;

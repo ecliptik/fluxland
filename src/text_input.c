@@ -208,7 +208,7 @@ surface_layout_origin(struct wlr_surface *surface, int *lx, int *ly)
 	if (!wlr_scene_node_coords(&tree->node, lx, ly))
 		return false;
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(xs, &geo);
+	geo = xs->geometry;
 	*lx -= geo.x;
 	*ly -= geo.y;
 	return true;

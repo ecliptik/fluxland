@@ -188,6 +188,7 @@ struct wlr_xdg_surface {
 	struct wlr_surface *surface;
 	void *data;
 	bool initial_commit;
+	struct wlr_box geometry;
 };
 
 struct wlr_xdg_toplevel {
@@ -486,15 +487,6 @@ wlr_xwayland_surface_configure(struct wlr_xwayland_surface *surface,
 }
 
 /* XDG shell stubs */
-static struct wlr_box g_xdg_geometry;
-
-static void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
-	struct wlr_box *box)
-{
-	(void)surface;
-	*box = g_xdg_geometry;
-}
 
 static uint32_t
 wlr_xdg_toplevel_set_tiled(struct wlr_xdg_toplevel *toplevel,

@@ -12,5 +12,6 @@ struct wm_server;
 
 /* Initialize wlr-gamma-control-v1 protocol */
 void wm_gamma_control_init(struct wm_server *server);
+void wm_gamma_control_finish(struct wm_server *server);
 
 #endif /* WM_GAMMA_CONTROL_H */

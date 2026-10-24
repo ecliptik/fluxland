@@ -1,0 +1,4 @@
+[wrap-git]
+url = https://gitlab.freedesktop.org/pixman/pixman.git
+revision = pixman-0.46.4
+depth = 1

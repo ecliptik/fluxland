@@ -618,6 +618,9 @@ wm_server_destroy(struct wm_server *server)
 	wm_tablet_finish(server);
 	wm_text_input_finish(server);
 	wm_protocols_finish(server);
+	wm_gamma_control_finish(server);
+	wm_xdg_decoration_finish(server);
+	wm_view_finish(server);
 	wm_output_management_finish(server);
 	wm_idle_finish(server);
 	wm_command_finish(server);

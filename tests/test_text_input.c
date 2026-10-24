@@ -320,8 +320,11 @@ wlr_scene_node_coords(struct wlr_scene_node *n, int *x, int *y)
 /* The focused window: its xdg tree at (500,300), geometry offset (10,5) */
 struct wlr_xdg_surface {
 	void *data;
+	struct wlr_box geometry;
 };
-static struct wlr_xdg_surface g_window_xdg;
+static struct wlr_xdg_surface g_window_xdg = {
+	.geometry = {10, 5, 800, 600},
+};
 static struct wlr_scene_tree g_window_tree;
 static struct wlr_surface *g_window_surface;
 
@@ -334,12 +337,6 @@ static struct wlr_xdg_surface *
 wlr_xdg_surface_try_from_wlr_surface(struct wlr_surface *surface)
 {
 	return surface && surface == g_window_surface ? &g_window_xdg : NULL;
-}
-static void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *xs, struct wlr_box *b)
-{
-	(void)xs;
-	*b = (struct wlr_box){10, 5, 800, 600};
 }
 
 /* --- Stub tracking globals --- */

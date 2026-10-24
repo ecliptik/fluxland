@@ -157,9 +157,9 @@ wlr_fractional_scale_manager_v1_create(struct wl_display *display,
 
 static struct wlr_presentation *
 wlr_presentation_create(struct wl_display *display,
-	struct wlr_backend *backend)
+	struct wlr_backend *backend, uint32_t version)
 {
-	(void)display; (void)backend;
+	(void)display; (void)backend; (void)version;
 	g_presentation_create_count++;
 	if (g_presentation_returns_null)
 		return NULL;

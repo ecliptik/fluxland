@@ -87,3 +87,10 @@ wm_gamma_control_init(struct wm_server *server)
 
 	wlr_log(WLR_INFO, "%s", "gamma control protocol enabled");
 }
+
+void
+wm_gamma_control_finish(struct wm_server *server)
+{
+	if (server->gamma_set_gamma.notify)
+		wl_list_remove(&server->gamma_set_gamma.link);
+}

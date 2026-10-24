@@ -277,7 +277,7 @@ struct wlr_xdg_surface {
 	enum wlr_xdg_surface_role role;
 	struct wlr_xdg_popup *popup;
 	struct wl_resource *resource;
-	/* not needed: events are on surface in 0.18 */
+	struct wlr_box geometry;
 };
 
 struct wlr_xdg_toplevel_requested {
@@ -988,13 +988,6 @@ wlr_xdg_toplevel_send_close(struct wlr_xdg_toplevel *tl)
 	(void)tl;
 }
 
-static void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
-	struct wlr_box *box)
-{
-	box->x = 0; box->y = 0;
-	box->width = 800; box->height = 600;
-}
 
 /* Surface -> xdg_surface lookups registered by popup tests */
 static struct {
@@ -1501,6 +1494,7 @@ setup_mock_view(int idx, struct wm_workspace *ws)
 
 	test_xdg_surfaces[idx].surface = &test_surfaces[idx];
 	test_xdg_surfaces[idx].initialized = true;
+	test_xdg_surfaces[idx].geometry = (struct wlr_box){0, 0, 800, 600};
 	test_toplevels[idx].base = &test_xdg_surfaces[idx];
 	test_toplevels[idx].width = 800;
 	test_toplevels[idx].height = 600;
@@ -1766,7 +1760,7 @@ test_view_get_geometry(void)
 
 	assert(geo.x == 150);
 	assert(geo.y == 250);
-	/* wlr_xdg_surface_get_geometry stub returns 800x600 */
+	/* the mock window geometry is 800x600 */
 	assert(geo.width == 800);
 	assert(geo.height == 600);
 
@@ -1916,7 +1910,7 @@ test_view_resize_by(void)
 	init_test_server();
 	setup_mock_view(0, &test_workspace);
 
-	/* wlr_xdg_surface_get_geometry returns 800x600 */
+	/* the mock window geometry is 800x600 */
 	/* wlr_xdg_toplevel_set_size stub sets width/height */
 	wm_view_resize_by(&test_views[0], 100, -50);
 
@@ -2797,8 +2791,7 @@ test_begin_interactive_resize_mode(void)
 	assert(test_server.cursor_mode == WM_CURSOR_RESIZE);
 	assert(test_server.resize_edges ==
 		(WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM));
-	/* grab_geobox should be set from wlr_xdg_surface_get_geometry
-	 * (stub returns 0,0,800,600) plus view offset */
+	/* grab_geobox: the window geometry (0,0,800,600) plus view offset */
 	assert(test_server.grab_geobox.x == 100);
 	assert(test_server.grab_geobox.y == 200);
 	assert(test_server.grab_geobox.width == 800);

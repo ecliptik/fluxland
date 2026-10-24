@@ -37,8 +37,7 @@ handle_drm_lease_request(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	wlr_log(WLR_INFO, "drm lease: granted lease with %zu connectors",
-		lease->n_connectors);
+	wlr_log(WLR_INFO, "%s", "drm lease: granted lease");
 }
 
 void

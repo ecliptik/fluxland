@@ -19,6 +19,7 @@
 #include "keybind.h"
 #include "server.h"
 #include "session_env.h"
+#include <wlr/version.h>
 #include "validate.h"
 
 static const char usage[] = N_(
@@ -78,7 +79,8 @@ main(int argc, char *argv[])
 			ipc_no_exec = true;
 			break;
 		case 'v':
-			printf("fluxland %s\n", FLUXLAND_VERSION);
+			printf("fluxland %s (wlroots %s)\n", FLUXLAND_VERSION,
+				WLR_VERSION_STR);
 			return 0;
 		case 'l':
 			wm_keybind_list_actions();

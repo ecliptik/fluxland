@@ -38,7 +38,7 @@ xdg_view_surface(struct wm_view *view)
 static void
 xdg_view_content_geometry(struct wm_view *view, struct wlr_box *geo)
 {
-	wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, geo);
+	*geo = view->xdg_toplevel->base->geometry;
 }
 
 static void
@@ -434,7 +434,7 @@ popup_unconstrain(struct wm_popup *p)
 		output = layer->output;
 	} else if (xs && xs->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 		struct wlr_box geo;
-		wlr_xdg_surface_get_geometry(xs, &geo);
+		geo = xs->geometry;
 		output = wlr_output_layout_output_at(p->server->output_layout,
 			lx + geo.width / 2.0, ly + geo.height / 2.0);
 	}
@@ -527,4 +527,11 @@ wm_view_init(struct wm_server *server)
 	server->new_xdg_popup.notify = handle_new_xdg_popup;
 	wl_signal_add(&server->xdg_shell->events.new_popup,
 		&server->new_xdg_popup);
+}
+
+void
+wm_view_finish(struct wm_server *server)
+{
+	wl_list_remove(&server->new_xdg_toplevel.link);
+	wl_list_remove(&server->new_xdg_popup.link);
 }

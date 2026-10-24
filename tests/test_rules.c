@@ -23,6 +23,10 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_GEOMETRY_FN test_xdg_geometry
+struct wlr_xdg_surface;
+struct wlr_box;
+void test_xdg_geometry(struct wlr_xdg_surface *surface, struct wlr_box *box);
 #define VIEW_STUB_PARENT
 #define VIEW_STUB_SET_FULLSCREEN
 #define VIEW_STUB_SET_MAXIMIZED
@@ -75,11 +79,11 @@ wlr_output_layout_get_box(struct wlr_output_layout *layout,
 	*box = g_layout_box;
 }
 
-/* Global controlling what wlr_xdg_surface_get_geometry returns */
+/* Global controlling what test_xdg_geometry returns */
 static struct wlr_box g_xdg_geo = { .x = 0, .y = 0, .width = 200, .height = 150 };
 
 void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
+test_xdg_geometry(struct wlr_xdg_surface *surface,
 	struct wlr_box *box)
 {
 	(void)surface;

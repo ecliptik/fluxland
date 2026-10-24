@@ -3,10 +3,22 @@ project(
   'c',
   version: '1.1.0',
   license: 'MIT',
-  meson_version: '>=0.60.0',
+  meson_version: '>=1.3.0',
   default_options: [
     'c_std=c17',
     'warning_level=3',
+    # Libraries built from subprojects/ (wlroots, and on older
+    # distributions its newer dependencies) are linked in statically,
+    # so nothing next to the system copies gets installed.
+    'wayland:default_library=static',
+    'wayland:documentation=false',
+    'wayland:tests=false',
+    'pixman:default_library=static',
+    'pixman:tests=disabled',
+    'libdrm:default_library=static',
+    'libdisplay-info:default_library=static',
+    'libliftoff:default_library=static',
+    'libxkbcommon:default_library=static',
   ],
 )
 
@@ -78,9 +90,19 @@ endif
 
 # --- Core dependencies ---
 
+# wlroots changes its API every release, so fluxland targets one series.
+# A system wlroots 0.19 is used when present; otherwise the pinned
+# subproject (subprojects/wlroots.wrap) is built and linked statically.
 wlroots = dependency(
-  'wlroots-0.18',
-  version: ['>=0.18.0', '<0.19.0'],
+  'wlroots-0.19',
+  version: ['>=0.19.0', '<0.20.0'],
+  fallback: ['wlroots', 'wlroots'],
+  default_options: [
+    'default_library=static',
+    'examples=false',
+    'renderers=gles2',
+    'xwayland=enabled',
+  ],
 )
 
 wayland_server = dependency('wayland-server', version: '>=1.22.0')
@@ -98,7 +120,9 @@ xwayland_opt = get_option('xwayland')
 have_xwayland = false
 if not xwayland_opt.disabled()
   # Check that wlroots was built with xwayland support
-  have_xwayland = cc.has_header('wlr/xwayland/xwayland.h', dependencies: wlroots)
+  have_xwayland = wlroots.get_variable(
+    pkgconfig: 'have_xwayland', internal: 'have_xwayland',
+    default_value: 'false') == 'true'
   if not have_xwayland and xwayland_opt.enabled()
     error('XWayland support requested but wlroots was not built with xwayland')
   endif

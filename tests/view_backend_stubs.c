@@ -29,10 +29,19 @@ wm_view_surface(struct wm_view *view)
 #endif
 
 #ifdef VIEW_STUB_CONTENT_GEOMETRY
+/*
+ * The xdg window geometry. A test whose xdg_surface stand-in has no
+ * geometry field supplies a function instead: define
+ * VIEW_STUB_GEOMETRY_FN to its name.
+ */
 void
 wm_view_content_geometry(struct wm_view *view, struct wlr_box *geo)
 {
-	wlr_xdg_surface_get_geometry(view->xdg_toplevel->base, geo);
+#ifdef VIEW_STUB_GEOMETRY_FN
+	VIEW_STUB_GEOMETRY_FN(view->xdg_toplevel->base, geo);
+#else
+	*geo = view->xdg_toplevel->base->geometry;
+#endif
 }
 #endif
 

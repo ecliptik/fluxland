@@ -1,15 +1,15 @@
 # Fluxland
 
-Fluxbox-inspired Wayland compositor built on wlroots 0.18. C17, Meson, MIT license. Version 1.1.0.
+Fluxbox-inspired Wayland compositor built on wlroots 0.19 (pinned subproject, `subprojects/wlroots.wrap`; a system wlroots-0.19 is used if present). C17, Meson, MIT license. Version 1.1.0.
 
 ## Build & Test
 
 ```sh
 meson setup build
 ninja -C build
-meson test -C build --print-errorlogs   # 53 C unit tests
-python3 -m pytest tests/ui/ --timeout=30 # 174 Python UI tests
-sudo ninja -C build install
+meson test -C build --print-errorlogs   # C unit + integration tests
+python3 -m pytest tests/ui/ --timeout=30 # Python UI tests (headless: FLUXLAND_TEST_HEADLESS=1)
+sudo meson install -C build --skip-subprojects
 ```
 
 Build options: `-Dxwayland=enabled`, `-Dasan=true`, `-Dubsan=true`

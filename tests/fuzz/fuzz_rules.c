@@ -34,6 +34,7 @@
  * Stubs for compositor functions referenced in rules.c but not
  * exercised by the parser-only fuzz target.
  */
+struct wm_view *wm_view_parent(struct wm_view *v) { (void)v; return NULL; }
 void wm_view_set_sticky(struct wm_view *v, bool s)
 	{ (void)v; (void)s; }
 void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)

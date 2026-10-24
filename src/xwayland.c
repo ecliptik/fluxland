@@ -282,7 +282,7 @@ xw_set_activated(struct wm_view *view, bool activated)
 static void
 xw_set_maximized(struct wm_view *view, bool maximized)
 {
-	wlr_xwayland_surface_set_maximized(view->xsurface, maximized);
+	wlr_xwayland_surface_set_maximized(view->xsurface, maximized, maximized);
 }
 
 static void
@@ -430,7 +430,7 @@ handle_map(struct wl_listener *listener, void *data)
 		cls == WM_XW_SPLASH || cls == WM_XW_POPUP ||
 		cls == WM_XW_DESKTOP;
 	view->no_focus = cls == WM_XW_POPUP ||
-		wlr_xwayland_icccm_input_model(xs) ==
+		wlr_xwayland_surface_icccm_input_model(xs) ==
 		WLR_ICCCM_INPUT_MODEL_NONE;
 	if (cls == WM_XW_POPUP || cls == WM_XW_SPLASH ||
 	    cls == WM_XW_DESKTOP) {
@@ -847,7 +847,7 @@ handle_unmanaged_map(struct wl_listener *listener, void *data)
 	unmanaged_set_position(u);
 
 	/* Menus of the focused app may take the keyboard (ICCCM) */
-	if (wlr_xwayland_or_surface_wants_focus(xs)) {
+	if (wlr_xwayland_surface_override_redirect_wants_focus(xs)) {
 		struct wlr_keyboard *kb = wlr_seat_get_keyboard(server->seat);
 		wlr_seat_keyboard_notify_enter(server->seat, xs->surface,
 			kb ? kb->keycodes : NULL, kb ? kb->num_keycodes : 0,

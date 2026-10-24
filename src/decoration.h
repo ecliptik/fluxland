@@ -219,5 +219,6 @@ void wm_decoration_refresh_geometry(struct wm_decoration *decoration,
  * Negotiates server-side decorations with clients.
  */
 void wm_xdg_decoration_init(struct wm_server *server);
+void wm_xdg_decoration_finish(struct wm_server *server);
 
 #endif /* WM_DECORATION_H */

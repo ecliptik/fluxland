@@ -364,11 +364,12 @@ wlr_xwayland_surface_close(struct wlr_xwayland_surface *xs)
 }
 
 static void
-wlr_xwayland_surface_set_maximized(struct wlr_xwayland_surface *xs, bool m)
+wlr_xwayland_surface_set_maximized(struct wlr_xwayland_surface *xs,
+	bool horz, bool vert)
 {
 	(void)xs;
 	g_set_max_count++;
-	g_last_max = m;
+	g_last_max = horz && vert;
 }
 
 static void
@@ -388,13 +389,14 @@ wlr_xwayland_surface_set_minimized(struct wlr_xwayland_surface *xs, bool m)
 }
 
 static enum wlr_xwayland_icccm_input_model
-wlr_xwayland_icccm_input_model(const struct wlr_xwayland_surface *xs)
+wlr_xwayland_surface_icccm_input_model(const struct wlr_xwayland_surface *xs)
 {
 	return xs->input_model;
 }
 
 static bool
-wlr_xwayland_or_surface_wants_focus(const struct wlr_xwayland_surface *xs)
+wlr_xwayland_surface_override_redirect_wants_focus(
+	const struct wlr_xwayland_surface *xs)
 {
 	return xs->or_wants_focus;
 }

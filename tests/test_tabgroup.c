@@ -184,7 +184,7 @@ wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y)
 }
 
 static void
-wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
+test_xdg_geometry(struct wlr_xdg_surface *surface,
 	struct wlr_box *box)
 {
 	/* Return a fixed geometry for the active view */
@@ -231,6 +231,7 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 #include "tabgroup.h"
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_CONTENT_GEOMETRY
+#define VIEW_STUB_GEOMETRY_FN test_xdg_geometry
 #define VIEW_STUB_SET_SIZE
 #define VIEW_STUB_SURFACE
 #include "view_backend_stubs.c"

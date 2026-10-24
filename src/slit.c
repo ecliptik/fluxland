@@ -386,7 +386,7 @@ handle_native_slit_client_commit(struct wl_listener *listener, void *data)
 		return;
 
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(client->xdg_toplevel->base, &geo);
+	geo = client->xdg_toplevel->base->geometry;
 
 	int new_w = geo.width > 0 ? geo.width : client->width;
 	int new_h = geo.height > 0 ? geo.height : client->height;
@@ -744,7 +744,7 @@ wm_slit_add_native_client(struct wm_slit *slit,
 
 	/* Get initial geometry from XDG surface */
 	struct wlr_box geo;
-	wlr_xdg_surface_get_geometry(toplevel->base, &geo);
+	geo = toplevel->base->geometry;
 	client->width = geo.width > 0 ? geo.width : 64;
 	client->height = geo.height > 0 ? geo.height : 64;
 
