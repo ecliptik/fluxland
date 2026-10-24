@@ -17,6 +17,7 @@
 #include "config.h"
 #include "ipc.h"
 #include "output.h"
+#include "ext_workspace.h"
 #include "server.h"
 #include "toolbar.h"
 #include "util.h"
@@ -396,6 +397,7 @@ wm_workspace_switch(struct wm_server *server, int index)
 		wm_ipc_broadcast_event(&server->ipc,
 			WM_IPC_EVENT_WORKSPACE, buf);
 	}
+	wm_ext_workspace_schedule(server);
 
 	/*
 	 * Focus the topmost view on the new workspace.
@@ -444,6 +446,9 @@ wm_view_move_to_workspace(struct wm_view *view,
 	struct wm_workspace *workspace)
 {
 	assert(view);
+	/* An urgent window may change which workspace is urgent */
+	if (view->urgent)
+		wm_ext_workspace_schedule(view->server);
 	assert(workspace);
 
 	if (view->workspace == workspace) {
@@ -579,6 +584,7 @@ wm_workspace_add(struct wm_server *server)
 
 	server->workspace_count++;
 	wm_toolbar_update_workspace(server->toolbar);
+	wm_ext_workspace_schedule(server);
 }
 
 void
@@ -629,6 +635,59 @@ wm_workspace_remove_last(struct wm_server *server)
 	workspace_destroy(last);
 	server->workspace_count--;
 	wm_toolbar_update_workspace(server->toolbar);
+	wm_ext_workspace_schedule(server);
+}
+
+void
+wm_workspace_remove(struct wm_server *server, int index)
+{
+	int count = server->workspace_count;
+	if (count <= 1 || index < 0 || index >= count)
+		return;
+	if (index == count - 1) {
+		wm_workspace_remove_last(server);
+		return;
+	}
+
+	int cur = server->current_workspace ?
+		server->current_workspace->index : 0;
+	struct wm_workspace *gone = wm_workspace_get(server, index);
+	struct wm_workspace *into = wm_workspace_get(server,
+		index > 0 ? index - 1 : index + 1);
+	if (!gone || !into)
+		return;
+
+	/* Its windows join the neighbouring workspace */
+	struct wm_view *view, *tmp;
+	wl_list_for_each_safe(view, tmp, &server->views, link) {
+		if (view->workspace == gone)
+			wm_view_move_to_workspace(view, into);
+	}
+
+	/* The later workspaces move down a place, windows and names */
+	for (int j = index; j < count - 1; j++) {
+		struct wm_workspace *ws = wm_workspace_get(server, j);
+		struct wm_workspace *next = wm_workspace_get(server, j + 1);
+		if (!ws || !next)
+			break;
+		wl_list_for_each_safe(view, tmp, &server->views, link) {
+			if (view->workspace == next)
+				wm_view_move_to_workspace(view, ws);
+		}
+		free(ws->name);
+		ws->name = next->name;
+		next->name = NULL;
+	}
+
+	/* The last one is empty now */
+	wm_workspace_remove_last(server);
+
+	/* Keep showing what was shown */
+	int shown = cur > index ? cur - 1 :
+		(cur == index && index > 0 ? index - 1 : cur);
+	wm_workspace_switch(server, shown);
+	wm_toolbar_update_workspace(server->toolbar);
+	wm_ext_workspace_schedule(server);
 }
 
 void
@@ -662,6 +721,7 @@ wm_workspace_set_name(struct wm_server *server, const char *name)
 	ws->name = strdup(name);
 
 	wm_toolbar_update_workspace(server->toolbar);
+	wm_ext_workspace_schedule(server);
 }
 
 void

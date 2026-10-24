@@ -25,6 +25,7 @@
 #include "ipc.h"
 #include "output.h"
 #include "rules.h"
+#include "ext_workspace.h"
 #include "server.h"
 #include "text_input.h"
 #include "toolbar.h"
@@ -100,6 +101,7 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 	if (view->urgent) {
 		view->urgent = false;
 		wm_toolbar_update_iconbar(server->toolbar);
+		wm_ext_workspace_schedule(server);
 	}
 
 	/* Deactivate the previously focused toplevel */
@@ -605,6 +607,7 @@ wm_view_set_urgent(struct wm_view *view, bool urgent)
 		return;
 	view->urgent = urgent;
 	wm_toolbar_update_iconbar(view->server->toolbar);
+	wm_ext_workspace_schedule(view->server);
 }
 
 void

@@ -582,6 +582,9 @@ wm_view_destroy_common(struct wm_view *view)
 	}
 
 	wm_view_set_icon(view, NULL, false);
+	free(view->tag);
+	view->tag = NULL;
+	view->capture_source = NULL; /* destroyed with the scene tree */
 	if (view == view->server->focused_view)
 		view->server->focused_view = NULL;
 	if (view == view->server->grabbed_view) {

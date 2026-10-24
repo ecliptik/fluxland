@@ -19,6 +19,17 @@ project(
     'libdisplay-info:default_library=static',
     'libliftoff:default_library=static',
     'libxkbcommon:default_library=static',
+    'libxkbcommon:enable-tools=false',
+    'libxkbcommon:enable-docs=false',
+    'libxkbcommon:enable-wayland=false',
+    'libxkbcommon:enable-bash-completion=false',
+    # Compose tables are the system's, whatever the prefix
+    'libxkbcommon:x-locale-root=/usr/share/X11/locale',
+    'libdrm:tests=false',
+    'libdrm:man-pages=disabled',
+    'libdrm:valgrind=disabled',
+    'libdrm:cairo-tests=disabled',
+    'wayland-protocols:tests=false',
   ],
 )
 
@@ -91,11 +102,24 @@ endif
 # --- Core dependencies ---
 
 # wlroots changes its API every release, so fluxland targets one series.
-# A system wlroots 0.19 is used when present; otherwise the pinned
+# A system wlroots 0.20 is used when present; otherwise the pinned
 # subproject (subprojects/wlroots.wrap) is built and linked statically.
+# wlroots' pixman renderer needs a newer pixman than its top-level check
+# (and than Debian 13 has); resolve it first so the fallback is used.
+# The same libwayland as wlroots (built from subprojects/ where the
+# system's is older than wlroots 0.20 needs)
+wayland_server = dependency('wayland-server', version: '>=1.24.0',
+  fallback: 'wayland', default_options: ['tests=false', 'documentation=false'])
+pixman = dependency('pixman-1', version: '>=0.46.0',
+  fallback: ['pixman', 'idep_pixman'])
+# Protocol XML for fluxland's own protocol code and tests: the same
+# wayland-protocols wlroots builds against (a direct subproject when the
+# system one is too old, so its files may be used here)
+wayland_protos = dependency('wayland-protocols', version: '>=1.47',
+  fallback: 'wayland-protocols')
 wlroots = dependency(
-  'wlroots-0.19',
-  version: ['>=0.19.0', '<0.20.0'],
+  'wlroots-0.20',
+  version: ['>=0.20.0', '<0.21.0'],
   fallback: ['wlroots', 'wlroots'],
   default_options: [
     'default_library=static',
@@ -105,11 +129,8 @@ wlroots = dependency(
   ],
 )
 
-wayland_server = dependency('wayland-server', version: '>=1.22.0')
-wayland_protos = dependency('wayland-protocols', version: '>=1.32')
 xkbcommon = dependency('xkbcommon')
 input = dependency('libinput', version: '>=1.14')
-pixman = dependency('pixman-1')
 pangocairo = dependency('pangocairo')
 libdrm = dependency('libdrm')
 math = cc.find_library('m')
@@ -230,6 +251,7 @@ wm_sources = files(
   'src/server.c',
   'src/session_env.c',
   'src/icon.c',
+  'src/ext_workspace.c',
   'src/output.c',
   'src/output_config.c',
   'src/pixel_buffer.c',
@@ -381,6 +403,9 @@ if get_option('wlcs')
     'src/validate.c',
     'src/wallpaper.c',
     'src/xwayland.c',
+    'src/icon.c',
+    'src/ext_workspace.c',
+    'src/session_env.c',
   )
 
   if have_systray

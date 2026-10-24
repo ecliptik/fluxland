@@ -240,6 +240,22 @@ test_pattern_current_focused(void)
 	printf("  PASS: pattern_current_focused\n");
 }
 
+/* fluxland's (tag=...): the xdg-toplevel-tag the app gave the window */
+static void
+test_pattern_tag(void)
+{
+	reset();
+	struct wm_view *v = add_view(0, "org.gnome.Nautilus", "Home", &ws0);
+	assert(!matches("(tag=main)", v));
+	assert(matches("(tag!=main)", v));
+	v->tag = "main";
+	assert(matches("(tag=main)", v));
+	assert(matches("(tag=ma.*)", v));
+	assert(!matches("(tag=mai)", v));  /* anchored */
+	v->tag = NULL;
+	printf("  PASS: pattern_tag\n");
+}
+
 static void
 test_pattern_states_and_layer(void)
 {
@@ -597,6 +613,7 @@ main(void)
 	test_pattern_current_workspace();
 	test_pattern_current_focused();
 	test_pattern_states_and_layer();
+	test_pattern_tag();
 	test_pattern_glob_fallback_and_errors();
 	test_pattern_unknown_property_is_name_regex();
 	test_window_list_parse();

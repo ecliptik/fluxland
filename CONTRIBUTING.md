@@ -15,7 +15,7 @@ Install the following development dependencies:
 
 **Debian/Ubuntu:** see
 [docs/QUICKSTART.md](docs/QUICKSTART.md#1-install-build-dependencies) for the
-package list. wlroots 0.19 isn't installed separately: meson builds the
+package list. wlroots 0.20 isn't installed separately: meson builds the
 pinned version from `subprojects/` (network access needed on the first
 `meson setup`).
 

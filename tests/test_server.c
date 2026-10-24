@@ -1180,6 +1180,9 @@ static void wm_output_management_finish(struct wm_server *s) { (void)s; }
 static void wm_screencopy_init(struct wm_server *s) { (void)s; }
 static void wm_gamma_control_init(struct wm_server *s) { (void)s; }
 static void wm_gamma_control_finish(struct wm_server *s) { (void)s; }
+static void wm_ext_workspace_init(struct wm_server *s) { (void)s; }
+static void wm_ext_workspace_finish(struct wm_server *s) { (void)s; }
+static void wm_ext_workspace_schedule(struct wm_server *s) { (void)s; }
 static void wm_xdg_decoration_finish(struct wm_server *s) { (void)s; }
 static void wm_view_finish(struct wm_server *s) { (void)s; }
 static void wm_fractional_scale_init(struct wm_server *s) { (void)s; }

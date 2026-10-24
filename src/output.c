@@ -25,6 +25,7 @@
 #include "output_config.h"
 #include "slit.h"
 #include "session_lock.h"
+#include "ext_workspace.h"
 #include "server.h"
 #include "toolbar.h"
 #include "util.h"
@@ -88,6 +89,7 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 	/* Panels and backgrounds on it go away with it */
 	wm_layer_shell_output_destroyed(server, wlr_output);
 	wm_foreign_toplevel_output_destroyed(server, wlr_output);
+	wm_ext_workspace_output_leave(server, wlr_output);
 
 	/*
 	 * Leaving the layout moves windows, the toolbar and the slit to
@@ -391,6 +393,7 @@ handle_new_output(struct wl_listener *listener, void *data)
 
 	/* Offer output for DRM leasing (VR headsets) */
 	wm_drm_lease_offer_output(server, wlr_output);
+	wm_ext_workspace_output_enter(server, wlr_output);
 
 	/* Layer surfaces, toolbar and slit (may be the first output) */
 	handle_layout_change(&server->output_layout_change, NULL);

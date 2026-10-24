@@ -618,6 +618,8 @@ struct wm_view {
 	bool modal;
 	struct _cairo_surface *icon;
 	bool icon_from_client;
+	char *tag;
+	struct wlr_ext_image_capture_source_v1 *capture_source;
 	struct wm_workspace *workspace;
 	bool sticky;
 	enum wm_view_layer layer;
@@ -1337,6 +1339,9 @@ wm_icon_for_app_id(const char *app_id, int size)
 	return NULL;
 }
 #define WM_ICON_H
+#define WM_EXT_WORKSPACE_H
+static int g_ext_ws_schedule_count;
+static void wm_ext_workspace_schedule(struct wm_server *s) { (void)s; g_ext_ws_schedule_count++; }
 
 /* --- Stubs for the xdg backend (view_xdg.c) and kill path --- */
 

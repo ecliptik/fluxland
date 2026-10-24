@@ -294,7 +294,7 @@ Distribute updated config to subsystems
 | Component | Technology |
 |-----------|-----------|
 | Display protocol | Wayland |
-| Compositor library | wlroots 0.19 (bundled subproject) |
+| Compositor library | wlroots 0.20 (bundled subproject) |
 | Language | C (C17) |
 | Build system | Meson + Ninja |
 | Input handling | libinput (via wlroots) |

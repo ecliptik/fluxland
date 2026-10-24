@@ -1,4 +1,4 @@
 [wrap-git]
 url = https://github.com/xkbcommon/libxkbcommon.git
-revision = xkbcommon-1.13.2
+revision = xkbcommon-1.13.1
 depth = 1

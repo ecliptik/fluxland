@@ -339,6 +339,15 @@ main(void)
 
 	if (session)
 		ext_image_copy_capture_session_v1_destroy(session);
+	if (c.capture_mgr)
+		ext_image_copy_capture_manager_v1_destroy(c.capture_mgr);
+	if (c.source_mgr)
+		ext_output_image_capture_source_manager_v1_destroy(c.source_mgr);
+	if (c.output)
+		wl_output_destroy(c.output);
+	if (c.shm)
+		wl_shm_destroy(c.shm);
+	wl_registry_destroy(c.registry);
 	wl_display_roundtrip(c.display);
 	wl_display_disconnect(c.display);
 	harness_stop_compositor(pid);

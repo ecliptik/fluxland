@@ -35,6 +35,10 @@
 #include <wlr/types/wlr_xdg_dialog_v1.h>
 #include <wlr/types/wlr_xdg_system_bell_v1.h>
 #include <wlr/types/wlr_xdg_toplevel_icon_v1.h>
+#include <wlr/types/wlr_xdg_toplevel_tag_v1.h>
+#include <wlr/types/wlr_color_representation_v1.h>
+#include <wlr/types/wlr_fixes.h>
+#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_xdg_foreign_registry.h>
 #include <wlr/types/wlr_xdg_foreign_v1.h>
 #include <wlr/types/wlr_xdg_foreign_v2.h>
@@ -320,6 +324,52 @@ handle_set_toplevel_icon(struct wl_listener *listener, void *data)
 	}
 }
 
+/* --- Window capture (ext-foreign-toplevel-image-capture-source) --- */
+
+static void
+handle_toplevel_capture_request(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, toplevel_capture_request);
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request
+		*req = data;
+
+	struct wm_view *view = NULL, *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->ext_toplevel_handle == req->toplevel_handle) {
+			view = v;
+			break;
+		}
+	}
+	/* Unknown window: the request still needs a (dead) source */
+	if (view && !view->capture_source)
+		view->capture_source =
+			wlr_ext_image_capture_source_v1_create_with_scene_node(
+				&view->scene_tree->node,
+				wl_display_get_event_loop(server->wl_display),
+				server->allocator, server->renderer);
+	wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(
+		req, view ? view->capture_source : NULL);
+}
+
+/* --- Window tags (xdg-toplevel-tag-v1) --- */
+
+static void
+handle_set_toplevel_tag(struct wl_listener *listener, void *data)
+{
+	struct wm_server *server =
+		wl_container_of(listener, server, set_toplevel_tag);
+	struct wlr_xdg_toplevel_tag_manager_v1_set_tag_event *event = data;
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->xdg_toplevel != event->toplevel)
+			continue;
+		free(v->tag);
+		v->tag = event->tag ? strdup(event->tag) : NULL;
+		return;
+	}
+}
+
 /* --- Tearing control --- */
 
 static void
@@ -572,7 +622,7 @@ wm_protocols_init(struct wm_server *server)
 
 	/* Cursor shape (wp-cursor-shape-v1) */
 	server->cursor_shape_mgr =
-		wlr_cursor_shape_manager_v1_create(server->wl_display, 1);
+		wlr_cursor_shape_manager_v1_create(server->wl_display, 2);
 
 	server->cursor_shape_request.notify = handle_cursor_shape_request;
 	wl_signal_add(&server->cursor_shape_mgr->events.request_set_shape,
@@ -622,6 +672,35 @@ wm_protocols_init(struct wm_server *server)
 		wl_signal_add(&server->system_bell->events.ring,
 			&server->system_bell_ring);
 	}
+
+	/* Window capture for portals and recorders (wlroots 0.20) */
+	server->toplevel_capture_source_mgr =
+		wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(
+			server->wl_display, 1);
+	if (server->toplevel_capture_source_mgr) {
+		server->toplevel_capture_request.notify =
+			handle_toplevel_capture_request;
+		wl_signal_add(
+			&server->toplevel_capture_source_mgr->events.new_request,
+			&server->toplevel_capture_request);
+	}
+
+	/* Window tags (xdg-toplevel-tag-v1): matched by (tag=...) */
+	server->toplevel_tag_mgr =
+		wlr_xdg_toplevel_tag_manager_v1_create(server->wl_display, 1);
+	if (server->toplevel_tag_mgr) {
+		server->set_toplevel_tag.notify = handle_set_toplevel_tag;
+		wl_signal_add(&server->toplevel_tag_mgr->events.set_tag,
+			&server->set_toplevel_tag);
+	}
+
+	/* YUV colour coefficients and alpha modes the renderer supports */
+	server->color_representation_mgr =
+		wlr_color_representation_manager_v1_create_with_renderer(
+			server->wl_display, 1, server->renderer);
+
+	/* wl_fixes (destroying wl_registry) */
+	server->fixes = wlr_fixes_create(server->wl_display, 1);
 
 	/* Window icons (xdg-toplevel-icon-v1) for the iconbar */
 	server->toplevel_icon_mgr =
@@ -753,4 +832,8 @@ wm_protocols_finish(struct wm_server *server)
 		wl_list_remove(&server->new_dialog.link);
 	if (server->toplevel_icon_mgr)
 		wl_list_remove(&server->set_toplevel_icon.link);
+	if (server->toplevel_capture_source_mgr)
+		wl_list_remove(&server->toplevel_capture_request.link);
+	if (server->toplevel_tag_mgr)
+		wl_list_remove(&server->set_toplevel_tag.link);
 }

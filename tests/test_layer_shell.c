@@ -64,6 +64,7 @@ static struct zwlr_layer_shell_v1 *layer_shell;
 struct test_layer_surface {
 	struct wl_surface *surface;
 	struct zwlr_layer_surface_v1 *layer_surface;
+	struct wl_buffer *buffer;
 	bool configured;
 	uint32_t configure_serial;
 	uint32_t configure_width;
@@ -223,9 +224,11 @@ attach_buffer_and_commit(struct test_layer_surface *ls)
 	int w = (ls->configure_width > 0) ? (int)ls->configure_width : 100;
 	int h = (ls->configure_height > 0) ? (int)ls->configure_height : 100;
 
-	struct wl_buffer *buffer = create_shm_buffer(w, h);
-	if (buffer) {
-		wl_surface_attach(ls->surface, buffer, 0, 0);
+	if (ls->buffer)
+		wl_buffer_destroy(ls->buffer);
+	ls->buffer = create_shm_buffer(w, h);
+	if (ls->buffer) {
+		wl_surface_attach(ls->surface, ls->buffer, 0, 0);
 		wl_surface_commit(ls->surface);
 		wl_display_roundtrip(display);
 	}
@@ -238,6 +241,8 @@ destroy_layer_surface(struct test_layer_surface *ls)
 		zwlr_layer_surface_v1_destroy(ls->layer_surface);
 	if (ls->surface)
 		wl_surface_destroy(ls->surface);
+	if (ls->buffer)
+		wl_buffer_destroy(ls->buffer);
 	wl_display_roundtrip(display);
 	memset(ls, 0, sizeof(*ls));
 }

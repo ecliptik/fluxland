@@ -177,6 +177,10 @@ test_ipc = executable(
     '../src/regex_guard.c', '../src/keybind.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
+  # The test stubs a few libwayland calls; with a static libwayland
+  # (built from subprojects/) its definitions must win, as they do
+  # against the shared library.
+  link_args: cc.get_supported_link_arguments('-Wl,--allow-multiple-definition'),
   install: false,
 )
 test('ipc', test_ipc)
@@ -520,10 +524,12 @@ if wayland_client.found()
     command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
   )
 
-  # ext-image-copy-capture + ext-image-capture-source client protocols
+  # ext-image-copy-capture, ext-image-capture-source, ext-workspace client
+  # protocols
   image_capture_client = []
-  foreach name : ['ext-image-capture-source', 'ext-image-copy-capture']
-    xml = wl_protocol_dir / 'staging' / name / name + '-v1.xml'
+  foreach name : ['ext-image-capture-source', 'ext-image-copy-capture',
+      'ext-workspace']
+    xml = wl_protocol_dir / 'staging' / name / (name + '-v1.xml')
     image_capture_client += custom_target(name + '-v1-client-protocol.h',
       input: xml, output: name + '-v1-client-protocol.h',
       command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
@@ -616,6 +622,16 @@ if wayland_client.found()
     install: false,
   )
   test('image_capture', test_image_capture, env: test_main_env, depends: fluxland_exe, timeout: 20, suite: 'integration')
+
+  # --- test_ext_workspace: workspaces for panels (ext-workspace-v1) ---
+  test_ext_workspace = executable('test_ext_workspace',
+    files('test_ext_workspace.c'),
+    image_capture_client, foreign_toplevel_list_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('ext_workspace', test_ext_workspace, env: test_main_env, depends: fluxland_exe, timeout: 20, suite: 'integration')
 endif
 
 # --- Visual regression tests (decoration rendering) ---

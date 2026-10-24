@@ -70,6 +70,15 @@ Alias for
 .B title
 Matches the window title.
 .TP
+.B role
+Matches an X11 window's WM_WINDOW_ROLE.
+.TP
+.B tag
+Matches the tag a Wayland application gives a window
+(xdg-toplevel-tag), such as
+.IR main-window ;
+a fluxland extension.
+.TP
 .B transient
 Matches
 .B yes

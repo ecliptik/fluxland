@@ -45,6 +45,11 @@ EXPECTED = {
     "xdg_wm_dialog_v1", "xdg_system_bell_v1",
     # Window icons for the iconbar (wlroots 0.19)
     "xdg_toplevel_icon_manager_v1",
+    # wlroots 0.20: window capture, workspaces for panels, window tags,
+    # YUV colour representation, wl_fixes
+    "ext_foreign_toplevel_image_capture_source_manager_v1",
+    "ext_workspace_manager_v1", "xdg_toplevel_tag_manager_v1",
+    "wp_color_representation_manager_v1", "wl_fixes",
     # Presentation
     "wp_viewporter", "wp_fractional_scale_manager_v1", "wp_presentation",
     "wp_single_pixel_buffer_manager_v1", "wp_tearing_control_manager_v1",

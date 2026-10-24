@@ -95,6 +95,12 @@ void wm_workspace_add(struct wm_server *server);
 /* Remove the last workspace (moves views to previous) */
 void wm_workspace_remove_last(struct wm_server *server);
 
+/*
+ * Remove workspace index: its windows join the previous workspace (the
+ * next one for the first), later workspaces move down a place.
+ */
+void wm_workspace_remove(struct wm_server *server, int index);
+
 /* Switch to the next workspace (no wrap at boundary) */
 void wm_workspace_switch_right(struct wm_server *server);
 

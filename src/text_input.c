@@ -636,14 +636,14 @@ wm_text_input_init(struct wm_server *server)
 		wlr_text_input_manager_v3_create(server->wl_display);
 
 	relay->new_text_input.notify = handle_new_text_input;
-	wl_signal_add(&relay->text_input_mgr->events.text_input,
+	wl_signal_add(&relay->text_input_mgr->events.new_text_input,
 		&relay->new_text_input);
 
 	relay->input_method_mgr =
 		wlr_input_method_manager_v2_create(server->wl_display);
 
 	relay->new_input_method.notify = handle_new_input_method;
-	wl_signal_add(&relay->input_method_mgr->events.input_method,
+	wl_signal_add(&relay->input_method_mgr->events.new_input_method,
 		&relay->new_input_method);
 
 	wlr_log(WLR_INFO, "%s",

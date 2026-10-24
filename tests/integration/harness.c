@@ -519,10 +519,9 @@ harness_create_toplevel(struct test_client *client,
 
 	/* Now ack the configure and attach a real buffer */
 	if (tl->configured && client->shm) {
-		struct wl_buffer *buffer =
-			create_shm_buffer(client, width, height);
-		if (buffer) {
-			wl_surface_attach(tl->surface, buffer, 0, 0);
+		tl->buffer = create_shm_buffer(client, width, height);
+		if (tl->buffer) {
+			wl_surface_attach(tl->surface, tl->buffer, 0, 0);
 			wl_surface_commit(tl->surface);
 		}
 	}
@@ -542,5 +541,7 @@ harness_destroy_toplevel(struct test_client *client,
 		xdg_surface_destroy(tl->xdg_surface);
 	if (tl->surface)
 		wl_surface_destroy(tl->surface);
+	if (tl->buffer)
+		wl_buffer_destroy(tl->buffer);
 	memset(tl, 0, sizeof(*tl));
 }

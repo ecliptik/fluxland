@@ -5,8 +5,3 @@
 # narrow: a pattern matches any frame of the allocation stack, so
 # suppressing e.g. libcairo would also hide fluxland's own leaks.
 leak:libfontconfig.so
-
-# Integration test clients don't destroy every wl_proxy they create.
-# The compositor doesn't link libwayland-client, so this can't hide
-# compositor leaks.
-leak:libwayland-client.so

@@ -67,6 +67,10 @@
 #define WLR_TYPES_WLR_XDG_DIALOG_V1_H
 #define WLR_TYPES_WLR_XDG_SYSTEM_BELL_V1_H
 #define WLR_TYPES_WLR_XDG_TOPLEVEL_ICON_V1_H
+#define WLR_TYPES_WLR_XDG_TOPLEVEL_TAG_V1_H
+#define WLR_TYPES_WLR_COLOR_REPRESENTATION_V1_H
+#define WLR_TYPES_WLR_FIXES_H
+#define WLR_TYPES_WLR_EXT_FOREIGN_TOPLEVEL_LIST_V1_H
 #define WM_ICON_H
 
 /* --- Stub wayland types --- */
@@ -361,7 +365,92 @@ struct wm_view {
 	struct wm_view *parent;
 	cairo_surface_t *icon;
 	bool icon_from_client;
+	char *tag;
+	struct wlr_ext_image_capture_source_v1 *capture_source;
+	struct wlr_ext_foreign_toplevel_handle_v1 *ext_toplevel_handle;
+	struct { struct { int dummy; } node; } *scene_tree;
 };
+
+/* wlroots 0.20 protocol stand-ins */
+struct wl_event_loop { int dummy; };
+static struct wl_event_loop g_event_loop;
+static struct wl_event_loop *
+wl_display_get_event_loop(struct wl_display *d) { (void)d; return &g_event_loop; }
+struct wlr_allocator { int dummy; };
+struct wlr_ext_foreign_toplevel_handle_v1 { int dummy; };
+struct wlr_ext_image_capture_source_v1 { int dummy; };
+struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 {
+	struct { struct wl_signal new_request; } events;
+};
+struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request {
+	struct wlr_ext_foreign_toplevel_handle_v1 *toplevel_handle;
+	struct wl_client *client;
+};
+static struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 g_tl_capture;
+static struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *
+wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(
+	struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	wl_signal_init(&g_tl_capture.events.new_request);
+	return &g_tl_capture;
+}
+static struct wlr_ext_image_capture_source_v1 g_capture_sources[4];
+static int g_capture_source_count;
+static void *g_capture_source_node;
+static struct wlr_ext_image_capture_source_v1 *
+wlr_ext_image_capture_source_v1_create_with_scene_node(void *node,
+	struct wl_event_loop *loop, struct wlr_allocator *a,
+	struct wlr_renderer *r)
+{
+	(void)loop; (void)a; (void)r;
+	g_capture_source_node = node;
+	return &g_capture_sources[g_capture_source_count++ % 4];
+}
+static struct wlr_ext_image_capture_source_v1 *g_accepted_source;
+static int g_accept_count;
+static bool
+wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request *r,
+	struct wlr_ext_image_capture_source_v1 *source)
+{
+	(void)r;
+	g_accept_count++;
+	g_accepted_source = source;
+	return true;
+}
+struct wlr_xdg_toplevel_tag_manager_v1 {
+	struct { struct wl_signal set_tag; } events;
+};
+struct wlr_xdg_toplevel_tag_manager_v1_set_tag_event {
+	struct wlr_xdg_toplevel *toplevel;
+	const char *tag;
+};
+static struct wlr_xdg_toplevel_tag_manager_v1 g_tag_mgr;
+static struct wlr_xdg_toplevel_tag_manager_v1 *
+wlr_xdg_toplevel_tag_manager_v1_create(struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	wl_signal_init(&g_tag_mgr.events.set_tag);
+	return &g_tag_mgr;
+}
+struct wlr_color_representation_manager_v1 { int dummy; };
+static struct wlr_color_representation_manager_v1 g_color_repr;
+static struct wlr_color_representation_manager_v1 *
+wlr_color_representation_manager_v1_create_with_renderer(
+	struct wl_display *d, uint32_t v, struct wlr_renderer *r)
+{
+	(void)d; (void)v; (void)r;
+	return &g_color_repr;
+}
+struct wlr_fixes { int dummy; };
+static struct wlr_fixes g_fixes;
+static struct wlr_fixes *
+wlr_fixes_create(struct wl_display *d, uint32_t v)
+{
+	(void)d; (void)v;
+	return &g_fixes;
+}
 
 /* xdg-toplevel-icon stand-ins */
 #define WM_ICON_SIZE 32
@@ -481,6 +570,13 @@ struct wm_server {
 	struct wl_listener new_dialog;
 	struct wlr_xdg_toplevel_icon_manager_v1 *toplevel_icon_mgr;
 	struct wl_listener set_toplevel_icon;
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *toplevel_capture_source_mgr;
+	struct wl_listener toplevel_capture_request;
+	struct wlr_xdg_toplevel_tag_manager_v1 *toplevel_tag_mgr;
+	struct wl_listener set_toplevel_tag;
+	struct wlr_color_representation_manager_v1 *color_representation_mgr;
+	struct wlr_fixes *fixes;
+	struct wlr_allocator *allocator;
 	struct wm_view *focused_view;
 	struct wl_display *wl_display;
 	struct wlr_seat *seat;
@@ -2412,6 +2508,76 @@ test_toplevel_icon(void)
 	printf("  PASS: test_toplevel_icon\n");
 }
 
+/* Window capture: one scene-node source per window, reused; unknown
+ * windows get a dead source */
+static void
+test_toplevel_capture(void)
+{
+	reset_globals();
+	struct wm_server server;
+	init_server(&server);
+	wm_protocols_init(&server);
+
+	struct wlr_ext_foreign_toplevel_handle_v1 handle, other;
+	struct { struct { int dummy; } node; } tree;
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.ext_toplevel_handle = &handle;
+	view.scene_tree = (void *)&tree;
+	wl_list_insert(&server.views, &view.link);
+
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request
+		req = { .toplevel_handle = &handle };
+	g_capture_source_count = g_accept_count = 0;
+	wl_signal_emit(&g_tl_capture.events.new_request, &req);
+	assert(g_capture_source_count == 1);
+	assert(g_capture_source_node == &tree.node);
+	assert(g_accepted_source == view.capture_source && view.capture_source);
+
+	/* Again: the same source */
+	wl_signal_emit(&g_tl_capture.events.new_request, &req);
+	assert(g_capture_source_count == 1 && g_accept_count == 2);
+
+	req.toplevel_handle = &other;
+	wl_signal_emit(&g_tl_capture.events.new_request, &req);
+	assert(g_accept_count == 3 && g_accepted_source == NULL);
+
+	wl_list_remove(&view.link);
+	wm_protocols_finish(&server);
+	printf("  PASS: test_toplevel_capture\n");
+}
+
+/* xdg-toplevel-tag: the tag is kept on the window */
+static void
+test_toplevel_tag(void)
+{
+	reset_globals();
+	struct wm_server server;
+	init_server(&server);
+	wm_protocols_init(&server);
+
+	struct wlr_xdg_toplevel tl;
+	memset(&tl, 0, sizeof(tl));
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	view.xdg_toplevel = &tl;
+	wl_list_insert(&server.views, &view.link);
+
+	struct wlr_xdg_toplevel_tag_manager_v1_set_tag_event ev = {
+		.toplevel = &tl, .tag = "main-window",
+	};
+	wl_signal_emit(&g_tag_mgr.events.set_tag, &ev);
+	assert(view.tag && strcmp(view.tag, "main-window") == 0);
+	ev.tag = "settings";
+	wl_signal_emit(&g_tag_mgr.events.set_tag, &ev);
+	assert(strcmp(view.tag, "settings") == 0);
+
+	free(view.tag);
+	wl_list_remove(&view.link);
+	wm_protocols_finish(&server);
+	printf("  PASS: test_toplevel_tag\n");
+}
+
 int
 main(void)
 {
@@ -2457,6 +2623,8 @@ main(void)
 	test_system_bell();
 	test_modal_dialog();
 	test_toplevel_icon();
+	test_toplevel_capture();
+	test_toplevel_tag();
 
 	printf("All protocols tests passed (37/37).\n");
 	return 0;

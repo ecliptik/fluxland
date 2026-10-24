@@ -29,6 +29,7 @@
 #define WM_OUTPUT_H
 #define WM_SERVER_H
 #define WM_TOOLBAR_H
+#define WM_EXT_WORKSPACE_H
 #define WM_VIEW_H
 #define WM_WORKSPACE_H
 
@@ -225,6 +226,7 @@ struct wm_output {
 struct wm_view {
 	struct wl_list link;
 	struct wm_server *server;
+	bool urgent;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	struct wlr_scene_tree *scene_tree;
 	uint32_t id;
@@ -385,6 +387,14 @@ wm_ipc_broadcast_event(struct wm_ipc_server *ipc, uint32_t event,
 	(void)event;
 	(void)buf;
 	g_ipc_broadcast_count++;
+}
+
+static int g_ext_ws_schedule_count;
+static void
+wm_ext_workspace_schedule(struct wm_server *server)
+{
+	(void)server;
+	g_ext_ws_schedule_count++;
 }
 
 static void
@@ -1476,6 +1486,58 @@ test_workspace_remove_last_when_current(void)
 	printf("  PASS: workspace_remove_last_when_current\n");
 }
 
+/* Removing a workspace in the middle: its windows join the previous one,
+ * later workspaces (windows and names) move down a place */
+static void
+test_workspace_remove_middle(void)
+{
+	init_test_server(4, WM_WORKSPACE_GLOBAL);
+	for (int i = 0; i < 4; i++) {
+		struct wm_workspace *ws = wm_workspace_get(&test_server, i);
+		free(ws->name);
+		char name[8];
+		snprintf(name, sizeof(name), "W%d", i);
+		ws->name = strdup(name);
+	}
+	setup_mock_view(0, wm_workspace_get(&test_server, 1)); /* removed */
+	setup_mock_view(1, wm_workspace_get(&test_server, 2)); /* shifts */
+	setup_mock_view(2, wm_workspace_get(&test_server, 3)); /* shifts */
+	wm_workspace_switch(&test_server, 2);
+
+	reset_globals();
+	g_ext_ws_schedule_count = 0;
+	wm_workspace_remove(&test_server, 1);
+
+	assert(test_server.workspace_count == 3);
+	assert(test_views[0].workspace->index == 0);
+	assert(test_views[1].workspace->index == 1);
+	assert(test_views[2].workspace->index == 2);
+	assert(strcmp(wm_workspace_get(&test_server, 0)->name, "W0") == 0);
+	assert(strcmp(wm_workspace_get(&test_server, 1)->name, "W2") == 0);
+	assert(strcmp(wm_workspace_get(&test_server, 2)->name, "W3") == 0);
+	/* Still showing what was shown (old W2, now index 1) */
+	assert(test_server.current_workspace->index == 1);
+	assert(g_ext_ws_schedule_count > 0);
+
+	/* The first: its windows go to the next one */
+	wm_workspace_remove(&test_server, 0);
+	assert(test_server.workspace_count == 2);
+	assert(test_views[0].workspace->index == 0);
+	assert(test_views[1].workspace->index == 0);
+	assert(strcmp(wm_workspace_get(&test_server, 0)->name, "W2") == 0);
+
+	/* Out of range, or the only one: nothing */
+	wm_workspace_remove(&test_server, 5);
+	wm_workspace_remove(&test_server, 1);
+	wm_workspace_remove(&test_server, 0);
+	assert(test_server.workspace_count == 1);
+
+	for (int i = 0; i < 3; i++)
+		wl_list_remove(&test_views[i].link);
+	cleanup_test_server();
+	printf("  PASS: workspace_remove_middle\n");
+}
+
 /* ===== custom workspace names from config ===== */
 
 static char *custom_names[] = { "Mail", "Web", "Code" };
@@ -1901,6 +1963,7 @@ main(void)
 	test_workspace_remove_last_refuses_single();
 	test_workspace_remove_last_moves_views();
 	test_workspace_remove_last_when_current();
+	test_workspace_remove_middle();
 
 	/* switch with views */
 	test_workspace_switch_focuses_view();

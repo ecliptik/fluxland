@@ -25,7 +25,7 @@ with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) o
 [Read about how it was built](docs/DEBRIEF.md) — agentic development, team orchestration, and
 what I learned building a 35,000-line compositor without writing a single line of code.
 
-Built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) 0.19, fluxland implements 30+ Wayland protocols and delivers
+Built on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) 0.20, fluxland implements 30+ Wayland protocols and delivers
 first-class support for server-side decorations with Fluxbox style
 compatibility, key chains and modal keybindings, window tabbing, a configurable
 toolbar with icon bar, the slit (dockapp container), and per-window rules. It
@@ -139,7 +139,7 @@ See [`examples/`](examples/) for styles and complete configuration examples, and
 | meson (>= 1.3) | `meson` | `meson` |
 | ninja | `ninja-build` | `ninja` |
 | C17 compiler | `gcc` or `clang` | `gcc` or `clang` |
-| wlroots 0.19 | built from `subprojects/` (or a system `wlroots-0.19`) | `wlroots0.19` |
+| wlroots 0.20 | built from `subprojects/` (or a system `wlroots-0.20`) | `wlroots0.20` |
 | wayland | `libwayland-dev` | `wayland` |
 | wayland-protocols (>= 1.32) | `wayland-protocols` | `wayland-protocols` |
 | xkbcommon | `libxkbcommon-dev` | `libxkbcommon` |

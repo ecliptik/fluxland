@@ -33,7 +33,8 @@ fi
 
 case "$step" in
 deps)
-	# wlroots 0.19 is built from subprojects/wlroots.wrap
+	# wlroots 0.20 (and libraries newer than Debian's) is built from
+	# subprojects/
 	apt-get update
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		build-essential clang libclang-rt-dev meson ninja-build pkg-config \
@@ -44,6 +45,7 @@ deps)
 		libdisplay-info-dev libliftoff-dev hwdata liblcms2-dev \
 		libxcb-composite0-dev libxcb-res0-dev libxcb-xfixes0-dev \
 		libxcb-render0-dev libxcb-errors-dev \
+		bison libexpat1-dev libffi-dev libxml2-dev \
 		libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev \
 		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev xwayland \
 		libsystemd-dev \
@@ -53,7 +55,7 @@ deps)
 build)
 	meson setup ci-build --wipe -Dwerror=false
 	ninja -C ci-build
-	meson test -C ci-build --print-errorlogs
+	meson test -C ci-build --print-errorlogs --suite fluxland
 	;;
 sanitize)
 	meson setup ci-sanitize --wipe -Dasan=true -Dubsan=true \
@@ -65,7 +67,7 @@ sanitize)
 	# only memory errors and UB count there.
 	ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
 		meson test -C ci-sanitize --print-errorlogs \
-		--no-suite integration
+		--suite fluxland --no-suite integration
 	# Integration tests drive the real compositor: leaks count too.
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
 		meson test -C ci-sanitize --print-errorlogs \

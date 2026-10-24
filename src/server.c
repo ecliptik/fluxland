@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "ext_workspace.h"
 #include "server.h"
 #include "atspi_bridge.h"
 #include "config.h"
@@ -191,6 +192,7 @@ wm_server_reconfigure(struct wm_server *server)
 			if (name && (!ws->name || strcmp(ws->name, name) != 0)) {
 				free(ws->name);
 				ws->name = strdup(name);
+				wm_ext_workspace_schedule(server);
 			}
 		}
 	}
@@ -514,6 +516,7 @@ wm_server_init(struct wm_server *server)
 	int ws_count = server->config ?
 		server->config->workspace_count : WM_DEFAULT_WORKSPACE_COUNT;
 	wm_workspaces_init(server, ws_count);
+	wm_ext_workspace_init(server);
 
 	/* Initialize keyboard focus navigation (accessibility) */
 	wm_focus_nav_init(&server->focus_nav);
@@ -626,6 +629,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_command_finish(server);
 	wm_session_lock_finish(server);
 	wm_layer_shell_finish(server);
+	wm_ext_workspace_finish(server);
 	wm_workspaces_finish(server);
 
 	keybind_destroy_all(&server->keymodes);

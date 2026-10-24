@@ -42,6 +42,7 @@
 #define WM_SLIT_H
 #define WM_VIEW_GEOMETRY_H
 #define WM_FOREIGN_TOPLEVEL_H
+#define WM_EXT_WORKSPACE_H
 
 /* --- Stub wayland types --- */
 
@@ -531,6 +532,9 @@ wm_layer_shell_configure(struct wm_output *o, const struct wlr_box *full,
 }
 
 void wm_foreign_toplevel_sync_outputs(struct wm_server *s) { (void)s; }
+static int g_ext_ws_enter, g_ext_ws_leave;
+static void wm_ext_workspace_output_enter(struct wm_server *s, struct wlr_output *o) { (void)s; (void)o; g_ext_ws_enter++; }
+static void wm_ext_workspace_output_leave(struct wm_server *s, struct wlr_output *o) { (void)s; (void)o; g_ext_ws_leave++; }
 static struct wlr_output *g_foreign_forgot;
 void
 wm_foreign_toplevel_output_destroyed(struct wm_server *s, struct wlr_output *o)

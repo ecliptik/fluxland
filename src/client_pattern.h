@@ -34,6 +34,7 @@ enum wm_pattern_prop {
 	WM_PROP_CLASS,
 	WM_PROP_TITLE,
 	WM_PROP_ROLE,
+	WM_PROP_TAG,      /* fluxland: xdg-toplevel-tag */
 	WM_PROP_TRANSIENT,
 	WM_PROP_MAXIMIZED,
 	WM_PROP_MAXIMIZED_VERT,

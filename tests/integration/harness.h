@@ -37,6 +37,7 @@ struct test_toplevel {
 	struct wl_surface *surface;
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
+	struct wl_buffer *buffer;
 
 	/* Updated by configure events */
 	bool configured;

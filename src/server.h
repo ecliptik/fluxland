@@ -92,6 +92,11 @@ struct wlr_ext_output_image_capture_source_manager_v1;
 struct wlr_xdg_system_bell_v1;
 struct wlr_xdg_wm_dialog_v1;
 struct wlr_xdg_toplevel_icon_manager_v1;
+struct wm_ext_workspace;
+struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1;
+struct wlr_xdg_toplevel_tag_manager_v1;
+struct wlr_color_representation_manager_v1;
+struct wlr_fixes;
 struct wm_keyboard;
 struct wlr_drm_lease_v1_manager;
 struct wlr_transient_seat_manager_v1;
@@ -296,6 +301,13 @@ struct wm_server {
 	struct wlr_xdg_wm_dialog_v1 *wm_dialog;
 	struct wl_listener new_dialog;
 	struct wlr_xdg_toplevel_icon_manager_v1 *toplevel_icon_mgr;
+	struct wm_ext_workspace *ext_workspace; /* ext_workspace.c */
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *toplevel_capture_source_mgr;
+	struct wl_listener toplevel_capture_request;
+	struct wlr_xdg_toplevel_tag_manager_v1 *toplevel_tag_mgr;
+	struct wl_listener set_toplevel_tag;
+	struct wlr_color_representation_manager_v1 *color_representation_mgr;
+	struct wlr_fixes *fixes;
 	struct wl_listener set_toplevel_icon;
 
 	/* Pointer constraints (lock/confine for games) */

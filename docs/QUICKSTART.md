@@ -2,10 +2,10 @@
 
 Test-drive fluxland on **Debian Trixie** (13), **Ubuntu 24.04 / Linux Mint 22** or newer.
 
-fluxland is built against wlroots 0.19, which it builds itself: the first
-`meson setup` downloads the pinned wlroots release (and, on older
-distributions, the newer libdrm, pixman and wayland-protocols it needs)
-and links it in statically. You don't install wlroots yourself, but the
+fluxland is built against wlroots 0.20, which it builds itself: the first
+`meson setup` downloads the pinned wlroots release (and, where the
+distribution's are older than it needs, libwayland, libdrm, pixman,
+libxkbcommon and wayland-protocols) and links them in statically. You don't install wlroots yourself, but the
 first build needs network access (or run `meson subprojects download`
 beforehand).
 
@@ -30,20 +30,22 @@ sudo apt install -y \
   libdisplay-info-dev libliftoff-dev hwdata liblcms2-dev \
   libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev \
   libxcb-composite0-dev libxcb-res0-dev libxcb-xfixes0-dev \
-  libxcb-render0-dev xwayland
+  libxcb-render0-dev xwayland \
+  bison libexpat1-dev libffi-dev libxml2-dev
 ```
 
 The `libxcb-*` packages and `xwayland` are for running X11 applications.
 On Debian also install `libxcb-errors-dev` (readable X11 error messages;
 Ubuntu 24.04 doesn't have it).
-Where a distribution's libdrm, pixman, wayland-protocols, libdisplay-info
-or libliftoff is too old (or missing), meson builds the right version
-from `subprojects/`.
+Where a distribution's libwayland, libdrm, pixman, libxkbcommon,
+wayland-protocols, libdisplay-info or libliftoff is too old (or missing),
+meson builds the right version from `subprojects/` (that is what `bison`,
+`libexpat1-dev`, `libffi-dev` and `libxml2-dev` are for).
 
 ### Using a system wlroots instead
 
-If your distribution has wlroots 0.19 (`pkg-config --modversion
-wlroots-0.19`), meson uses it instead of building its own. To insist on
+If your distribution has wlroots 0.20 (`pkg-config --modversion
+wlroots-0.20`), meson uses it instead of building its own. To insist on
 the bundled one: `meson setup build --force-fallback-for=wlroots`.
 
 ### Useful runtime tools (recommended)
@@ -73,7 +75,7 @@ ninja -C build
 Verify everything works:
 
 ```sh
-ninja -C build test        # run all the C test suites
+meson test -C build --suite fluxland   # run fluxland's test suites
 ```
 
 You should see all tests pass (no `Fail`):

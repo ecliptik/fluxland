@@ -111,6 +111,10 @@ struct wm_view {
 	 */
 	struct _cairo_surface *icon;
 	bool icon_from_client;
+	/* xdg-toplevel-tag: what the app calls this window (matchable) */
+	char *tag;
+	/* Window capture source (made on first request; dies with the node) */
+	struct wlr_ext_image_capture_source_v1 *capture_source;
 	int pending_head; /* [Head] rule: 0 = none */
 
 	/* Workspace tracking */

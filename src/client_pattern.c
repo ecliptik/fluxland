@@ -50,6 +50,7 @@ static const struct {
 	{ "minimized",           WM_PROP_MINIMIZED },
 	{ "name",                WM_PROP_NAME },
 	{ "role",                WM_PROP_ROLE },
+	{ "tag",                 WM_PROP_TAG },
 	{ "screen",              WM_PROP_SCREEN },
 	{ "shaded",              WM_PROP_SHADED },
 	{ "stuck",               WM_PROP_STUCK },
@@ -482,6 +483,10 @@ wm_client_pattern_property(struct wm_server *server, struct wm_view *view,
 	case WM_PROP_ROLE:
 		/* X11 WM_WINDOW_ROLE; xdg-shell has no role */
 		snprintf(buf, len, "%s", view->role ? view->role : "");
+		break;
+	case WM_PROP_TAG:
+		/* xdg-toplevel-tag: a stable name the app gives the window */
+		snprintf(buf, len, "%s", view->tag ? view->tag : "");
 		break;
 	case WM_PROP_TRANSIENT:
 		snprintf(buf, len, "%s", yes_no(wm_view_parent(view)));

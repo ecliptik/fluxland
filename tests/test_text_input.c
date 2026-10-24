@@ -235,13 +235,13 @@ struct wlr_input_method_keyboard_grab_v2 {
 
 struct wlr_text_input_manager_v3 {
 	struct {
-		struct wl_signal text_input;
+		struct wl_signal new_text_input;
 	} events;
 };
 
 struct wlr_input_method_manager_v2 {
 	struct {
-		struct wl_signal input_method;
+		struct wl_signal new_input_method;
 	} events;
 };
 
@@ -368,7 +368,7 @@ static struct wlr_text_input_manager_v3 *
 wlr_text_input_manager_v3_create(struct wl_display *display)
 {
 	(void)display;
-	wl_signal_init(&g_ti_mgr.events.text_input);
+	wl_signal_init(&g_ti_mgr.events.new_text_input);
 	return &g_ti_mgr;
 }
 
@@ -378,7 +378,7 @@ static struct wlr_input_method_manager_v2 *
 wlr_input_method_manager_v2_create(struct wl_display *display)
 {
 	(void)display;
-	wl_signal_init(&g_im_mgr.events.input_method);
+	wl_signal_init(&g_im_mgr.events.new_input_method);
 	return &g_im_mgr;
 }
 
