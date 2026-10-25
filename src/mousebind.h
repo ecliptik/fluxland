@@ -94,7 +94,7 @@ struct wm_mouse_state {
 	int wheel_steps[2];         /* 1/120 wheel steps not yet acted on */
 };
 
-#define WM_DOUBLE_CLICK_MS  300
+#define WM_DOUBLE_CLICK_MS  250  /* Fluxbox's */
 #define WM_CLICK_MOVE_THRESHOLD 3
 
 /* Load mouse bindings from a keys file. Returns 0 on success.

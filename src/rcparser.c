@@ -63,11 +63,16 @@ rc_destroy(struct rc_database *db)
 	free(db);
 }
 
+/*
+ * Keys are matched without regard to case: Fluxbox writes some in
+ * lower case (showwindowposition), its documentation others in camel
+ * case (showWindowPosition).
+ */
 static int
 rc_find(struct rc_database *db, const char *key)
 {
 	for (int i = 0; i < db->count; i++) {
-		if (strcmp(db->entries[i].key, key) == 0)
+		if (strcasecmp(db->entries[i].key, key) == 0)
 			return i;
 	}
 	return -1;

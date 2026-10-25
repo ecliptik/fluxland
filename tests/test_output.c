@@ -397,7 +397,12 @@ struct wm_output_rule {
 	int x, y;
 };
 
-struct wm_config { int dummy; };
+#define WM_STRUT_HEADS 8
+struct wm_config {
+	int struts[4];
+	int head_struts[WM_STRUT_HEADS][4];
+};
+int wm_output_head_number(struct wm_output *output);
 struct wm_toolbar { int dummy; };
 struct wm_slit { int dummy; };
 
@@ -828,6 +833,45 @@ test_arrange_usable_area(void)
 	printf("  PASS: arrange_usable_area\n");
 }
 
+/* struts for every head, struts.N for one; after the reservations */
+static void
+test_struts(void)
+{
+	setup();
+	memset(&config, 0, sizeof(config));
+	struct wlr_output a, b;
+	init_wlr_output(&a, "eDP-1", 1920, 1080);
+	init_wlr_output(&b, "DP-1", 2560, 1440);
+	struct wm_output *oa = plug(&a);
+	struct wm_output *ob = plug(&b);
+	g_toolbar_output = ob;
+
+	int all[4] = { 10, 20, 30, 40 };
+	for (int i = 0; i < WM_STRUT_HEADS; i++)
+		memcpy(config.head_struts[i], all, sizeof(all));
+	memcpy(config.struts, all, sizeof(all));
+	config.head_struts[1][2] = 0;	/* struts.2: no top */
+	wm_output_arrange_all(&srv);
+
+	assert(oa->usable_area.x == 10 && oa->usable_area.y == 30);
+	assert(oa->usable_area.width == 1920 - 30);
+	assert(oa->usable_area.height == 1080 - 70);
+	/* Head 2: the toolbar's 24 at the bottom, then the struts */
+	assert(ob->usable_area.x == 1920 + 10 && ob->usable_area.y == 0);
+	assert(ob->usable_area.height == 1440 - 24 - 40);
+
+	/* Struts larger than the head are ignored */
+	config.head_struts[0][0] = 5000;
+	wm_output_arrange_all(&srv);
+	assert(oa->usable_area.x == 0 && oa->usable_area.width == 1920);
+
+	memset(&config, 0, sizeof(config));
+	g_toolbar_output = NULL;
+	unplug(&b);
+	unplug(&a);
+	printf("  PASS: struts\n");
+}
+
 static void
 test_place_and_disable(void)
 {
@@ -1004,6 +1048,7 @@ main(void)
 	test_output_from_wlr();
 	test_hotplug_order_and_auto_layout();
 	test_arrange_usable_area();
+	test_struts();
 	test_place_and_disable();
 	test_output_for_view();
 	test_unplug_moves_everything();

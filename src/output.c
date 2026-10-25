@@ -166,6 +166,26 @@ wm_output_place(struct wm_output *output, bool has_position, int x, int y)
 			output->scene_output);
 }
 
+/* session.screen0.struts / struts.N: space kept free at the edges */
+static void
+apply_struts(struct wm_output *output, struct wlr_box *usable)
+{
+	struct wm_config *config = output->server->config;
+	if (!config)
+		return;
+	int head = wm_output_head_number(output);
+	const int *s = head >= 1 && head <= WM_STRUT_HEADS ?
+		config->head_struts[head - 1] : config->struts;
+	int w = usable->width - s[0] - s[1];
+	int h = usable->height - s[2] - s[3];
+	if (w < 1 || h < 1)
+		return;
+	usable->x += s[0];
+	usable->y += s[2];
+	usable->width = w;
+	usable->height = h;
+}
+
 void
 wm_output_arrange(struct wm_output *output)
 {
@@ -178,6 +198,7 @@ wm_output_arrange(struct wm_output *output)
 		wm_layer_shell_configure(output, &full, &usable);
 		wm_toolbar_reserve(server->toolbar, output, &usable);
 		wm_slit_reserve(server->slit, output, &usable);
+		apply_struts(output, &usable);
 	}
 
 	bool changed = !wlr_box_equal(&usable, &output->usable_area) ||

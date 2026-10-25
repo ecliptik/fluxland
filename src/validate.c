@@ -12,6 +12,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "config.h"
+#include "client_pattern.h"
 #include "mousebind.h"
 #include "validate.h"
 #include "i18n.h"
@@ -180,11 +181,13 @@ static const char *valid_toolbar_placements[] = {
 	"TopLeft", "TopCenter", "TopRight",
 	"BottomLeft", "BottomCenter", "BottomRight", NULL
 };
-
-/* Valid iconbar mode values */
-static const char *valid_iconbar_modes[] = {
-	"Workspace", "AllWindows", "Icons", "NoIcons",
-	"WorkspaceIcons", NULL
+/* Fluxbox's, but fluxland can't put the toolbar there yet */
+static const char *unsupported_toolbar_placements[] = {
+	"LeftTop", "LeftCenter", "LeftBottom",
+	"RightTop", "RightCenter", "RightBottom", NULL
+};
+static const char *unsupported_placements[] = {
+	"AutotabPlacement", NULL
 };
 
 /* Valid slit placement values */
@@ -198,11 +201,6 @@ static const char *valid_slit_placements[] = {
 /* Valid slit direction values */
 static const char *valid_slit_directions[] = {
 	"Vertical", "Horizontal", NULL
-};
-
-/* Valid slit layer values */
-static const char *valid_slit_layers[] = {
-	"AboveDock", "Above", "Dock", "Normal", "Bottom", NULL
 };
 
 /* Valid workspace transition values */
@@ -260,11 +258,18 @@ is_valid_bool(const char *s)
 }
 
 struct init_key_spec {
-	const char *key;
-	enum { VT_INT, VT_BOOL, VT_ENUM, VT_STRING, VT_PATH } type;
+	const char *key;    /* '*' stands for a part such as a number */
+	enum {
+		VT_INT, VT_BOOL, VT_ENUM, VT_STRING, VT_PATH,
+		VT_LAYER,        /* a Fluxbox layer name or number */
+		VT_WINDOW_LIST,  /* {static groups} (pattern), or none */
+		VT_IGNORED,      /* Fluxbox's, meaningless on Wayland */
+		VT_UNSUPPORTED,  /* Fluxbox's, not in fluxland yet */
+	} type;
 	int int_min;
 	int int_max;
 	const char **valid_values; /* for VT_ENUM */
+	const char **unsupported_values; /* VT_ENUM: Fluxbox's, not yet */
 };
 
 static const struct init_key_spec init_keys[] = {
@@ -293,18 +298,20 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.showWindowPosition", VT_BOOL, 0, 0, NULL},
 
 	/* Placement */
-	{"session.screen0.windowPlacement", VT_ENUM, 0, 0, valid_placements},
+	{"session.screen0.windowPlacement", VT_ENUM, 0, 0, valid_placements,
+		unsupported_placements},
 	{"session.screen0.rowPlacementDirection", VT_STRING, 0, 0, NULL},
 	{"session.screen0.colPlacementDirection", VT_STRING, 0, 0, NULL},
 
 	/* Toolbar */
 	{"session.screen0.toolbar.visible", VT_BOOL, 0, 0, NULL},
-	{"session.screen0.toolbar.placement", VT_ENUM, 0, 0, valid_toolbar_placements},
+	{"session.screen0.toolbar.placement", VT_ENUM, 0, 0,
+		valid_toolbar_placements, unsupported_toolbar_placements},
 	{"session.screen0.toolbar.autoHide", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.toolbar.autoHideDelay", VT_INT, 0, 10000, NULL},
 	{"session.screen0.toolbar.widthPercent", VT_INT, 10, 100, NULL},
 	{"session.screen0.toolbar.height", VT_INT, 0, 200, NULL},
-	{"session.screen0.toolbar.layer", VT_INT, 0, 10, NULL},
+	{"session.screen0.toolbar.layer", VT_LAYER, 0, 0, NULL},
 	{"session.screen0.toolbar.alpha", VT_INT, 0, 255, NULL},
 	{"session.screen0.toolbar.onhead", VT_INT, 0, 32, NULL},
 	{"session.screen0.toolbar.maxOver", VT_BOOL, 0, 0, NULL},
@@ -313,12 +320,14 @@ static const struct init_key_spec init_keys[] = {
 	/* Titlebar */
 	{"session.titlebar.left", VT_STRING, 0, 0, NULL},
 	{"session.titlebar.right", VT_STRING, 0, 0, NULL},
+	{"session.screen0.titlebar.left", VT_STRING, 0, 0, NULL},
+	{"session.screen0.titlebar.right", VT_STRING, 0, 0, NULL},
 
 	/* Clock */
 	{"session.screen0.strftimeFormat", VT_STRING, 0, 0, NULL},
 
 	/* Iconbar */
-	{"session.screen0.iconbar.mode", VT_ENUM, 0, 0, valid_iconbar_modes},
+	{"session.screen0.iconbar.mode", VT_WINDOW_LIST, 0, 0, NULL},
 	{"session.screen0.iconbar.alignment", VT_STRING, 0, 0, NULL},
 	{"session.screen0.iconbar.iconWidth", VT_INT, 0, 10000, NULL},
 	{"session.screen0.iconbar.usePixmap", VT_BOOL, 0, 0, NULL},
@@ -332,6 +341,7 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.tab.placement", VT_STRING, 0, 0, NULL},
 	{"session.screen0.tab.width", VT_INT, 0, 10000, NULL},
 	{"session.screen0.tabPadding", VT_INT, 0, 1000, NULL},
+	{"session.tabPadding", VT_INT, 0, 1000, NULL},
 
 	/* Window animations */
 	{"session.screen0.animateWindowMap", VT_BOOL, 0, 0, NULL},
@@ -351,7 +361,7 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.slit.autoHide", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.slit.placement", VT_ENUM, 0, 0, valid_slit_placements},
 	{"session.screen0.slit.direction", VT_ENUM, 0, 0, valid_slit_directions},
-	{"session.screen0.slit.layer", VT_ENUM, 0, 0, valid_slit_layers},
+	{"session.screen0.slit.layer", VT_LAYER, 0, 0, NULL},
 	{"session.screen0.slit.onhead", VT_INT, 0, 32, NULL},
 	{"session.screen0.slit.alpha", VT_INT, 0, 255, NULL},
 	{"session.screen0.slit.maxOver", VT_BOOL, 0, 0, NULL},
@@ -380,6 +390,54 @@ static const struct init_key_spec init_keys[] = {
 	/* Decoration */
 	{"session.screen0.defaultDeco", VT_STRING, 0, 0, NULL},
 	{"session.screen0.struts", VT_STRING, 0, 0, NULL},
+	{"session.screen0.struts.*", VT_STRING, 0, 0, NULL},
+
+	/* Wallpapers, mouse buttons, gestures (fluxland) */
+	{"session.screen0.wallpaper", VT_PATH, 0, 0, NULL},
+	{"session.screen0.wallpaperMode", VT_STRING, 0, 0, NULL},
+	{"session.screen0.wallpaperColor", VT_STRING, 0, 0, NULL},
+	{"session.screen0.workspace*.wallpaper", VT_PATH, 0, 0, NULL},
+	{"session.mouse.button*.map", VT_STRING, 0, 0, NULL},
+	{"session.screen0.gestureWorkspaceSwitch", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.gestureOverview", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.gestureSwipeThreshold", VT_INT, 0, 10000, NULL},
+	{"session.screen0.gestureWorkspaceFingers", VT_INT, 2, 5, NULL},
+
+	/* Fluxbox's, with no meaning on Wayland or for fluxland */
+	{"session.configVersion", VT_IGNORED, 0, 0, NULL},
+	{"session.colorsPerChannel", VT_IGNORED, 0, 0, NULL},
+	{"session.cacheLife", VT_IGNORED, 0, 0, NULL},
+	{"session.cacheMax", VT_IGNORED, 0, 0, NULL},
+	{"session.forcePseudoTransparency", VT_IGNORED, 0, 0, NULL},
+	{"session.imageDither", VT_IGNORED, 0, 0, NULL},
+	{"session.groupFile", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.allowRemoteActions", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.slit.acceptKdeDockapps", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.imageDither", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.antialias", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.opaqueResizeDelay", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.maxIgnoreIncrement", VT_IGNORED, 0, 0, NULL},
+
+	/* Fluxbox's, not in fluxland yet */
+	{"session.screen0.focusSameHead", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.noFocusWhileTypingDelay", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.demandsAttentionTimeout", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.tooltipDelay", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.clientMenu.usePixmap", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.toolbar.autoRaise", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.toolbar.button.*", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.systray.pinLeft", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.systray.pinRight", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.slit.autoRaise", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.workspacewarpinghorizontal", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.workspacewarpingvertical", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.workspacewarpinghorizontaloffset", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.workspacewarpingverticaloffset", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.iconbar.iconTextPadding", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.tabs.maxOver", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.tabs.usePixmap", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.tabsAttachArea", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.ignoreBorder", VT_UNSUPPORTED, 0, 0, NULL},
 
 	/* File paths */
 	{"session.keyFile", VT_PATH, 0, 0, NULL},
@@ -399,14 +457,42 @@ static const struct init_key_spec init_keys[] = {
 	{NULL, VT_STRING, 0, 0, NULL},
 };
 
+/* A key against a spec key, without case; '*' matches any run */
+static bool
+key_matches(const char *spec, const char *key)
+{
+	for (; *spec; spec++, key++) {
+		if (*spec == '*') {
+			for (const char *k = key; ; k++) {
+				if (key_matches(spec + 1, k))
+					return true;
+				if (!*k)
+					return false;
+			}
+		}
+		if (tolower((unsigned char)*spec) != tolower((unsigned char)*key))
+			return false;
+	}
+	return *key == '\0';
+}
+
 static const struct init_key_spec *
 find_init_key(const char *key)
 {
 	for (int i = 0; init_keys[i].key; i++) {
-		if (strcmp(init_keys[i].key, key) == 0)
+		if (key_matches(init_keys[i].key, key))
 			return &init_keys[i];
 	}
 	return NULL;
+}
+
+/* config.c's parse_dock_layer and fbcompat's names */
+static bool
+is_valid_layer(const char *value)
+{
+	static const char *names[] = { "Menu", "AboveDock", "Above", "Dock",
+		"Top", "Normal", "Bottom", "Below", "Desktop", NULL };
+	return is_valid_int(value) || is_valid_enum(value, names);
 }
 
 /* --- session.input.* (libinput) settings --- */
@@ -613,9 +699,23 @@ validate_init_file(const char *path, struct config_result *result)
 					"got '%s'", key, value);
 			continue;
 		}
+		if (!spec && strncasecmp(key, "session.screen", 14) == 0 &&
+		    strncasecmp(key, "session.screen0.", 16) != 0) {
+			config_result_add_warning(result, path, lineno,
+				"'%s': fluxland has one screen (its outputs are "
+				"heads): only session.screen0 is read", key);
+			continue;
+		}
 		if (!spec) {
 			config_result_add_warning(result, path, lineno,
 				"unknown key '%s'", key);
+			continue;
+		}
+		if (spec->type == VT_IGNORED)
+			continue;
+		if (spec->type == VT_UNSUPPORTED) {
+			config_result_add_warning(result, path, lineno,
+				"'%s' isn't supported by fluxland yet", key);
 			continue;
 		}
 
@@ -651,10 +751,46 @@ validate_init_file(const char *path, struct config_result *result)
 			break;
 
 		case VT_ENUM:
-			if (!is_valid_enum(value, spec->valid_values))
+			if (spec->unsupported_values &&
+			    is_valid_enum(value, spec->unsupported_values))
+				config_result_add_warning(result, path, lineno,
+					"'%s': '%s' isn't supported by fluxland "
+					"yet, the default is used",
+					spec->key, value);
+			else if (!is_valid_enum(value, spec->valid_values))
 				config_result_add_error(result, path, lineno,
 					"'%s' invalid value '%s'",
 					spec->key, value);
+			break;
+
+		case VT_LAYER:
+			if (!is_valid_layer(value))
+				config_result_add_error(result, path, lineno,
+					"'%s' expects a layer (Top, Dock, Normal, "
+					"Bottom... or a number), got '%s'",
+					spec->key, value);
+			break;
+
+		case VT_WINDOW_LIST: {
+			/* A Fluxbox 1.0 name (Workspace...), or a list */
+			static const char *names[] = { "Workspace",
+				"AllWindows", "Icons", "NoIcons",
+				"WorkspaceIcons", "WorkspaceNoIcons", "none",
+				NULL };
+			struct wm_window_list_spec list;
+			if (is_valid_enum(value, names))
+				break;
+			if (!wm_window_list_parse(value, &list))
+				config_result_add_error(result, path, lineno,
+					"'%s' is not a window list such as "
+					"{static groups} (workspace): '%s'",
+					spec->key, value);
+			wm_window_list_finish(&list);
+			break;
+		}
+
+		case VT_IGNORED:
+		case VT_UNSUPPORTED:
 			break;
 
 		case VT_PATH: {

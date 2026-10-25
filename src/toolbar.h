@@ -72,6 +72,8 @@ struct wm_toolbar {
 
 	/* Icon bar mode */
 	enum wm_iconbar_mode iconbar_mode;
+	/* iconbar.mode as a window list; NULL lists nothing ("none") */
+	struct wm_window_list_spec *iconbar_list;
 
 	/* Scene graph nodes */
 	struct wlr_scene_tree *scene_tree;
@@ -91,6 +93,7 @@ struct wm_toolbar {
 	int width, height;
 	bool visible;
 	bool on_top; /* true if placed at top of screen */
+	bool raised; /* ToggleToolbarAbove: above the windows for now */
 
 	/* Auto-hide state */
 	bool auto_hide;

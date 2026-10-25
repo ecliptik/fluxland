@@ -191,10 +191,12 @@ struct wm_config {
 	/* Iconbar mode: 0=Workspace, 1=AllWindows, 2=Icons,
 	 * 3=NoIcons, 4=WorkspaceIcons */
 	int iconbar_mode;
+	/* Which windows: a window list ({static groups} (workspace)) */
+	char *iconbar_mode_spec;
 
 	/* Iconbar enhancements */
-	int iconbar_alignment;              /* 0=left, 1=center (default), 2=right */
-	int iconbar_icon_width;             /* 0 = auto, or fixed pixel width */
+	int iconbar_alignment;              /* 0=left, 1=relative (default), 2=right, 3=center */
+	int iconbar_icon_width;             /* entry width unless relative (0 = 128) */
 	bool iconbar_use_pixmap;            /* show app icon pixmaps (default true) */
 	int iconbar_wheel_mode;             /* 0 = screen (ws change), 1 = off */
 	char *iconbar_iconified_pattern;    /* e.g. "(%s)" for iconified windows */
@@ -289,8 +291,11 @@ struct wm_config {
 	/* Default decoration preset name */
 	char *default_deco;
 
-	/* Manual struts [left, right, top, bottom] in pixels */
+	/* Manual struts [left, right, top, bottom] in pixels: struts for
+	 * every head, head_struts[n - 1] for head n (struts.n) */
 	int struts[4];
+#define WM_STRUT_HEADS 8
+	int head_struts[WM_STRUT_HEADS][4];
 
 	/* Show window position/size during move/resize */
 	bool show_window_position;

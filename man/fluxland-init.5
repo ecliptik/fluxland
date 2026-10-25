@@ -1,4 +1,4 @@
-.TH FLUXLAND-INIT 5 "2026-03-03" "fluxland 1.1.0" "File Formats Manual"
+.TH FLUXLAND-INIT 5 "2026-10-24" "fluxland 1.1.0" "File Formats Manual"
 .SH NAME
 fluxland-init \- main configuration file for fluxland
 .SH DESCRIPTION
@@ -10,7 +10,18 @@ paths to other configuration files.
 .PP
 By default, the file is located at
 .I ~/.config/fluxland/init
-within the configuration directory.
+within the configuration directory (or
+.I ~/.fluxbox/init
+when fluxland uses a Fluxbox configuration directory).
+Key names are not case sensitive, so the spellings Fluxbox writes
+.RB ( showwindowposition )
+and its manual uses
+.RB ( showWindowPosition )
+both work.
+A Fluxbox init file works as it is;
+.B fluxland \-\-check\-config
+names the keys fluxland doesn't support yet and ignores those that have
+no meaning on Wayland (colorsPerChannel, cacheMax...).
 Boolean values accept
 .BR true / false ,
 .BR yes / no ,
@@ -118,9 +129,15 @@ Default decoration preset for new windows (e.g.\&
 .BR BORDER ).
 .TP
 .B session.screen0.struts
-Manual struts as four space-separated integers:
-.IR "left right top bottom" .
-Reserves screen edges from window placement.
+Space kept free at the edges of every head:
+.IR "left, right, top, bottom"
+in pixels (commas or spaces; default: 0,0,0,0).
+Maximized and placed windows stay out of it.
+.TP
+.BI session.screen0.struts. N
+The same for head
+.I N
+only (from 1).
 .SH WINDOW OPACITY
 .TP
 .B session.screen0.window.focus.alpha
@@ -180,7 +197,15 @@ Toolbar width as percentage of screen (10\-100, default: 100).
 Toolbar height in pixels (0 = auto from font, default: 0).
 .TP
 .B session.screen0.toolbar.layer
-Toolbar stacking layer (default: 4, Dock).
+Toolbar stacking layer: a Fluxbox layer name or number;
+.BR Menu " and " AboveDock
+put it above windows,
+.BR Dock ", " Top " and " Normal
+(the default:
+.BR Dock )
+in the top layer,
+.BR Bottom " and " Desktop
+below windows.
 .TP
 .B session.screen0.toolbar.alpha
 Toolbar opacity (0\-255, default: 255).
@@ -191,22 +216,39 @@ Head (monitor) the toolbar is on, numbered from 1 as in Fluxbox;
 .BR OUTPUTS .
 .TP
 .B session.screen0.toolbar.tools
-Space-separated list of toolbar components (default:
-.IR "prevworkspace workspacename nextworkspace iconbar clock" ).
+The toolbar's tools, separated by commas (as Fluxbox writes them) or
+spaces:
+.BR prevworkspace ,
+.BR workspacename ,
+.BR nextworkspace ,
+.BR iconbar ,
+.BR clock ,
+.BR prevwindow ,
+.BR nextwindow ,
+and
+.B systemtray
+(which is shown at the end for now).
+Default:
+.IR "workspacename prevworkspace nextworkspace iconbar clock" .
 .TP
 .B session.screen0.toolbar.maxOver
 Allow maximized windows to cover the toolbar (default: false).
 .SH TITLEBAR SETTINGS
 .TP
-.B session.titlebar.left
+.B session.screen0.titlebar.left
 Space-separated list of buttons for the left side of the titlebar
 (default:
 .IR Stick ).
+Fluxbox writes this key; its manual's
+.B session.titlebar.left
+works too.
 .TP
-.B session.titlebar.right
+.B session.screen0.titlebar.right
 Space-separated list of buttons for the right side of the titlebar
 (default:
-.IR "Shade Minimize Maximize Close" ).
+.IR "Shade Minimize Maximize Close" ;
+also
+.BR session.titlebar.right ).
 .SH CLOCK SETTINGS
 .TP
 .B session.screen0.strftimeFormat
@@ -217,24 +259,41 @@ syntax (default:
 .SH ICONBAR SETTINGS
 .TP
 .B session.screen0.iconbar.mode
-Iconbar display mode.
-One of
-.BR Workspace " (default, show current workspace windows),"
-.BR AllWindows ,
-.BR Icons " (minimized only),"
-.BR NoIcons " (exclude minimized),"
+The windows the iconbar shows: a window list as in
+.BR fluxland-keys (5),
+such as
+.B {static groups} (workspace)
+(the default: this workspace's windows, a tab group once, in the order
+they were opened),
+.B {static groups} (minimized=yes)
 or
-.BR WorkspaceIcons .
+.BR none .
+Fluxbox 1.0's names
+.BR Workspace ,
+.BR AllWindows ,
+.BR Icons ,
+.BR NoIcons ,
+.B WorkspaceIcons
+and
+.B WorkspaceNoIcons
+work too.
 .TP
 .B session.screen0.iconbar.alignment
-Text alignment in iconbar entries:
-.BR Left ,
-.BR Center " (default),"
-or
-.BR Right .
+.B Relative
+(the default; also
+.BR RelativeSmart )
+shares the iconbar out among the windows;
+.B Left
+and
+.B Right
+give each
+.B iconWidth
+pixels from that side
+.RB ( Center ,
+from fluxland 1.x, centers them).
 .TP
 .B session.screen0.iconbar.iconWidth
-Fixed width for iconbar entries in pixels (0 = auto, default: 0).
+Width of an iconbar entry when not Relative (default: 128).
 .TP
 .B session.screen0.iconbar.usePixmap
 Use pixmap textures for iconbar entries (default: true).
@@ -246,7 +305,13 @@ or
 .BR Off .
 .TP
 .B session.screen0.iconbar.iconifiedPattern
-Display pattern for minimized window names in the iconbar.
+How a minimized window's title shows in the iconbar:
+.B %t
+is the title (default:
+.BR "( %t )" ;
+fluxland 1.x's
+.B %s
+works too).
 .SH TAB SETTINGS
 .TP
 .B session.screen0.autoTabPlacement
@@ -272,8 +337,9 @@ or
 .B session.screen0.tab.width
 External tab width in pixels (0 = auto from font, default: 0).
 .TP
-.B session.screen0.tabPadding
-Padding between tabs in pixels (default: 0).
+.B session.tabPadding
+Padding between tabs in pixels (default: 0; also
+.BR session.screen0.tabPadding ).
 .SH SLIT SETTINGS
 .TP
 .B session.screen0.slit.autoHide
@@ -303,13 +369,10 @@ or
 .BR Horizontal .
 .TP
 .B session.screen0.slit.layer
-Slit stacking layer:
-.BR Bottom ,
-.BR Normal ,
-.BR Dock " (default),"
-.BR Above ,
-or
-.BR AboveDock .
+Slit stacking layer, as
+.B toolbar.layer
+(default:
+.BR Dock ).
 .TP
 .B session.screen0.slit.onhead
 Head (monitor) the slit is on, numbered from 1 as in Fluxbox;
@@ -329,17 +392,21 @@ Path to the slit client ordering file.
 Menu opacity (0\-255, default: 255).
 .TP
 .B session.menuSearch
-Menu type-ahead search mode:
-.BR Nowhere " (default, disabled),"
-.BR ItemStart " (match item prefix),"
+Menu type-ahead search:
+.BR ItemStart " (the default, as in Fluxbox: from the start of a label),"
+.BR Somewhere " (anywhere in a label),"
 or
-.BR Somewhere " (match anywhere in item)."
+.BR Nowhere " (off)."
 .TP
 .B session.screen0.menuDelay
 Submenu hover-open delay in milliseconds (0\-5000, default: 200).
 .TP
 .B session.screen0.windowMenu
-Path to a custom window context menu file.
+The window menu's file (default: the
+.I windowmenu
+file of the configuration directory when there is one, else a copy of
+Fluxbox's; see
+.BR fluxland-menu (5)).
 .SH TOUCHPAD GESTURES
 .TP
 .B session.screen0.gestureWorkspaceSwitch
@@ -353,10 +420,37 @@ Number of fingers required for workspace gestures (2\-5). Default: 3.
 .TP
 .B session.screen0.gestureSwipeThreshold
 Pixel distance to trigger a swipe action (10\-1000). Default: 100.
+.SH WALLPAPER
+.TP
+.B session.screen0.wallpaper
+An image for the desktop (PNG or JPEG).
+Without one, the last one the
+.B SetWallpaper
+command (or a menu's
+.BR [wallpapers] )
+set is used: it is kept in the configuration directory's
+.I lastwallpaper
+file, as Fluxbox's fbsetbg keeps its last one.
+.TP
+.B session.screen0.wallpaperMode
+.BR Stretch " (the default),"
+.BR Fill " (keep its shape and cover the output),"
+.BR Center ,
+or
+.BR Tile .
+.TP
+.B session.screen0.wallpaperColor
+The color around or instead of the image, as
+.BR #RRGGBB .
+.TP
+.BI session.screen0.workspace N .wallpaper
+The wallpaper of workspace
+.I N
+(from 0).
 .SH MISCELLANEOUS
 .TP
 .B session.doubleClickInterval
-Double-click interval in milliseconds (50\-2000, default: 300).
+Double-click interval in milliseconds (50\-2000, default: 250).
 .TP
 .B session.screen0.rootCommand
 Shell command to execute on startup (e.g.\& to set a wallpaper).

@@ -214,6 +214,7 @@ test_validate = executable(
     '../src/config.c', '../src/rules_parse.c', '../src/client_pattern.c',
     '../src/fbcompat.c', '../src/regex_guard.c', '../src/keybind.c',
     '../src/mousebind.c', '../src/command.c', '../src/menu_parse.c'),
+  c_args: ['-DFLUXLAND_FIXTURES="' + meson.current_source_dir() / 'fixtures' + '"'],
   include_directories: test_inc,
   dependencies: [wayland_server, wlroots, server_protos, pangocairo,
     xkbcommon],

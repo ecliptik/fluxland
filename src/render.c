@@ -437,19 +437,16 @@ pixbuf_to_cairo(GdkPixbuf *pixbuf)
 #endif
 
 cairo_surface_t *
-wm_load_pixmap(const char *path, int width, int height)
+wm_load_image(const char *path)
 {
 	if (!path || *path == '\0')
 		return NULL;
 
-	cairo_surface_t *img = NULL;
-
 	/* Fast path: try native Cairo PNG loading first */
-	img = cairo_image_surface_create_from_png(path);
+	cairo_surface_t *img = cairo_image_surface_create_from_png(path);
 	if (cairo_surface_status(img) == CAIRO_STATUS_SUCCESS)
-		goto scale;
+		return img;
 	cairo_surface_destroy(img);
-	img = NULL;
 
 #ifdef WM_HAS_PIXBUF
 	/* Fallback: use GdkPixbuf for XPM, JPEG, BMP, and other formats */
@@ -466,12 +463,19 @@ wm_load_pixmap(const char *path, int width, int height)
 		cairo_surface_destroy(img);
 		return NULL;
 	}
+	return img;
 #else
 	return NULL;
 #endif
+}
 
-scale:
-	;
+cairo_surface_t *
+wm_load_pixmap(const char *path, int width, int height)
+{
+	cairo_surface_t *img = wm_load_image(path);
+	if (!img)
+		return NULL;
+
 	/* Scale to fill the requested dimensions */
 	int img_w = cairo_image_surface_get_width(img);
 	int img_h = cairo_image_surface_get_height(img);

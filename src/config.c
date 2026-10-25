@@ -150,6 +150,31 @@ parse_placement(const char *value)
 	return WM_PLACEMENT_ROW_SMART;
 }
 
+/*
+ * iconbar.mode: Fluxbox's window list ("{static groups} (workspace)"),
+ * or a Fluxbox 1.0 name, as fluxbox-update_configs turns them into
+ * lists.
+ */
+static char *
+iconbar_mode_spec(const char *value)
+{
+	static const struct { const char *name, *spec; } names[] = {
+		{ "Workspace",        "{static groups} (workspace)" },
+		{ "AllWindows",       "{static groups}" },
+		{ "Icons",            "{static groups} (minimized=yes)" },
+		{ "NoIcons",          "{static groups} (minimized=no)" },
+		{ "WorkspaceIcons",   "{static groups} (minimized=yes) (workspace)" },
+		{ "WorkspaceNoIcons", "{static groups} (minimized=no) (workspace)" },
+	};
+	if (!value)
+		return strdup(names[0].spec);
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (strcasecmp(value, names[i].name) == 0)
+			return strdup(names[i].spec);
+	}
+	return strdup(value);
+}
+
 static int
 parse_iconbar_mode(const char *value)
 {
@@ -196,26 +221,48 @@ parse_slit_direction(const char *value)
 	return 0; /* Vertical */
 }
 
+/*
+ * The slit's and the toolbar's layer (Fluxbox's ResourceLayer): a name
+ * or a Fluxbox layer number, as one of the three scene layers they can
+ * be in: 6 above windows (Menu, AboveDock), 4 the top layer (Dock, Top,
+ * Normal; the default), 2 below windows (Bottom, Desktop).
+ */
 static int
-parse_slit_layer(const char *value)
+parse_dock_layer(const char *value)
 {
 	if (!value)
-		return 4; /* Dock (Normal/Top) */
-	if (strcasecmp(value, "AboveDock") == 0 ||
-	    strcasecmp(value, "Above") == 0)
-		return 6; /* Overlay */
-	if (strcasecmp(value, "Bottom") == 0)
-		return 2; /* Bottom */
-	/* "Normal" or "Dock" */
-	if (strcasecmp(value, "Normal") == 0 ||
-	    strcasecmp(value, "Dock") == 0)
 		return 4;
-	/* Try numeric */
-	char *end;
-	long n = strtol(value, &end, 10);
-	if (end != value && *end == '\0')
-		return (int)n;
-	return 4; /* Dock (Top layer) */
+	static const struct { const char *name; int layer; } names[] = {
+		{ "Menu", 6 }, { "AboveDock", 6 }, { "Above", 6 },
+		{ "Dock", 4 }, { "Top", 4 }, { "Normal", 4 },
+		{ "Bottom", 2 }, { "Below", 2 }, { "Desktop", 2 },
+	};
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (strcasecmp(value, names[i].name) == 0)
+			return names[i].layer;
+	}
+	int n;
+	if (safe_atoi(value, &n))
+		return n < 4 ? 6 : n < 10 ? 4 : 2;
+	return 4;
+}
+
+/* "l, r, t, b" or "l r t b"; values not given are left as they are */
+static void
+parse_struts(const char *value, int out[4])
+{
+	if (!value)
+		return;
+	char buf[128];
+	snprintf(buf, sizeof(buf), "%s", value);
+	char *save = NULL;
+	int i = 0;
+	for (char *tok = strtok_r(buf, ", \t", &save); tok && i < 4;
+	     tok = strtok_r(NULL, ", \t", &save), i++) {
+		int v;
+		if (safe_atoi(tok, &v))
+			out[i] = v > 0 ? v : 0;
+	}
 }
 
 static enum wm_workspace_transition
@@ -441,7 +488,8 @@ config_create(void)
 	config->titlebar_right = strdup("Shade Minimize Maximize Close");
 	config->clock_format = strdup("%H:%M");
 	config->iconbar_mode = 0;
-	config->iconbar_alignment = 1; /* center */
+	config->iconbar_mode_spec = iconbar_mode_spec(NULL);
+	config->iconbar_alignment = 1; /* relative */
 	config->iconbar_icon_width = 0; /* auto */
 	config->iconbar_use_pixmap = true;
 	config->iconbar_wheel_mode = 0; /* screen (workspace change) */
@@ -683,8 +731,8 @@ apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 
 	config->toolbar_height =
 		rc_get_int(db, "session.screen0.toolbar.height", 0);
-	config->toolbar_layer =
-		rc_get_int(db, "session.screen0.toolbar.layer", 4);
+	config->toolbar_layer = parse_dock_layer(
+		rc_get_string(db, "session.screen0.toolbar.layer"));
 	config->toolbar_alpha =
 		rc_get_int(db, "session.screen0.toolbar.alpha", 255);
 	if (config->toolbar_alpha < 0) config->toolbar_alpha = 0;
@@ -700,12 +748,17 @@ apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 	}
 
 	/* Titlebar button layout */
-	val = rc_get_string(db, "session.titlebar.left");
+	/* Fluxbox saves these per screen; its manual has session.titlebar */
+	val = rc_get_string(db, "session.screen0.titlebar.left");
+	if (!val)
+		val = rc_get_string(db, "session.titlebar.left");
 	if (val) {
 		free(config->titlebar_left);
 		config->titlebar_left = strdup(val);
 	}
-	val = rc_get_string(db, "session.titlebar.right");
+	val = rc_get_string(db, "session.screen0.titlebar.right");
+	if (!val)
+		val = rc_get_string(db, "session.titlebar.right");
 	if (val) {
 		free(config->titlebar_right);
 		config->titlebar_right = strdup(val);
@@ -731,16 +784,22 @@ apply_iconbar_config(struct wm_config *config, struct rc_database *db)
 	/* Iconbar mode */
 	val = rc_get_string(db, "session.screen0.iconbar.mode");
 	config->iconbar_mode = parse_iconbar_mode(val);
+	free(config->iconbar_mode_spec);
+	config->iconbar_mode_spec = iconbar_mode_spec(val);
 
 	/* Iconbar alignment */
 	val = rc_get_string(db, "session.screen0.iconbar.alignment");
+	/* Fluxbox: Left and Right use iconWidth, Relative (and
+	 * RelativeSmart) share the iconbar out; fluxland 1.x: Center */
 	if (val) {
 		if (strcasecmp(val, "Left") == 0)
 			config->iconbar_alignment = 0;
 		else if (strcasecmp(val, "Right") == 0)
 			config->iconbar_alignment = 2;
+		else if (strcasecmp(val, "Center") == 0)
+			config->iconbar_alignment = 3;
 		else
-			config->iconbar_alignment = 1; /* Center */
+			config->iconbar_alignment = 1; /* Relative */
 	}
 	config->iconbar_icon_width =
 		rc_get_int(db, "session.screen0.iconbar.iconWidth", 0);
@@ -798,7 +857,8 @@ apply_tab_config(struct wm_config *config, struct rc_database *db)
 	if (config->tab_width < 0)
 		config->tab_width = 0;
 	config->tab_padding =
-		rc_get_int(db, "session.screen0.tabPadding", 0);
+		rc_get_int(db, "session.tabPadding",
+			rc_get_int(db, "session.screen0.tabPadding", 0));
 	if (config->tab_padding < 0)
 		config->tab_padding = 0;
 }
@@ -814,12 +874,8 @@ apply_slit_config(struct wm_config *config, struct rc_database *db)
 	config->slit_placement = parse_slit_placement(val);
 	val = rc_get_string(db, "session.screen0.slit.direction");
 	config->slit_direction = parse_slit_direction(val);
-	val = rc_get_string(db, "session.screen0.slit.layer");
-	if (val)
-		config->slit_layer = parse_slit_layer(val);
-	else
-		config->slit_layer =
-			rc_get_int(db, "session.screen0.slit.layer", 4);
+	config->slit_layer = parse_dock_layer(
+		rc_get_string(db, "session.screen0.slit.layer"));
 	config->slit_on_head =
 		rc_get_int(db, "session.screen0.slit.onhead", 0);
 	config->slit_alpha =
@@ -1338,7 +1394,7 @@ apply_misc_config(struct wm_config *config, struct rc_database *db)
 
 	/* Double-click interval */
 	config->double_click_interval =
-		rc_get_int(db, "session.doubleClickInterval", 300);
+		rc_get_int(db, "session.doubleClickInterval", 250);
 	if (config->double_click_interval < 50)
 		config->double_click_interval = 50;
 	if (config->double_click_interval > 2000)
@@ -1351,12 +1407,16 @@ apply_misc_config(struct wm_config *config, struct rc_database *db)
 		config->root_command = strdup(val);
 	}
 
-	/* Manual struts [left right top bottom] */
-	val = rc_get_string(db, "session.screen0.struts");
-	if (val) {
-		sscanf(val, "%d %d %d %d",
-			&config->struts[0], &config->struts[1],
-			&config->struts[2], &config->struts[3]);
+	/* struts: left, right, top, bottom (BScreen::reconfigureStruts) */
+	memset(config->struts, 0, sizeof(config->struts));
+	parse_struts(rc_get_string(db, "session.screen0.struts"),
+		config->struts);
+	for (int i = 0; i < WM_STRUT_HEADS; i++) {
+		char key[64];
+		snprintf(key, sizeof(key), "session.screen0.struts.%d", i + 1);
+		memcpy(config->head_struts[i], config->struts,
+			sizeof(config->struts));
+		parse_struts(rc_get_string(db, key), config->head_struts[i]);
 	}
 
 	/* Gesture settings */
@@ -1588,6 +1648,7 @@ config_destroy(struct wm_config *config)
 	free(config->default_deco);
 	free(config->window_menu_file);
 	free(config->iconbar_iconified_pattern);
+	free(config->iconbar_mode_spec);
 	free(config->slitlist_file);
 	free(config->config_dir);
 	free(config->keys_file);

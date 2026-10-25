@@ -270,10 +270,9 @@ load_wallpaper(const char *path, enum wm_wallpaper_mode mode,
 	if (!path || width <= 0 || height <= 0)
 		return NULL;
 
-	cairo_surface_t *img = cairo_image_surface_create_from_png(path);
-	if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
+	cairo_surface_t *img = wm_load_image(path);
+	if (!img) {
 		wlr_log(WLR_ERROR, "wallpaper: failed to load %s", path);
-		cairo_surface_destroy(img);
 		return NULL;
 	}
 

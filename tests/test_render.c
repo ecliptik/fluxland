@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* render.c includes render.h (which includes style.h + cairo.h) and
  * pango/pangocairo.h — all resolved by the real system headers. No
@@ -560,6 +562,44 @@ test_find_base_dir(void)
 /* main                                                               */
 /* ------------------------------------------------------------------ */
 
+/* Images at their own size: PNG, and JPEG through GdkPixbuf */
+static void
+test_load_image(void)
+{
+	assert(wm_load_image(NULL) == NULL);
+	assert(wm_load_image("/nonexistent.png") == NULL);
+
+	char dir[] = "/tmp/fluxland-test/render-XXXXXX";
+	mkdir("/tmp/fluxland-test", 0755);
+	assert(mkdtemp(dir));
+	char png[256], jpg[256];
+	snprintf(png, sizeof(png), "%s/a.png", dir);
+	snprintf(jpg, sizeof(jpg), "%s/b.jpg", dir);
+	cairo_surface_t *src =
+		cairo_image_surface_create(CAIRO_FORMAT_RGB24, 32, 16);
+	assert(cairo_surface_write_to_png(src, png) == CAIRO_STATUS_SUCCESS);
+	cairo_surface_destroy(src);
+
+	cairo_surface_t *img = wm_load_image(png);
+	assert(img && cairo_image_surface_get_width(img) == 32 &&
+		cairo_image_surface_get_height(img) == 16);
+	cairo_surface_destroy(img);
+#ifdef WM_HAS_PIXBUF
+	GdkPixbuf *pb = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, 24, 12);
+	gdk_pixbuf_fill(pb, 0x336699ff);
+	assert(gdk_pixbuf_save(pb, jpg, "jpeg", NULL, NULL));
+	g_object_unref(pb);
+	img = wm_load_image(jpg);
+	assert(img && cairo_image_surface_get_width(img) == 24 &&
+		cairo_image_surface_get_height(img) == 12);
+	cairo_surface_destroy(img);
+	unlink(jpg);
+#endif
+	unlink(png);
+	rmdir(dir);
+	printf("  PASS: test_load_image\n");
+}
+
 int
 main(void)
 {
@@ -583,6 +623,8 @@ main(void)
 	test_render_texture_with_bevel();
 	test_render_texture_interlaced();
 	test_render_texture_alpha_fixup();
+
+	test_load_image();
 
 	/* Text rendering */
 	test_render_text_null_args();

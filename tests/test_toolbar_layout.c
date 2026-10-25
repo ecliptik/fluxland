@@ -374,6 +374,8 @@ struct wm_config {
 	char *toolbar_tools;
 	char *clock_format;
 	int iconbar_mode;
+	char *iconbar_mode_spec;
+	int toolbar_layer;
 	int iconbar_alignment;
 	int iconbar_icon_width;
 	int iconbar_wheel_mode;
@@ -421,6 +423,7 @@ struct wm_view {
 	bool docked;
 	bool icon_hidden;
 	bool urgent;
+	uint64_t focus_seq;
 	struct wm_decoration *decoration;
 	struct _cairo_surface *icon;
 };
@@ -455,6 +458,8 @@ struct wm_server {
 	struct wm_view *focused_view;
 	struct wlr_cursor *cursor;
 	struct wlr_scene_tree *layer_top;
+	struct wlr_scene_tree *layer_overlay;
+	struct wlr_scene_tree *layer_bottom;
 	struct wl_event_loop *wl_event_loop;
 	struct wm_focus_nav focus_nav;
 #ifdef WM_HAS_SYSTRAY
@@ -727,6 +732,65 @@ deiconify_view(struct wm_view *view)
 	(void)view;
 }
 
+/* --- Window lists (client_pattern.c): the iconbar modes' terms --- */
+
+#include "client_pattern.h"
+void wlr_scene_node_reparent(struct wlr_scene_node *node,
+	struct wlr_scene_tree *parent) { (void)node; (void)parent; }
+
+bool
+wm_window_list_parse(const char *args, struct wm_window_list_spec *spec)
+{
+	memset(spec, 0, sizeof(*spec));
+	if (!args)
+		return true;
+	spec->static_order = strstr(args, "static") != NULL;
+	spec->groups = strstr(args, "groups") != NULL;
+	struct wm_client_pattern *p = calloc(1, sizeof(*p));
+	p->terms = calloc(2, sizeof(*p->terms));
+	if (strstr(args, "(workspace)")) {
+		p->terms[p->term_count].prop = WM_PROP_WORKSPACE;
+		p->terms[p->term_count++].kind = WM_PATTERN_CURRENT;
+	}
+	const char *m = strstr(args, "(minimized=");
+	if (m) {
+		p->terms[p->term_count].prop = WM_PROP_MINIMIZED;
+		p->terms[p->term_count].regex_str = strdup(m + 11);
+		p->terms[p->term_count++].kind = WM_PATTERN_REGEX;
+	}
+	spec->pattern = p;
+	return true;
+}
+
+void
+wm_window_list_finish(struct wm_window_list_spec *spec)
+{
+	if (!spec->pattern)
+		return;
+	for (int i = 0; i < spec->pattern->term_count; i++)
+		free(spec->pattern->terms[i].regex_str);
+	free(spec->pattern->terms);
+	free(spec->pattern);
+	spec->pattern = NULL;
+}
+
+bool
+wm_client_pattern_match(struct wm_server *server,
+	const struct wm_client_pattern *p, struct wm_view *view)
+{
+	for (int i = 0; i < p->term_count; i++) {
+		const struct wm_pattern_term *t = &p->terms[i];
+		if (t->prop == WM_PROP_WORKSPACE && !(view->sticky ||
+		    view->workspace == server->current_workspace))
+			return false;
+		if (t->prop == WM_PROP_MINIMIZED &&
+		    (strncmp(t->regex_str, "yes", 3) == 0) !=
+		    !view->scene_tree->node.enabled)
+			return false;
+	}
+	return true;
+}
+
 /* --- Include toolbar source directly --- */
 
 #include "toolbar.h"
@@ -848,10 +912,33 @@ test_parse_tool_name_unknown(void)
 
 	assert(parse_tool_name("unknown", &type) == false);
 	assert(parse_tool_name("", &type) == false);
-	assert(parse_tool_name("PrevWorkspace", &type) == false); /* case-sensitive */
-	assert(parse_tool_name("ICONBAR", &type) == false);
+	/* Not case-sensitive (Fluxbox lowercases them) */
+	assert(parse_tool_name("PrevWorkspace", &type) == true);
+	assert(type == WM_TOOL_PREV_WORKSPACE);
+	assert(parse_tool_name("ICONBAR", &type) == true);
+	assert(type == WM_TOOL_ICONBAR);
 
 	printf("  PASS: parse_tool_name_unknown\n");
+}
+
+/* Fluxbox's own list: comma separated, with a systemtray */
+static void
+test_parse_toolbar_tools_fluxbox(void)
+{
+	reset_globals();
+	setup_test_server();
+	struct wm_toolbar toolbar;
+	memset(&toolbar, 0, sizeof(toolbar));
+	toolbar.server = &test_server;
+	toolbar.scene_tree = &test_layer_top;
+	parse_toolbar_tools(&toolbar, "prevworkspace, workspacename, "
+		"nextworkspace, iconbar, systemtray, clock");
+	assert(toolbar.tool_count == 5);
+	assert(toolbar.tools[0].type == WM_TOOL_PREV_WORKSPACE);
+	assert(toolbar.tools[3].type == WM_TOOL_ICONBAR);
+	assert(toolbar.tools[4].type == WM_TOOL_CLOCK);
+	free(toolbar.tools);
+	printf("  PASS: parse_toolbar_tools_fluxbox\n");
 }
 
 /* --- parse_toolbar_tools tests --- */
@@ -1162,7 +1249,7 @@ test_collect_iconbar_workspace_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.iconbar_mode = 0; /* WM_ICONBAR_MODE_WORKSPACE */
+	set_iconbar_list(&toolbar, "{static groups} (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
 
@@ -1198,7 +1285,7 @@ test_collect_iconbar_all_windows_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.iconbar_mode = 1; /* WM_ICONBAR_MODE_ALL_WINDOWS */
+	set_iconbar_list(&toolbar, "{static groups}");
 
 	int count = collect_iconbar_entries(&toolbar);
 
@@ -1230,7 +1317,7 @@ test_collect_iconbar_icons_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.iconbar_mode = 2; /* WM_ICONBAR_MODE_ICONS */
+	set_iconbar_list(&toolbar, "{static groups} (minimized=yes)");
 
 	int count = collect_iconbar_entries(&toolbar);
 
@@ -1263,7 +1350,7 @@ test_collect_iconbar_no_icons_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.iconbar_mode = 3; /* WM_ICONBAR_MODE_NO_ICONS */
+	set_iconbar_list(&toolbar, "{static groups} (minimized=no) (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
 
@@ -1297,7 +1384,7 @@ test_collect_iconbar_sticky_views(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.iconbar_mode = 0; /* WM_ICONBAR_MODE_WORKSPACE */
+	set_iconbar_list(&toolbar, "{static groups} (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
 
@@ -2017,22 +2104,12 @@ test_toggle_above_config_top(void)
 	assert(toolbar->on_top == true);
 	assert(toolbar->y == 0);
 
-	/*
-	 * toggle_above flips on_top then calls relayout. relayout re-reads
-	 * config placement, so the effective on_top depends on config. To
-	 * properly test the toggle, switch config placement before calling.
-	 */
-	test_config.toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+	/* ToggleToolbarAbove raises it above the windows and back, in place
+	 * (Fluxbox's toggleAboveDock) */
 	wm_toolbar_toggle_above(toolbar);
-	/* relayout re-reads config => now bottom center */
-	assert(toolbar->on_top == false);
-	assert(toolbar->y == 1080 - toolbar->height);
-
-	/* Switch back */
-	test_config.toolbar_placement = WM_TOOLBAR_TOP_CENTER;
+	assert(toolbar->raised && toolbar->on_top && toolbar->y == 0);
 	wm_toolbar_toggle_above(toolbar);
-	assert(toolbar->on_top == true);
-	assert(toolbar->y == 0);
+	assert(!toolbar->raised && toolbar->on_top && toolbar->y == 0);
 
 	wm_toolbar_destroy(toolbar);
 	wl_list_remove(&ws.link);
@@ -2062,13 +2139,9 @@ test_toggle_above_relayout_behavior(void)
 	assert(toolbar->on_top == false);
 	int original_y = toolbar->y;
 
-	/*
-	 * toggle_above sets on_top=true, but then relayout re-reads
-	 * config (still BOTTOM_CENTER) so on_top goes back to false.
-	 * This tests the actual relayout override behavior.
-	 */
+	/* Raised or not, it stays where it is */
 	wm_toolbar_toggle_above(toolbar);
-	/* Relayout overrides on_top from config placement (BOTTOM_CENTER) */
+	assert(toolbar->raised);
 	assert(toolbar->on_top == false);
 	assert(toolbar->y == original_y);
 
@@ -2133,7 +2206,7 @@ test_collect_iconbar_workspace_icons_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.iconbar_mode = WM_ICONBAR_MODE_WORKSPACE_ICONS;
+	set_iconbar_list(&toolbar, "{static groups} (minimized=yes) (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
 	/* Only iconified views on current workspace should appear */
@@ -2926,6 +2999,7 @@ main(void)
 	/* parse_tool_name */
 	test_parse_tool_name_all_tools();
 	test_parse_tool_name_unknown();
+	test_parse_toolbar_tools_fluxbox();
 
 	/* parse_toolbar_tools */
 	test_parse_toolbar_tools_default();

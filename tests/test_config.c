@@ -318,7 +318,7 @@ test_new_config_options(void)
 	assert(ret == 0);
 
 	assert(c->toolbar_height == 30);
-	assert(c->toolbar_layer == 2);
+	assert(c->toolbar_layer == 6);  /* Fluxbox's 2: AboveDock */
 	assert(c->toolbar_alpha == 200);
 	assert(c->toolbar_on_head == 1);
 	assert(strcmp(c->titlebar_left, "Close") == 0);
@@ -331,7 +331,7 @@ test_new_config_options(void)
 	assert(c->slit_auto_hide == true);
 	assert(c->slit_placement == 8); /* BottomRight */
 	assert(c->slit_direction == 1); /* Horizontal */
-	assert(c->slit_layer == 6);
+	assert(c->slit_layer == 4);  /* Fluxbox's 6: Top */
 	assert(c->slit_on_head == 2);
 
 	config_destroy(c);
@@ -457,6 +457,53 @@ test_phase5b_config_options(void)
 
 	config_destroy(c);
 	printf("  PASS: test_phase5b_config_options\n");
+}
+
+/* Test: the keys and values a Fluxbox init has */
+static void
+test_fluxbox_init_keys(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.titlebar.left:	Stick \n"
+		"session.screen0.titlebar.right:	Minimize Maximize Close \n"
+		"session.screen0.showwindowposition:	true\n"
+		"session.tabPadding:	3\n"
+		"session.screen0.iconbar.mode:	{static groups} (workspace) (minimized=no)\n"
+		"session.screen0.iconbar.alignment:	Left\n"
+		"session.screen0.iconbar.iconWidth:	96\n"
+		"session.screen0.toolbar.layer:	Top\n"
+		"session.screen0.slit.layer:	12\n"
+		"session.screen0.struts:	1,2,3,4\n"
+		"session.screen0.struts.2:	0,0,30,0\n"
+	);
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+
+	assert(strncmp(c->titlebar_left, "Stick", 5) == 0);
+	assert(strncmp(c->titlebar_right, "Minimize Maximize Close", 23) == 0);
+	assert(c->show_window_position == true);
+	assert(c->tab_padding == 3);
+	assert(strcmp(c->iconbar_mode_spec,
+		"{static groups} (workspace) (minimized=no)") == 0);
+	assert(c->iconbar_alignment == 0 && c->iconbar_icon_width == 96);
+	assert(c->toolbar_layer == 4);	/* Top: with the windows above */
+	assert(c->slit_layer == 2);	/* Desktop: below the windows */
+	assert(c->struts[0] == 1 && c->struts[3] == 4);
+	assert(c->head_struts[0][2] == 3);
+	assert(c->head_struts[1][0] == 0 && c->head_struts[1][2] == 30);
+	config_destroy(c);
+
+	/* Fluxbox 1.0 iconbar names become window lists */
+	write_file(TEST_INIT,
+		"session.screen0.iconbar.mode: WorkspaceIcons\n"
+		"session.screen0.iconbar.alignment: Relative\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(strcmp(c->iconbar_mode_spec,
+		"{static groups} (minimized=yes) (workspace)") == 0);
+	assert(c->iconbar_alignment == 1);
+	config_destroy(c);
+	printf("  PASS: test_fluxbox_init_keys\n");
 }
 
 /* Test: double-click interval clamping */
@@ -1299,19 +1346,23 @@ test_iconbar_settings(void)
 static void
 test_slit_layer_numeric(void)
 {
-	write_file(TEST_INIT,
-		"session.screen0.slit.layer: 7\n");
-	struct wm_config *c = config_create();
-	config_load(c, TEST_INIT);
-	assert(c->slit_layer == 7);
-	config_destroy(c);
-
-	write_file(TEST_INIT,
-		"session.screen0.slit.layer: 0\n");
-	c = config_create();
-	config_load(c, TEST_INIT);
-	assert(c->slit_layer == 0);
-	config_destroy(c);
+	/* Fluxbox's layer numbers: 0 Menu ... 6 Top, 8 Normal, 12 Desktop */
+	static const struct { const char *value; int layer; } t[] = {
+		{ "0", 6 }, { "2", 6 }, { "4", 4 }, { "7", 4 }, { "8", 4 },
+		{ "10", 2 }, { "12", 2 }, { "Top", 4 }, { "Menu", 6 },
+		{ "Desktop", 2 },
+	};
+	struct wm_config *c;
+	for (size_t i = 0; i < sizeof(t) / sizeof(t[0]); i++) {
+		char line[64];
+		snprintf(line, sizeof(line), "session.screen0.slit.layer: %s\n",
+			t[i].value);
+		write_file(TEST_INIT, line);
+		c = config_create();
+		config_load(c, TEST_INIT);
+		assert(c->slit_layer == t[i].layer);
+		config_destroy(c);
+	}
 
 	printf("  PASS: test_slit_layer_numeric\n");
 }
@@ -1649,6 +1700,7 @@ main(void)
 	test_iconbar_modes();
 	test_reload();
 	test_phase5b_config_options();
+	test_fluxbox_init_keys();
 	test_double_click_interval_clamp();
 	test_menu_alpha_clamp();
 	test_phase5c_config_options();

@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/types/wlr_buffer.h>
@@ -33,6 +34,8 @@
 #include "view.h"
 #include "view_focus.h"
 #include "workspace.h"
+#include "client_pattern.h"
+#include "tabgroup.h"
 
 /* --- Helper: get primary output --- */
 
@@ -44,38 +47,44 @@ toolbar_output(struct wm_server *server)
 		server->config ? server->config->toolbar_on_head : 0);
 }
 
+/* The scene layer for toolbar.layer (config.c's parse_dock_layer) */
+static void
+apply_toolbar_layer(struct wm_toolbar *toolbar)
+{
+	struct wm_server *server = toolbar->server;
+	int layer = server->config ? server->config->toolbar_layer : 4;
+	struct wlr_scene_tree *parent = server->layer_top;
+	if (toolbar->raised || layer == 6)
+		parent = server->layer_overlay;
+	else if (layer == 2)
+		parent = server->layer_bottom;
+	if (toolbar->scene_tree && parent &&
+	    toolbar->scene_tree->node.parent != parent)
+		wlr_scene_node_reparent(&toolbar->scene_tree->node, parent);
+}
+
 /* --- Tool parsing --- */
 
 static bool
 parse_tool_name(const char *name, enum wm_toolbar_tool_type *out)
 {
-	if (strcmp(name, "prevworkspace") == 0) {
-		*out = WM_TOOL_PREV_WORKSPACE;
-		return true;
-	}
-	if (strcmp(name, "nextworkspace") == 0) {
-		*out = WM_TOOL_NEXT_WORKSPACE;
-		return true;
-	}
-	if (strcmp(name, "workspacename") == 0) {
-		*out = WM_TOOL_WORKSPACE_NAME;
-		return true;
-	}
-	if (strcmp(name, "iconbar") == 0) {
-		*out = WM_TOOL_ICONBAR;
-		return true;
-	}
-	if (strcmp(name, "clock") == 0) {
-		*out = WM_TOOL_CLOCK;
-		return true;
-	}
-	if (strcmp(name, "prevwindow") == 0) {
-		*out = WM_TOOL_PREV_WINDOW;
-		return true;
-	}
-	if (strcmp(name, "nextwindow") == 0) {
-		*out = WM_TOOL_NEXT_WINDOW;
-		return true;
+	static const struct {
+		const char *name;
+		enum wm_toolbar_tool_type type;
+	} tools[] = {
+		{ "prevworkspace", WM_TOOL_PREV_WORKSPACE },
+		{ "nextworkspace", WM_TOOL_NEXT_WORKSPACE },
+		{ "workspacename", WM_TOOL_WORKSPACE_NAME },
+		{ "iconbar",       WM_TOOL_ICONBAR },
+		{ "clock",         WM_TOOL_CLOCK },
+		{ "prevwindow",    WM_TOOL_PREV_WINDOW },
+		{ "nextwindow",    WM_TOOL_NEXT_WINDOW },
+	};
+	for (size_t i = 0; i < sizeof(tools) / sizeof(tools[0]); i++) {
+		if (strcasecmp(name, tools[i].name) == 0) {
+			*out = tools[i].type;
+			return true;
+		}
 	}
 	return false;
 }
@@ -98,16 +107,18 @@ parse_toolbar_tools(struct wm_toolbar *toolbar, const char *tools_str)
 	int count = 0;
 	enum wm_toolbar_tool_type types[WM_TOOLBAR_MAX_TOOLS];
 	char *saveptr = NULL;
-	char *tok = strtok_r(copy, " \t", &saveptr);
+	/* Fluxbox separates them with commas, fluxland 1.x with spaces */
+	char *tok = strtok_r(copy, ", \t", &saveptr);
 	while (tok && count < WM_TOOLBAR_MAX_TOOLS) {
 		enum wm_toolbar_tool_type type;
 		if (parse_tool_name(tok, &type)) {
 			types[count++] = type;
-		} else {
+		} else if (strcasecmp(tok, "systemtray") != 0) {
+			/* The system tray is always at the end for now */
 			wlr_log(WLR_INFO,
 				"toolbar: unknown tool '%s', skipping", tok);
 		}
-		tok = strtok_r(NULL, " \t", &saveptr);
+		tok = strtok_r(NULL, ", \t", &saveptr);
 	}
 	free(copy);
 
@@ -445,12 +456,58 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 
 /* --- Collect icon bar entries based on the current mode --- */
 
+/*
+ * iconbar.mode is a window list (IconbarTool::setMode): "{static
+ * groups} (workspace)" and the like; "none" lists nothing.
+ */
+static void
+set_iconbar_list(struct wm_toolbar *toolbar, const char *spec)
+{
+	if (toolbar->iconbar_list) {
+		wm_window_list_finish(toolbar->iconbar_list);
+		free(toolbar->iconbar_list);
+		toolbar->iconbar_list = NULL;
+	}
+	if (!spec || strcasecmp(spec, "none") == 0)
+		return;
+	struct wm_window_list_spec *list = calloc(1, sizeof(*list));
+	if (!list)
+		return;
+	if (!wm_window_list_parse(spec, list)) {
+		wlr_log(WLR_ERROR, "toolbar: bad iconbar.mode '%s'", spec);
+		/* What Fluxbox writes by default */
+		wm_window_list_parse("{static groups} (workspace)", list);
+	}
+	toolbar->iconbar_list = list;
+}
+
+/* Iconbar order: creation with {static}, else most recently focused */
+static bool
+iconbar_before(const struct wm_iconbar_entry *a,
+	const struct wm_iconbar_entry *b, bool static_order)
+{
+	return static_order ? a->view->id < b->view->id :
+		a->view->focus_seq > b->view->focus_seq;
+}
+
+static void
+sort_iconbar(struct wm_iconbar_entry *entries, int count, bool static_order)
+{
+	for (int i = 1; i < count; i++) {
+		struct wm_iconbar_entry e = entries[i];
+		int j = i - 1;
+		while (j >= 0 && iconbar_before(&e, &entries[j], static_order)) {
+			entries[j + 1] = entries[j];
+			j--;
+		}
+		entries[j + 1] = e;
+	}
+}
+
 static int
 collect_iconbar_entries(struct wm_toolbar *toolbar)
 {
 	struct wm_server *server = toolbar->server;
-	struct wm_workspace *current_ws = wm_workspace_get_active(server);
-	enum wm_iconbar_mode mode = toolbar->iconbar_mode;
 	int count = 0;
 
 	/* Reuse pre-allocated array instead of free+calloc per update.
@@ -467,9 +524,10 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 			sizeof(struct wm_iconbar_entry));
 	}
 
+	const struct wm_window_list_spec *list = toolbar->iconbar_list;
 	struct wm_view *view;
 	wl_list_for_each(view, &server->views, link) {
-		if (count >= WM_TOOLBAR_ICONBAR_MAX) {
+		if (!list || count >= WM_TOOLBAR_ICONBAR_MAX) {
 			break;
 		}
 
@@ -477,45 +535,25 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 		if (!view->mapped || view->docked || view->icon_hidden) {
 			continue;
 		}
-
-		bool is_iconified = !view->scene_tree->node.enabled;
-		bool on_current_ws = (view->workspace == current_ws ||
-			view->sticky);
-
-		/* Filter based on icon bar mode */
-		switch (mode) {
-		case WM_ICONBAR_MODE_WORKSPACE:
-			if (!on_current_ws) {
-				continue;
-			}
-			break;
-		case WM_ICONBAR_MODE_ALL_WINDOWS:
-			break;
-		case WM_ICONBAR_MODE_ICONS:
-			if (!is_iconified) {
-				continue;
-			}
-			break;
-		case WM_ICONBAR_MODE_NO_ICONS:
-			if (!on_current_ws || is_iconified) {
-				continue;
-			}
-			break;
-		case WM_ICONBAR_MODE_WORKSPACE_ICONS:
-			if (!on_current_ws || !is_iconified) {
-				continue;
-			}
-			break;
+		/* {groups}: a tab group is one entry, its current tab */
+		if (list->groups && view->tab_group &&
+		    view->tab_group->active_view != view) {
+			continue;
+		}
+		if (list->pattern &&
+		    !wm_client_pattern_match(server, list->pattern, view)) {
+			continue;
 		}
 
 		struct wm_iconbar_entry *entry = &toolbar->ib_entries[count];
 		entry->view = view;
 		entry->focused = (view == server->focused_view);
-		entry->iconified = is_iconified;
+		entry->iconified = !view->scene_tree->node.enabled;
 		entry->icon = view->icon;
 		count++;
 	}
 
+	sort_iconbar(toolbar->ib_entries, count, list && list->static_order);
 	toolbar->ib_count = count;
 	return count;
 }
@@ -551,13 +589,15 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 
 	/* Determine entry width: fixed iconWidth or auto (divide equally) */
 	struct wm_config *cfg = server->config;
+	/* Relative shares the width out; the others are iconWidth wide
+	 * (128 unless set), less when there isn't room */
+	int alignment = cfg ? cfg->iconbar_alignment : 1;
 	int fixed_icon_width = cfg ? cfg->iconbar_icon_width : 0;
-	int entry_width;
-	if (fixed_icon_width > 0) {
+	if (fixed_icon_width <= 0)
+		fixed_icon_width = 128;
+	int entry_width = width / count;
+	if (alignment != 1 && fixed_icon_width < entry_width)
 		entry_width = fixed_icon_width;
-	} else {
-		entry_width = width / count;
-	}
 	if (entry_width < 1) entry_width = 1;
 
 	/* Compute total content width and alignment offset */
@@ -565,11 +605,10 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 	if (total_content_width > width)
 		total_content_width = width;
 	int align_offset = 0;
-	int alignment = cfg ? cfg->iconbar_alignment : 1;
 	if (total_content_width < width) {
 		if (alignment == 2) /* right */
 			align_offset = width - total_content_width;
-		else if (alignment == 1) /* center */
+		else if (alignment == 3) /* center */
 			align_offset = (width - total_content_width) / 2;
 		/* left: offset stays 0 */
 	}
@@ -697,11 +736,13 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 			const char *pattern = cfg ?
 				cfg->iconbar_iconified_pattern : NULL;
 			if (!pattern)
-				pattern = "(%s)";
-			/* Use %s with the pattern as data to avoid
-			 * format string injection from config */
+				pattern = "( %t )";  /* Fluxbox's */
+			/* The title goes where %t is (Fluxbox; fluxland 1.x
+			 * wrote %s); the pattern is data, not a format */
 			size_t plen = strlen(pattern);
-			const char *pct_s = strstr(pattern, "%s");
+			const char *pct_s = strstr(pattern, "%t");
+			if (!pct_s)
+				pct_s = strstr(pattern, "%s");
 			if (pct_s) {
 				size_t prefix = (size_t)(pct_s - pattern);
 				size_t suffix = plen - prefix - 2;
@@ -1097,6 +1138,7 @@ wm_toolbar_create(struct wm_server *server)
 			p == WM_TOOLBAR_TOP_RIGHT);
 		toolbar->auto_hide = server->config->toolbar_auto_hide;
 		toolbar->iconbar_mode = server->config->iconbar_mode;
+		set_iconbar_list(toolbar, server->config->iconbar_mode_spec);
 		if (server->config->toolbar_height > 0) {
 			toolbar->height = server->config->toolbar_height;
 		}
@@ -1111,6 +1153,7 @@ wm_toolbar_create(struct wm_server *server)
 		free(toolbar);
 		return NULL;
 	}
+	apply_toolbar_layer(toolbar);
 
 	/* Create background buffer */
 	toolbar->bg_buf = wlr_scene_buffer_create(toolbar->scene_tree, NULL);
@@ -1170,6 +1213,7 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 	if (toolbar->clock_timer) {
 		wl_event_source_remove(toolbar->clock_timer);
 	}
+	set_iconbar_list(toolbar, "none");
 
 	if (toolbar->hide_timer) {
 		wl_event_source_remove(toolbar->hide_timer);
@@ -1304,6 +1348,8 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	if (config) {
 		toolbar->visible = config->toolbar_visible;
 		toolbar->iconbar_mode = config->iconbar_mode;
+		set_iconbar_list(toolbar, config->iconbar_mode_spec);
+		apply_toolbar_layer(toolbar);
 		if (config->toolbar_height > 0) {
 			toolbar->height = config->toolbar_height;
 		}
@@ -1650,10 +1696,12 @@ wm_toolbar_toggle_above(struct wm_toolbar *toolbar)
 		return;
 	}
 
-	toolbar->on_top = !toolbar->on_top;
-	wm_toolbar_relayout(toolbar);
+	/* Above the windows, and back to toolbar.layer (Fluxbox's
+	 * Toolbar::toggleAboveDock) */
+	toolbar->raised = !toolbar->raised;
+	apply_toolbar_layer(toolbar);
 
-	wlr_log(WLR_INFO, "toolbar toggled above: on_top=%d", toolbar->on_top);
+	wlr_log(WLR_INFO, "toolbar toggled above: %d", toolbar->raised);
 }
 
 void

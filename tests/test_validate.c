@@ -724,6 +724,35 @@ test_apps_file(void)
 	printf("  PASS: test_apps_file\n");
 }
 
+/* ---- A Fluxbox init: what Fluxbox 1.3 writes ---- */
+
+static void
+test_fluxbox_init(void)
+{
+	struct config_result r;
+	config_result_init(&r);
+	validate_init_file(FLUXLAND_FIXTURES "/fluxbox/init", &r);
+	int errors = 0, unsupported = 0;
+	for (int i = 0; i < r.count; i++) {
+		if (r.errors[i].fatal) {
+			fprintf(stderr, "line %d: %s\n", r.errors[i].line,
+				r.errors[i].message);
+			errors++;
+		}
+		if (strstr(r.errors[i].message, "isn't supported"))
+			unsupported++;
+	}
+	/* No errors; warnings only for what fluxland doesn't do yet (and
+	 * the paths, which aren't there) */
+	assert(errors == 0);
+	assert(unsupported > 0);
+	for (int i = 0; i < r.count; i++)
+		assert(strstr(r.errors[i].message, "isn't supported") ||
+			strstr(r.errors[i].message, "non-existent path"));
+	config_result_destroy(&r);
+	printf("  PASS: test_fluxbox_init\n");
+}
+
 /* ---- Menu file ---- */
 
 static void
@@ -1293,6 +1322,7 @@ main(void)
 	/* Result helpers */
 	test_result_init_destroy();
 	test_apps_file();
+	test_fluxbox_init();
 	test_menu_file();
 	test_result_no_errors();
 

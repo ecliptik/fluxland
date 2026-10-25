@@ -69,6 +69,9 @@ int wm_measure_text_width(const char *text, const struct wm_font *font,
 
 /* --- Pixmap loading --- */
 
+/* An image file at its own size (PNG; JPEG, XPM... with GdkPixbuf) */
+cairo_surface_t *wm_load_image(const char *path);
+
 /*
  * Load an image file (PNG, XPM, JPEG, BMP) and scale it to the given
  * dimensions.  Returns a Cairo surface or NULL on error.
