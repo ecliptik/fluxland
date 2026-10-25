@@ -50,6 +50,7 @@ struct wm_systray {
 	struct wl_event_source *bus_event;
 	struct wl_list items;  /* wm_systray_item.link */
 	int item_count;
+	bool vertical;         /* down a turned toolbar */
 	struct wlr_scene_tree *scene_tree;
 	sd_bus_slot *watcher_slot;
 	sd_bus_slot *name_slot;

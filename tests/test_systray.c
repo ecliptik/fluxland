@@ -661,6 +661,7 @@ struct wm_systray {
 	sd_bus_slot *name_slot;
 	int icon_size;
 	int x, y, width, height;
+	bool vertical;
 };
 
 /* Forward declarations of public API (normally from systray.h) */

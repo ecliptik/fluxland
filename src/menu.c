@@ -274,7 +274,9 @@ save_config_key(struct wm_config *cfg, const char *key)
 		"BottomLeft", "Bottom", "BottomRight", "LeftTop", "Left",
 		"LeftBottom", "RightTop", "Right", "RightBottom" };
 	static const char *const toolbar[] = { "TopLeft", "TopCenter",
-		"TopRight", "BottomLeft", "BottomCenter", "BottomRight" };
+		"TopRight", "BottomLeft", "BottomCenter", "BottomRight",
+		"LeftTop", "LeftCenter", "LeftBottom", "RightTop",
+		"RightCenter", "RightBottom" };
 	static const char *const slit[] = { "TopLeft", "TopCenter",
 		"TopRight", "RightTop", "RightCenter", "RightBottom",
 		"BottomLeft", "BottomCenter", "BottomRight", "LeftTop",
@@ -544,15 +546,21 @@ create_toolbar_menu(struct wm_server *server)
 	static const int layer_values[] = { 6, 4, 2 };
 	add_choice_submenu(server, menu, _("Layer..."), "toolbar_layer",
 		layers, layer_values, 3, cfg->toolbar_layer);
-	static const char *const places[] = { N_("Top Left"), N_("Top Center"),
-		N_("Top Right"), N_("Bottom Left"), N_("Bottom Center"),
+	/* Toolbar::setupMenus' order */
+	static const char *const places[] = { N_("Top Left"), N_("Left Top"),
+		N_("Left Center"), N_("Left Bottom"), N_("Bottom Left"),
+		N_("Top Center"), N_("Bottom Center"), N_("Top Right"),
+		N_("Right Top"), N_("Right Center"), N_("Right Bottom"),
 		N_("Bottom Right") };
 	static const int place_values[] = { WM_TOOLBAR_TOP_LEFT,
-		WM_TOOLBAR_TOP_CENTER, WM_TOOLBAR_TOP_RIGHT,
-		WM_TOOLBAR_BOTTOM_LEFT, WM_TOOLBAR_BOTTOM_CENTER,
+		WM_TOOLBAR_LEFT_TOP, WM_TOOLBAR_LEFT_CENTER,
+		WM_TOOLBAR_LEFT_BOTTOM, WM_TOOLBAR_BOTTOM_LEFT,
+		WM_TOOLBAR_TOP_CENTER, WM_TOOLBAR_BOTTOM_CENTER,
+		WM_TOOLBAR_TOP_RIGHT, WM_TOOLBAR_RIGHT_TOP,
+		WM_TOOLBAR_RIGHT_CENTER, WM_TOOLBAR_RIGHT_BOTTOM,
 		WM_TOOLBAR_BOTTOM_RIGHT };
 	add_choice_submenu(server, menu, _("Placement"), "toolbar_placement",
-		places, place_values, 6, (int)cfg->toolbar_placement);
+		places, place_values, 12, (int)cfg->toolbar_placement);
 
 	struct wm_menu_item *sep = menu_item_create(WM_MENU_SEPARATOR, NULL);
 	if (sep)

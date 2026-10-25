@@ -176,6 +176,12 @@ typedef int cairo_operator_t;
 #define CAIRO_STATUS_SUCCESS 0
 #define CAIRO_OPERATOR_CLEAR 2
 #define CAIRO_OPERATOR_OVER 3
+#define CAIRO_OPERATOR_SOURCE 1
+typedef struct { double xx, yx, xy, yy, x0, y0; } cairo_matrix_t;
+static void cairo_matrix_init(cairo_matrix_t *m, double xx, double yx,
+	double xy, double yy, double x0, double y0)
+	{ m->xx = xx; m->yx = yx; m->xy = xy; m->yy = yy; m->x0 = x0;
+	  m->y0 = y0; }
 
 typedef struct _cairo_surface cairo_surface_t;
 typedef struct _cairo {
@@ -267,6 +273,8 @@ typedef struct _cairo_pattern cairo_pattern_t;
 static int g_icon_paint_count;
 static void cairo_save(cairo_t *cr) { (void)cr; }
 static void cairo_restore(cairo_t *cr) { (void)cr; }
+static void cairo_set_matrix(cairo_t *cr, const cairo_matrix_t *m)
+	{ (void)cr; (void)m; }
 static void cairo_translate(cairo_t *cr, double x, double y) {
 	(void)cr; (void)x; (void)y; }
 static void cairo_scale(cairo_t *cr, double x, double y) {
@@ -369,6 +377,12 @@ enum wm_toolbar_placement {
 	WM_TOOLBAR_BOTTOM_LEFT,
 	WM_TOOLBAR_BOTTOM_CENTER,
 	WM_TOOLBAR_BOTTOM_RIGHT,
+	WM_TOOLBAR_LEFT_TOP,
+	WM_TOOLBAR_LEFT_CENTER,
+	WM_TOOLBAR_LEFT_BOTTOM,
+	WM_TOOLBAR_RIGHT_TOP,
+	WM_TOOLBAR_RIGHT_CENTER,
+	WM_TOOLBAR_RIGHT_BOTTOM,
 };
 
 struct wm_config {
@@ -460,7 +474,7 @@ struct wm_focus_nav {
 	int slit_index;
 };
 
-struct wm_systray;
+struct wm_systray { bool vertical; };
 
 struct wm_server {
 	struct wl_list outputs;
@@ -3212,6 +3226,43 @@ test_toolbar_render_workspace_inactive(void)
 	printf("  PASS: toolbar_render_workspace_inactive\n");
 }
 
+/* A turned toolbar: the pointer back into it as laid out, and its parts
+ * where they show (Fluxbox's ROT90 on the right, ROT270 on the left) */
+static void
+test_turned_toolbar(void)
+{
+	struct wm_toolbar t;
+	memset(&t, 0, sizeof(t));
+	t.x = 1000;
+	t.y = 100;
+	t.width = 300;	/* along it */
+	t.height = 20;	/* across */
+	double x, y;
+
+	/* Right side, clockwise: the start at the top, its top edge right */
+	t.rotation = 90;
+	assert(toolbar_local(&t, 1000 + 19, 100 + 0, &x, &y));
+	assert(x == 0 && y == 0);
+	assert(toolbar_local(&t, 1000 + 0, 100 + 299, &x, &y));
+	assert(x == 299 && y == 19);
+	assert(!toolbar_local(&t, 1000 + 20, 100, &x, &y));
+	struct wlr_box b = toolbar_turn_box(&t, 10, 2, 50, 16);
+	assert(b.x == 2 && b.y == 10 && b.width == 16 && b.height == 50);
+
+	/* Left side, anticlockwise: the start at the bottom */
+	t.rotation = 270;
+	assert(toolbar_local(&t, 1000 + 0, 100 + 299, &x, &y));
+	assert(x == 0 && y == 0);
+	b = toolbar_turn_box(&t, 10, 2, 50, 16);
+	assert(b.x == 2 && b.y == 300 - 10 - 50 && b.width == 16 &&
+		b.height == 50);
+
+	/* Across: as it is */
+	t.rotation = 0;
+	assert(toolbar_local(&t, 1005, 110, &x, &y) && x == 5 && y == 10);
+	printf("  PASS: turned_toolbar\n");
+}
+
 int
 main(void)
 {
@@ -3307,6 +3358,7 @@ main(void)
 	test_toolbar_update_iconbar();
 	test_toolbar_render_iconbar_with_entries();
 	test_toolbar_render_workspace_inactive();
+	test_turned_toolbar();
 
 	printf("All toolbar_layout tests passed.\n");
 	return 0;

@@ -67,6 +67,89 @@ apply_toolbar_layer(struct wm_toolbar *toolbar)
 		wlr_scene_node_reparent(&toolbar->scene_tree->node, parent);
 }
 
+/* --- Turned toolbars --- */
+
+/*
+ * Layout coordinates in the toolbar as it is laid out (across, its width
+ * along it); true when inside it
+ */
+static bool
+toolbar_local(struct wm_toolbar *toolbar, double lx, double ly, double *x,
+	double *y)
+{
+	double dx = lx - toolbar->x, dy = ly - toolbar->y;
+	if (toolbar->rotation == 90) {
+		*x = dy;
+		*y = toolbar->height - 1 - dx;
+	} else if (toolbar->rotation == 270) {
+		*x = toolbar->width - 1 - dy;
+		*y = dx;
+	} else {
+		*x = dx;
+		*y = dy;
+	}
+	return *x >= 0 && *x < toolbar->width && *y >= 0 &&
+		*y < toolbar->height;
+}
+
+/* A box of the toolbar as laid out, where it is on the screen (relative
+ * to the toolbar's top left there) */
+static struct wlr_box
+toolbar_turn_box(struct wm_toolbar *toolbar, int x, int y, int w, int h)
+{
+	if (toolbar->rotation == 90)
+		return (struct wlr_box){ toolbar->height - y - h, x, h, w };
+	if (toolbar->rotation == 270)
+		return (struct wlr_box){ y, toolbar->width - x - w, h, w };
+	return (struct wlr_box){ x, y, w, h };
+}
+
+/* A buffer of the toolbar at (x, y) as laid out, w x h, where it is on
+ * the screen (toolbar_buffer turned its pixels) */
+static void
+place_buffer(struct wm_toolbar *toolbar, struct wlr_scene_buffer *buf,
+	int x, int y, int w, int h)
+{
+	if (!buf)
+		return;
+	struct wlr_box b = toolbar_turn_box(toolbar, x, y, w, h);
+	wlr_scene_node_set_position(&buf->node, b.x, b.y);
+}
+
+/*
+ * A drawn part of the toolbar as a buffer, turned with the toolbar (in
+ * the drawing: the scene's own turning is clipped by some renderers)
+ */
+static struct wlr_buffer *
+toolbar_buffer(struct wm_toolbar *toolbar, cairo_surface_t *surface)
+{
+	if (!surface || !toolbar->rotation)
+		return wlr_buffer_from_cairo(surface);
+	int w = cairo_image_surface_get_width(surface);
+	int h = cairo_image_surface_get_height(surface);
+	cairo_surface_t *turned = cairo_image_surface_create(
+		CAIRO_FORMAT_ARGB32, h, w);
+	if (cairo_surface_status(turned) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(turned);
+		return wlr_buffer_from_cairo(surface);
+	}
+	cairo_t *cr = cairo_create(turned);
+	cairo_matrix_t m;
+	if (toolbar->rotation == 90)
+		/* Clockwise, the start at the top: (x, y) to (h - y, x) */
+		cairo_matrix_init(&m, 0, 1, -1, 0, h, 0);
+	else
+		/* Anticlockwise, the start at the bottom: to (y, w - x) */
+		cairo_matrix_init(&m, 0, -1, 1, 0, 0, w);
+	cairo_set_matrix(cr, &m);
+	cairo_set_source_surface(cr, surface, 0, 0);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+	cairo_surface_destroy(surface);
+	return wlr_buffer_from_cairo(turned);
+}
+
 /* --- Tool parsing --- */
 
 static bool
@@ -592,7 +675,7 @@ render_button_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
 	draw_arrow(cr, tool->type, cx, cy, cw, ch, style->toolbar_button_scale,
 		&style->toolbar_button_pic_color);
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return toolbar_buffer(toolbar, surface);
 }
 
 /* A button.NAME tool: its label in the button style (FbTk::TextButton) */
@@ -612,7 +695,7 @@ render_text_button(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
 		&style->toolbar_button.text_color, WM_JUSTIFY_CENTER,
 		cx, cy, cw, ch);
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return toolbar_buffer(toolbar, surface);
 }
 
 static struct wlr_buffer *
@@ -654,7 +737,7 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 		style->toolbar_workspace.justify, cx, cy, cw, ch);
 
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return toolbar_buffer(toolbar, surface);
 }
 
 /* --- Collect icon bar entries based on the current mode --- */
@@ -827,7 +910,7 @@ render_iconbar(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 	int count = toolbar->ib_count;
 	if (count == 0 || cw <= 0) {
 		cairo_destroy(cr);
-		return wlr_buffer_from_cairo(surface);
+		return toolbar_buffer(toolbar, surface);
 	}
 	if (!toolbar->ib_boxes) {
 		toolbar->ib_boxes = calloc(WM_TOOLBAR_ICONBAR_MAX,
@@ -915,7 +998,7 @@ render_iconbar(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 	cairo_restore(cr);
 
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return toolbar_buffer(toolbar, surface);
 }
 
 /* --- Render clock --- */
@@ -947,7 +1030,7 @@ render_clock(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 		&style->toolbar_clock.text_color, style->toolbar_clock.justify,
 		cx, cy, cw, ch);
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return toolbar_buffer(toolbar, surface);
 }
 
 /* --- Render a single tool --- */
@@ -959,10 +1042,17 @@ render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 
 	if (tool->type == WM_TOOL_SYSTRAY) {
 #ifdef WM_HAS_SYSTRAY
-		if (toolbar->server->systray && tool->width > 0)
+		if (toolbar->server->systray && tool->width > 0) {
+			/* The icons stay upright, down a turned toolbar */
+			struct wlr_box b = toolbar_turn_box(toolbar, tool->x,
+				tool->y, tool->width, tool->height);
+			toolbar->server->systray->vertical =
+				toolbar->rotation != 0;
 			wm_systray_layout(toolbar->server->systray,
-				toolbar->x + tool->x, toolbar->y + tool->y,
-				tool->width, tool->height);
+				toolbar->x + b.x, toolbar->y + b.y,
+				toolbar->rotation ? b.height : b.width,
+				toolbar->rotation ? b.width : b.height);
+		}
 #endif
 		return;
 	}
@@ -1005,7 +1095,8 @@ render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 		wlr_scene_buffer_set_buffer(tool->buf, buf);
 		wlr_buffer_drop(buf);
 	}
-	wlr_scene_node_set_position(&tool->buf->node, tool->x, tool->y);
+	place_buffer(toolbar, tool->buf, tool->x, tool->y, tool->width,
+		tool->height);
 }
 
 /* --- Full toolbar render --- */
@@ -1018,7 +1109,7 @@ set_buffer_opacity(struct wlr_scene_buffer *buffer, int sx, int sy,
 	wlr_scene_buffer_set_opacity(buffer, *(float *)data);
 }
 
-void
+static void
 toolbar_render(struct wm_toolbar *toolbar)
 {
 	if (!toolbar || !toolbar->visible) {
@@ -1043,11 +1134,12 @@ toolbar_render(struct wm_toolbar *toolbar)
 			&style->toolbar_border_color, 0, 0, w, h);
 		cairo_destroy(bcr);
 	}
-	struct wlr_buffer *bg = wlr_buffer_from_cairo(bg_surface);
+	struct wlr_buffer *bg = toolbar_buffer(toolbar, bg_surface);
 	wlr_scene_buffer_set_buffer(toolbar->bg_buf, bg);
 	if (bg) {
 		wlr_buffer_drop(bg);
 	}
+	place_buffer(toolbar, toolbar->bg_buf, 0, 0, w, h);
 
 	/* Compute layout for all tools */
 	compute_tool_layout(toolbar, w);
@@ -1088,7 +1180,7 @@ toolbar_render(struct wm_toolbar *toolbar)
 			cairo_destroy(cr);
 
 			struct wlr_buffer *focus_buf =
-				wlr_buffer_from_cairo(focus_surf);
+				toolbar_buffer(toolbar, focus_surf);
 			if (focus_buf) {
 				if (!toolbar->focus_indicator) {
 					toolbar->focus_indicator =
@@ -1101,9 +1193,9 @@ toolbar_render(struct wm_toolbar *toolbar)
 						focus_buf);
 				}
 				if (toolbar->focus_indicator) {
-					wlr_scene_node_set_position(
-						&toolbar->focus_indicator->node,
-						fx, 0);
+					place_buffer(toolbar,
+						toolbar->focus_indicator,
+						fx, 0, fw, fh);
 					wlr_scene_node_set_enabled(
 						&toolbar->focus_indicator->node,
 						true);
@@ -1142,11 +1234,8 @@ hide_timer_cb(void *data)
 	double cx = server->cursor->x;
 	double cy = server->cursor->y;
 
-	double local_x = cx - toolbar->x;
-	double local_y = cy - toolbar->y;
-
-	if (local_x >= 0 && local_x < toolbar->width &&
-	    local_y >= 0 && local_y < toolbar->height) {
+	double local_x, local_y;
+	if (toolbar_local(toolbar, cx, cy, &local_x, &local_y)) {
 		/* Pointer is still inside — don't hide, re-arm */
 		wl_event_source_timer_update(toolbar->hide_timer, 500);
 		return 0;
@@ -1477,13 +1566,22 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	 * goes around it */
 	int tbw = toolbar->server->style ?
 		toolbar->server->style->toolbar_border_width : 0;
-	toolbar->height = toolbar_compute_height(toolbar);
-	toolbar->width = (output_width - 2 * tbw) * width_pct / 100 + 2 * tbw;
-	if (toolbar->width < 1) toolbar->width = 1;
-
-	/* Determine horizontal position based on placement */
+	/* Up a side: as long as the head is high (Toolbar::reconfigure),
+	 * laid out across and turned */
 	enum wm_toolbar_placement placement = config ?
 		config->toolbar_placement : WM_TOOLBAR_BOTTOM_CENTER;
+	bool left = placement >= WM_TOOLBAR_LEFT_TOP &&
+		placement <= WM_TOOLBAR_LEFT_BOTTOM;
+	bool right = placement >= WM_TOOLBAR_RIGHT_TOP &&
+		placement <= WM_TOOLBAR_RIGHT_BOTTOM;
+	toolbar->rotation = left ? 270 : right ? 90 : 0;
+	int along = toolbar->rotation ? output_height : output_width;
+	toolbar->height = toolbar_compute_height(toolbar);
+	toolbar->width = (along - 2 * tbw) * width_pct / 100 + 2 * tbw;
+	if (toolbar->width < 1) toolbar->width = 1;
+	/* On the screen */
+	int sw = toolbar->rotation ? toolbar->height : toolbar->width;
+	int sh = toolbar->rotation ? toolbar->width : toolbar->height;
 
 	switch (placement) {
 	case WM_TOOLBAR_TOP_LEFT:
@@ -1492,12 +1590,22 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 		break;
 	case WM_TOOLBAR_TOP_RIGHT:
 	case WM_TOOLBAR_BOTTOM_RIGHT:
-		toolbar->x = output_width - toolbar->width;
+		toolbar->x = output_width - sw;
+		break;
+	case WM_TOOLBAR_LEFT_TOP:
+	case WM_TOOLBAR_LEFT_CENTER:
+	case WM_TOOLBAR_LEFT_BOTTOM:
+		toolbar->x = 0;
+		break;
+	case WM_TOOLBAR_RIGHT_TOP:
+	case WM_TOOLBAR_RIGHT_CENTER:
+	case WM_TOOLBAR_RIGHT_BOTTOM:
+		toolbar->x = output_width - sw;
 		break;
 	case WM_TOOLBAR_TOP_CENTER:
 	case WM_TOOLBAR_BOTTOM_CENTER:
 	default:
-		toolbar->x = (output_width - toolbar->width) / 2;
+		toolbar->x = (output_width - sw) / 2;
 		break;
 	}
 
@@ -1505,11 +1613,19 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	toolbar->on_top = (placement == WM_TOOLBAR_TOP_LEFT ||
 		placement == WM_TOOLBAR_TOP_CENTER ||
 		placement == WM_TOOLBAR_TOP_RIGHT);
-
-	if (toolbar->on_top) {
+	if (toolbar->rotation) {
+		if (placement == WM_TOOLBAR_LEFT_TOP ||
+		    placement == WM_TOOLBAR_RIGHT_TOP)
+			toolbar->y = 0;
+		else if (placement == WM_TOOLBAR_LEFT_BOTTOM ||
+			 placement == WM_TOOLBAR_RIGHT_BOTTOM)
+			toolbar->y = output_height - sh;
+		else
+			toolbar->y = (output_height - sh) / 2;
+	} else if (toolbar->on_top) {
 		toolbar->y = 0;
 	} else {
-		toolbar->y = output_height - toolbar->height;
+		toolbar->y = output_height - sh;
 	}
 
 	/* Output-relative so far; the scene works in layout coordinates */
@@ -1541,7 +1657,17 @@ wm_toolbar_reserve(struct wm_toolbar *toolbar, struct wm_output *output,
 	if (config && config->toolbar_max_over)
 		return;
 
-	if (toolbar->on_top) {
+	if (toolbar->rotation == 270) {
+		/* Up the left side */
+		int right = toolbar->x + toolbar->height;
+		if (right > usable->x) {
+			usable->width -= right - usable->x;
+			usable->x = right;
+		}
+	} else if (toolbar->rotation == 90) {
+		if (toolbar->x < usable->x + usable->width)
+			usable->width = toolbar->x - usable->x;
+	} else if (toolbar->on_top) {
 		int bottom = toolbar->y + toolbar->height;
 		if (bottom > usable->y) {
 			usable->height -= bottom - usable->y;
@@ -1552,6 +1678,8 @@ wm_toolbar_reserve(struct wm_toolbar *toolbar, struct wm_output *output,
 	}
 	if (usable->height < 0)
 		usable->height = 0;
+	if (usable->width < 0)
+		usable->width = 0;
 }
 
 bool
@@ -1563,12 +1691,10 @@ wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
 	}
 
 	/* Convert layout coords to toolbar-local coords */
-	double local_x = lx - toolbar->x;
-	double local_y = ly - toolbar->y;
+	double local_x, local_y;
 
 	/* Check bounds */
-	if (local_x < 0 || local_x >= toolbar->width ||
-	    local_y < 0 || local_y >= toolbar->height) {
+	if (!toolbar_local(toolbar, lx, ly, &local_x, &local_y)) {
 		return false;
 	}
 
@@ -1623,8 +1749,8 @@ wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly)
 	if (!toolbar || !toolbar->visible ||
 	    (toolbar->auto_hide && !toolbar->shown))
 		return false;
-	double x = lx - toolbar->x, y = ly - toolbar->y;
-	return x >= 0 && x < toolbar->width && y >= 0 && y < toolbar->height;
+	double x, y;
+	return toolbar_local(toolbar, lx, ly, &x, &y);
 }
 
 bool
@@ -1654,9 +1780,10 @@ const char *
 wm_toolbar_tooltip_at(struct wm_toolbar *toolbar, double lx, double ly,
 	struct wm_view **view)
 {
-	if (!wm_toolbar_contains(toolbar, lx, ly))
+	double x, y;
+	if (!wm_toolbar_contains(toolbar, lx, ly) ||
+	    !toolbar_local(toolbar, lx, ly, &x, &y))
 		return NULL;
-	double x = lx - toolbar->x;
 	for (int i = 0; i < toolbar->tool_count; i++) {
 		struct wm_toolbar_tool *tool = &toolbar->tools[i];
 		if (tool->type != WM_TOOL_ICONBAR || x < tool->x ||
@@ -1685,12 +1812,10 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 	}
 
 	/* Convert layout coords to toolbar-local coords */
-	double local_x = lx - toolbar->x;
-	double local_y = ly - toolbar->y;
+	double local_x, local_y;
 
 	/* Check bounds */
-	if (local_x < 0 || local_x >= toolbar->width ||
-	    local_y < 0 || local_y >= toolbar->height) {
+	if (!toolbar_local(toolbar, lx, ly, &local_x, &local_y)) {
 		return false;
 	}
 
@@ -1835,7 +1960,8 @@ wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx, double ly,
 		return true;
 
 	/* Released over the button it was pressed on */
-	double x = lx - toolbar->x, y = ly - toolbar->y;
+	double x, y;
+	toolbar_local(toolbar, lx, ly, &x, &y);
 	if (x < tool->x || x >= tool->x + tool->width ||
 	    y < tool->y || y >= tool->y + tool->height)
 		return true;
@@ -1880,7 +2006,13 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 	/* Define trigger zone: 1px strip at the edge where toolbar lives */
 	bool in_trigger_zone = false;
 	bool in_columns = lx >= ob.x && lx < ob.x + ob.width;
-	if (toolbar->on_top) {
+	bool in_rows = ly >= ob.y && ly < ob.y + ob.height;
+	if (toolbar->rotation == 270) {
+		in_trigger_zone = in_rows && lx <= ob.x + 1 && lx >= ob.x;
+	} else if (toolbar->rotation == 90) {
+		in_trigger_zone = in_rows &&
+			lx >= ob.x + ob.width - 1 && lx < ob.x + ob.width;
+	} else if (toolbar->on_top) {
 		in_trigger_zone = in_columns && ly <= ob.y + 1 && ly >= ob.y;
 	} else {
 		in_trigger_zone = in_columns &&
@@ -1890,10 +2022,9 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 	/* Check if pointer is within the toolbar area (when shown) */
 	bool in_toolbar = false;
 	if (toolbar->shown) {
-		double local_x = lx - toolbar->x;
-		double local_y = ly - toolbar->y;
-		in_toolbar = (local_x >= 0 && local_x < toolbar->width &&
-			local_y >= 0 && local_y < toolbar->height);
+		double local_x, local_y;
+		in_toolbar = toolbar_local(toolbar, lx, ly, &local_x,
+			&local_y);
 	}
 
 	if (!toolbar->shown && in_trigger_zone) {

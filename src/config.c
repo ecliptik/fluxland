@@ -130,6 +130,13 @@ parse_toolbar_placement(const char *value)
 		return WM_TOOLBAR_BOTTOM_LEFT;
 	if (strcasecmp(value, "BottomRight") == 0)
 		return WM_TOOLBAR_BOTTOM_RIGHT;
+	static const char *const sides[] = { "LeftTop", "LeftCenter",
+		"LeftBottom", "RightTop", "RightCenter", "RightBottom" };
+	for (int i = 0; i < 6; i++) {
+		if (strcasecmp(value, sides[i]) == 0)
+			return (enum wm_toolbar_placement)(WM_TOOLBAR_LEFT_TOP +
+				i);
+	}
 	return WM_TOOLBAR_BOTTOM_CENTER;
 }
 

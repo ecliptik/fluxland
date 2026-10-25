@@ -743,8 +743,13 @@ wm_systray_layout(struct wm_systray *systray, int x, int y,
 		int iy = (height - icon_size) / 2;
 		if (iy < 0) iy = 0;
 
-		wlr_scene_node_set_position(&item->icon_buf->node,
-			offset, iy);
+		/* Down a turned toolbar, height is its thickness */
+		if (systray->vertical)
+			wlr_scene_node_set_position(&item->icon_buf->node,
+				iy, offset);
+		else
+			wlr_scene_node_set_position(&item->icon_buf->node,
+				offset, iy);
 		wlr_scene_node_set_enabled(&item->icon_buf->node, true);
 
 		offset += icon_size + padding;

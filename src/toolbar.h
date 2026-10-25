@@ -113,6 +113,10 @@ struct wm_toolbar {
 	int width, height;
 	bool visible;
 	bool on_top; /* true if placed at top of screen */
+	/* Up a side: laid out across (width x height: length x thickness)
+	 * and turned, 90 degrees on the right, 270 on the left
+	 * (Fluxbox's ROT90/ROT270); on the screen it is height x width */
+	int rotation;
 	bool raised; /* ToggleToolbarAbove: above the windows for now */
 	bool hover_raised; /* toolbar.autoRaise, the pointer on it */
 

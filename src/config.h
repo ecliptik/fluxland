@@ -43,6 +43,14 @@ enum wm_toolbar_placement {
 	WM_TOOLBAR_BOTTOM_LEFT,
 	WM_TOOLBAR_BOTTOM_CENTER,
 	WM_TOOLBAR_BOTTOM_RIGHT,
+	/* Up and down a side (Fluxbox's ROT270 on the left, ROT90 on the
+	 * right) */
+	WM_TOOLBAR_LEFT_TOP,
+	WM_TOOLBAR_LEFT_CENTER,
+	WM_TOOLBAR_LEFT_BOTTOM,
+	WM_TOOLBAR_RIGHT_TOP,
+	WM_TOOLBAR_RIGHT_CENTER,
+	WM_TOOLBAR_RIGHT_BOTTOM,
 };
 
 enum wm_menu_search {

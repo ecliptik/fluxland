@@ -179,12 +179,13 @@ static const char *valid_placements[] = {
 /* Valid toolbar placement values */
 static const char *valid_toolbar_placements[] = {
 	"TopLeft", "TopCenter", "TopRight",
-	"BottomLeft", "BottomCenter", "BottomRight", NULL
+	"BottomLeft", "BottomCenter", "BottomRight",
+	"LeftTop", "LeftCenter", "LeftBottom",
+	"RightTop", "RightCenter", "RightBottom", NULL
 };
 /* Fluxbox's, but fluxland can't put the toolbar there yet */
 static const char *unsupported_toolbar_placements[] = {
-	"LeftTop", "LeftCenter", "LeftBottom",
-	"RightTop", "RightCenter", "RightBottom", NULL
+	NULL
 };
 static const char *unsupported_placements[] = {
 	NULL

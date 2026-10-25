@@ -67,3 +67,24 @@ def test_tabs_max_over():
     win2, usable = maximized_frame(tabs + ["session.screen0.tabs.maxOver: true"])
     assert win2["frame"]["y"] < usable["y"]
     assert win2["frame"]["height"] > win["frame"]["height"]
+
+
+def test_toolbar_up_a_side():
+    for place, side in (("LeftCenter", "x"), ("RightBottom", "width")):
+        mgr = CompositorManager()
+        mgr.start(config_set="default", headless=True, init_extra=[
+            f"session.screen0.toolbar.placement: {place}"])
+        try:
+            ipc = FluxlandIPC(socket_path=mgr.socket_path)
+            out = ipc.get_outputs()[0]
+            usable = out["usable"]
+            # Its room comes off that side, not the top or bottom
+            assert usable["height"] == out["height"]
+            if side == "x":
+                assert usable["x"] > out["x"]
+            else:
+                assert usable["width"] < out["width"]
+                assert usable["x"] == out["x"]
+            ipc.close()
+        finally:
+            mgr.stop()
