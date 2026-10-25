@@ -665,6 +665,19 @@ wm_render_texture(const struct wm_texture *texture, int width, int height,
 	return surface;
 }
 
+/* A font's size: points, or pixels for an X font (as Fluxbox draws
+ * -*-helvetica-medium-r-*-*-11-*: 11 pixels) */
+static void
+set_font_size(PangoFontDescription *desc, const struct wm_font *font,
+	float scale)
+{
+	int size = (int)(font->size * scale * PANGO_SCALE + 0.5f);
+	if (font->pixel_size)
+		pango_font_description_set_absolute_size(desc, size);
+	else
+		pango_font_description_set_size(desc, size);
+}
+
 /* --- Public API: text rendering --- */
 
 cairo_surface_t *
@@ -700,8 +713,7 @@ wm_render_text(const char *text, const struct wm_font *font,
 	PangoFontDescription *desc = pango_font_description_new();
 	pango_font_description_set_family(desc,
 		font->family ? font->family : "sans");
-	pango_font_description_set_size(desc,
-		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	set_font_size(desc, font, scale);
 	if (font->bold)
 		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
 	if (font->italic)
@@ -753,8 +765,7 @@ wm_render_text(const char *text, const struct wm_font *font,
 	desc = pango_font_description_new();
 	pango_font_description_set_family(desc,
 		font->family ? font->family : "sans");
-	pango_font_description_set_size(desc,
-		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	set_font_size(desc, font, scale);
 	if (font->bold)
 		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
 	if (font->italic)
@@ -845,8 +856,7 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 	PangoFontDescription *desc = pango_font_description_new();
 	pango_font_description_set_family(desc,
 		font->family ? font->family : "sans");
-	pango_font_description_set_size(desc,
-		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	set_font_size(desc, font, scale);
 	if (font->bold)
 		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
 	if (font->italic)
@@ -874,8 +884,7 @@ wm_font_height(const struct wm_font *font, float scale)
 	PangoFontDescription *desc = pango_font_description_new();
 	pango_font_description_set_family(desc,
 		font->family ? font->family : "sans");
-	pango_font_description_set_size(desc,
-		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	set_font_size(desc, font, scale);
 	if (font->bold)
 		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
 	if (font->italic)

@@ -659,6 +659,59 @@ test_load_fresh_with_overlay(void)
 	printf("  PASS: test_load_fresh_with_overlay\n");
 }
 
+/* Test: fonts as Fluxbox's FbTk::Font loads them */
+static void
+test_fluxbox_fonts(void)
+{
+	struct wm_font f;
+
+	/* An X font name: its family, weight, slant, size in pixels */
+	f = style_parse_font("-*-helvetica-bold-o-*-*-11-*-*-*-*-*-iso8859-*");
+	assert(strcmp(f.family, "helvetica") == 0);
+	assert(f.bold && f.italic && f.size == 11 && f.pixel_size);
+	free(f.family);
+	f = style_parse_font("-*-lucida-medium-r-*-*-*-120-*-*-*-*-*-*");
+	assert(f.size == 12 && !f.pixel_size && !f.bold);
+	free(f.family);
+
+	/* The first of a list */
+	f = style_parse_font(" Bitstream Vera Sans-8 | fixed");
+	assert(strcmp(f.family, "Bitstream Vera Sans") == 0 && f.size == 8);
+	free(f.family);
+
+	/* fontconfig's keys */
+	f = style_parse_font("sans:pixelsize=13:weight=bold:slant=italic");
+	assert(f.size == 13 && f.pixel_size && f.bold && f.italic);
+	free(f.family);
+	f = style_parse_font("DejaVu Sans Mono-9:style=Bold Oblique");
+	assert(f.size == 9 && f.bold && f.italic);
+	free(f.family);
+	f = style_parse_font("fixed");
+	assert(f.size == 10 && !f.bold);
+	free(f.family);
+
+	/* Effects under the font key */
+	write_file(TEST_STYLE,
+		"window.font: sans-9\n"
+		"window.font.effect: shadow\n"
+		"window.font.shadow.color: #102030\n"
+		"window.font.shadow.x: 1\n"
+		"window.font.shadow.y: 2\n"
+		"toolbar.clock.font: sans-8\n"
+		"toolbar.clock.font.effect: halo\n"
+		"toolbar.clock.font.halo.color: white\n");
+	struct wm_style *s = style_create();
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->window_font.shadow_x == 1 && s->window_font.shadow_y == 2);
+	assert(s->window_font.shadow_color.b == 0x30);
+	/* labels fall back to window.font, its effect with it */
+	assert(s->window_label_focus_font.size == 9);
+	assert(s->toolbar_clock.font.halo);
+	assert(s->toolbar_clock.font.halo_color.r == 255);
+	style_destroy(s);
+	printf("  PASS: test_fluxbox_fonts\n");
+}
+
 /* Test: toolbar style loading */
 static void
 test_toolbar_style(void)
@@ -1150,6 +1203,7 @@ main(void)
 	test_argb_conversion();
 	test_toolbar_style();
 	test_xrm_matching();
+	test_fluxbox_fonts();
 	test_load_fresh_with_overlay();
 
 	/* New coverage tests */

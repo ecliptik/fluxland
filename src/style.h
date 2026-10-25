@@ -71,7 +71,8 @@ struct wm_color {
 
 struct wm_font {
 	char *family;
-	int size;
+	int size;		/* points, or pixels when pixel_size */
+	bool pixel_size;	/* an X font's size (XLFD), or pixelsize= */
 	bool bold;
 	bool italic;
 	int shadow_x;

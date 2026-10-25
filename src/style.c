@@ -200,90 +200,152 @@ style_parse_color(const char *value)
 
 /* --- Font parsing --- */
 
+/*
+ * An X font name (XLFD): -foundry-family-weight-slant-setwidth-style-
+ * pixels-points-...; the size in pixels, as X drew it.
+ */
+static bool
+parse_xlfd(const char *name, struct wm_font *font)
+{
+	char buf[256];
+	snprintf(buf, sizeof(buf), "%s", name);
+	char *field[14] = { 0 };
+	int n = 0;
+	char *p = buf + 1;
+	while (n < 14) {
+		field[n++] = p;
+		char *dash = strchr(p, '-');
+		if (!dash)
+			break;
+		*dash = '\0';
+		p = dash + 1;
+	}
+	if (n < 2)
+		return false;
+	if (field[1][0] && strcmp(field[1], "*") != 0) {
+		free(font->family);
+		font->family = strdup(field[1]);
+	}
+	if (n > 2 && (strcasestr(field[2], "bold") ||
+	    strcasecmp(field[2], "black") == 0 ||
+	    strcasecmp(field[2], "heavy") == 0))
+		font->bold = true;
+	if (n > 3 && (strcasecmp(field[3], "i") == 0 ||
+	    strcasecmp(field[3], "o") == 0))
+		font->italic = true;
+	int v;
+	if (n > 6 && safe_atoi(field[6], &v) && v > 0 && v <= MAX_FONT_SIZE) {
+		font->size = v;
+		font->pixel_size = true;
+	} else if (n > 7 && safe_atoi(field[7], &v) && v >= 10 &&
+		   v / 10 <= MAX_FONT_SIZE) {
+		font->size = v / 10;	/* decipoints */
+		font->pixel_size = false;
+	}
+	return true;
+}
+
+/*
+ * A font as Fluxbox's FbTk::Font loads one: of "a|b|c" the first
+ * (fontconfig always finds one); an X font name (-*-helvetica-...); or
+ * a fontconfig pattern, "Sans-10:bold", "sans:pixelsize=11:weight=bold"
+ * (fluxland 1.x's ":halo" too).  The default is a sans 10 point font.
+ */
 struct wm_font
 style_parse_font(const char *value)
 {
 	struct wm_font font = {
 		.family = strdup(DEFAULT_FONT_FAMILY),
 		.size = DEFAULT_FONT_SIZE,
-		.bold = false,
-		.italic = false,
-		.shadow_x = 0,
-		.shadow_y = 0,
 		.shadow_color = make_color(0, 0, 0),
-		.halo = false,
 		.halo_color = make_color(0, 0, 0),
 	};
-
-	if (!value || *value == '\0')
+	if (!value)
 		return font;
 
-	/* Skip leading whitespace */
+	/* The first of a list, without its spaces around */
+	char buf[256];
 	while (isspace((unsigned char)*value))
 		value++;
-
-	/* Format: "family-size:style:style" or "family-size" */
-	char *buf = strdup(value);
-	if (!buf)
+	size_t len = strcspn(value, "|");
+	if (len >= sizeof(buf))
+		len = sizeof(buf) - 1;
+	memcpy(buf, value, len);
+	buf[len] = '\0';
+	while (len > 0 && isspace((unsigned char)buf[len - 1]))
+		buf[--len] = '\0';
+	if (len == 0)
 		return font;
 
-	/* Split at first colon to separate family-size from styles */
-	char *colon = strchr(buf, ':');
-	char *styles = NULL;
-	if (colon) {
-		*colon = '\0';
-		styles = colon + 1;
+	if (buf[0] == '-') {
+		parse_xlfd(buf, &font);
+		return font;
 	}
+	/* Fluxbox's names for its default font */
+	if (strcmp(buf, "fixed") == 0 || strcmp(buf, "__DEFAULT__") == 0)
+		return font;
 
-	/* Parse family-size: find last dash followed by digits */
+	/* family[-size][:option...]; the family may have spaces and the
+	 * size follows its last dash */
+	char *styles = strchr(buf, ':');
+	if (styles)
+		*styles++ = '\0';
 	char *dash = strrchr(buf, '-');
-	if (dash && dash != buf) {
-		/* Check that everything after the dash is a digit */
-		bool all_digits = true;
-		for (char *p = dash + 1; *p; p++) {
-			if (!isdigit((unsigned char)*p)) {
-				all_digits = false;
-				break;
+	if (dash && dash != buf && dash[1] &&
+	    strspn(dash + 1, "0123456789.") == strlen(dash + 1)) {
+		*dash = '\0';
+		int size = (int)(strtod(dash + 1, NULL) + 0.5);
+		if (size > 0 && size <= MAX_FONT_SIZE)
+			font.size = size;
+	}
+	if (buf[0]) {
+		free(font.family);
+		font.family = strdup(buf);
+	}
+
+	for (char *save = NULL, *opt = styles ?
+	     strtok_r(styles, ":", &save) : NULL; opt;
+	     opt = strtok_r(NULL, ":", &save)) {
+		while (isspace((unsigned char)*opt))
+			opt++;
+		char *eq = strchr(opt, '=');
+		const char *val = eq ? eq + 1 : NULL;
+		if (eq)
+			*eq = '\0';
+		int v;
+		if (strcasecmp(opt, "bold") == 0) {
+			font.bold = true;
+		} else if (strcasecmp(opt, "italic") == 0 ||
+			   strcasecmp(opt, "oblique") == 0) {
+			font.italic = true;
+		} else if (strcasecmp(opt, "halo") == 0) {
+			font.halo = true;
+		} else if (val && strcasecmp(opt, "size") == 0) {
+			v = (int)(strtod(val, NULL) + 0.5);
+			if (v > 0 && v <= MAX_FONT_SIZE) {
+				font.size = v;
+				font.pixel_size = false;
 			}
-		}
-		if (all_digits && *(dash + 1) != '\0') {
-			*dash = '\0';
-			int fsize;
-			if (safe_atoi(dash + 1, &fsize) && fsize > 0 &&
-			    fsize <= MAX_FONT_SIZE)
-				font.size = fsize;
-			else
-				font.size = DEFAULT_FONT_SIZE;
-		}
-	}
-
-	/* Set family */
-	if (*buf != '\0') {
-		char *new_family = strdup(buf);
-		if (new_family) {
-			free(font.family);
-			font.family = new_family;
-		}
-	}
-
-	/* Parse style flags from colon-separated parts */
-	if (styles) {
-		char *saveptr = NULL;
-		char *token = strtok_r(styles, ":", &saveptr);
-		while (token) {
-			while (isspace((unsigned char)*token))
-				token++;
-			if (strcasecmp(token, "bold") == 0)
+		} else if (val && strcasecmp(opt, "pixelsize") == 0) {
+			v = (int)(strtod(val, NULL) + 0.5);
+			if (v > 0 && v <= MAX_FONT_SIZE) {
+				font.size = v;
+				font.pixel_size = true;
+			}
+		} else if (val && (strcasecmp(opt, "weight") == 0 ||
+			   strcasecmp(opt, "style") == 0)) {
+			if (strcasestr(val, "bold") || strcasestr(val, "black") ||
+			    strcasestr(val, "heavy") || (safe_atoi(val, &v) &&
+			    v >= 150))
 				font.bold = true;
-			else if (strcasecmp(token, "italic") == 0)
+			if (strcasestr(val, "italic") || strcasestr(val, "oblique"))
 				font.italic = true;
-			else if (strcasecmp(token, "halo") == 0)
-				font.halo = true;
-			token = strtok_r(NULL, ":", &saveptr);
+		} else if (val && strcasecmp(opt, "slant") == 0) {
+			if (strcasestr(val, "italic") || strcasestr(val, "oblique") ||
+			    (safe_atoi(val, &v) && v > 0))
+				font.italic = true;
 		}
 	}
-
-	free(buf);
 	return font;
 }
 
@@ -619,54 +681,54 @@ load_color(struct rc_database *db, const char *key, struct wm_color *color)
 		*color = c;
 }
 
+/*
+ * A font and its effect as Fluxbox's ThemeItem<Font> reads them: KEY,
+ * KEY.effect (halo or shadow), KEY.halo.color, KEY.shadow.color,
+ * KEY.shadow.x and KEY.shadow.y.  fluxland 1.x's ":halo" in the font and
+ * its halo colour next to the font key are read too.
+ */
 static void
 load_font(struct rc_database *db, const char *key, struct wm_font *font)
 {
 	const char *val = style_get(db, key);
 	if (!val)
 		return;
-
-	/* Free old family */
 	free(font->family);
-
 	*font = style_parse_font(val);
 
-	/* Load shadow properties */
-	char shadow_key[256];
-	snprintf(shadow_key, sizeof(shadow_key), "%s.shadow.x", key);
-	font->shadow_x = style_get_int(db, shadow_key, 0);
-
-	snprintf(shadow_key, sizeof(shadow_key), "%s.shadow.y", key);
-	font->shadow_y = style_get_int(db, shadow_key, 0);
-
-	snprintf(shadow_key, sizeof(shadow_key), "%s.shadow.color", key);
-	const char *sc = style_get(db, shadow_key);
-	if (sc)
-		font->shadow_color = style_parse_color(sc);
-
-	/* Load halo color (derived from font key's parent resource) */
+	char k[256];
+	snprintf(k, sizeof(k), "%s.effect", key);
+	const char *effect = style_get(db, k);
+	if (effect && strcasecmp(effect, "shadow") == 0) {
+		snprintf(k, sizeof(k), "%s.shadow.x", key);
+		font->shadow_x = style_get_int(db, k, 0);
+		snprintf(k, sizeof(k), "%s.shadow.y", key);
+		font->shadow_y = style_get_int(db, k, 0);
+		snprintf(k, sizeof(k), "%s.shadow.color", key);
+		style_try_parse_color(style_get(db, k), &font->shadow_color);
+	} else if (effect && strcasecmp(effect, "halo") == 0) {
+		font->halo = true;
+	} else {
+		/* fluxland 1.x: shadow offsets without an effect */
+		snprintf(k, sizeof(k), "%s.shadow.x", key);
+		font->shadow_x = style_get_int(db, k, 0);
+		snprintf(k, sizeof(k), "%s.shadow.y", key);
+		font->shadow_y = style_get_int(db, k, 0);
+		snprintf(k, sizeof(k), "%s.shadow.color", key);
+		style_try_parse_color(style_get(db, k), &font->shadow_color);
+	}
 	if (font->halo) {
-		/*
-		 * Derive halo.color key from font key:
-		 * e.g. "window.label.focus.font" -> "window.label.focus.halo.color"
-		 * Strip ".font" suffix and append ".halo.color"
-		 */
-		char halo_key[256];
-		size_t klen = strlen(key);
-		const char *suffix = ".font";
-		size_t slen = strlen(suffix);
-		if (klen > slen &&
-		    strcmp(key + klen - slen, suffix) == 0) {
-			snprintf(halo_key, sizeof(halo_key),
-				"%.*s.halo.color",
-				(int)(klen - slen), key);
-		} else {
-			snprintf(halo_key, sizeof(halo_key),
-				"%s.halo.color", key);
+		snprintf(k, sizeof(k), "%s.halo.color", key);
+		if (!style_try_parse_color(style_get(db, k), &font->halo_color)) {
+			/* fluxland 1.x: window.label.focus.halo.color */
+			size_t klen = strlen(key);
+			if (klen > 5 && strcmp(key + klen - 5, ".font") == 0) {
+				snprintf(k, sizeof(k), "%.*s.halo.color",
+					(int)(klen - 5), key);
+				style_try_parse_color(style_get(db, k),
+					&font->halo_color);
+			}
 		}
-		const char *hc = style_get(db, halo_key);
-		if (hc)
-			font->halo_color = style_parse_color(hc);
 	}
 }
 
