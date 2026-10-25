@@ -210,7 +210,7 @@ test_color_rgb_scaling(void)
 	printf("  PASS: test_color_rgb_scaling\n");
 }
 
-/* Test: toolbar per-component style loading */
+/* Test: the toolbar's tools, with Fluxbox's fallbacks */
 static void
 test_toolbar_component_styles(void)
 {
@@ -218,42 +218,62 @@ test_toolbar_component_styles(void)
 		"toolbar: Flat Solid\n"
 		"toolbar.textColor: #AAAAAA\n"
 		"toolbar.label: Raised Gradient Vertical\n"
-		"toolbar.label.textColor: #FFFFFF\n"
+		"toolbar.label.textColor: #EEEEEE\n"
 		"toolbar.clock: Flat Solid\n"
+		"toolbar.clock.color: #102030\n"
 		"toolbar.clock.textColor: #00FF00\n"
-		"toolbar.workspace: Sunken Solid\n"
-		"toolbar.workspace.textColor: #FF0000\n"
-		"toolbar.button: Raised Solid\n"
-		"toolbar.button.picColor: #0000FF\n"
-		"toolbar.windowLabel.textColor: #FFFF00\n"
+		"toolbar.clock.justify: Center\n"
+		"toolbar.windowLabel: Sunken Solid\n"
+		"toolbar.windowLabel.color: #405060\n"
+		"toolbar.iconbar.focused.textColor: #FF0000\n"
+		"toolbar.iconbar.borderWidth: 2\n"
+		"toolbar.justify: right\n"
+		"bevelWidth: 3\n"
+		"borderWidth: 1\n"
 	);
 
 	struct wm_style *s = style_create();
-	int ret = style_load(s, TEST_STYLE);
-	assert(ret == 0);
+	assert(style_load(s, TEST_STYLE) == 0);
 
-	/* Verify sub-component textures loaded */
-	assert(s->toolbar_has_label_texture == true);
-	assert(s->toolbar_label_texture.appearance == WM_TEX_RAISED);
-	assert(s->toolbar_has_clock_texture == true);
-	assert(s->toolbar_clock_texture.appearance == WM_TEX_FLAT);
-	assert(s->toolbar_has_workspace_texture == true);
-	assert(s->toolbar_workspace_texture.appearance == WM_TEX_SUNKEN);
-	assert(s->toolbar_has_button_texture == true);
+	/* toolbar.workspace falls back to toolbar.label, for the texture
+	 * and the text colour */
+	assert(s->toolbar_workspace.texture.appearance == WM_TEX_RAISED);
+	assert(s->toolbar_workspace.texture.fill == WM_TEX_GRADIENT);
+	assert(s->toolbar_workspace.text_color.r == 0xEE);
+	assert(s->toolbar_workspace.justify == WM_JUSTIFY_RIGHT);
+	/* toolbar.button falls back to toolbar.clock, its picColor to the
+	 * clock's textColor; pressed is its texture with the bevel the
+	 * other way */
+	assert(s->toolbar_button.texture.color == 0xFF102030);
+	assert(s->toolbar_button_pic_color.g == 0xFF);
+	assert(s->toolbar_button_pressed.appearance == WM_TEX_FLAT);
+	assert(s->toolbar_clock.justify == WM_JUSTIFY_CENTER);
+	/* The iconbar entries fall back to toolbar.windowLabel, the empty
+	 * iconbar to it too; borders through window.* to borderWidth */
+	assert(s->toolbar_iconbar_focused.texture.color == 0xFF405060);
+	assert(s->toolbar_iconbar_unfocused.texture.appearance ==
+		WM_TEX_SUNKEN);
+	assert(s->toolbar_iconbar_empty.color == 0xFF405060);
+	assert(s->toolbar_iconbar_focused.text_color.r == 0xFF &&
+		s->toolbar_iconbar_focused.text_color.g == 0);
+	assert(s->toolbar_iconbar_unfocused.text_color.r == 0xAA);
+	assert(s->toolbar_iconbar_border_width == 2);
+	assert(s->toolbar_iconbar_focused.border_width == 2);
+	/* Tools have no border unless they say so; the toolbar takes
+	 * the top-level bevelWidth and borderWidth */
+	assert(s->toolbar_clock.border_width == 0);
+	assert(s->toolbar_bevel_width == 3 && s->toolbar_border_width == 1);
+	style_destroy(s);
 
-	/* Verify per-component text colors */
-	assert(s->toolbar_has_label_text_color == true);
-	assert(s->toolbar_label_text_color.r == 0xFF);
-	assert(s->toolbar_has_clock_text_color == true);
-	assert(s->toolbar_clock_text_color.g == 0xFF);
-	assert(s->toolbar_has_workspace_text_color == true);
-	assert(s->toolbar_workspace_text_color.r == 0xFF);
-	assert(s->toolbar_has_button_pic_color == true);
-	assert(s->toolbar_button_pic_color.b == 0xFF);
-	assert(s->toolbar_has_window_label_text_color == true);
-	assert(s->toolbar_window_label_text_color.r == 0xFF);
-	assert(s->toolbar_window_label_text_color.g == 0xFF);
-
+	/* Without anything: Fluxbox's flat darkgray, white text, left */
+	write_file(TEST_STYLE, "toolbar: Flat Solid\n");
+	s = style_create();
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->toolbar_clock.texture.fill == WM_TEX_SOLID);
+	assert(s->toolbar_clock.texture.color == 0xFFA9A9A9);
+	assert(s->toolbar_clock.text_color.r == 0xFF);
+	assert(s->toolbar_clock.justify == WM_JUSTIFY_LEFT);
+	assert(s->toolbar_button_pressed.appearance == WM_TEX_FLAT);
 	style_destroy(s);
 	printf("  PASS: test_toolbar_component_styles\n");
 }
@@ -346,9 +366,9 @@ test_texture_bevel(void)
 	t = style_parse_texture("Raised Solid Bevel2");
 	assert(t.bevel == WM_BEVEL2);
 
-	/* Flat with explicit bevel */
+	/* Flat has no bevel, as in Fluxbox */
 	t = style_parse_texture("Flat Solid Bevel1");
-	assert(t.bevel == WM_BEVEL1);
+	assert(t.bevel == WM_BEVEL_NONE);
 
 	printf("  PASS: test_texture_bevel\n");
 }
@@ -371,13 +391,28 @@ test_texture_null_empty(void)
 {
 	struct wm_texture t;
 
+	/* Fluxbox's defaults: Flat Solid, darkgray */
 	t = style_parse_texture(NULL);
-	/* Should return default */
-	assert(t.appearance == WM_TEX_RAISED);
+	assert(t.appearance == WM_TEX_FLAT);
 	assert(t.fill == WM_TEX_SOLID);
+	assert(t.color == 0xFFA9A9A9 && t.color_to == 0xFFFFFFFF);
 
 	t = style_parse_texture("");
-	assert(t.appearance == WM_TEX_RAISED);
+	assert(t.appearance == WM_TEX_FLAT && t.bevel == WM_BEVEL_NONE);
+
+	/* Words anywhere, in any case; a gradient is Diagonal unless
+	 * named, and Raised has a Bevel1 */
+	t = style_parse_texture("RaisedGradient");
+	assert(t.fill == WM_TEX_GRADIENT && t.gradient == WM_GRAD_DIAGONAL);
+	assert(t.appearance == WM_TEX_RAISED && t.bevel == WM_BEVEL1);
+	t = style_parse_texture("flatcrossdiagonalgradient");
+	assert(t.gradient == WM_GRAD_CROSSDIAGONAL);
+	assert(t.appearance == WM_TEX_FLAT);
+	t = style_parse_texture("sunken gradient pipecross interlaced invert");
+	assert(t.gradient == WM_GRAD_PIPECROSS && t.interlaced && t.invert);
+	assert(t.appearance == WM_TEX_SUNKEN);
+	t = style_parse_texture("Flat Pixmap Tiled");
+	assert(t.fill == WM_TEX_PIXMAP && t.tiled);
 
 	printf("  PASS: test_texture_null_empty\n");
 }

@@ -129,3 +129,20 @@ toolbar.iconbar.focused.color:      #5e81ac
 toolbar.iconbar.focused.textColor:  #eceff4
 toolbar.iconbar.unfocused.color:    #3b4252
 toolbar.iconbar.unfocused.textColor:#7b88a1
+
+! The toolbar's tools, with the keys Fluxbox reads (without them a tool
+! is Fluxbox's flat darkgray)
+toolbar.height:                     22
+toolbar.workspace:                  Flat Solid
+toolbar.workspace.color:            #484e59
+toolbar.workspace.textColor:        #d8dee9
+toolbar.workspace.justify:          Center
+toolbar.clock:                      ParentRelative
+toolbar.clock.textColor:            #d8dee9
+toolbar.clock.justify:              Center
+toolbar.button:                     ParentRelative
+toolbar.button.picColor:            #d8dee9
+toolbar.iconbar.empty:              ParentRelative
+toolbar.iconbar.borderWidth:        0
+toolbar.iconbar.focused.justify:    Center
+toolbar.iconbar.unfocused.justify:  Center

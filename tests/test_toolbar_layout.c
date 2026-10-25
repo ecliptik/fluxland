@@ -253,6 +253,11 @@ static void cairo_line_to(cairo_t *cr, double x, double y) {
 	(void)cr; (void)x; (void)y;
 }
 static void cairo_stroke(cairo_t *cr) { (void)cr; }
+#define CAIRO_FILL_RULE_EVEN_ODD 1
+static void cairo_set_fill_rule(cairo_t *cr, int rule) {
+	(void)cr; (void)rule; }
+static void cairo_close_path(cairo_t *cr) { (void)cr; }
+static void cairo_clip(cairo_t *cr) { (void)cr; }
 /* iconbar icons */
 typedef int cairo_filter_t;
 typedef struct _cairo_pattern cairo_pattern_t;
@@ -324,34 +329,34 @@ static inline struct wm_color wm_argb_to_color(uint32_t argb)
 	};
 }
 
+struct wm_tool_style {
+	struct wm_texture texture;
+	struct wm_font font;
+	struct wm_color text_color;
+	enum wm_justify justify;
+	int border_width;
+	struct wm_color border_color;
+};
+
 struct wm_style {
 	struct wm_texture toolbar_texture;
-	struct wm_color toolbar_text_color;
+	int toolbar_bevel_width;
+	int toolbar_border_width;
+	struct wm_color toolbar_border_color;
+	int toolbar_height;
 	struct wm_font toolbar_font;
-	struct wm_texture toolbar_label_texture;
-	struct wm_texture toolbar_clock_texture;
-	struct wm_texture toolbar_workspace_texture;
-	struct wm_texture toolbar_button_texture;
-	bool toolbar_has_label_texture;
-	bool toolbar_has_clock_texture;
-	bool toolbar_has_workspace_texture;
-	bool toolbar_has_button_texture;
-	struct wm_color toolbar_label_text_color;
-	struct wm_color toolbar_clock_text_color;
-	struct wm_color toolbar_workspace_text_color;
-	struct wm_color toolbar_window_label_text_color;
-	bool toolbar_has_label_text_color;
-	bool toolbar_has_clock_text_color;
-	bool toolbar_has_workspace_text_color;
-	bool toolbar_has_window_label_text_color;
+	struct wm_color toolbar_text_color;
+	struct wm_tool_style toolbar_clock;
+	struct wm_tool_style toolbar_workspace;
+	struct wm_tool_style toolbar_button;
+	struct wm_texture toolbar_button_pressed;
 	struct wm_color toolbar_button_pic_color;
-	bool toolbar_has_button_pic_color;
-	struct wm_color toolbar_iconbar_focused_color;
-	struct wm_color toolbar_iconbar_focused_text_color;
-	struct wm_color toolbar_iconbar_unfocused_color;
-	struct wm_color toolbar_iconbar_unfocused_text_color;
-	bool toolbar_iconbar_has_focused_color;
-	bool toolbar_iconbar_has_unfocused_color;
+	int toolbar_button_scale;
+	struct wm_tool_style toolbar_iconbar_focused;
+	struct wm_tool_style toolbar_iconbar_unfocused;
+	struct wm_texture toolbar_iconbar_empty;
+	int toolbar_iconbar_border_width;
+	struct wm_color toolbar_iconbar_border_color;
 };
 
 /* Toolbar placement enum from config.h */
@@ -662,6 +667,13 @@ wm_render_texture(const struct wm_texture *texture,
 }
 
 static int
+wm_font_height(const struct wm_font *font, float scale)
+{
+	(void)font; (void)scale;
+	return 14;
+}
+
+static int
 wm_measure_text_width(const char *text, const struct wm_font *font,
 	float scale)
 {
@@ -930,13 +942,15 @@ test_parse_toolbar_tools_fluxbox(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.scene_tree = &test_layer_top;
 	parse_toolbar_tools(&toolbar, "prevworkspace, workspacename, "
 		"nextworkspace, iconbar, systemtray, clock");
-	assert(toolbar.tool_count == 5);
+	assert(toolbar.tool_count == 6);
 	assert(toolbar.tools[0].type == WM_TOOL_PREV_WORKSPACE);
 	assert(toolbar.tools[3].type == WM_TOOL_ICONBAR);
-	assert(toolbar.tools[4].type == WM_TOOL_CLOCK);
+	assert(toolbar.tools[4].type == WM_TOOL_SYSTRAY);
+	assert(toolbar.tools[5].type == WM_TOOL_CLOCK);
 	free(toolbar.tools);
 	printf("  PASS: parse_toolbar_tools_fluxbox\n");
 }
@@ -952,6 +966,7 @@ test_parse_toolbar_tools_default(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.scene_tree = &test_layer_top;
 
 	parse_toolbar_tools(&toolbar,
@@ -979,6 +994,7 @@ test_parse_toolbar_tools_empty(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 
 	parse_toolbar_tools(&toolbar, "");
 	assert(toolbar.tool_count == 0);
@@ -999,6 +1015,7 @@ test_parse_toolbar_tools_with_unknown(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.scene_tree = &test_layer_top;
 
 	parse_toolbar_tools(&toolbar,
@@ -1027,6 +1044,7 @@ test_parse_toolbar_tools_tabs(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.scene_tree = &test_layer_top;
 
 	/* Tabs should work as separators too */
@@ -1069,6 +1087,7 @@ test_compute_tool_layout_basic(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.height = 24;
 	toolbar.scene_tree = &test_layer_top;
 
@@ -1091,11 +1110,11 @@ test_compute_tool_layout_basic(void)
 	assert(toolbar.tools[0].width == 24); /* prevworkspace */
 	assert(toolbar.tools[2].width == 24); /* nextworkspace */
 
-	/* Workspace name should have measured width + padding with min 60 */
-	assert(toolbar.tools[1].width >= 60);
+	/* Workspace name: the widest name and 2 (8 a character here) */
+	assert(toolbar.tools[1].width == 11 * 8 + 2);
 
-	/* Clock should have measured width + padding with min 80 */
-	assert(toolbar.tools[4].width >= 80);
+	/* Clock: its text with digits as 0 and two more ("00:0000") */
+	assert(toolbar.tools[4].width == 7 * 8);
 
 	/* Iconbar should fill remaining space */
 	int fixed_total = toolbar.tools[0].width + toolbar.tools[1].width +
@@ -1128,6 +1147,7 @@ test_compute_tool_layout_buttons_only(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.height = 24;
 	toolbar.scene_tree = &test_layer_top;
 
@@ -1143,6 +1163,7 @@ test_compute_tool_layout_buttons_only(void)
 
 	/* 4 buttons * 24 = 96, remaining 304 not distributed (no flex tools) */
 	assert(toolbar.tools[3].x == 72);
+	assert(toolbar.tools[3].y == 0 && toolbar.tools[3].height == 24);
 
 	free(toolbar.tools);
 	printf("  PASS: compute_tool_layout_buttons_only\n");
@@ -1166,6 +1187,7 @@ test_compute_tool_layout_no_iconbar(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.height = 24;
 	toolbar.scene_tree = &test_layer_top;
 
@@ -1173,10 +1195,10 @@ test_compute_tool_layout_no_iconbar(void)
 
 	compute_tool_layout(&toolbar, 800);
 
-	/* Without iconbar, remaining space should be distributed to text tools */
-	int total_w = toolbar.tools[0].width + toolbar.tools[1].width;
-	/* Total should be 800 (remaining distributed to text_count=2 tools) */
-	assert(total_w <= 800);
+	/* Without an iconbar the rest of the toolbar is left empty, as in
+	 * Fluxbox */
+	assert(toolbar.tools[0].width == 8 + 2);
+	assert(toolbar.tools[1].x == 10 && toolbar.tools[1].width == 56);
 
 	wl_list_remove(&ws.link);
 	free(toolbar.tools);
@@ -1192,6 +1214,7 @@ test_compute_tool_layout_empty(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.tool_count = 0;
 
 	/* Should not crash */
@@ -1249,6 +1272,7 @@ test_collect_iconbar_workspace_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	set_iconbar_list(&toolbar, "{static groups} (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
@@ -1285,6 +1309,7 @@ test_collect_iconbar_all_windows_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	set_iconbar_list(&toolbar, "{static groups}");
 
 	int count = collect_iconbar_entries(&toolbar);
@@ -1317,6 +1342,7 @@ test_collect_iconbar_icons_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	set_iconbar_list(&toolbar, "{static groups} (minimized=yes)");
 
 	int count = collect_iconbar_entries(&toolbar);
@@ -1350,6 +1376,7 @@ test_collect_iconbar_no_icons_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	set_iconbar_list(&toolbar, "{static groups} (minimized=no) (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
@@ -1384,6 +1411,7 @@ test_collect_iconbar_sticky_views(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	set_iconbar_list(&toolbar, "{static groups} (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
@@ -1407,6 +1435,7 @@ test_scroll_outside_bounds(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.visible = true;
 	toolbar.x = 0;
 	toolbar.y = 1056;
@@ -1447,6 +1476,7 @@ test_scroll_on_workspace_tool(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.visible = true;
 	toolbar.x = 0;
 	toolbar.y = 0;
@@ -1483,6 +1513,7 @@ test_scroll_on_iconbar(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.visible = true;
 	toolbar.x = 0;
 	toolbar.y = 0;
@@ -2206,6 +2237,7 @@ test_collect_iconbar_workspace_icons_mode(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	set_iconbar_list(&toolbar, "{static groups} (minimized=yes) (workspace)");
 
 	int count = collect_iconbar_entries(&toolbar);
@@ -2241,6 +2273,7 @@ test_compute_tool_layout_custom_clock_fmt(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
 	toolbar.height = 24;
 
 	struct wm_toolbar_tool tools[2];
@@ -2254,8 +2287,8 @@ test_compute_tool_layout_custom_clock_fmt(void)
 
 	compute_tool_layout(&toolbar, 800);
 
-	/* Clock should have a reasonable width */
-	assert(tools[0].width >= 80);
+	/* Clock: "00:0000" */
+	assert(tools[0].width == 56);
 	/* Iconbar should fill the rest */
 	assert(tools[1].width == 800 - tools[0].width);
 	assert(tools[0].x == 0);
@@ -2265,10 +2298,52 @@ test_compute_tool_layout_custom_clock_fmt(void)
 	printf("  PASS: compute_tool_layout_custom_clock_fmt\n");
 }
 
-/* --- compute_tool_layout: no iconbar distributes to text tools --- */
+/* --- Arrow buttons: pressed while held, act on release --- */
 
 static void
-test_compute_tool_layout_distribute_remaining(void)
+test_button_press_release(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "prevworkspace iconbar";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar && toolbar->pressed_tool == -1);
+	toolbar->x = 0;
+	toolbar->y = 1000;
+	toolbar->width = 800;
+	compute_tool_layout(toolbar, 800);
+
+	/* Pressed: nothing happens yet */
+	assert(wm_toolbar_handle_button(toolbar, 5, 1005, 272));
+	assert(toolbar->pressed_tool == 0);
+	assert(g_ws_switch_prev_count == 0);
+	/* Released elsewhere: nothing */
+	assert(wm_toolbar_handle_release(toolbar, 400, 1005, 272));
+	assert(toolbar->pressed_tool == -1 && g_ws_switch_prev_count == 0);
+	/* Released over it: the workspace before */
+	wm_toolbar_handle_button(toolbar, 5, 1005, 272);
+	assert(wm_toolbar_handle_release(toolbar, 6, 1006, 272));
+	assert(g_ws_switch_prev_count == 1);
+	/* A release with nothing pressed isn't the toolbar's */
+	assert(!wm_toolbar_handle_release(toolbar, 6, 1006, 272));
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	printf("  PASS: button_press_release\n");
+}
+
+/* --- compute_tool_layout: bevel and borders, as Fluxbox --- */
+
+static void
+test_compute_tool_layout_bevel_borders(void)
 {
 	reset_globals();
 	setup_test_server();
@@ -2284,27 +2359,48 @@ test_compute_tool_layout_distribute_remaining(void)
 	struct wm_toolbar toolbar;
 	memset(&toolbar, 0, sizeof(toolbar));
 	toolbar.server = &test_server;
-	toolbar.height = 24;
+	toolbar.cached_ws_name_max_width = -1;
+	toolbar.height = 30;
 
-	/* Two text tools (workspace_name + clock), no iconbar */
-	struct wm_toolbar_tool tools[2];
+	struct wm_toolbar_tool tools[3];
 	memset(tools, 0, sizeof(tools));
 	tools[0].type = WM_TOOL_WORKSPACE_NAME;
-	tools[1].type = WM_TOOL_CLOCK;
+	tools[1].type = WM_TOOL_PREV_WORKSPACE;
+	tools[2].type = WM_TOOL_ICONBAR;
 	toolbar.tools = tools;
-	toolbar.tool_count = 2;
-	toolbar.ws_name_tool = &tools[0];
-	toolbar.clock_tool = &tools[1];
+	toolbar.tool_count = 3;
 
+	/* A 1 pixel toolbar border, bevel 2, workspace and buttons with
+	 * a border of 1 */
+	test_style.toolbar_border_width = 1;
+	test_style.toolbar_bevel_width = 2;
+	test_style.toolbar_workspace.border_width = 1;
+	test_style.toolbar_button.border_width = 1;
 	compute_tool_layout(&toolbar, 400);
 
-	/* Both text tools should share the full width */
-	assert(tools[0].width + tools[1].width <= 400);
-	assert(tools[0].x == 0);
-	assert(tools[1].x == tools[0].width);
+	/* Inside the border: bevel, then the workspace's frame */
+	assert(tools[0].x == 1 + 2 && tools[0].y == 1 + 2);
+	assert(tools[0].width == 34 + 2 && tools[0].height == 30 - 2 - 4);
+	assert(tools[0].frame_x == 0 && tools[0].border == 1);
+	/* The button is square inside its border, a bevel further on */
+	assert(tools[1].x == tools[0].x + tools[0].width + 2);
+	assert(tools[1].width == tools[1].height);
+	/* The iconbar takes the rest, to the bevel before the border */
+	assert(tools[2].x + tools[2].width == 400 - 1 - 2);
 
+	/* No bevel: neighbours share a border, the outer ones are hidden */
+	test_style.toolbar_bevel_width = 0;
+	test_style.toolbar_border_width = 0;
+	compute_tool_layout(&toolbar, 400);
+	assert(tools[0].x == 0 && tools[0].frame_x == -1);
+	assert(tools[0].y == 0 && tools[0].frame_y == -1);
+	assert(tools[0].height == 30);
+	assert(tools[1].x == 34);	/* on the workspace's right border */
+	assert(tools[1].frame_x == 0);
+
+	memset(&test_style, 0, sizeof(test_style));
 	wl_list_remove(&ws.link);
-	printf("  PASS: compute_tool_layout_distribute_remaining\n");
+	printf("  PASS: compute_tool_layout_bevel_borders\n");
 }
 
 /* --- wlr_buffer_from_cairo: null surface --- */
@@ -2371,13 +2467,11 @@ test_render_clock_cache(void)
 
 	/* First call renders and caches */
 	toolbar->cached_clock[0] = '\0';
-	struct wlr_buffer *buf1 = render_clock(toolbar,
-		toolbar->clock_tool->width, toolbar->height);
+	struct wlr_buffer *buf1 = render_clock(toolbar, toolbar->clock_tool);
 	/* buf1 may be non-NULL since this is a fresh render */
 
 	/* Second call with same time should return NULL (cached) */
-	struct wlr_buffer *buf2 = render_clock(toolbar,
-		toolbar->clock_tool->width, toolbar->height);
+	struct wlr_buffer *buf2 = render_clock(toolbar, toolbar->clock_tool);
 	assert(buf2 == NULL);
 
 	if (buf1) wlr_buffer_drop(buf1);
@@ -2546,9 +2640,7 @@ test_toolbar_render_focus_indicator_existing(void)
 	reset_globals();
 	setup_test_server();
 	test_config.toolbar_tools = "iconbar clock";
-	test_style.toolbar_iconbar_has_focused_color = true;
-	test_style.toolbar_iconbar_focused_color =
-		(struct wm_color){.r = 255, .g = 200, .b = 0, .a = 255};
+	test_style.toolbar_iconbar_focused.texture.color = 0xFFFFC800;
 
 	struct wm_workspace ws;
 	memset(&ws, 0, sizeof(ws));
@@ -3062,7 +3154,8 @@ main(void)
 	/* additional coverage */
 	test_collect_iconbar_workspace_icons_mode();
 	test_compute_tool_layout_custom_clock_fmt();
-	test_compute_tool_layout_distribute_remaining();
+	test_compute_tool_layout_bevel_borders();
+	test_button_press_release();
 	test_buffer_from_cairo_null();
 	test_pixel_buffer_write_rejected();
 	test_render_clock_cache();

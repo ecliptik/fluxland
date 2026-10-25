@@ -11,6 +11,7 @@
 #include <drm_fourcc.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
@@ -79,6 +80,7 @@ parse_tool_name(const char *name, enum wm_toolbar_tool_type *out)
 		{ "clock",         WM_TOOL_CLOCK },
 		{ "prevwindow",    WM_TOOL_PREV_WINDOW },
 		{ "nextwindow",    WM_TOOL_NEXT_WINDOW },
+		{ "systemtray",    WM_TOOL_SYSTRAY },
 	};
 	for (size_t i = 0; i < sizeof(tools) / sizeof(tools[0]); i++) {
 		if (strcasecmp(name, tools[i].name) == 0) {
@@ -113,8 +115,7 @@ parse_toolbar_tools(struct wm_toolbar *toolbar, const char *tools_str)
 		enum wm_toolbar_tool_type type;
 		if (parse_tool_name(tok, &type)) {
 			types[count++] = type;
-		} else if (strcasecmp(tok, "systemtray") != 0) {
-			/* The system tray is always at the end for now */
+		} else {
 			wlr_log(WLR_INFO,
 				"toolbar: unknown tool '%s', skipping", tok);
 		}
@@ -169,266 +170,411 @@ tool_is_button(enum wm_toolbar_tool_type type)
 		type == WM_TOOL_NEXT_WINDOW;
 }
 
+static const char *
+clock_format(struct wm_toolbar *toolbar)
+{
+	struct wm_config *config = toolbar->server->config;
+	return config && config->clock_format ?
+		config->clock_format : WM_TOOLBAR_CLOCK_FMT;
+}
+
+static int
+tool_border(struct wm_toolbar *toolbar, enum wm_toolbar_tool_type type)
+{
+	struct wm_style *style = toolbar->server->style;
+	if (tool_is_button(type))
+		return style->toolbar_button.border_width;
+	switch (type) {
+	case WM_TOOL_WORKSPACE_NAME:
+		return style->toolbar_workspace.border_width;
+	case WM_TOOL_CLOCK:
+		return style->toolbar_clock.border_width;
+	case WM_TOOL_ICONBAR:
+		return style->toolbar_iconbar_border_width;
+	default:
+		return 0;
+	}
+}
+
+/*
+ * A fixed tool's width: the widest workspace name plus 2, the clock as
+ * wide as its text with its digits as 0 and two 0s more (Fluxbox's
+ * WorkspaceNameTool and ClockTool); 0 for a tool that isn't shown.
+ */
+static int
+tool_fixed_width(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
+{
+	struct wm_server *server = toolbar->server;
+	struct wm_style *style = server->style;
+	switch (tool->type) {
+	case WM_TOOL_WORKSPACE_NAME:
+		if (toolbar->cached_ws_name_max_width < 0) {
+			int max_tw = 0;
+			struct wm_workspace *ws;
+			wl_list_for_each(ws, &server->workspaces, link) {
+				const char *name = ws->name && *ws->name ?
+					ws->name : "1";
+				int tw = wm_measure_text_width(name,
+					&style->toolbar_workspace.font, 1.0f);
+				if (tw > max_tw)
+					max_tw = tw;
+			}
+			toolbar->cached_ws_name_max_width = max_tw;
+		}
+		return toolbar->cached_ws_name_max_width + 2;
+	case WM_TOOL_CLOCK: {
+		time_t now = time(NULL);
+		struct tm tm;
+		localtime_r(&now, &tm);
+		char timebuf[64];
+		size_t n = strftime(timebuf, sizeof(timebuf) - 2,
+			clock_format(toolbar), &tm);
+		for (size_t i = 0; i < n; i++) {
+			if (isdigit((unsigned char)timebuf[i]))
+				timebuf[i] = '0';
+		}
+		memcpy(timebuf + n, "00", 3);
+		return wm_measure_text_width(timebuf,
+			&style->toolbar_clock.font, 1.0f);
+	}
+	case WM_TOOL_SYSTRAY:
+#ifdef WM_HAS_SYSTRAY
+		if (server->systray)
+			return wm_systray_get_width(server->systray);
+#endif
+		return 0;
+	default:
+		return 0;
+	}
+}
+
+/*
+ * The toolbar's height, as Fluxbox's Toolbar::reconfigure: the tallest
+ * tool font plus 2, or the style's toolbar.height, or the init's, then
+ * the bevel above and below and the border.
+ */
+static int
+toolbar_compute_height(struct wm_toolbar *toolbar)
+{
+	struct wm_style *style = toolbar->server->style;
+	struct wm_config *config = toolbar->server->config;
+	if (!style)
+		return WM_TOOLBAR_HEIGHT;
+	int h = 0;
+	const struct wm_font *fonts[] = { &style->toolbar_clock.font,
+		&style->toolbar_iconbar_focused.font,
+		&style->toolbar_iconbar_unfocused.font,
+		&style->toolbar_workspace.font };
+	for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++) {
+		int fh = wm_font_height(fonts[i], 1.0f);
+		if (fh > h)
+			h = fh;
+	}
+	h += 2;
+	if (style->toolbar_height > 0)
+		h = style->toolbar_height;
+	if (config && config->toolbar_height > 0 && config->toolbar_height < 100)
+		h = config->toolbar_height;
+	return h + 2 * style->toolbar_bevel_width +
+		2 * style->toolbar_border_width;
+}
+
+/* The tools to lay out: the configured ones, and the system tray after
+ * them when they don't list it */
+static int
+layout_items(struct wm_toolbar *toolbar, struct wm_toolbar_tool **items)
+{
+	int n = 0;
+	bool tray = false;
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		items[n++] = &toolbar->tools[i];
+		tray |= toolbar->tools[i].type == WM_TOOL_SYSTRAY;
+	}
+	if (!tray) {
+		toolbar->systray_slot.type = WM_TOOL_SYSTRAY;
+		items[n++] = &toolbar->systray_slot;
+	}
+	return n;
+}
+
+/*
+ * Place the tools as Fluxbox's Toolbar::rearrangeItems does: bevelWidth
+ * apart and in from the edges, each in its own border; with no bevel,
+ * neighbours share a border and the outer ones fall outside.  Buttons
+ * are square, the iconbar takes what is left.
+ */
 static void
 compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 {
 	struct wm_style *style = toolbar->server->style;
-	int h = toolbar->height;
-	int count = toolbar->tool_count;
-	if (count == 0) {
-		return;
-	}
+	struct wm_toolbar_tool *items[WM_TOOLBAR_MAX_TOOLS + 1];
+	int count = layout_items(toolbar, items);
+	int tbw = style->toolbar_border_width;
+	int bevel = style->toolbar_bevel_width;
+	int width = total_width - 2 * tbw;
+	int height = toolbar->height - 2 * tbw;
+	int pref[WM_TOOLBAR_MAX_TOOLS + 1];
 
-	/* Pass 1: determine fixed widths */
-	int fixed_total = 0;
-	int iconbar_idx = -1;
-	int flex_count = 0;
-
+	int fixed = bevel, relative = 0, last_bw = 0;
+	bool first = true;
 	for (int i = 0; i < count; i++) {
-		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		struct wm_toolbar_tool *tool = items[i];
+		pref[i] = tool_fixed_width(toolbar, tool);
+		tool->border = tool_border(toolbar, tool->type);
+		if (tool->type == WM_TOOL_SYSTRAY && pref[i] <= 0)
+			continue;	/* not shown */
+		int bw = tool->border;
+		if (bevel > 0) {
+			fixed += bevel + 2 * bw;
+		} else if (!first) {
+			fixed += bw > last_bw ? bw : last_bw;
+		}
+		first = false;
+		last_bw = bw;
 		if (tool_is_button(tool->type)) {
-			/* Square button: width = height */
-			tool->width = h;
-			fixed_total += tool->width;
-		} else if (tool->type == WM_TOOL_WORKSPACE_NAME) {
-			/* Use cached max width to avoid N Pango measurements
-			 * per toolbar layout. Invalidated on reconfigure. */
-			int max_tw;
-			if (toolbar->cached_ws_name_max_width >= 0) {
-				max_tw = toolbar->cached_ws_name_max_width;
-			} else {
-				max_tw = 0;
-				struct wm_workspace *ws_iter;
-				wl_list_for_each(ws_iter,
-					&toolbar->server->workspaces, link) {
-					const char *ws_name = ws_iter->name;
-					if (!ws_name || !*ws_name)
-						ws_name = "1";
-					int tw = wm_measure_text_width(ws_name,
-						&style->toolbar_font, 1.0f);
-					if (tw > max_tw) max_tw = tw;
-				}
-				toolbar->cached_ws_name_max_width = max_tw;
-			}
-			tool->width = max_tw + WM_TOOLBAR_PADDING * 4;
-			if (tool->width < 60) tool->width = 60;
-			fixed_total += tool->width;
-		} else if (tool->type == WM_TOOL_CLOCK) {
-			/* Measure clock text */
-			const char *fmt = WM_TOOLBAR_CLOCK_FMT;
-			if (toolbar->server->config &&
-			    toolbar->server->config->clock_format) {
-				fmt = toolbar->server->config->clock_format;
-			}
-			time_t now = time(NULL);
-			struct tm tm;
-			localtime_r(&now, &tm);
-			char timebuf[64];
-			strftime(timebuf, sizeof(timebuf), fmt, &tm);
-			int tw = wm_measure_text_width(timebuf,
-				&style->toolbar_font, 1.0f);
-			tool->width = tw + WM_TOOLBAR_PADDING * 4;
-			if (tool->width < 80) tool->width = 80;
-			fixed_total += tool->width;
+			fixed += height - (bevel ? 2 * (bw + bevel) : 0);
 		} else if (tool->type == WM_TOOL_ICONBAR) {
-			iconbar_idx = i;
-			flex_count++;
+			relative++;
+		} else {
+			fixed += pref[i];
 		}
 	}
+	int stretch = relative ? (width - fixed) / relative : 0;
+	if (stretch < 0)
+		stretch = 0;
 
-	/* Reserve space for systray if present */
-	int systray_width = 0;
-#ifdef WM_HAS_SYSTRAY
-	if (toolbar->server->systray) {
-		systray_width = wm_systray_get_width(
-			toolbar->server->systray);
-	}
-#endif
-	fixed_total += systray_width;
-
-	/* Pass 2: assign flex width to iconbar */
-	int remaining = total_width - fixed_total;
-	if (remaining < 0) remaining = 0;
-
-	if (iconbar_idx >= 0) {
-		toolbar->tools[iconbar_idx].width = remaining;
-	} else if (remaining > 0) {
-		/* No iconbar: distribute remaining space among text tools */
-		int text_count = 0;
-		for (int i = 0; i < count; i++) {
-			if (toolbar->tools[i].type == WM_TOOL_WORKSPACE_NAME ||
-			    toolbar->tools[i].type == WM_TOOL_CLOCK) {
-				text_count++;
-			}
-		}
-		if (text_count > 0) {
-			int extra = remaining / text_count;
-			for (int i = 0; i < count; i++) {
-				if (toolbar->tools[i].type ==
-				    WM_TOOL_WORKSPACE_NAME ||
-				    toolbar->tools[i].type ==
-				    WM_TOOL_CLOCK) {
-					toolbar->tools[i].width += extra;
-				}
-			}
-		}
-	}
-
-	/* Pass 3: assign x positions left-to-right */
-	int x = 0;
+	int next_x = 0;
+	last_bw = 0;
+	first = true;
 	for (int i = 0; i < count; i++) {
-		toolbar->tools[i].x = x;
-		x += toolbar->tools[i].width;
+		struct wm_toolbar_tool *tool = items[i];
+		if (tool->type == WM_TOOL_SYSTRAY && pref[i] <= 0) {
+			tool->width = tool->height = 0;
+			continue;
+		}
+		int bw = tool->border;
+		int offset = bevel, size_offset = 2 * (bw + bevel);
+		if (bevel == 0) {
+			offset = -bw;
+			size_offset = 0;
+			if (first)
+				next_x = -bw;
+			next_x += bw > last_bw ? bw : last_bw;
+		}
+		first = false;
+		last_bw = bw;
+
+		int w, h = height - size_offset;
+		if (tool->type == WM_TOOL_ICONBAR)
+			w = stretch;
+		else if (tool_is_button(tool->type))
+			w = h;
+		else
+			w = pref[i];
+		if (w < 1)
+			w = 1;
+		if (h < 1)
+			h = 1;
+
+		/* The frame, then what shows of it inside the border */
+		tool->frame_width = w + 2 * bw;
+		tool->frame_height = h + 2 * bw;
+		int fx = tbw + next_x + offset, fy = tbw + offset;
+		int x0 = fx < tbw ? tbw : fx;
+		int y0 = fy < tbw ? tbw : fy;
+		int x1 = fx + tool->frame_width;
+		int y1 = fy + tool->frame_height;
+		if (x1 > tbw + width)
+			x1 = tbw + width;
+		if (y1 > tbw + height)
+			y1 = tbw + height;
+		tool->x = x0;
+		tool->y = y0;
+		tool->width = x1 > x0 ? x1 - x0 : 0;
+		tool->height = y1 > y0 ? y1 - y0 : 0;
+		tool->frame_x = fx - x0;
+		tool->frame_y = fy - y0;
+
+		next_x += w + bevel;
+		if (bevel != 0)
+			next_x += 2 * bw;
 	}
 }
 
 /* --- Per-tool render functions --- */
 
-static struct wlr_buffer *
-render_button_tool(struct wm_toolbar *toolbar, const char *label,
-	int width, int height)
+static cairo_surface_t *
+new_surface(int width, int height)
 {
-	struct wm_style *style = toolbar->server->style;
-
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
+	return surface;
+}
 
-	cairo_t *cr = cairo_create(surface);
-	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-	cairo_paint(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-	/* Use per-component button texture if available */
-	if (style->toolbar_has_button_texture) {
-		cairo_surface_t *bg = wm_render_texture(
-			&style->toolbar_button_texture,
-			width, height, 1.0f);
-		if (bg) {
-			cairo_set_source_surface(cr, bg, 0, 0);
-			cairo_paint(cr);
-			cairo_surface_destroy(bg);
-		}
-	} else {
-		/* Slightly darker background for buttons */
-		cairo_set_source_rgba(cr, 0, 0, 0, 0.15);
-		cairo_rectangle(cr, 0, 0, width, height);
+/*
+ * A box of a tool: its border, and its texture inside; a ParentRelative
+ * texture leaves the inside clear, so what is behind shows.
+ */
+static void
+draw_box(cairo_t *cr, const struct wm_texture *tex, int border,
+	const struct wm_color *border_color, int x, int y, int w, int h)
+{
+	if (w <= 0 || h <= 0)
+		return;
+	if (border > 0) {
+		cairo_save(cr);
+		cairo_set_source_rgba(cr, border_color->r / 255.0,
+			border_color->g / 255.0, border_color->b / 255.0, 1.0);
+		cairo_rectangle(cr, x, y, w, h);
+		cairo_rectangle(cr, x + border, y + border,
+			w - 2 * border, h - 2 * border);
+		cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
 		cairo_fill(cr);
+		cairo_restore(cr);
 	}
-
-	/* Pick per-component text/pic color */
-	const struct wm_color *btn_color =
-		style->toolbar_has_button_pic_color ?
-			&style->toolbar_button_pic_color :
-			&style->toolbar_text_color;
-
-	/* Draw separator on left edge */
-	cairo_set_source_rgba(cr,
-		btn_color->r / 255.0,
-		btn_color->g / 255.0,
-		btn_color->b / 255.0, 0.3);
-	cairo_set_line_width(cr, 1.0);
-	cairo_move_to(cr, 0.5, 2);
-	cairo_line_to(cr, 0.5, height - 2);
-	cairo_stroke(cr);
-
-	/* Draw label centered */
-	int tw, th;
-	cairo_surface_t *text = wm_render_text(label,
-		&style->toolbar_font, btn_color,
-		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
-	if (text) {
-		int tx = (width - tw) / 2;
-		int ty = (height - th) / 2;
-		if (tx < 0) tx = 0;
-		if (ty < 0) ty = 0;
-		cairo_set_source_surface(cr, text, tx, ty);
+	int iw = w - 2 * border, ih = h - 2 * border;
+	if (iw <= 0 || ih <= 0)
+		return;
+	cairo_surface_t *bg = wm_render_texture(tex, iw, ih, 1.0f);
+	if (bg) {
+		cairo_set_source_surface(cr, bg, x + border, y + border);
 		cairo_paint(cr);
-		cairo_surface_destroy(text);
+		cairo_surface_destroy(bg);
 	}
+}
 
+/* Text in a box, as FbTk::TextButton: justified, a pixel in from the
+ * sides, centred up and down */
+static void
+draw_text(cairo_t *cr, const char *text, const struct wm_font *font,
+	const struct wm_color *color, enum wm_justify justify,
+	int x, int y, int w, int h)
+{
+	int pad = 1;
+	if (!text || w <= 0)
+		return;
+	/* The tools are sized to their text and 2, so the text may use
+	 * the padding before it is cut short */
+	int tw, th;
+	cairo_surface_t *ts = wm_render_text(text, font, color,
+		w, &tw, &th, justify, 1.0f);
+	if (!ts)
+		return;
+	int tx = x + pad;
+	if (justify == WM_JUSTIFY_CENTER)
+		tx = x + (w - tw) / 2;
+	else if (justify == WM_JUSTIFY_RIGHT)
+		tx = x + w - pad - tw;
+	if (tx + tw > x + w)
+		tx = x + w - tw;
+	if (tx < x)
+		tx = x;
+	int ty = y + (h - th) / 2;
+	if (ty < y)
+		ty = y;
+	cairo_set_source_surface(cr, ts, tx, ty);
+	cairo_paint(cr);
+	cairo_surface_destroy(ts);
+}
+
+/* A tool's frame drawn into the surface of what shows of it */
+static cairo_t *
+begin_tool(struct wm_toolbar_tool *tool, cairo_surface_t **surface,
+	const struct wm_texture *tex, const struct wm_tool_style *ts,
+	int *cx, int *cy, int *cw, int *ch)
+{
+	*surface = new_surface(tool->width, tool->height);
+	if (!*surface)
+		return NULL;
+	cairo_t *cr = cairo_create(*surface);
+	draw_box(cr, tex, tool->border, &ts->border_color, tool->frame_x,
+		tool->frame_y, tool->frame_width, tool->frame_height);
+	*cx = tool->frame_x + tool->border;
+	*cy = tool->frame_y + tool->border;
+	*cw = tool->frame_width - 2 * tool->border;
+	*ch = tool->frame_height - 2 * tool->border;
+	return cr;
+}
+
+/* A filled triangle as FbDrawable::drawTriangle draws an arrow */
+static void
+draw_arrow(cairo_t *cr, enum wm_toolbar_tool_type type, int x, int y,
+	int w, int h, int scale, const struct wm_color *color)
+{
+	if (scale < 100)
+		scale = 100;
+	if (scale > 10000)
+		scale = 10000;
+	int ax = 100 * w / scale, ay = 100 * h / scale;
+	ax -= ax % 2;
+	ay -= ay % 2;
+	double cx = x + w / 2, cy = y + h / 2;
+	bool left = type == WM_TOOL_PREV_WORKSPACE ||
+		type == WM_TOOL_PREV_WINDOW;
+	cairo_set_source_rgba(cr, color->r / 255.0, color->g / 255.0,
+		color->b / 255.0, 1.0);
+	if (left) {
+		cairo_move_to(cr, cx - ax / 2, cy);
+		cairo_line_to(cr, cx + ax / 2, cy - ay / 2);
+		cairo_line_to(cr, cx + ax / 2, cy + ay / 2);
+	} else {
+		cairo_move_to(cr, cx + ax / 2, cy);
+		cairo_line_to(cr, cx - ax / 2, cy + ay / 2);
+		cairo_line_to(cr, cx - ax / 2, cy - ay / 2);
+	}
+	cairo_close_path(cr);
+	cairo_fill(cr);
+}
+
+static struct wlr_buffer *
+render_button_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
+	bool pressed)
+{
+	struct wm_style *style = toolbar->server->style;
+	cairo_surface_t *surface;
+	int cx, cy, cw, ch;
+	cairo_t *cr = begin_tool(tool, &surface, pressed ?
+		&style->toolbar_button_pressed : &style->toolbar_button.texture,
+		&style->toolbar_button, &cx, &cy, &cw, &ch);
+	if (!cr)
+		return NULL;
+	draw_arrow(cr, tool->type, cx, cy, cw, ch, style->toolbar_button_scale,
+		&style->toolbar_button_pic_color);
 	cairo_destroy(cr);
 	return wlr_buffer_from_cairo(surface);
 }
 
 static struct wlr_buffer *
 render_workspace_name_tool(struct wm_toolbar *toolbar,
-	struct wm_toolbar_tool *tool, int width, int height)
+	struct wm_toolbar_tool *tool)
 {
 	struct wm_server *server = toolbar->server;
 	struct wm_style *style = server->style;
 	struct wm_workspace *active_ws = wm_workspace_get_active(server);
-
-	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-		cairo_surface_destroy(surface);
-		return NULL;
-	}
-
-	cairo_t *cr = cairo_create(surface);
-
-	/* Clear */
-	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-	cairo_paint(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
 	/* Single hit box covering the whole tool — allocate once, reuse */
 	if (!tool->hit_boxes) {
 		tool->hit_boxes = calloc(1, sizeof(struct wlr_box));
 		if (!tool->hit_boxes) {
 			tool->hit_box_count = 0;
-			cairo_destroy(cr);
-			cairo_surface_destroy(surface);
 			return NULL;
 		}
 	}
 	tool->hit_box_count = 1;
-	tool->hit_boxes[0].x = 0;
-	tool->hit_boxes[0].y = 0;
-	tool->hit_boxes[0].width = width;
-	tool->hit_boxes[0].height = height;
+	tool->hit_boxes[0] = (struct wlr_box){ 0, 0, tool->width, tool->height };
 
-	/* Pick per-component texture or fall back to toolbar texture */
-	const struct wm_texture *ws_tex = style->toolbar_has_workspace_texture ?
-		&style->toolbar_workspace_texture :
-		(style->toolbar_has_label_texture ?
-			&style->toolbar_label_texture :
-			&style->toolbar_texture);
+	cairo_surface_t *surface;
+	int cx, cy, cw, ch;
+	cairo_t *cr = begin_tool(tool, &surface,
+		&style->toolbar_workspace.texture, &style->toolbar_workspace,
+		&cx, &cy, &cw, &ch);
+	if (!cr)
+		return NULL;
 
-	/* Render background */
-	cairo_surface_t *bg = wm_render_texture(ws_tex, width, height, 1.0f);
-	if (bg) {
-		if (!style->toolbar_has_workspace_texture &&
-		    !style->toolbar_has_label_texture) {
-			/* Light overlay only when using base toolbar texture
-			 * to visually differentiate the workspace tool */
-			cairo_t *bcr = cairo_create(bg);
-			cairo_set_source_rgba(bcr, 1, 1, 1, 0.15);
-			cairo_paint(bcr);
-			cairo_destroy(bcr);
-		}
-		cairo_set_source_surface(cr, bg, 0, 0);
-		cairo_paint(cr);
-		cairo_surface_destroy(bg);
-	} else {
-		cairo_set_source_rgba(cr, 0.4, 0.4, 0.5, 1.0);
-		cairo_rectangle(cr, 0, 0, width, height);
-		cairo_fill(cr);
-	}
-
-	/* Pick per-component text color or fall back */
-	const struct wm_color *ws_text_color =
-		style->toolbar_has_workspace_text_color ?
-			&style->toolbar_workspace_text_color :
-		style->toolbar_has_label_text_color ?
-			&style->toolbar_label_text_color :
-			&style->toolbar_text_color;
-
-	/* Draw active workspace name centered */
 	const char *name = active_ws ? active_ws->name : NULL;
 	char fallback[16];
 	if (!name || !*name) {
@@ -436,19 +582,9 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 			active_ws ? active_ws->index + 1 : 1);
 		name = fallback;
 	}
-
-	int tw, th;
-	cairo_surface_t *text = wm_render_text(name,
-		&style->toolbar_font, ws_text_color,
-		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
-	if (text) {
-		int tx = (width - tw) / 2;
-		int ty = (height - th) / 2;
-		if (ty < 0) ty = 0;
-		cairo_set_source_surface(cr, text, tx, ty);
-		cairo_paint(cr);
-		cairo_surface_destroy(text);
-	}
+	draw_text(cr, name, &style->toolbar_workspace.font,
+		&style->toolbar_workspace.text_color,
+		style->toolbar_workspace.justify, cx, cy, cw, ch);
 
 	cairo_destroy(cr);
 	return wlr_buffer_from_cairo(surface);
@@ -560,61 +696,70 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 
 /* --- Render icon bar (window list) --- */
 
+/* An iconbar entry's title: an iconified window's through
+ * iconifiedPattern */
+static void
+entry_title(struct wm_toolbar *toolbar, struct wm_iconbar_entry *entry,
+	char *title_buf, size_t title_size)
+{
+	struct wm_config *cfg = toolbar->server->config;
+	const char *raw_title = entry->view->title;
+	if (!raw_title || !*raw_title)
+		raw_title = _("(untitled)");
+	if (!entry->iconified) {
+		snprintf(title_buf, title_size, "%s", raw_title);
+		return;
+	}
+
+	const char *pattern = cfg ? cfg->iconbar_iconified_pattern : NULL;
+	if (!pattern)
+		pattern = "( %t )";  /* Fluxbox's */
+	/* The title goes where %t is (Fluxbox; fluxland 1.x wrote %s);
+	 * the pattern is data, not a format */
+	size_t plen = strlen(pattern);
+	const char *pct_s = strstr(pattern, "%t");
+	if (!pct_s)
+		pct_s = strstr(pattern, "%s");
+	if (pct_s) {
+		size_t prefix = (size_t)(pct_s - pattern);
+		size_t suffix = plen - prefix - 2;
+		snprintf(title_buf, title_size, "%.*s%s%.*s", (int)prefix,
+			pattern, raw_title, (int)suffix, pct_s + 2);
+	} else {
+		snprintf(title_buf, title_size, "%s", pattern);
+	}
+}
+
+/*
+ * The iconbar: its empty texture, and the entries as FbTk::Container
+ * places them, side by side with their borders shared and the outer
+ * ones outside; Relative shares the width out, the other alignments
+ * make them iconWidth wide.
+ */
 static struct wlr_buffer *
-render_iconbar(struct wm_toolbar *toolbar, int width, int height)
+render_iconbar(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 {
 	struct wm_server *server = toolbar->server;
 	struct wm_style *style = server->style;
+	struct wm_config *cfg = server->config;
 
 	collect_iconbar_entries(toolbar);
 
-	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-		cairo_surface_destroy(surface);
+	struct wm_tool_style frame = {
+		.border_color = style->toolbar_iconbar_border_color,
+	};
+	cairo_surface_t *surface;
+	int cx, cy, cw, ch;
+	cairo_t *cr = begin_tool(tool, &surface, &style->toolbar_iconbar_empty,
+		&frame, &cx, &cy, &cw, &ch);
+	if (!cr)
 		return NULL;
-	}
-
-	cairo_t *cr = cairo_create(surface);
-	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-	cairo_paint(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
 	int count = toolbar->ib_count;
-	if (count == 0) {
-		/* No windows — return empty surface */
+	if (count == 0 || cw <= 0) {
 		cairo_destroy(cr);
 		return wlr_buffer_from_cairo(surface);
 	}
-
-	/* Determine entry width: fixed iconWidth or auto (divide equally) */
-	struct wm_config *cfg = server->config;
-	/* Relative shares the width out; the others are iconWidth wide
-	 * (128 unless set), less when there isn't room */
-	int alignment = cfg ? cfg->iconbar_alignment : 1;
-	int fixed_icon_width = cfg ? cfg->iconbar_icon_width : 0;
-	if (fixed_icon_width <= 0)
-		fixed_icon_width = 128;
-	int entry_width = width / count;
-	if (alignment != 1 && fixed_icon_width < entry_width)
-		entry_width = fixed_icon_width;
-	if (entry_width < 1) entry_width = 1;
-
-	/* Compute total content width and alignment offset */
-	int total_content_width = entry_width * count;
-	if (total_content_width > width)
-		total_content_width = width;
-	int align_offset = 0;
-	if (total_content_width < width) {
-		if (alignment == 2) /* right */
-			align_offset = width - total_content_width;
-		else if (alignment == 3) /* center */
-			align_offset = (width - total_content_width) / 2;
-		/* left: offset stays 0 */
-	}
-
-	/* Reuse pre-allocated hit boxes array.
-	 * Fallback to allocation if not pre-allocated (e.g. in tests). */
 	if (!toolbar->ib_boxes) {
 		toolbar->ib_boxes = calloc(WM_TOOLBAR_ICONBAR_MAX,
 			sizeof(struct wlr_box));
@@ -627,148 +772,56 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 		memset(toolbar->ib_boxes, 0, count * sizeof(struct wlr_box));
 	}
 
-	/* Get icon bar colors (fall back to toolbar defaults) */
-	struct wm_color focused_bg_color;
-	struct wm_color focused_text_color;
-	struct wm_color unfocused_bg_color;
-	struct wm_color unfocused_text_color;
+	const struct wm_tool_style *first = toolbar->ib_entries[0].focused ?
+		&style->toolbar_iconbar_focused :
+		&style->toolbar_iconbar_unfocused;
+	int bw = first->border_width;
+	int alignment = cfg ? cfg->iconbar_alignment : 1;
+	int total = cw, maxw, extra = 0;
+	if (alignment == 1) {
+		maxw = (cw - (count - 1) * bw) / count;
+		extra = cw - ((maxw + bw) * count - bw);
+	} else {
+		maxw = cfg && cfg->iconbar_icon_width > 0 ?
+			cfg->iconbar_icon_width : 128;
+		total = (maxw + bw) * count - bw;
+		if (total > cw) {
+			total = cw;
+			maxw = (cw - (count - 1) * bw) / count;
+		}
+	}
+	if (maxw < 1)
+		maxw = 1;
+	int next_x = -bw;
+	if (alignment == 2)
+		next_x += cw - total;
+	else if (alignment == 3)
+		next_x += (cw - total) / 2;
 
-	if (style->toolbar_iconbar_has_focused_color) {
-		focused_bg_color = style->toolbar_iconbar_focused_color;
-	} else {
-		focused_bg_color = (struct wm_color){
-			.r = 80, .g = 80, .b = 100, .a = 255
-		};
-	}
-	if (style->toolbar_iconbar_focused_text_color.a > 0) {
-		focused_text_color = style->toolbar_iconbar_focused_text_color;
-	} else if (style->toolbar_has_window_label_text_color) {
-		focused_text_color = style->toolbar_window_label_text_color;
-	} else {
-		focused_text_color = style->toolbar_text_color;
-	}
-
-	if (style->toolbar_iconbar_has_unfocused_color) {
-		unfocused_bg_color = style->toolbar_iconbar_unfocused_color;
-	} else {
-		unfocused_bg_color = (struct wm_color){
-			.r = 0, .g = 0, .b = 0, .a = 0
-		};
-	}
-	if (style->toolbar_iconbar_unfocused_text_color.a > 0) {
-		unfocused_text_color =
-			style->toolbar_iconbar_unfocused_text_color;
-	} else {
-		unfocused_text_color = style->toolbar_text_color;
-	}
-
+	cairo_save(cr);
+	cairo_rectangle(cr, cx, cy, cw, ch);
+	cairo_clip(cr);
 	for (int i = 0; i < count; i++) {
 		struct wm_iconbar_entry *entry = &toolbar->ib_entries[i];
-		int ex = align_offset + i * entry_width;
-		int ew;
-		if (fixed_icon_width > 0) {
-			ew = entry_width;
-			if (ex + ew > width)
-				ew = width - ex;
-		} else {
-			ew = (i == count - 1) ?
-				(width - (ex - align_offset) - align_offset) :
-				entry_width;
-		}
+		const struct wm_tool_style *ts = entry->focused ?
+			&style->toolbar_iconbar_focused :
+			&style->toolbar_iconbar_unfocused;
+		int w = maxw + (i < extra ? 1 : 0);
+		int ex = cx + next_x + bw;	/* inside the entry's border */
+		draw_box(cr, &ts->texture, ts->border_width, &ts->border_color,
+			ex - ts->border_width, cy - ts->border_width,
+			w + 2 * ts->border_width, ch + 2 * ts->border_width);
 
-		/* Background */
-		struct wm_color *bg_color = entry->focused ?
-			&focused_bg_color : &unfocused_bg_color;
-		struct wm_color *text_color = entry->focused ?
-			&focused_text_color : &unfocused_text_color;
-
-		if (entry->focused) {
-			cairo_surface_t *bg =
-				wm_render_texture(&style->toolbar_texture,
-					ew, height, 1.0f);
-			if (bg) {
-				cairo_t *bcr = cairo_create(bg);
-				cairo_set_source_rgba(bcr, 1, 1, 1, 0.2);
-				cairo_paint(bcr);
-				cairo_destroy(bcr);
-				cairo_set_source_surface(cr, bg, ex, 0);
-				cairo_paint(cr);
-				cairo_surface_destroy(bg);
-			} else {
-				cairo_set_source_rgba(cr,
-					bg_color->r / 255.0,
-					bg_color->g / 255.0,
-					bg_color->b / 255.0,
-					bg_color->a / 255.0);
-				cairo_rectangle(cr, ex, 0, ew, height);
-				cairo_fill(cr);
-			}
-		} else if (bg_color->a > 0) {
-			cairo_set_source_rgba(cr,
-				bg_color->r / 255.0,
-				bg_color->g / 255.0,
-				bg_color->b / 255.0,
-				bg_color->a / 255.0);
-			cairo_rectangle(cr, ex, 0, ew, height);
-			cairo_fill(cr);
-		}
-
-		/* Separator line */
-		if (i > 0) {
-			cairo_set_source_rgba(cr,
-				style->toolbar_text_color.r / 255.0,
-				style->toolbar_text_color.g / 255.0,
-				style->toolbar_text_color.b / 255.0, 0.3);
-			cairo_set_line_width(cr, 1.0);
-			cairo_move_to(cr, ex + 0.5, 2);
-			cairo_line_to(cr, ex + 0.5, height - 2);
-			cairo_stroke(cr);
-		}
-
-		/* Build display title */
-		const char *raw_title = entry->view->title;
-		if (!raw_title || !*raw_title) {
-			raw_title = _("(untitled)");
-		}
-
-		char title_buf[256];
-		if (entry->iconified) {
-			const char *pattern = cfg ?
-				cfg->iconbar_iconified_pattern : NULL;
-			if (!pattern)
-				pattern = "( %t )";  /* Fluxbox's */
-			/* The title goes where %t is (Fluxbox; fluxland 1.x
-			 * wrote %s); the pattern is data, not a format */
-			size_t plen = strlen(pattern);
-			const char *pct_s = strstr(pattern, "%t");
-			if (!pct_s)
-				pct_s = strstr(pattern, "%s");
-			if (pct_s) {
-				size_t prefix = (size_t)(pct_s - pattern);
-				size_t suffix = plen - prefix - 2;
-				snprintf(title_buf, sizeof(title_buf),
-					"%.*s%s%.*s",
-					(int)prefix, pattern,
-					raw_title,
-					(int)suffix, pct_s + 2);
-			} else {
-				snprintf(title_buf, sizeof(title_buf),
-					"%s", pattern);
-			}
-		} else {
-			snprintf(title_buf, sizeof(title_buf),
-				"%s", raw_title);
-		}
-
-		/* Icon (session.screen0.iconbar.usePixmap), then the title */
+		/* Icon (session.screen0.iconbar.usePixmap), then the title,
+		 * iconTextPadding (10) around it */
 		int icon_w = 0;
 		cairo_surface_t *icon = entry->view->icon;
-		int isize = height - 4;
+		int isize = ch - 2;
 		if (icon && (!cfg || cfg->iconbar_use_pixmap) && isize >= 8 &&
-		    ew > isize * 2) {
+		    w > isize * 2) {
 			int isrc = cairo_image_surface_get_width(icon);
 			cairo_save(cr);
-			cairo_translate(cr, ex + 3, (height - isize) / 2);
+			cairo_translate(cr, ex + 1, cy + (ch - isize) / 2);
 			cairo_scale(cr, (double)isize / isrc,
 				(double)isize / isrc);
 			cairo_set_source_surface(cr, icon, 0, 0);
@@ -776,32 +829,17 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 				CAIRO_FILTER_GOOD);
 			cairo_paint_with_alpha(cr, entry->iconified ? 0.5 : 1.0);
 			cairo_restore(cr);
-			icon_w = isize + 4;
+			icon_w = isize + 2;
 		}
+		char title[256];
+		entry_title(toolbar, entry, title, sizeof(title));
+		draw_text(cr, title, &ts->font, &ts->text_color, ts->justify,
+			ex + icon_w + 5, cy, w - icon_w - 10, ch);
 
-		/* Render text */
-		int tw, th;
-		cairo_surface_t *text = wm_render_text(title_buf,
-			&style->toolbar_font, text_color,
-			ew - 6 - icon_w, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
-		if (text) {
-			int tx = ex + icon_w + (ew - icon_w - tw) / 2;
-			int ty = (height - th) / 2;
-			if (tx < ex + icon_w + 2) tx = ex + icon_w + 2;
-			if (ty < 0) ty = 0;
-			cairo_set_source_surface(cr, text, tx, ty);
-			cairo_paint(cr);
-			cairo_surface_destroy(text);
-		}
-
-		/* Store hit box (in iconbar-local coords) */
-		if (toolbar->ib_boxes) {
-			toolbar->ib_boxes[i].x = ex;
-			toolbar->ib_boxes[i].y = 0;
-			toolbar->ib_boxes[i].width = ew;
-			toolbar->ib_boxes[i].height = height;
-		}
+		toolbar->ib_boxes[i] = (struct wlr_box){ ex, 0, w, tool->height };
+		next_x += w + bw;
 	}
+	cairo_restore(cr);
 
 	cairo_destroy(cr);
 	return wlr_buffer_from_cairo(surface);
@@ -810,76 +848,31 @@ render_iconbar(struct wm_toolbar *toolbar, int width, int height)
 /* --- Render clock --- */
 
 static struct wlr_buffer *
-render_clock(struct wm_toolbar *toolbar, int width, int height)
+render_clock(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 {
 	struct wm_style *style = toolbar->server->style;
 
 	time_t now = time(NULL);
 	struct tm tm;
 	localtime_r(&now, &tm);
-
-	const char *fmt = WM_TOOLBAR_CLOCK_FMT;
-	if (toolbar->server->config && toolbar->server->config->clock_format) {
-		fmt = toolbar->server->config->clock_format;
-	}
-
 	char timebuf[64];
-	strftime(timebuf, sizeof(timebuf), fmt, &tm);
+	strftime(timebuf, sizeof(timebuf), clock_format(toolbar), &tm);
 
 	/* Cache to avoid redraw if time string unchanged */
-	if (strcmp(timebuf, toolbar->cached_clock) == 0) {
-		return NULL; /* no change */
-	}
-	strncpy(toolbar->cached_clock, timebuf, sizeof(toolbar->cached_clock) - 1);
-	toolbar->cached_clock[sizeof(toolbar->cached_clock) - 1] = '\0';
-
-	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-		cairo_surface_destroy(surface);
+	if (strcmp(timebuf, toolbar->cached_clock) == 0)
 		return NULL;
-	}
+	snprintf(toolbar->cached_clock, sizeof(toolbar->cached_clock), "%s",
+		timebuf);
 
-	cairo_t *cr = cairo_create(surface);
-	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-	cairo_paint(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-	/* Render per-component clock background if available */
-	const struct wm_texture *clock_tex =
-		style->toolbar_has_clock_texture ?
-			&style->toolbar_clock_texture :
-			NULL;
-	if (clock_tex) {
-		cairo_surface_t *bg = wm_render_texture(clock_tex,
-			width, height, 1.0f);
-		if (bg) {
-			cairo_set_source_surface(cr, bg, 0, 0);
-			cairo_paint(cr);
-			cairo_surface_destroy(bg);
-		}
-	}
-
-	/* Pick per-component text color */
-	const struct wm_color *clock_text_color =
-		style->toolbar_has_clock_text_color ?
-			&style->toolbar_clock_text_color :
-			&style->toolbar_text_color;
-
-	int tw, th;
-	cairo_surface_t *text = wm_render_text(timebuf,
-		&style->toolbar_font, clock_text_color,
-		width - 4, &tw, &th, WM_JUSTIFY_CENTER, 1.0f);
-	if (text) {
-		int tx = (width - tw) / 2;
-		int ty = (height - th) / 2;
-		if (tx < 0) tx = 0;
-		if (ty < 0) ty = 0;
-		cairo_set_source_surface(cr, text, tx, ty);
-		cairo_paint(cr);
-		cairo_surface_destroy(text);
-	}
-
+	cairo_surface_t *surface;
+	int cx, cy, cw, ch;
+	cairo_t *cr = begin_tool(tool, &surface, &style->toolbar_clock.texture,
+		&style->toolbar_clock, &cx, &cy, &cw, &ch);
+	if (!cr)
+		return NULL;
+	draw_text(cr, timebuf, &style->toolbar_clock.font,
+		&style->toolbar_clock.text_color, style->toolbar_clock.justify,
+		cx, cy, cw, ch);
 	cairo_destroy(cr);
 	return wlr_buffer_from_cairo(surface);
 }
@@ -889,36 +882,44 @@ render_clock(struct wm_toolbar *toolbar, int width, int height)
 static void
 render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 {
-	int w = tool->width;
-	int h = toolbar->height;
 	struct wlr_buffer *buf = NULL;
 
-	if (w <= 0 || h <= 0) {
+	if (tool->type == WM_TOOL_SYSTRAY) {
+#ifdef WM_HAS_SYSTRAY
+		if (toolbar->server->systray && tool->width > 0)
+			wm_systray_layout(toolbar->server->systray,
+				toolbar->x + tool->x, toolbar->y + tool->y,
+				tool->width, tool->height);
+#endif
 		return;
 	}
+	if (!tool->buf)
+		return;
+	if (tool->width <= 0 || tool->height <= 0) {
+		wlr_scene_node_set_enabled(&tool->buf->node, false);
+		return;
+	}
+	wlr_scene_node_set_enabled(&tool->buf->node, true);
 
 	switch (tool->type) {
 	case WM_TOOL_PREV_WORKSPACE:
-		buf = render_button_tool(toolbar, "<", w, h);
-		break;
 	case WM_TOOL_NEXT_WORKSPACE:
-		buf = render_button_tool(toolbar, ">", w, h);
-		break;
 	case WM_TOOL_PREV_WINDOW:
-		buf = render_button_tool(toolbar, "\xe2\x97\x80", w, h);
-		break;
 	case WM_TOOL_NEXT_WINDOW:
-		buf = render_button_tool(toolbar, "\xe2\x96\xb6", w, h);
+		buf = render_button_tool(toolbar, tool, toolbar->tools &&
+			tool - toolbar->tools == toolbar->pressed_tool);
 		break;
 	case WM_TOOL_WORKSPACE_NAME:
-		buf = render_workspace_name_tool(toolbar, tool, w, h);
+		buf = render_workspace_name_tool(toolbar, tool);
 		break;
 	case WM_TOOL_ICONBAR:
-		buf = render_iconbar(toolbar, w, h);
+		buf = render_iconbar(toolbar, tool);
 		break;
 	case WM_TOOL_CLOCK:
 		toolbar->cached_clock[0] = '\0'; /* force redraw */
-		buf = render_clock(toolbar, w, h);
+		buf = render_clock(toolbar, tool);
+		break;
+	case WM_TOOL_SYSTRAY:
 		break;
 	}
 
@@ -926,7 +927,7 @@ render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 		wlr_scene_buffer_set_buffer(tool->buf, buf);
 		wlr_buffer_drop(buf);
 	}
-	wlr_scene_node_set_position(&tool->buf->node, tool->x, 0);
+	wlr_scene_node_set_position(&tool->buf->node, tool->x, tool->y);
 }
 
 /* --- Full toolbar render --- */
@@ -947,9 +948,16 @@ toolbar_render(struct wm_toolbar *toolbar)
 		return;
 	}
 
-	/* Background */
-	struct wlr_buffer *bg = wlr_buffer_from_cairo(
-		wm_render_texture(&style->toolbar_texture, w, h, 1.0f));
+	/* Background: the toolbar's border and texture */
+	cairo_surface_t *bg_surface = new_surface(w, h);
+	if (bg_surface) {
+		cairo_t *bcr = cairo_create(bg_surface);
+		draw_box(bcr, &style->toolbar_texture,
+			style->toolbar_border_width,
+			&style->toolbar_border_color, 0, 0, w, h);
+		cairo_destroy(bcr);
+	}
+	struct wlr_buffer *bg = wlr_buffer_from_cairo(bg_surface);
 	wlr_scene_buffer_set_buffer(toolbar->bg_buf, bg);
 	if (bg) {
 		wlr_buffer_drop(bg);
@@ -958,10 +966,12 @@ toolbar_render(struct wm_toolbar *toolbar)
 	/* Compute layout for all tools */
 	compute_tool_layout(toolbar, w);
 
-	/* Render each tool */
+	/* Render each tool, and the system tray where it goes */
 	for (int i = 0; i < toolbar->tool_count; i++) {
 		render_tool(toolbar, &toolbar->tools[i]);
 	}
+	if (toolbar->systray_slot.type == WM_TOOL_SYSTRAY)
+		render_tool(toolbar, &toolbar->systray_slot);
 
 	/* Draw keyboard focus indicator if toolbar has focus */
 	int focus_idx = wm_focus_nav_get_toolbar_index(server);
@@ -979,14 +989,12 @@ toolbar_render(struct wm_toolbar *toolbar)
 			/* High-contrast yellow border by default,
 			 * use focused iconbar color if available */
 			double fc_r = 1.0, fc_g = 1.0, fc_b = 0.0;
-			if (style->toolbar_iconbar_has_focused_color) {
-				fc_r = style->toolbar_iconbar_focused_color.r
-					/ 255.0;
-				fc_g = style->toolbar_iconbar_focused_color.g
-					/ 255.0;
-				fc_b = style->toolbar_iconbar_focused_color.b
-					/ 255.0;
-			}
+			/* The focused iconbar entry's colour */
+			uint32_t fc =
+				style->toolbar_iconbar_focused.texture.color;
+			fc_r = ((fc >> 16) & 0xFF) / 255.0;
+			fc_g = ((fc >> 8) & 0xFF) / 255.0;
+			fc_b = (fc & 0xFF) / 255.0;
 			cairo_set_source_rgba(cr, fc_r, fc_g, fc_b, 1.0);
 			cairo_set_line_width(cr, 2.0);
 			cairo_rectangle(cr, 1, 1, fw - 2, fh - 2);
@@ -1025,20 +1033,6 @@ toolbar_render(struct wm_toolbar *toolbar)
 			&toolbar->focus_indicator->node, false);
 	}
 
-#ifdef WM_HAS_SYSTRAY
-	/* Position systray after the last tool */
-	if (server->systray) {
-		int systray_x = 0;
-		if (toolbar->tool_count > 0) {
-			struct wm_toolbar_tool *last =
-				&toolbar->tools[toolbar->tool_count - 1];
-			systray_x = last->x + last->width;
-		}
-		wm_systray_layout(server->systray,
-			toolbar->x + systray_x, toolbar->y,
-			w - systray_x, h);
-	}
-#endif
 }
 
 /* --- Auto-hide timer callback --- */
@@ -1089,7 +1083,7 @@ clock_timer_cb(void *data)
 
 	if (toolbar->clock_tool) {
 		struct wlr_buffer *clock = render_clock(toolbar,
-			toolbar->clock_tool->width, toolbar->height);
+			toolbar->clock_tool);
 		if (clock) {
 			wlr_scene_buffer_set_buffer(
 				toolbar->clock_tool->buf, clock);
@@ -1115,7 +1109,8 @@ wm_toolbar_create(struct wm_server *server)
 	toolbar->server = server;
 	toolbar->visible = server->config ?
 		server->config->toolbar_visible : true;
-	toolbar->height = WM_TOOLBAR_HEIGHT;
+	toolbar->height = toolbar_compute_height(toolbar);
+	toolbar->pressed_tool = -1;
 	toolbar->cached_ws_index = -1;
 	toolbar->cached_clock[0] = '\0';
 	toolbar->cached_ws_name_max_width = -1;
@@ -1139,9 +1134,6 @@ wm_toolbar_create(struct wm_server *server)
 		toolbar->auto_hide = server->config->toolbar_auto_hide;
 		toolbar->iconbar_mode = server->config->iconbar_mode;
 		set_iconbar_list(toolbar, server->config->iconbar_mode_spec);
-		if (server->config->toolbar_height > 0) {
-			toolbar->height = server->config->toolbar_height;
-		}
 	}
 
 	/* Auto-hide: start hidden */
@@ -1316,7 +1308,7 @@ wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 		}
 
 		struct wlr_buffer *ib_buf = render_iconbar(toolbar,
-			toolbar->iconbar_tool->width, toolbar->height);
+			toolbar->iconbar_tool);
 		wlr_scene_buffer_set_buffer(toolbar->iconbar_tool->buf,
 			ib_buf);
 		if (ib_buf) {
@@ -1350,9 +1342,6 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 		toolbar->iconbar_mode = config->iconbar_mode;
 		set_iconbar_list(toolbar, config->iconbar_mode_spec);
 		apply_toolbar_layer(toolbar);
-		if (config->toolbar_height > 0) {
-			toolbar->height = config->toolbar_height;
-		}
 
 		/* Handle auto-hide state change */
 		bool new_auto_hide = config->toolbar_auto_hide;
@@ -1390,7 +1379,12 @@ wm_toolbar_relayout(struct wm_toolbar *toolbar)
 
 	/* Apply width percentage */
 	int width_pct = config ? config->toolbar_width_percent : 100;
-	toolbar->width = output_width * width_pct / 100;
+	/* Fluxbox: the percentage of the head less the border, which
+	 * goes around it */
+	int tbw = toolbar->server->style ?
+		toolbar->server->style->toolbar_border_width : 0;
+	toolbar->height = toolbar_compute_height(toolbar);
+	toolbar->width = (output_width - 2 * tbw) * width_pct / 100 + 2 * tbw;
 	if (toolbar->width < 1) toolbar->width = 1;
 
 	/* Determine horizontal position based on placement */
@@ -1569,21 +1563,20 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 			continue;
 		}
 
+		/* Arrow buttons show toolbar.button.pressed while held
+		 * and act on release (wm_toolbar_handle_release), as
+		 * Fluxbox's do */
+		if (tool_is_button(tool->type)) {
+			toolbar->pressed_tool = i;
+			render_tool(toolbar, tool);
+			return true;
+		}
+
 		switch (tool->type) {
 		case WM_TOOL_PREV_WORKSPACE:
-			wm_workspace_switch_prev(toolbar->server);
-			return true;
-
 		case WM_TOOL_NEXT_WORKSPACE:
-			wm_workspace_switch_next(toolbar->server);
-			return true;
-
 		case WM_TOOL_PREV_WINDOW:
-			wm_focus_prev_view(toolbar->server);
-			return true;
-
 		case WM_TOOL_NEXT_WINDOW:
-			wm_focus_next_view(toolbar->server);
 			return true;
 
 		case WM_TOOL_ICONBAR: {
@@ -1611,12 +1604,50 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 
 		case WM_TOOL_WORKSPACE_NAME:
 		case WM_TOOL_CLOCK:
+		case WM_TOOL_SYSTRAY:
 			/* No click action */
 			return true;
 		}
 	}
 
 	return false;
+}
+
+bool
+wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx, double ly,
+	uint32_t button)
+{
+	if (!toolbar || toolbar->pressed_tool < 0 ||
+	    toolbar->pressed_tool >= toolbar->tool_count)
+		return false;
+	struct wm_toolbar_tool *tool = &toolbar->tools[toolbar->pressed_tool];
+	toolbar->pressed_tool = -1;
+	render_tool(toolbar, tool);
+	if (button != 272)
+		return true;
+
+	/* Released over the button it was pressed on */
+	double x = lx - toolbar->x, y = ly - toolbar->y;
+	if (x < tool->x || x >= tool->x + tool->width ||
+	    y < tool->y || y >= tool->y + tool->height)
+		return true;
+	switch (tool->type) {
+	case WM_TOOL_PREV_WORKSPACE:
+		wm_workspace_switch_prev(toolbar->server);
+		break;
+	case WM_TOOL_NEXT_WORKSPACE:
+		wm_workspace_switch_next(toolbar->server);
+		break;
+	case WM_TOOL_PREV_WINDOW:
+		wm_focus_prev_view(toolbar->server);
+		break;
+	case WM_TOOL_NEXT_WINDOW:
+		wm_focus_next_view(toolbar->server);
+		break;
+	default:
+		break;
+	}
+	return true;
 }
 
 void

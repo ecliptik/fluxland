@@ -1420,6 +1420,9 @@ static bool wm_toolbar_handle_scroll(struct wm_toolbar *tb, double x,
 static bool wm_toolbar_handle_button(struct wm_toolbar *tb, double x,
 	double y, uint32_t button) { (void)tb; (void)x; (void)y;
 	(void)button; return false; }
+static bool wm_toolbar_handle_release(struct wm_toolbar *tb, double x,
+	double y, uint32_t button) { (void)tb; (void)x; (void)y;
+	(void)button; return false; }
 static bool wm_menu_handle_motion(struct wm_server *s, double x, double y)
 	{ (void)s; (void)x; (void)y; return false; }
 static bool wm_menu_handle_button(struct wm_server *s, double x, double y,

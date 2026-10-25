@@ -198,186 +198,274 @@ set_pixel(uint32_t *data, int stride, int x, int y,
  * Render pixel-by-pixel gradients directly to surface data.
  * This handles all 8 Fluxbox gradient types.
  */
+/*
+ * Textures are drawn as Fluxbox draws them (FbTk/TextureRender.cc), so
+ * a style looks the same: its gradient tables, its bevels (a lighter
+ * top and left edge, a darker bottom and right) and its colour steps.
+ */
+
+/* Fluxbox's ColorLUT: BRIGHTER_8 and PRE_MULTIPLY_0_75 */
+static inline uint8_t
+fb_brighter(uint8_t v)
+{
+	return (uint8_t)(v + ((255 - v) >> 3));
+}
+
+static inline uint8_t
+fb_darker(uint8_t v)
+{
+	return (uint8_t)((v * 3) >> 2);
+}
+
+static inline uint32_t
+fb_brighten(uint32_t argb)
+{
+	return (argb & 0xFF000000) |
+		((uint32_t)fb_brighter((argb >> 16) & 0xFF) << 16) |
+		((uint32_t)fb_brighter((argb >> 8) & 0xFF) << 8) |
+		fb_brighter(argb & 0xFF);
+}
+
+static inline uint32_t
+fb_darken(uint32_t argb)
+{
+	return (argb & 0xFF000000) |
+		((uint32_t)fb_darker((argb >> 16) & 0xFF) << 16) |
+		((uint32_t)fb_darker((argb >> 8) & 0xFF) << 8) |
+		fb_darker(argb & 0xFF);
+}
+
+/* prepareLinearTable: n steps from 'from' toward 'to', times scale */
+static void
+linear_table(uint32_t *t, int n, uint32_t from, uint32_t to, double scale)
+{
+	double r = (from >> 16) & 0xFF, g = (from >> 8) & 0xFF, b = from & 0xFF;
+	double dr = ((double)((to >> 16) & 0xFF) - r) / n;
+	double dg = ((double)((to >> 8) & 0xFF) - g) / n;
+	double db = ((double)(to & 0xFF) - b) / n;
+	for (int i = 0; i < n; i++) {
+		t[i] = 0xFF000000 |
+			((uint32_t)(scale * (r + i * dr)) << 16) |
+			((uint32_t)(scale * (g + i * dg)) << 8) |
+			(uint32_t)(scale * (b + i * db));
+	}
+}
+
+/* prepareMirrorTable: 'from' at both ends, 'to' in the middle */
+static void
+mirror_table(uint32_t *t, int n, uint32_t from, uint32_t to, double scale)
+{
+	int half = (n >> 1) + (n & 1);
+	linear_table(t, half, from, to, scale);
+	for (int i = 0; i < n / 2; i++)
+		t[n - 1 - i] = t[i];
+}
+
+/* Two tables, each scaled by 0.5, added channel by channel */
+static inline uint32_t
+add_halves(uint32_t a, uint32_t b)
+{
+	return 0xFF000000 |
+		(((a & 0xFF0000) + (b & 0xFF0000)) & 0xFF0000) |
+		(((a & 0xFF00) + (b & 0xFF00)) & 0xFF00) |
+		(((a & 0xFF) + (b & 0xFF)) & 0xFF);
+}
+
+/* Which side of the line from (0,0) along (ax,ay) a point is on */
+static inline int
+side(int ax, int ay, int x, int y)
+{
+	long c = (long)ax * y - (long)ay * x;
+	return (c > 0) - (c < 0);
+}
+
 static void
 render_gradient(cairo_surface_t *surface, int w, int h,
-	uint32_t color, uint32_t color_to, enum wm_gradient_type type)
+	uint32_t color, uint32_t color_to, enum wm_gradient_type type,
+	bool interlaced)
 {
 	cairo_surface_flush(surface);
 	uint32_t *data = (uint32_t *)cairo_image_surface_get_data(surface);
-	int stride = cairo_image_surface_get_stride(surface);
+	int stride = cairo_image_surface_get_stride(surface) / 4;
+	uint32_t *xt = calloc((size_t)w + (size_t)h, sizeof(uint32_t));
+	if (!xt)
+		return;
+	uint32_t *yt = xt + w;
 
+	switch (type) {
+	case WM_GRAD_HORIZONTAL:
+		linear_table(xt, w, color, color_to, 1.0);
+		break;
+	case WM_GRAD_VERTICAL:
+		linear_table(yt, h, color, color_to, 1.0);
+		break;
+	case WM_GRAD_DIAGONAL:
+		linear_table(xt, w, color, color_to, 0.5);
+		linear_table(yt, h, color, color_to, 0.5);
+		break;
+	case WM_GRAD_CROSSDIAGONAL:
+		linear_table(xt, w, color_to, color, 0.5);
+		linear_table(yt, h, color, color_to, 0.5);
+		break;
+	case WM_GRAD_PYRAMID:
+		mirror_table(xt, w, color, color_to, 0.5);
+		mirror_table(yt, h, color, color_to, 0.5);
+		break;
+	case WM_GRAD_RECTANGLE:
+	case WM_GRAD_PIPECROSS:
+		mirror_table(xt, w, color, color_to, 1.0);
+		mirror_table(yt, h, color, color_to, 1.0);
+		break;
+	case WM_GRAD_ELLIPTIC:
+		break;
+	}
+
+	double w2 = w / 2.0, h2 = h / 2.0;
 	for (int y = 0; y < h; y++) {
 		for (int x = 0; x < w; x++) {
-			double t = 0.0;
-
+			uint32_t px = 0;
 			switch (type) {
 			case WM_GRAD_HORIZONTAL:
-				t = (w > 1) ? (double)x / (w - 1) : 0.0;
+				px = xt[x];
 				break;
-
 			case WM_GRAD_VERTICAL:
-				t = (h > 1) ? (double)y / (h - 1) : 0.0;
+				px = yt[y];
 				break;
-
 			case WM_GRAD_DIAGONAL:
-				t = (w + h > 2) ?
-					(double)(x + y) / (w + h - 2) : 0.0;
-				break;
-
 			case WM_GRAD_CROSSDIAGONAL:
-				t = (w + h > 2) ?
-					(double)((w - 1 - x) + y) / (w + h - 2)
-					: 0.0;
+			case WM_GRAD_PYRAMID:
+				px = add_halves(xt[x], yt[y]);
 				break;
-
+			case WM_GRAD_RECTANGLE:
 			case WM_GRAD_PIPECROSS: {
-				/* Crossed pipes: distance from center axes */
-				double dx = (w > 1) ?
-					fabs((double)x / (w - 1) - 0.5) * 2.0
-					: 0.0;
-				double dy = (h > 1) ?
-					fabs((double)y / (h - 1) - 0.5) * 2.0
-					: 0.0;
-				t = fmin(dx, dy);
+				/* The diagonals cut the area into four:
+				 * left and right take the x table */
+				int s = side(w - 1, h - 1, x, y) *
+					side(w - 1, -(h - 1), x, y - (h - 1));
+				bool use_x = type == WM_GRAD_RECTANGLE ?
+					s < 0 : s > 0;
+				px = use_x ? xt[x] : yt[y];
 				break;
 			}
-
 			case WM_GRAD_ELLIPTIC: {
-				/* Radial from center */
-				double cx = (w - 1) / 2.0;
-				double cy = (h - 1) / 2.0;
-				double dx = (cx > 0) ? (x - cx) / cx : 0.0;
-				double dy = (cy > 0) ? (y - cy) / cy : 0.0;
-				t = sqrt(dx * dx + dy * dy);
-				if (t > 1.0) t = 1.0;
-				break;
-			}
-
-			case WM_GRAD_RECTANGLE: {
-				/* Rectangular distance from center */
-				double dx = (w > 1) ?
-					fabs((double)x / (w - 1) - 0.5) * 2.0
-					: 0.0;
-				double dy = (h > 1) ?
-					fabs((double)y / (h - 1) - 0.5) * 2.0
-					: 0.0;
-				t = fmax(dx, dy);
-				break;
-			}
-
-			case WM_GRAD_PYRAMID: {
-				/* Pyramidal: product of horizontal and
-				 * vertical distance factors */
-				double dx = (w > 1) ?
-					1.0 - fabs((double)x / (w - 1) - 0.5) * 2.0
-					: 1.0;
-				double dy = (h > 1) ?
-					1.0 - fabs((double)y / (h - 1) - 0.5) * 2.0
-					: 1.0;
-				t = 1.0 - dx * dy;
+				double dx = x - w2, dy = y - h2;
+				double d = (dx * dx / (w2 * w2) +
+					dy * dy / (h2 * h2)) / 2.0;
+				px = 0xFF000000;
+				for (int c = 16; c >= 0; c -= 8) {
+					double to = (color_to >> c) & 0xFF;
+					double from = (color >> c) & 0xFF;
+					double v = to - d * (to - from);
+					if (v < 0) v = 0;
+					if (v > 255) v = 255;
+					px |= (uint32_t)v << c;
+				}
 				break;
 			}
 			}
-
-			set_pixel(data, stride, x, y, w, h,
-				lerp_argb(color, color_to, t));
+			/* Interlaced: even rows lighter, odd rows darker */
+			if (interlaced)
+				px = (y & 1) ? fb_darken(px) : fb_brighten(px);
+			data[y * stride + x] = px;
 		}
 	}
-
+	free(xt);
 	cairo_surface_mark_dirty(surface);
 }
 
-/* --- Solid fill --- */
-
+/* renderBevel1/renderBevel2: the edges of a gradient, pixel by pixel */
 static void
-render_solid(cairo_t *cr, int w, int h, uint32_t color)
-{
-	cairo_set_source_rgba(cr, color_r(color), color_g(color),
-		color_b(color), color_a(color));
-	cairo_rectangle(cr, 0, 0, w, h);
-	cairo_fill(cr);
-}
-
-/* --- Interlace effect --- */
-
-static void
-apply_interlace(cairo_surface_t *surface, int w, int h)
+gradient_bevel(cairo_surface_t *surface, int w, int h,
+	enum wm_bevel_type bevel)
 {
 	cairo_surface_flush(surface);
-	uint32_t *data = (uint32_t *)cairo_image_surface_get_data(surface);
-	int stride = cairo_image_surface_get_stride(surface);
-
-	for (int y = 1; y < h; y += 2) {
-		for (int x = 0; x < w; x++) {
-			uint32_t px = data[y * (stride / 4) + x];
-			/* Darken by ~25%: multiply RGB by 0.75 */
-			data[y * (stride / 4) + x] = darken(px, 0.75);
+	uint32_t *d = (uint32_t *)cairo_image_surface_get_data(surface);
+	int st = cairo_image_surface_get_stride(surface) / 4;
+#define PX(x, y) d[(y) * st + (x)]
+	if (bevel == WM_BEVEL1 && w > 2 && h > 2) {
+		for (int x = 0; x < w; x++)
+			PX(x, 0) = fb_brighten(PX(x, 0));
+		for (int y = 1; y < h - 1; y++) {
+			PX(0, y) = fb_brighten(PX(0, y));
+			PX(w - 1, y) = fb_darken(PX(w - 1, y));
 		}
+		for (int x = 1; x < w; x++)
+			PX(x, h - 1) = fb_darken(PX(x, h - 1));
+		/* the lower right corner darker again, and the right
+		 * end of the row above it */
+		PX(w - 1, h - 1) = fb_darken(PX(w - 1, h - 1));
+		PX(w - 1, h - 2) = fb_darken(PX(w - 1, h - 2));
+	} else if (bevel == WM_BEVEL2 && w > 4 && h > 4) {
+		for (int x = 1; x < w - 2; x++)
+			PX(x, 1) = fb_brighten(PX(x, 1));
+		for (int y = 1; y < h - 2; y++) {
+			PX(w - 2, y) = fb_darken(PX(w - 2, y));
+			PX(1, y + 1) = fb_brighten(PX(1, y + 1));
+		}
+		for (int x = 2; x < w - 1; x++)
+			PX(x, h - 2) = fb_darken(PX(x, h - 2));
 	}
-
+#undef PX
 	cairo_surface_mark_dirty(surface);
 }
 
-/* --- Bevel effect --- */
-
+/* invertRGB: the image turned half a turn */
 static void
-apply_bevel(cairo_surface_t *surface, int w, int h,
-	enum wm_texture_appearance appearance, enum wm_bevel_type bevel,
-	uint32_t base_color)
+turn_half(cairo_surface_t *surface, int w, int h)
 {
-	if (bevel == WM_BEVEL_NONE)
-		return;
+	cairo_surface_flush(surface);
+	uint32_t *d = (uint32_t *)cairo_image_surface_get_data(surface);
+	int st = cairo_image_surface_get_stride(surface) / 4;
+	for (int y = 0; y < (h + 1) / 2; y++) {
+		int y2 = h - 1 - y;
+		int xmax = y == y2 ? w / 2 : w;
+		for (int x = 0; x < xmax; x++) {
+			uint32_t t = d[y * st + x];
+			d[y * st + x] = d[y2 * st + (w - 1 - x)];
+			d[y2 * st + (w - 1 - x)] = t;
+		}
+	}
+	cairo_surface_mark_dirty(surface);
+}
 
-	cairo_t *cr = cairo_create(surface);
-
-	int inset = (bevel == WM_BEVEL2) ? 1 : 0;
-	int x0 = inset;
-	int y0 = inset;
-	int x1 = w - 1 - inset;
-	int y1 = h - 1 - inset;
-
-	if (x1 <= x0 || y1 <= y0) {
-		cairo_destroy(cr);
-		return;
+/* renderSolid: the colour, colorTo every other line when interlaced,
+ * and a bevel of lines in the colour made lighter and darker */
+static void
+render_solid(cairo_surface_t *surface, int w, int h,
+	const struct wm_texture *tex, uint32_t color, uint32_t color_to)
+{
+	cairo_surface_flush(surface);
+	uint32_t *d = (uint32_t *)cairo_image_surface_get_data(surface);
+	int st = cairo_image_surface_get_stride(surface) / 4;
+	for (int y = 0; y < h; y++) {
+		uint32_t px = tex->interlaced && !(y & 1) ? color_to : color;
+		for (int x = 0; x < w; x++)
+			d[y * st + x] = px;
 	}
 
-	/* Determine light and shadow colors based on appearance */
-	uint32_t light, shadow;
-	if (appearance == WM_TEX_RAISED) {
-		light = brighten(base_color, 1.6);
-		shadow = darken(base_color, 0.5);
-	} else {
-		/* Sunken: swap light and shadow */
-		light = darken(base_color, 0.5);
-		shadow = brighten(base_color, 1.6);
+	if (tex->appearance != WM_TEX_FLAT && tex->bevel != WM_BEVEL_NONE) {
+		uint32_t hi = fb_brighten(color), lo = fb_darken(color);
+		if (tex->appearance == WM_TEX_SUNKEN) {
+			uint32_t t = hi;
+			hi = lo;
+			lo = t;
+		}
+		int i = tex->bevel == WM_BEVEL2 ? 1 : 0;
+		int x0 = i, y0 = i, x1 = w - 1 - i, y1 = h - 1 - i;
+		if (x1 > x0 && y1 > y0) {
+			/* drawBevelRectangle: bottom and right, then top
+			 * and left over their corners */
+			for (int x = x0; x <= x1; x++)
+				d[y1 * st + x] = lo;
+			for (int y = y0; y <= y1; y++)
+				d[y * st + x1] = lo;
+			for (int x = x0; x <= x1; x++)
+				d[y0 * st + x] = hi;
+			for (int y = y0; y <= y1; y++)
+				d[y * st + x0] = hi;
+		}
 	}
-
-	/* Top edge (light) */
-	cairo_set_source_rgba(cr, color_r(light), color_g(light),
-		color_b(light), 0.6);
-	cairo_set_line_width(cr, 1.0);
-	cairo_move_to(cr, x0 + 0.5, y0 + 0.5);
-	cairo_line_to(cr, x1 + 0.5, y0 + 0.5);
-	cairo_stroke(cr);
-
-	/* Left edge (light) */
-	cairo_move_to(cr, x0 + 0.5, y0 + 0.5);
-	cairo_line_to(cr, x0 + 0.5, y1 + 0.5);
-	cairo_stroke(cr);
-
-	/* Bottom edge (shadow) */
-	cairo_set_source_rgba(cr, color_r(shadow), color_g(shadow),
-		color_b(shadow), 0.6);
-	cairo_move_to(cr, x0 + 0.5, y1 + 0.5);
-	cairo_line_to(cr, x1 + 0.5, y1 + 0.5);
-	cairo_stroke(cr);
-
-	/* Right edge (shadow) */
-	cairo_move_to(cr, x1 + 0.5, y0 + 0.5);
-	cairo_line_to(cr, x1 + 0.5, y1 + 0.5);
-	cairo_stroke(cr);
-
-	cairo_destroy(cr);
+	cairo_surface_mark_dirty(surface);
 }
 
 /* --- Pixmap loading --- */
@@ -498,6 +586,23 @@ wm_load_pixmap(const char *path, int width, int height)
 
 /* --- Public API: texture rendering --- */
 
+/* An image repeated over w x h (a Tiled texture) */
+static cairo_surface_t *
+tile_image(cairo_surface_t *img, int w, int h)
+{
+	cairo_surface_t *out =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+	cairo_t *cr = cairo_create(out);
+	cairo_pattern_t *pat = cairo_pattern_create_for_surface(img);
+	cairo_pattern_set_extend(pat, CAIRO_EXTEND_REPEAT);
+	cairo_set_source(cr, pat);
+	cairo_paint(cr);
+	cairo_pattern_destroy(pat);
+	cairo_destroy(cr);
+	cairo_surface_destroy(img);
+	return out;
+}
+
 cairo_surface_t *
 wm_render_texture(const struct wm_texture *texture, int width, int height,
 	float scale)
@@ -522,9 +627,16 @@ wm_render_texture(const struct wm_texture *texture, int width, int height,
 	if ((color_to >> 24) == 0)
 		color_to |= 0xFF000000;
 
-	/* Pixmap fill */
-	if (texture->fill == WM_TEX_PIXMAP)
-		return wm_load_pixmap(texture->pixmap_path, w, h);
+	/* A pixmap that loads is drawn whatever the texture is */
+	if (texture->pixmap_path) {
+		cairo_surface_t *img = texture->tiled ?
+			wm_load_image(texture->pixmap_path) :
+			wm_load_pixmap(texture->pixmap_path, w, h);
+		if (img && texture->tiled)
+			img = tile_image(img, w, h);
+		if (img)
+			return img;
+	}
 
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
@@ -534,23 +646,21 @@ wm_render_texture(const struct wm_texture *texture, int width, int height,
 	}
 
 	if (texture->fill == WM_TEX_GRADIENT) {
-		render_gradient(surface, w, h, color, color_to,
-			texture->gradient);
+		/* Sunken: the colours swapped and the result turned, so
+		 * the bevel falls on the other edges */
+		bool sunken = texture->appearance == WM_TEX_SUNKEN;
+		bool turn = texture->invert != sunken;
+		render_gradient(surface, w, h, sunken ? color_to : color,
+			sunken ? color : color_to, texture->gradient,
+			texture->interlaced);
+		if (texture->appearance != WM_TEX_FLAT)
+			gradient_bevel(surface, w, h, texture->bevel);
+		if (turn)
+			turn_half(surface, w, h);
 	} else {
-		/* Solid fill */
-		cairo_t *cr = cairo_create(surface);
-		render_solid(cr, w, h, color);
-		cairo_destroy(cr);
+		/* Solid, or a pixmap texture without its image */
+		render_solid(surface, w, h, texture, color, color_to);
 	}
-
-	/* Apply interlace before bevel so bevel lines aren't interlaced */
-	if (texture->interlaced)
-		apply_interlace(surface, w, h);
-
-	/* Apply bevel */
-	if (texture->appearance != WM_TEX_FLAT)
-		apply_bevel(surface, w, h, texture->appearance,
-			texture->bevel, color);
 
 	return surface;
 }
@@ -752,6 +862,33 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 	pango_layout_get_pixel_extents(measure_layout, &ink_rect, NULL);
 
 	return ink_rect.x + ink_rect.width;
+}
+
+int
+wm_font_height(const struct wm_font *font, float scale)
+{
+	if (!font)
+		return 0;
+	ensure_measurement_context();
+
+	PangoFontDescription *desc = pango_font_description_new();
+	pango_font_description_set_family(desc,
+		font->family ? font->family : "sans");
+	pango_font_description_set_size(desc,
+		(int)(font->size * scale * PANGO_SCALE + 0.5f));
+	if (font->bold)
+		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
+	if (font->italic)
+		pango_font_description_set_style(desc, PANGO_STYLE_ITALIC);
+	PangoContext *ctx = pango_layout_get_context(measure_layout);
+	PangoFontMetrics *m = pango_context_get_metrics(ctx, desc, NULL);
+	pango_font_description_free(desc);
+	if (!m)
+		return 0;
+	int h = PANGO_PIXELS(pango_font_metrics_get_ascent(m) +
+		pango_font_metrics_get_descent(m));
+	pango_font_metrics_unref(m);
+	return h;
 }
 
 void

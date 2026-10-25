@@ -28,6 +28,8 @@
 
 /* Forward declaration */
 static void style_clear(struct wm_style *s);
+static void texture_finish(struct wm_texture *tex);
+static void font_finish(struct wm_font *font);
 
 /* --- Default values --- */
 
@@ -41,6 +43,9 @@ static void style_clear(struct wm_style *s);
 /* Default Fluxbox-like colors */
 #define DEFAULT_FOCUS_COLOR       0xFF333333
 #define DEFAULT_UNFOCUS_COLOR     0xFF222222
+/* Fluxbox's, for a texture without .color or .colorTo */
+#define DEFAULT_TEXTURE_COLOR     0xFFA9A9A9	/* darkgray */
+#define DEFAULT_TEXTURE_COLOR_TO  0xFFFFFFFF	/* white */
 #define DEFAULT_TEXT_COLOR         0xFFE0E0E0
 #define DEFAULT_UNFOCUS_TEXT_COLOR 0xFF999999
 #define DEFAULT_BORDER_COLOR      0xFF000000
@@ -256,101 +261,70 @@ style_parse_font(const char *value)
 
 /* --- Texture parsing --- */
 
+/*
+ * A texture as Fluxbox reads one (FbTk::Texture::setFromString): words
+ * are found anywhere and in any case ("FlatCrossDiagonalGradient"),
+ * with Flat, Solid and Diagonal when none is given.  fluxland 1.x's
+ * Pixmap keyword is kept; Fluxbox draws a texture's .pixmap whenever
+ * it has one.
+ */
 struct wm_texture
 style_parse_texture(const char *value)
 {
 	struct wm_texture tex = {
-		.appearance = WM_TEX_RAISED,
+		.appearance = WM_TEX_FLAT,
 		.fill = WM_TEX_SOLID,
-		.gradient = WM_GRAD_VERTICAL,
-		.bevel = WM_BEVEL1,
-		.interlaced = false,
-		.color = DEFAULT_FOCUS_COLOR,
-		.color_to = DEFAULT_UNFOCUS_COLOR,
-		.pixmap_path = NULL,
+		.gradient = WM_GRAD_DIAGONAL,
+		.bevel = WM_BEVEL_NONE,
+		.color = DEFAULT_TEXTURE_COLOR,
+		.color_to = DEFAULT_TEXTURE_COLOR_TO,
 	};
 
-	if (!value || *value == '\0')
+	if (!value)
 		return tex;
-
-	/* Check for special types first */
-	if (strcasecmp(value, "parentrelative") == 0 ||
-	    strcasecmp(value, "parent_relative") == 0) {
+	if (strcasestr(value, "parentrelative") ||
+	    strcasestr(value, "parent_relative")) {
 		tex.fill = WM_TEX_PARENT_RELATIVE;
-		tex.appearance = WM_TEX_FLAT;
-		tex.bevel = WM_BEVEL_NONE;
 		return tex;
 	}
 
-	char *buf = strdup(value);
-	if (!buf)
-		return tex;
-
-	/* Default bevel depends on whether user specifies one explicitly */
-	bool bevel_set = false;
-
-	/* Tokenize and match keywords case-insensitively */
-	char *saveptr = NULL;
-	char *token = strtok_r(buf, " \t", &saveptr);
-	while (token) {
-		/* Appearance */
-		if (strcasecmp(token, "flat") == 0) {
-			tex.appearance = WM_TEX_FLAT;
-		} else if (strcasecmp(token, "raised") == 0) {
-			tex.appearance = WM_TEX_RAISED;
-		} else if (strcasecmp(token, "sunken") == 0) {
-			tex.appearance = WM_TEX_SUNKEN;
+	if (strcasestr(value, "gradient")) {
+		static const struct {
+			const char *word;
+			enum wm_gradient_type type;
+		} types[] = {
+			/* Fluxbox's order: crossdiagonal before diagonal */
+			{ "crossdiagonal", WM_GRAD_CROSSDIAGONAL },
+			{ "rectangle", WM_GRAD_RECTANGLE },
+			{ "pyramid", WM_GRAD_PYRAMID },
+			{ "pipecross", WM_GRAD_PIPECROSS },
+			{ "elliptic", WM_GRAD_ELLIPTIC },
+			{ "diagonal", WM_GRAD_DIAGONAL },
+			{ "horizontal", WM_GRAD_HORIZONTAL },
+			{ "vertical", WM_GRAD_VERTICAL },
+		};
+		tex.fill = WM_TEX_GRADIENT;
+		for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+			if (strcasestr(value, types[i].word)) {
+				tex.gradient = types[i].type;
+				break;
+			}
 		}
-		/* Fill */
-		else if (strcasecmp(token, "gradient") == 0) {
-			tex.fill = WM_TEX_GRADIENT;
-		} else if (strcasecmp(token, "solid") == 0) {
-			tex.fill = WM_TEX_SOLID;
-		} else if (strcasecmp(token, "pixmap") == 0) {
-			tex.fill = WM_TEX_PIXMAP;
-		}
-		/* Gradient type */
-		else if (strcasecmp(token, "horizontal") == 0) {
-			tex.gradient = WM_GRAD_HORIZONTAL;
-		} else if (strcasecmp(token, "vertical") == 0) {
-			tex.gradient = WM_GRAD_VERTICAL;
-		} else if (strcasecmp(token, "diagonal") == 0) {
-			tex.gradient = WM_GRAD_DIAGONAL;
-		} else if (strcasecmp(token, "crossdiagonal") == 0) {
-			tex.gradient = WM_GRAD_CROSSDIAGONAL;
-		} else if (strcasecmp(token, "pipecross") == 0) {
-			tex.gradient = WM_GRAD_PIPECROSS;
-		} else if (strcasecmp(token, "elliptic") == 0) {
-			tex.gradient = WM_GRAD_ELLIPTIC;
-		} else if (strcasecmp(token, "rectangle") == 0) {
-			tex.gradient = WM_GRAD_RECTANGLE;
-		} else if (strcasecmp(token, "pyramid") == 0) {
-			tex.gradient = WM_GRAD_PYRAMID;
-		}
-		/* Effects */
-		else if (strcasecmp(token, "interlaced") == 0) {
-			tex.interlaced = true;
-		}
-		/* Bevel */
-		else if (strcasecmp(token, "bevel1") == 0) {
-			tex.bevel = WM_BEVEL1;
-			bevel_set = true;
-		} else if (strcasecmp(token, "bevel2") == 0) {
-			tex.bevel = WM_BEVEL2;
-			bevel_set = true;
-		}
-		token = strtok_r(NULL, " \t", &saveptr);
+	} else if (!strcasestr(value, "solid") &&
+		   strcasestr(value, "pixmap")) {
+		tex.fill = WM_TEX_PIXMAP;
 	}
 
-	/* Flat textures default to no bevel unless explicitly set */
-	if (tex.appearance == WM_TEX_FLAT && !bevel_set)
-		tex.bevel = WM_BEVEL_NONE;
+	if (strcasestr(value, "raised"))
+		tex.appearance = WM_TEX_RAISED;
+	else if (strcasestr(value, "sunken"))
+		tex.appearance = WM_TEX_SUNKEN;
 
-	/* Non-flat textures default to Bevel1 unless explicitly set */
-	if (tex.appearance != WM_TEX_FLAT && !bevel_set)
-		tex.bevel = WM_BEVEL1;
-
-	free(buf);
+	if (tex.appearance != WM_TEX_FLAT)
+		tex.bevel = strcasestr(value, "bevel2") ? WM_BEVEL2 : WM_BEVEL1;
+	tex.invert = strcasestr(value, "invert") != NULL;
+	tex.interlaced = strcasestr(value, "interlaced") != NULL;
+	tex.tiled = strcasestr(value, "tiled") != NULL;
 	return tex;
 }
 
@@ -467,34 +441,52 @@ xrm_get(struct rc_database *db, const char *key)
 }
 
 /*
- * Look a style resource up, with the fallbacks Fluxbox's themes have:
- * borders take window.borderWidth/borderColor and then the top-level
- * borderWidth/borderColor of old styles, bevelWidth and handleWidth
- * the top-level ones.
+ * Look a style resource up, with the fallbacks to the top-level keys of
+ * old styles that Fluxbox's themes have (their fallback() methods);
+ * fallbacks between items are spelled out where the item is loaded.
  */
 static const char *
 style_get(struct rc_database *db, const char *key)
 {
+	static const struct {
+		const char *key;
+		const char *fallback[3];
+	} fallbacks[] = {
+		{ "window.borderWidth", { "borderWidth" } },
+		{ "window.borderColor", { "borderColor" } },
+		{ "window.bevelWidth", { "bevelWidth" } },
+		{ "window.handleWidth", { "handleWidth" } },
+		{ "menu.borderWidth", { "borderWidth" } },
+		{ "menu.borderColor", { "borderColor" } },
+		{ "menu.bevelWidth", { "bevelWidth" } },
+		{ "slit.borderWidth", { "borderWidth" } },
+		{ "slit.borderColor", { "borderColor" } },
+		{ "toolbar.borderWidth", { "borderWidth" } },
+		{ "toolbar.borderColor", { "borderColor" } },
+		{ "toolbar.bevelWidth", { "bevelWidth" } },
+	};
 	const char *val = xrm_get(db, key);
 	if (val)
 		return val;
-
-	const char *last = strrchr(key, '.');
-	if (!last)
-		return NULL;
-	last++;
-	if (strcmp(last, "borderWidth") == 0 ||
-	    strcmp(last, "borderColor") == 0) {
-		char window_key[64];
-		snprintf(window_key, sizeof(window_key), "window.%s", last);
-		if (strcmp(key, window_key) != 0 &&
-		    (val = xrm_get(db, window_key)))
-			return val;
-		return xrm_get(db, last);
+	for (size_t i = 0; i < sizeof(fallbacks) / sizeof(fallbacks[0]); i++) {
+		if (strcmp(fallbacks[i].key, key) != 0)
+			continue;
+		for (int j = 0; j < 3 && fallbacks[i].fallback[j]; j++) {
+			if ((val = xrm_get(db, fallbacks[i].fallback[j])))
+				return val;
+		}
 	}
-	if (strcmp(last, "bevelWidth") == 0 ||
-	    strcmp(last, "handleWidth") == 0)
-		return xrm_get(db, last);
+	return NULL;
+}
+
+/* The first of a NULL-terminated list of keys the style has */
+static const char *
+first_key(struct rc_database *db, const char *const *keys)
+{
+	for (int i = 0; keys[i]; i++) {
+		if (style_get(db, keys[i]))
+			return keys[i];
+	}
 	return NULL;
 }
 
@@ -560,44 +552,34 @@ static void
 load_texture(struct rc_database *db, const char *base_key,
 	struct wm_texture *tex, const char *style_dir)
 {
-	const char *tex_str = style_get(db, base_key);
-	if (tex_str)
-		*tex = style_parse_texture(tex_str);
-
-	/* Load color */
 	char key[256];
-
 	snprintf(key, sizeof(key), "%s.color", base_key);
 	const char *color_str = style_get(db, key);
-	if (color_str) {
-		struct wm_color c = style_parse_color(color_str);
-		tex->color = argb_from_color(c);
-	}
-
 	snprintf(key, sizeof(key), "%s.colorTo", base_key);
 	const char *color_to_str = style_get(db, key);
-	if (color_to_str) {
-		struct wm_color c = style_parse_color(color_to_str);
-		tex->color_to = argb_from_color(c);
+
+	/* A texture the style names starts from Fluxbox's defaults (as
+	 * does one it gives only colours: Flat Solid); one it doesn't
+	 * name keeps fluxland's */
+	const char *tex_str = style_get(db, base_key);
+	if (tex_str || color_str || color_to_str) {
+		char *old_pixmap = tex->pixmap_path;
+		*tex = style_parse_texture(tex_str ? tex_str : "");
+		tex->pixmap_path = old_pixmap;
 	}
+	if (color_str)
+		tex->color = argb_from_color(style_parse_color(color_str));
+	if (color_to_str)
+		tex->color_to = argb_from_color(style_parse_color(color_to_str));
 
 	/* Load pixmap path */
 	snprintf(key, sizeof(key), "%s.pixmap", base_key);
 	const char *pixmap_str = style_get(db, key);
 	if (pixmap_str && *pixmap_str != '\0') {
 		safe_free(&tex->pixmap_path);
+		/* Drawn instead of the texture when it loads, whatever
+		 * the texture says, as in Fluxbox */
 		tex->pixmap_path = resolve_pixmap_file(style_dir, pixmap_str);
-		/*
-		 * Fluxbox compat: if a pixmap path is set but the texture type
-		 * was empty or non-pixmap, implicitly switch to pixmap fill.
-		 * Many community styles set e.g. "window.title.focus:" (empty)
-		 * with "window.title.focus.pixmap: title.xpm" and expect the
-		 * pixmap to be used.
-		 */
-		if (tex->pixmap_path && tex->fill != WM_TEX_PIXMAP &&
-		    tex->fill != WM_TEX_PARENT_RELATIVE) {
-			tex->fill = WM_TEX_PIXMAP;
-		}
 	}
 }
 
@@ -658,6 +640,208 @@ load_font(struct rc_database *db, const char *key, struct wm_font *font)
 		if (hc)
 			font->halo_color = style_parse_color(hc);
 	}
+}
+
+/*
+ * A texture as Fluxbox's ThemeManager::loadItem reads one: from the
+ * first of the names the style has, with that name's colours (darkgray
+ * and white without them) and pixmap; with none of them, Flat Solid in
+ * the first name's colours (ThemeItem<Texture>::setDefaultValue).
+ */
+static void
+load_texture_chain(struct rc_database *db, const char *const *names,
+	struct wm_texture *tex, const char *style_dir)
+{
+	const char *name = first_key(db, names);
+	if (!name)
+		name = names[0];
+	texture_finish(tex);
+	*tex = style_parse_texture(style_get(db, name));
+
+	char key[256];
+	snprintf(key, sizeof(key), "%s.color", name);
+	const char *v = style_get(db, key);
+	if (v)
+		tex->color = argb_from_color(style_parse_color(v));
+	snprintf(key, sizeof(key), "%s.colorTo", name);
+	if ((v = style_get(db, key)))
+		tex->color_to = argb_from_color(style_parse_color(v));
+	snprintf(key, sizeof(key), "%s.pixmap", name);
+	if ((v = style_get(db, key)) && *v)
+		tex->pixmap_path = resolve_pixmap_file(style_dir, v);
+}
+
+/* The first of the keys the style has, or the default */
+static struct wm_color
+color_chain(struct rc_database *db, const char *const *keys,
+	struct wm_color def)
+{
+	const char *key = first_key(db, keys);
+	return key ? style_parse_color(style_get(db, key)) : def;
+}
+
+static int
+int_chain(struct rc_database *db, const char *const *keys, int def)
+{
+	const char *key = first_key(db, keys);
+	if (!key)
+		return def;
+	int v;
+	return safe_atoi(style_get(db, key), &v) ? v : def;
+}
+
+static void
+font_chain(struct rc_database *db, const char *const *keys,
+	struct wm_font *font)
+{
+	const char *key = first_key(db, keys);
+	if (key)
+		load_font(db, key, font);
+}
+
+static enum wm_justify parse_justify(const char *value);
+
+/* Text, justify and border of a tool, each from the first key found */
+static void
+load_tool_text(struct rc_database *db, struct wm_tool_style *t,
+	const char *const *font, const char *const *color,
+	const char *const *justify, const char *const *border_width,
+	const char *const *border_color)
+{
+	font_chain(db, font, &t->font);
+	t->text_color = color_chain(db, color, make_color(255, 255, 255));
+	const char *key = first_key(db, justify);
+	t->justify = key ? parse_justify(style_get(db, key)) : WM_JUSTIFY_LEFT;
+	t->border_width = int_chain(db, border_width, 0);
+	if (t->border_width < 0)
+		t->border_width = 0;
+	t->border_color = color_chain(db, border_color, make_color(0, 0, 0));
+}
+
+#define KEYS(...) ((const char *const []){ __VA_ARGS__, NULL })
+
+/*
+ * The toolbar and its tools, with the fallbacks of Fluxbox's
+ * ToolbarTheme, ToolTheme, WorkspaceNameTheme, ButtonTheme and
+ * IconbarTheme.  fluxland 1.x's toolbar.font and toolbar.textColor
+ * come last, before Fluxbox's defaults.
+ */
+static void
+load_toolbar(struct wm_style *s, struct rc_database *db, const char *sd)
+{
+	load_texture_chain(db, KEYS("toolbar"), &s->toolbar_texture, sd);
+	s->toolbar_bevel_width = int_chain(db, KEYS("toolbar.bevelWidth"), 0);
+	if (s->toolbar_bevel_width < 0)
+		s->toolbar_bevel_width = 0;
+	if (s->toolbar_bevel_width > 20)
+		s->toolbar_bevel_width = 20;
+	s->toolbar_border_width =
+		int_chain(db, KEYS("toolbar.borderWidth"), 0);
+	if (s->toolbar_border_width < 0)
+		s->toolbar_border_width = 0;
+	s->toolbar_border_color = color_chain(db, KEYS("toolbar.borderColor"),
+		make_color(0, 0, 0));
+	s->toolbar_height = int_chain(db, KEYS("toolbar.height"), 0);
+	if (s->toolbar_height < 0 || s->toolbar_height > 100)
+		s->toolbar_height = 0;
+	load_font(db, "toolbar.font", &s->toolbar_font);
+	s->toolbar_text_color = color_chain(db, KEYS("toolbar.textColor"),
+		make_color(255, 255, 255));
+
+	load_texture_chain(db, KEYS("toolbar.clock"),
+		&s->toolbar_clock.texture, sd);
+	load_tool_text(db, &s->toolbar_clock,
+		KEYS("toolbar.clock.font", "toolbar.font"),
+		KEYS("toolbar.clock.textColor", "toolbar.textColor"),
+		KEYS("toolbar.clock.justify", "toolbar.justify"),
+		KEYS("toolbar.clock.borderWidth"),
+		KEYS("toolbar.clock.borderColor"));
+
+	load_texture_chain(db, KEYS("toolbar.workspace", "toolbar.label"),
+		&s->toolbar_workspace.texture, sd);
+	load_tool_text(db, &s->toolbar_workspace,
+		KEYS("toolbar.workspace.font", "toolbar.font"),
+		KEYS("toolbar.workspace.textColor", "toolbar.label.textColor",
+			"toolbar.textColor"),
+		KEYS("toolbar.workspace.justify", "toolbar.justify"),
+		KEYS("toolbar.workspace.borderWidth"),
+		KEYS("toolbar.workspace.borderColor"));
+
+	load_texture_chain(db, KEYS("toolbar.button", "toolbar.clock"),
+		&s->toolbar_button.texture, sd);
+	load_tool_text(db, &s->toolbar_button,
+		KEYS("toolbar.button.font", "toolbar.font"),
+		KEYS("toolbar.button.textColor", "toolbar.textColor"),
+		KEYS("toolbar.button.justify", "toolbar.justify"),
+		KEYS("toolbar.button.borderWidth"),
+		KEYS("toolbar.button.borderColor"));
+	s->toolbar_button_pic_color = color_chain(db,
+		KEYS("toolbar.button.picColor", "toolbar.clock.picColor",
+			"toolbar.clock.textColor", "toolbar.textColor"),
+		make_color(255, 255, 255));
+	/* ArrowButton: 0 (unset) is 250 */
+	s->toolbar_button_scale = int_chain(db, KEYS("toolbar.button.scale"), 0);
+	if (s->toolbar_button_scale <= 0)
+		s->toolbar_button_scale = 250;
+	if (style_get(db, "toolbar.button.pressed")) {
+		load_texture_chain(db, KEYS("toolbar.button.pressed"),
+			&s->toolbar_button_pressed, sd);
+	} else {
+		/* The button's texture with its bevel the other way */
+		texture_finish(&s->toolbar_button_pressed);
+		s->toolbar_button_pressed = s->toolbar_button.texture;
+		s->toolbar_button_pressed.pixmap_path =
+			s->toolbar_button.texture.pixmap_path ?
+			strdup(s->toolbar_button.texture.pixmap_path) : NULL;
+		if (s->toolbar_button_pressed.appearance == WM_TEX_RAISED)
+			s->toolbar_button_pressed.appearance = WM_TEX_SUNKEN;
+		else if (s->toolbar_button_pressed.appearance == WM_TEX_SUNKEN)
+			s->toolbar_button_pressed.appearance = WM_TEX_RAISED;
+	}
+
+	load_texture_chain(db, KEYS("toolbar.iconbar.empty",
+			"toolbar.iconbar", "toolbar.windowLabel", "toolbar"),
+		&s->toolbar_iconbar_empty, sd);
+	s->toolbar_iconbar_border_width = int_chain(db,
+		KEYS("toolbar.iconbar.borderWidth", "toolbar.borderWidth",
+			"window.borderWidth", "borderWidth"), 0);
+	s->toolbar_iconbar_border_color = color_chain(db,
+		KEYS("toolbar.iconbar.borderColor", "toolbar.borderColor",
+			"window.borderColor", "borderColor"),
+		make_color(0, 0, 0));
+
+	load_texture_chain(db,
+		KEYS("toolbar.iconbar.focused", "toolbar.windowLabel"),
+		&s->toolbar_iconbar_focused.texture, sd);
+	load_tool_text(db, &s->toolbar_iconbar_focused,
+		KEYS("toolbar.iconbar.focused.font", "window.font",
+			"toolbar.font"),
+		KEYS("toolbar.iconbar.focused.textColor", "toolbar.textColor"),
+		KEYS("toolbar.iconbar.focused.justify",
+			"toolbar.iconbar.justify", "window.justify"),
+		KEYS("toolbar.iconbar.focused.borderWidth",
+			"toolbar.iconbar.borderWidth", "window.borderWidth",
+			"borderWidth"),
+		KEYS("toolbar.iconbar.focused.borderColor",
+			"toolbar.iconbar.borderColor", "window.borderColor",
+			"borderColor"));
+
+	load_texture_chain(db,
+		KEYS("toolbar.iconbar.unfocused", "toolbar.windowLabel"),
+		&s->toolbar_iconbar_unfocused.texture, sd);
+	load_tool_text(db, &s->toolbar_iconbar_unfocused,
+		KEYS("toolbar.iconbar.unfocused.font", "window.font",
+			"toolbar.font"),
+		KEYS("toolbar.iconbar.unfocused.textColor",
+			"toolbar.textColor"),
+		KEYS("toolbar.iconbar.unfocused.justify",
+			"toolbar.iconbar.justify", "window.justify"),
+		KEYS("toolbar.iconbar.unfocused.borderWidth",
+			"toolbar.iconbar.borderWidth", "window.borderWidth",
+			"borderWidth"),
+		KEYS("toolbar.iconbar.unfocused.borderColor",
+			"toolbar.iconbar.borderColor", "window.borderColor",
+			"borderColor"));
 }
 
 static char *
@@ -790,6 +974,19 @@ style_create(void)
 		DEFAULT_UNFOCUS_COLOR);
 	s->toolbar_texture = default_texture(DEFAULT_FOCUS_COLOR,
 		DEFAULT_UNFOCUS_COLOR);
+	/* The toolbar's tools are set by load_toolbar; these are for a
+	 * compositor running without a style */
+	s->toolbar_clock.texture.fill = WM_TEX_PARENT_RELATIVE;
+	s->toolbar_workspace.texture.fill = WM_TEX_PARENT_RELATIVE;
+	s->toolbar_button.texture.fill = WM_TEX_PARENT_RELATIVE;
+	s->toolbar_button_pressed = default_texture(DEFAULT_UNFOCUS_COLOR,
+		DEFAULT_FOCUS_COLOR);
+	s->toolbar_iconbar_empty.fill = WM_TEX_PARENT_RELATIVE;
+	s->toolbar_iconbar_unfocused.texture.fill = WM_TEX_PARENT_RELATIVE;
+	s->toolbar_iconbar_focused.texture = default_texture(0xFF4C566A,
+		0xFF4C566A);
+	s->toolbar_iconbar_focused.texture.appearance = WM_TEX_FLAT;
+	s->toolbar_iconbar_focused.texture.bevel = WM_BEVEL_NONE;
 
 	/* Default colors */
 	s->window_label_focus_text_color = color_from_argb(DEFAULT_TEXT_COLOR);
@@ -806,6 +1003,16 @@ style_create(void)
 	s->menu_hilite_text_color = color_from_argb(DEFAULT_TEXT_COLOR);
 	s->menu_border_color = color_from_argb(DEFAULT_BORDER_COLOR);
 	s->toolbar_text_color = color_from_argb(DEFAULT_TEXT_COLOR);
+	s->toolbar_button_pic_color = color_from_argb(DEFAULT_TEXT_COLOR);
+	s->toolbar_button_scale = 250;
+	struct wm_tool_style *tools[] = { &s->toolbar_clock,
+		&s->toolbar_workspace, &s->toolbar_button,
+		&s->toolbar_iconbar_focused, &s->toolbar_iconbar_unfocused };
+	for (size_t i = 0; i < sizeof(tools) / sizeof(tools[0]); i++) {
+		tools[i]->font = default_font();
+		tools[i]->text_color = color_from_argb(DEFAULT_TEXT_COLOR);
+		tools[i]->justify = WM_JUSTIFY_CENTER;
+	}
 
 	/* Default dimensions */
 	s->window_border_width = DEFAULT_BORDER_WIDTH;
@@ -999,82 +1206,7 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 		s->slit_border_width);
 
 	/* --- Toolbar --- */
-	load_texture(db, "toolbar", &s->toolbar_texture, sd);
-	load_color(db, "toolbar.textColor", &s->toolbar_text_color);
-	load_font(db, "toolbar.font", &s->toolbar_font);
-
-	/* --- Toolbar sub-components --- */
-	if (style_get(db, "toolbar.label")) {
-		load_texture(db, "toolbar.label",
-			&s->toolbar_label_texture, sd);
-		s->toolbar_has_label_texture = true;
-	}
-	if (style_get(db, "toolbar.clock")) {
-		load_texture(db, "toolbar.clock",
-			&s->toolbar_clock_texture, sd);
-		s->toolbar_has_clock_texture = true;
-	}
-	if (style_get(db, "toolbar.workspace")) {
-		load_texture(db, "toolbar.workspace",
-			&s->toolbar_workspace_texture, sd);
-		s->toolbar_has_workspace_texture = true;
-	}
-	if (style_get(db, "toolbar.button")) {
-		load_texture(db, "toolbar.button",
-			&s->toolbar_button_texture, sd);
-		s->toolbar_has_button_texture = true;
-	}
-
-	/* Per-component text colors */
-	if (style_get(db, "toolbar.label.textColor")) {
-		s->toolbar_label_text_color = style_parse_color(
-			style_get(db, "toolbar.label.textColor"));
-		s->toolbar_has_label_text_color = true;
-	}
-	if (style_get(db, "toolbar.clock.textColor")) {
-		s->toolbar_clock_text_color = style_parse_color(
-			style_get(db, "toolbar.clock.textColor"));
-		s->toolbar_has_clock_text_color = true;
-	}
-	if (style_get(db, "toolbar.workspace.textColor")) {
-		s->toolbar_workspace_text_color = style_parse_color(
-			style_get(db, "toolbar.workspace.textColor"));
-		s->toolbar_has_workspace_text_color = true;
-	}
-	if (style_get(db, "toolbar.windowLabel.textColor")) {
-		s->toolbar_window_label_text_color = style_parse_color(
-			style_get(db, "toolbar.windowLabel.textColor"));
-		s->toolbar_has_window_label_text_color = true;
-	}
-	if (style_get(db, "toolbar.button.picColor")) {
-		s->toolbar_button_pic_color = style_parse_color(
-			style_get(db, "toolbar.button.picColor"));
-		s->toolbar_has_button_pic_color = true;
-	}
-
-	/* --- Toolbar icon bar --- */
-	if (style_get(db, "toolbar.iconbar.focused.color")) {
-		s->toolbar_iconbar_focused_color =
-			style_parse_color(style_get(db,
-				"toolbar.iconbar.focused.color"));
-		s->toolbar_iconbar_has_focused_color = true;
-	}
-	if (style_get(db, "toolbar.iconbar.focused.textColor")) {
-		s->toolbar_iconbar_focused_text_color =
-			style_parse_color(style_get(db,
-				"toolbar.iconbar.focused.textColor"));
-	}
-	if (style_get(db, "toolbar.iconbar.unfocused.color")) {
-		s->toolbar_iconbar_unfocused_color =
-			style_parse_color(style_get(db,
-				"toolbar.iconbar.unfocused.color"));
-		s->toolbar_iconbar_has_unfocused_color = true;
-	}
-	if (style_get(db, "toolbar.iconbar.unfocused.textColor")) {
-		s->toolbar_iconbar_unfocused_text_color =
-			style_parse_color(style_get(db,
-				"toolbar.iconbar.unfocused.textColor"));
-	}
+	load_toolbar(s, db, sd);
 }
 
 /*
@@ -1228,10 +1360,15 @@ style_clear(struct wm_style *s)
 	texture_finish(&s->menu_hilite);
 	texture_finish(&s->slit_texture);
 	texture_finish(&s->toolbar_texture);
-	texture_finish(&s->toolbar_label_texture);
-	texture_finish(&s->toolbar_clock_texture);
-	texture_finish(&s->toolbar_workspace_texture);
-	texture_finish(&s->toolbar_button_texture);
+	texture_finish(&s->toolbar_button_pressed);
+	texture_finish(&s->toolbar_iconbar_empty);
+	struct wm_tool_style *tools[] = { &s->toolbar_clock,
+		&s->toolbar_workspace, &s->toolbar_button,
+		&s->toolbar_iconbar_focused, &s->toolbar_iconbar_unfocused };
+	for (size_t i = 0; i < sizeof(tools) / sizeof(tools[0]); i++) {
+		texture_finish(&tools[i]->texture);
+		font_finish(&tools[i]->font);
+	}
 
 	/* Fonts */
 	font_finish(&s->window_label_focus_font);

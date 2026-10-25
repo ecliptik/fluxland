@@ -47,13 +47,19 @@ enum wm_toolbar_tool_type {
 	WM_TOOL_CLOCK,
 	WM_TOOL_PREV_WINDOW,
 	WM_TOOL_NEXT_WINDOW,
+	WM_TOOL_SYSTRAY,
 };
 
 /* A single tool instance in the toolbar */
 struct wm_toolbar_tool {
 	enum wm_toolbar_tool_type type;
 	struct wlr_scene_buffer *buf;
-	int x, width;
+	/* What shows of it, in toolbar coordinates; 0 wide when not
+	 * shown (a system tray with no icons) */
+	int x, y, width, height;
+	/* Its box with the border, from (x, y): with no bevel the outer
+	 * borders fall outside the toolbar, as in Fluxbox */
+	int frame_x, frame_y, frame_width, frame_height, border;
 	/* Per-tool hit boxes (workspace buttons within workspace_name, etc.) */
 	struct wlr_box *hit_boxes;
 	int hit_box_count;
@@ -82,6 +88,11 @@ struct wm_toolbar {
 	/* Configurable tool array */
 	struct wm_toolbar_tool *tools;
 	int tool_count;
+
+	/* The system tray after the last tool when tools doesn't list it */
+	struct wm_toolbar_tool systray_slot;
+	/* The button held down (toolbar.button.pressed), or -1 */
+	int pressed_tool;
 
 	/* Quick-access pointers into tools array (NULL if not configured) */
 	struct wm_toolbar_tool *iconbar_tool;
@@ -162,6 +173,11 @@ void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
 /* Handle button click on toolbar; returns true if consumed */
 /* Is (lx, ly) on the shown toolbar? */
 bool wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly);
+
+/* A button released: the arrow button pressed acts if it is still under
+ * the pointer.  Returns true when the toolbar had a button down. */
+bool wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx,
+	double ly, uint32_t button);
 
 bool wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 	double lx, double ly, uint32_t button);

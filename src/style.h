@@ -54,6 +54,8 @@ struct wm_texture {
 	enum wm_gradient_type gradient;
 	enum wm_bevel_type bevel;
 	bool interlaced;
+	bool invert;		/* gradient turned 180 degrees */
+	bool tiled;		/* pixmap tiled, not scaled */
 	uint32_t color;		/* ARGB format */
 	uint32_t color_to;	/* gradient end color, ARGB */
 	char *pixmap_path;	/* for pixmap textures */
@@ -85,6 +87,17 @@ enum wm_justify {
 	WM_JUSTIFY_LEFT,
 	WM_JUSTIFY_CENTER,
 	WM_JUSTIFY_RIGHT,
+};
+
+/* --- A toolbar tool's look (Fluxbox's ToolTheme / IconbarTheme) --- */
+
+struct wm_tool_style {
+	struct wm_texture texture;
+	struct wm_font font;
+	struct wm_color text_color;
+	enum wm_justify justify;
+	int border_width;
+	struct wm_color border_color;
 };
 
 /* --- Round corners bitmask --- */
@@ -195,42 +208,29 @@ struct wm_style {
 	struct wm_color slit_border_color;
 	int slit_border_width;
 
-	/* Toolbar */
+	/* Toolbar (Fluxbox's ToolbarTheme) */
 	struct wm_texture toolbar_texture;
-	struct wm_color toolbar_text_color;
+	int toolbar_bevel_width;	/* gap around and between tools */
+	int toolbar_border_width;
+	struct wm_color toolbar_border_color;
+	int toolbar_height;		/* toolbar.height; 0 = from the fonts */
+	/* fluxland 1.x's toolbar.font and toolbar.textColor, which the
+	 * tools fall back to before the defaults */
 	struct wm_font toolbar_font;
+	struct wm_color toolbar_text_color;
 
-	/* Toolbar sub-component textures */
-	struct wm_texture toolbar_label_texture;
-	struct wm_texture toolbar_clock_texture;
-	struct wm_texture toolbar_workspace_texture;
-	struct wm_texture toolbar_button_texture;
-	bool toolbar_has_label_texture;
-	bool toolbar_has_clock_texture;
-	bool toolbar_has_workspace_texture;
-	bool toolbar_has_button_texture;
-
-	/* Toolbar sub-component text colors */
-	struct wm_color toolbar_label_text_color;
-	struct wm_color toolbar_clock_text_color;
-	struct wm_color toolbar_workspace_text_color;
-	struct wm_color toolbar_window_label_text_color;
-	bool toolbar_has_label_text_color;
-	bool toolbar_has_clock_text_color;
-	bool toolbar_has_workspace_text_color;
-	bool toolbar_has_window_label_text_color;
-
-	/* Toolbar button pic color (arrows) */
+	/* The tools */
+	struct wm_tool_style toolbar_clock;
+	struct wm_tool_style toolbar_workspace;
+	struct wm_tool_style toolbar_button;
+	struct wm_texture toolbar_button_pressed;
 	struct wm_color toolbar_button_pic_color;
-	bool toolbar_has_button_pic_color;
-
-	/* Toolbar icon bar (window list) */
-	struct wm_color toolbar_iconbar_focused_color;
-	struct wm_color toolbar_iconbar_focused_text_color;
-	struct wm_color toolbar_iconbar_unfocused_color;
-	struct wm_color toolbar_iconbar_unfocused_text_color;
-	bool toolbar_iconbar_has_focused_color;
-	bool toolbar_iconbar_has_unfocused_color;
+	int toolbar_button_scale;	/* arrow size: 100 x size / scale */
+	struct wm_tool_style toolbar_iconbar_focused;
+	struct wm_tool_style toolbar_iconbar_unfocused;
+	struct wm_texture toolbar_iconbar_empty;	/* behind the entries */
+	int toolbar_iconbar_border_width;	/* around the iconbar */
+	struct wm_color toolbar_iconbar_border_color;
 
 	/* Style metadata */
 	char *style_dir;	/* directory containing style file */

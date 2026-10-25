@@ -67,6 +67,10 @@ cairo_surface_t *wm_render_text(const char *text, const struct wm_font *font,
 int wm_measure_text_width(const char *text, const struct wm_font *font,
 	float scale);
 
+/* A font's height (ascent and descent) in pixels, as Fluxbox's
+ * Font::height() */
+int wm_font_height(const struct wm_font *font, float scale);
+
 /* --- Pixmap loading --- */
 
 /* An image file at its own size (PNG; JPEG, XPM... with GdkPixbuf) */

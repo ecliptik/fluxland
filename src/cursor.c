@@ -599,6 +599,17 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	}
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+		/* An arrow button of the toolbar acts on release */
+		if (wm_toolbar_handle_release(server->toolbar,
+				server->cursor->x, server->cursor->y,
+				event->button)) {
+			ms->button_pressed = false;
+			wlr_seat_pointer_notify_button(server->seat,
+				event->time_msec, event->button,
+				event->state);
+			return;
+		}
+
 		/* Dispatch button release to any open menus */
 		if (wm_menu_handle_button(server, server->cursor->x,
 			server->cursor->y, event->button, false)) {
