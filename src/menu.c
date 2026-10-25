@@ -309,10 +309,18 @@ create_tab_placement_submenu(struct wm_server *server)
 		return NULL;
 
 	struct { const char *label; const char *cmd; } items[] = {
-		{N_("Top"),    "config:tab_placement 0"},
-		{N_("Bottom"), "config:tab_placement 1"},
-		{N_("Left"),   "config:tab_placement 2"},
-		{N_("Right"),  "config:tab_placement 3"},
+		{N_("Top Left"),     "config:tab_placement 0"},
+		{N_("Top Center"),   "config:tab_placement 1"},
+		{N_("Top Right"),    "config:tab_placement 2"},
+		{N_("Bottom Left"),  "config:tab_placement 3"},
+		{N_("Bottom Center"), "config:tab_placement 4"},
+		{N_("Bottom Right"), "config:tab_placement 5"},
+		{N_("Left Top"),     "config:tab_placement 6"},
+		{N_("Left Center"),  "config:tab_placement 7"},
+		{N_("Left Bottom"),  "config:tab_placement 8"},
+		{N_("Right Top"),    "config:tab_placement 9"},
+		{N_("Right Center"), "config:tab_placement 10"},
+		{N_("Right Bottom"), "config:tab_placement 11"},
 	};
 
 	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {

@@ -53,15 +53,6 @@ enum wm_decor_region {
 	WM_DECOR_REGION_CLIENT,
 };
 
-/* --- External tab bar placement --- */
-
-enum wm_tab_bar_placement {
-	WM_TAB_BAR_TOP,
-	WM_TAB_BAR_BOTTOM,
-	WM_TAB_BAR_LEFT,
-	WM_TAB_BAR_RIGHT,
-};
-
 /* --- Titlebar button --- */
 
 struct wm_decor_button {
@@ -91,6 +82,9 @@ struct wm_decoration {
 	struct wlr_scene_rect *border_bottom;
 	struct wlr_scene_rect *border_left;
 	struct wlr_scene_rect *border_right;
+	/* The titlebar's and the handle's border lines */
+	struct wlr_scene_rect *sep_top;
+	struct wlr_scene_rect *sep_bottom;
 
 	/* Rounded border frame buffer (used when round corners active) */
 	struct wlr_scene_buffer *border_frame;
@@ -121,10 +115,9 @@ struct wm_decoration {
 	int content_height;	/* client surface height */
 	struct wlr_box content_area; /* where the client surface goes, relative to scene_tree */
 
-	/* External tab bar (when tabs are outside the titlebar) */
+	/* External tabs (when tabs are outside the titlebar) */
 	struct wlr_scene_buffer *tab_bar_buf;
-	int tab_bar_size;
-	enum wm_tab_bar_placement tab_bar_placement;
+	int tab_bar_size;	/* nonzero when they are shown */
 	struct wlr_box tab_bar_box; /* hit-test area, relative to decoration tree */
 };
 
@@ -189,6 +182,10 @@ enum wm_decor_region wm_decoration_region_at(
  */
 int wm_decoration_tab_at(struct wm_decoration *decoration,
 	double x, double y);
+
+/* Draw a button pressed (window.button.pressed), or none (NULL) */
+void wm_decoration_set_pressed(struct wm_decoration *decoration,
+	struct wm_decor_button *button, struct wm_style *style);
 
 /* Toggle shade state (hide/show client surface) */
 void wm_decoration_set_shaded(struct wm_decoration *decoration,

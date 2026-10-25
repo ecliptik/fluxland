@@ -106,11 +106,30 @@ test_color_hex(void)
 static void
 test_color_short_hex(void)
 {
+	/* XParseColor: the digits are the high bits, not scaled */
 	struct wm_color c = style_parse_color("#F00");
-	assert(c.r == 255 && c.g == 0 && c.b == 0);
+	assert(c.r == 0xF0 && c.g == 0 && c.b == 0);
+	c = style_parse_color("#FF0F00000");
+	assert(c.r == 0xFF && c.g == 0xF0 && c.b == 0);
+	c = style_parse_color("#123456789abc");
+	assert(c.r == 0x12 && c.g == 0x56 && c.b == 0x9a);
+
+	/* X11 names, in any case and spacing */
+	c = style_parse_color("Light Steel Blue");
+	assert(c.r == 176 && c.g == 196 && c.b == 222);
+	c = style_parse_color("darkgrey");
+	assert(c.r == 169);
+	assert(style_try_parse_color(" grey20 ", &c) && c.r == 51);
+
+	/* Not colours */
+	assert(!style_try_parse_color("", &c));
+	assert(!style_try_parse_color("#", &c));
+	assert(!style_try_parse_color("#12345", &c));
+	assert(!style_try_parse_color("notacolour", &c));
+	assert(!style_try_parse_color("rgb:1/2", &c));
 
 	c = style_parse_color("#ABC");
-	assert(c.r == 0xAA && c.g == 0xBB && c.b == 0xCC);
+	assert(c.r == 0xA0 && c.g == 0xB0 && c.b == 0xC0);
 
 	printf("  PASS: test_color_short_hex\n");
 }
@@ -613,7 +632,6 @@ test_load_fresh_with_overlay(void)
 {
 	const char *overlay = "/tmp/fluxland-test/test_overlay";
 	struct wm_style *s = style_create();
-	int default_bw = s->window_border_width;
 
 	write_file(TEST_STYLE, "window.borderWidth: 9\n"
 		"toolbar.textColor: #101010\n");
@@ -626,7 +644,7 @@ test_load_fresh_with_overlay(void)
 	/* Another style: nothing of the first is kept, the overlay is */
 	write_file(TEST_STYLE, "toolbar.textColor: #303030\n");
 	assert(style_load(s, TEST_STYLE) == 0);
-	assert(s->window_border_width == default_bw);
+	assert(s->window_border_width == 0);	/* Fluxbox's, unset */
 	assert(s->toolbar_text_color.r == 0x20);
 
 	/* A style that can't be read leaves the style as it was */
@@ -686,11 +704,13 @@ test_color_invalid_formats(void)
 
 	/* rgb: with partially invalid hex (Z not valid hex digit) */
 	c = style_parse_color("rgb:ZZ/AA/BB");
-	/* strtoul("ZZ", NULL, 16) returns 0; AA/BB parse as hex */
-	assert(c.r == 0 && c.g == 0xAA && c.b == 0xBB);
+	/* Not a colour (XParseColor fails): black from style_parse_color */
+	assert(c.r == 0 && c.g == 0 && c.b == 0);
 
-	/* Unrecognized named color */
+	/* An X11 name: magenta is one now; this isn't */
 	c = style_parse_color("magenta");
+	assert(c.r == 255 && c.g == 0 && c.b == 255);
+	c = style_parse_color("fluxlandpurple");
 	assert(c.r == 0 && c.g == 0 && c.b == 0);
 
 	/* Leading whitespace should be skipped */
@@ -783,10 +803,12 @@ test_style_load_empty_file(void)
 	int ret = style_load(s, TEST_STYLE);
 	assert(ret == 0);
 
-	/* Defaults should still be intact */
-	assert(s->window_border_width == 1);
-	assert(s->window_bevel_width == 1);
-	assert(s->window_handle_width == 6);
+	/* An empty style is Fluxbox's defaults: no border, bevel or
+	 * handle, flat darkgray, the default font */
+	assert(s->window_border_width == 0);
+	assert(s->window_bevel_width == 0);
+	assert(s->window_handle_width == 0);
+	assert(s->window_title_focus.color == 0xFFA9A9A9);
 	assert(s->window_label_focus_font.size == 10);
 
 	style_destroy(s);
@@ -971,10 +993,11 @@ test_huge_border_width(void)
 	int ret = style_load(s, TEST_STYLE);
 	assert(ret == 0);
 
-	/* style_get_int just parses; no clamping in style.c */
+	/* FbWinFrameTheme::reconfigTheme's clamps: bevel to 20, the
+	 * handle to 200; the border isn't clamped */
 	assert(s->window_border_width == 999);
-	assert(s->window_bevel_width == 500);
-	assert(s->window_handle_width == 1000);
+	assert(s->window_bevel_width == 20);
+	assert(s->window_handle_width == 200);
 
 	style_destroy(s);
 	printf("  PASS: test_huge_border_width\n");

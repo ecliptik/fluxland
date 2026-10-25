@@ -36,6 +36,7 @@
 
 #include "config.h"
 #include "cursor.h"
+#include "command.h"
 #include "cursor_actions.h"
 #include "cursor_snap.h"
 #include "server.h"
@@ -534,6 +535,24 @@ decor_button_action(struct wm_server *server, struct wm_view *view,
 	case WM_BUTTON_STICK:
 		action = button == BTN_LEFT ? WM_ACTION_STICK : WM_ACTION_NOP;
 		break;
+	case WM_BUTTON_MENUICON:
+		action = button == BTN_LEFT ? WM_ACTION_WINDOW_MENU :
+			WM_ACTION_NOP;
+		break;
+	case WM_BUTTON_LHALF:
+	case WM_BUTTON_RHALF:
+		/* Fluxbox's own commands for them (Window.cc) */
+		if (button == BTN_LEFT) {
+			struct wm_command *cmd = wm_command_parse(
+				type == WM_BUTTON_LHALF ?
+				"MacroCmd {MoveTo 0 0} {ResizeTo 50% 100%}" :
+				"MacroCmd {MoveTo 50% 0} {ResizeTo 50% 100%}");
+			if (cmd) {
+				wm_command_execute(server, cmd, view);
+				wm_command_destroy(cmd);
+			}
+		}
+		break;
 	}
 	if (action != WM_ACTION_NOP)
 		execute_mouse_action(server, action, NULL, view);
@@ -599,6 +618,12 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	}
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+		/* A titlebar button shows window.button.pressed while held */
+		if (ms->pressed_decor_button >= 0 && ms->pressed_view &&
+		    ms->pressed_view->decoration)
+			wm_decoration_set_pressed(ms->pressed_view->decoration,
+				NULL, server->style);
+
 		/* An arrow button of the toolbar acts on release */
 		if (wm_toolbar_handle_release(server->toolbar,
 				server->cursor->x, server->cursor->y,
@@ -901,8 +926,11 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		struct wm_decor_button *btn = wm_decoration_button_at(
 			view->decoration, server->cursor->x - view->x,
 			server->cursor->y - view->y);
-		if (btn)
+		if (btn) {
 			ms->pressed_decor_button = (int)btn->type;
+			wm_decoration_set_pressed(view->decoration, btn,
+				server->style);
+		}
 	}
 
 	/* No binding: focus, and raise unless clickRaises is off */

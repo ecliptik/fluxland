@@ -107,6 +107,29 @@ struct wm_tool_style {
 #define WM_CORNER_BOTTOM_LEFT  (1 << 2)
 #define WM_CORNER_BOTTOM_RIGHT (1 << 3)
 
+/* --- Titlebar button pictures --- */
+
+enum wm_window_pixmap {
+	WM_PIXMAP_CLOSE,
+	WM_PIXMAP_MAXIMIZE,
+	WM_PIXMAP_ICONIFY,
+	WM_PIXMAP_SHADE,
+	WM_PIXMAP_UNSHADE,
+	WM_PIXMAP_STICK,
+	WM_PIXMAP_STUCK,
+	WM_PIXMAP_MENUICON,
+	WM_PIXMAP_LHALF,
+	WM_PIXMAP_RHALF,
+	WM_WINDOW_PIXMAPS,
+};
+
+enum wm_pixmap_state {
+	WM_PIXMAP_FOCUS,
+	WM_PIXMAP_UNFOCUS,
+	WM_PIXMAP_PRESSED,
+	WM_PIXMAP_STATES,
+};
+
 /* --- Full style structure --- */
 
 struct wm_style {
@@ -125,6 +148,13 @@ struct wm_style {
 	struct wm_font window_label_focus_font;
 	struct wm_font window_label_unfocus_font;
 	enum wm_justify window_justify;
+	/* Borders between tabs (window.label.focus.borderWidth...) */
+	int window_label_focus_border_width;
+	int window_label_unfocus_border_width;
+	struct wm_color window_label_focus_border_color;
+	struct wm_color window_label_unfocus_border_color;
+	/* window.font: the titlebar's height comes from it */
+	struct wm_font window_font;
 
 	/* Window buttons */
 	struct wm_texture window_button_focus;
@@ -134,26 +164,9 @@ struct wm_style {
 	struct wm_color window_button_unfocus_pic_color;
 	struct wm_color window_button_pressed_pic_color;
 
-	/* Per-button pixmaps: close */
-	char *window_close_pixmap;
-	char *window_close_unfocus_pixmap;
-	char *window_close_pressed_pixmap;
-	/* maximize */
-	char *window_maximize_pixmap;
-	char *window_maximize_unfocus_pixmap;
-	char *window_maximize_pressed_pixmap;
-	/* iconify */
-	char *window_iconify_pixmap;
-	char *window_iconify_unfocus_pixmap;
-	char *window_iconify_pressed_pixmap;
-	/* shade */
-	char *window_shade_pixmap;
-	char *window_shade_unfocus_pixmap;
-	char *window_shade_pressed_pixmap;
-	/* stick */
-	char *window_stick_pixmap;
-	char *window_stick_unfocus_pixmap;
-	char *window_stick_pressed_pixmap;
+	/* Button pictures (window.close.pixmap, window.close.unfocus.pixmap,
+	 * window.close.pressed.pixmap...), NULL when the style has none */
+	char *window_pixmaps[WM_WINDOW_PIXMAPS][WM_PIXMAP_STATES];
 
 	/* Window handle (bottom resize bar) and grips */
 	struct wm_texture window_handle_focus;
@@ -166,8 +179,9 @@ struct wm_style {
 	struct wm_color window_frame_focus_color;
 	struct wm_color window_frame_unfocus_color;
 
-	/* Window borders */
+	/* Window borders (window_border_color is the focused one) */
 	struct wm_color window_border_color;
+	struct wm_color window_border_unfocus_color;
 	int window_border_width;
 	int window_bevel_width;
 	uint8_t window_round_corners;	/* bitmask of WM_CORNER_* */
@@ -263,6 +277,9 @@ void style_destroy(struct wm_style *style);
 
 /* Parse a texture description string like "Raised Gradient Vertical" */
 struct wm_texture style_parse_texture(const char *value);
+
+/* A colour as XParseColor reads it; false when it isn't one */
+bool style_try_parse_color(const char *value, struct wm_color *out);
 
 /* Parse a color string like "#RRGGBB" or "rgb:R/G/B" */
 struct wm_color style_parse_color(const char *value);

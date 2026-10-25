@@ -25,6 +25,9 @@ enum wm_button_type {
 	WM_BUTTON_ICONIFY,
 	WM_BUTTON_SHADE,
 	WM_BUTTON_STICK,
+	WM_BUTTON_MENUICON,	/* the window menu */
+	WM_BUTTON_LHALF,	/* to the left half of the head */
+	WM_BUTTON_RHALF,
 };
 
 /* --- Texture rendering --- */
@@ -87,15 +90,14 @@ cairo_surface_t *wm_load_pixmap(const char *path, int width, int height);
 /* --- Button glyph rendering --- */
 
 /*
- * Render a button glyph (close X, maximize square, etc.).
- *
- * Returns a Cairo surface of size*scale x size*scale containing the glyph
- * drawn in the given color.
+ * A titlebar button's picture as Fluxbox's WinButton draws it, in
+ * pic_color on a clear w x h surface; toggled is a stuck window for
+ * Stick, a shaded one for Shade.
  *
  * Caller is responsible for calling cairo_surface_destroy() on the result.
  */
 cairo_surface_t *wm_render_button_glyph(enum wm_button_type type,
-	const struct wm_color *pic_color, int size, float scale);
+	bool toggled, const struct wm_color *pic_color, int w, int h);
 
 /* --- RTL text direction detection --- */
 

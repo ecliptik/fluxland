@@ -439,10 +439,13 @@ test_measure_text_bold_vs_regular(void)
 static void
 test_render_button_glyph_null(void)
 {
-	assert(wm_render_button_glyph(WM_BUTTON_CLOSE, NULL, 16, 1.0f) == NULL);
+	assert(wm_render_button_glyph(WM_BUTTON_CLOSE, false, NULL, 16, 16)
+		== NULL);
 	struct wm_color c = { .r = 255, .g = 255, .b = 255, .a = 255 };
-	assert(wm_render_button_glyph(WM_BUTTON_CLOSE, &c, 0, 1.0f) == NULL);
-	assert(wm_render_button_glyph(WM_BUTTON_CLOSE, &c, -5, 1.0f) == NULL);
+	assert(wm_render_button_glyph(WM_BUTTON_CLOSE, false, &c, 0, 16)
+		== NULL);
+	assert(wm_render_button_glyph(WM_BUTTON_CLOSE, false, &c, -5, -5)
+		== NULL);
 	printf("PASS: test_render_button_glyph_null\n");
 }
 
@@ -452,12 +455,13 @@ test_render_button_glyph_all_types(void)
 	struct wm_color c = { .r = 200, .g = 200, .b = 200, .a = 255 };
 	enum wm_button_type types[] = {
 		WM_BUTTON_CLOSE, WM_BUTTON_MAXIMIZE, WM_BUTTON_ICONIFY,
-		WM_BUTTON_SHADE, WM_BUTTON_STICK,
+		WM_BUTTON_SHADE, WM_BUTTON_STICK, WM_BUTTON_MENUICON,
+		WM_BUTTON_LHALF, WM_BUTTON_RHALF,
 	};
 
-	for (int i = 0; i < 5; i++) {
-		cairo_surface_t *s = wm_render_button_glyph(types[i], &c,
-			16, 1.0f);
+	for (int i = 0; i < 8; i++) {
+		cairo_surface_t *s = wm_render_button_glyph(types[i], i % 2,
+			&c, 16, 16);
 		assert(s != NULL);
 		assert(cairo_image_surface_get_width(s) == 16);
 		assert(cairo_image_surface_get_height(s) == 16);
@@ -466,15 +470,43 @@ test_render_button_glyph_all_types(void)
 	printf("PASS: test_render_button_glyph_all_types\n");
 }
 
+/* A pixel of a glyph: set (the colour) or clear */
+static bool
+glyph_px(cairo_surface_t *s, int x, int y)
+{
+	cairo_surface_flush(s);
+	uint32_t *d = (uint32_t *)cairo_image_surface_get_data(s);
+	return d[y * cairo_image_surface_get_stride(s) / 4 + x] != 0;
+}
+
+/* Fluxbox's WinButton pictures, pixel for pixel */
 static void
 test_render_button_glyph_scaled(void)
 {
 	struct wm_color c = { .r = 255, .g = 255, .b = 255, .a = 255 };
-	cairo_surface_t *s = wm_render_button_glyph(WM_BUTTON_CLOSE, &c,
-		16, 2.0f);
-	assert(s != NULL);
-	assert(cairo_image_surface_get_width(s) == 32);
-	assert(cairo_image_surface_get_height(s) == 32);
+	/* Close: the diagonals from (2, 2) to (w-3, h-3) */
+	cairo_surface_t *s = wm_render_button_glyph(WM_BUTTON_CLOSE, false,
+		&c, 16, 16);
+	assert(glyph_px(s, 2, 2) && glyph_px(s, 13, 13));
+	assert(glyph_px(s, 2, 13) && glyph_px(s, 13, 2));
+	assert(!glyph_px(s, 1, 1) && !glyph_px(s, 8, 2));
+	cairo_surface_destroy(s);
+	/* Maximize: a box from (2, 2) to (w-3, h-3), its top line doubled */
+	s = wm_render_button_glyph(WM_BUTTON_MAXIMIZE, false, &c, 16, 16);
+	assert(glyph_px(s, 8, 2) && glyph_px(s, 8, 3) && !glyph_px(s, 8, 4));
+	assert(glyph_px(s, 2, 13) && glyph_px(s, 13, 13));
+	cairo_surface_destroy(s);
+	/* Minimize: a 3 pixel high box at the bottom */
+	s = wm_render_button_glyph(WM_BUTTON_ICONIFY, false, &c, 16, 16);
+	assert(glyph_px(s, 2, 11) && glyph_px(s, 2, 13) && !glyph_px(s, 5, 12));
+	assert(!glyph_px(s, 8, 4));
+	cairo_surface_destroy(s);
+	/* Stick: a square in the middle, larger when stuck */
+	s = wm_render_button_glyph(WM_BUTTON_STICK, false, &c, 16, 16);
+	assert(glyph_px(s, 7, 7) && !glyph_px(s, 4, 4));
+	cairo_surface_destroy(s);
+	s = wm_render_button_glyph(WM_BUTTON_STICK, true, &c, 16, 16);
+	assert(glyph_px(s, 4, 4) && !glyph_px(s, 3, 3));
 	cairo_surface_destroy(s);
 	printf("PASS: test_render_button_glyph_scaled\n");
 }

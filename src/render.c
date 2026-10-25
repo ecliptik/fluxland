@@ -910,76 +910,145 @@ wm_render_cleanup(void)
 
 /* --- Public API: button glyph rendering --- */
 
-cairo_surface_t *
-wm_render_button_glyph(enum wm_button_type type,
-	const struct wm_color *pic_color, int size, float scale)
+/* Pixels for the glyphs, drawn as X draws them (WinButton::drawType) */
+struct glyph_canvas {
+	uint32_t *d;
+	int stride, w, h;
+	uint32_t px;
+};
+
+static void
+glyph_point(struct glyph_canvas *c, int x, int y)
 {
-	if (!pic_color || size <= 0)
+	if (x >= 0 && y >= 0 && x < c->w && y < c->h)
+		c->d[y * c->stride + x] = c->px;
+}
+
+/* XDrawLine: Bresenham, both ends included */
+static void
+glyph_line(struct glyph_canvas *c, int x0, int y0, int x1, int y1)
+{
+	int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+	int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+	int err = dx + dy;
+	for (;;) {
+		glyph_point(c, x0, y0);
+		if (x0 == x1 && y0 == y1)
+			break;
+		int e2 = 2 * err;
+		if (e2 >= dy) {
+			err += dy;
+			x0 += sx;
+		}
+		if (e2 <= dx) {
+			err += dx;
+			y0 += sy;
+		}
+	}
+}
+
+/* XDrawRectangle: the outline of w + 1 by h + 1 pixels */
+static void
+glyph_rect(struct glyph_canvas *c, int x, int y, int w, int h)
+{
+	glyph_line(c, x, y, x + w, y);
+	glyph_line(c, x, y + h, x + w, y + h);
+	glyph_line(c, x, y, x, y + h);
+	glyph_line(c, x + w, y, x + w, y + h);
+}
+
+/* XFillRectangle: w by h pixels */
+static void
+glyph_fill(struct glyph_canvas *c, int x, int y, int w, int h)
+{
+	for (int j = y; j < y + h; j++)
+		for (int i = x; i < x + w; i++)
+			glyph_point(c, i, j);
+}
+
+cairo_surface_t *
+wm_render_button_glyph(enum wm_button_type type, bool toggled,
+	const struct wm_color *pic_color, int w, int h)
+{
+	if (!pic_color || w <= 0 || h <= 0)
 		return NULL;
-
-	int s = (int)(size * scale + 0.5f);
-	if (s <= 0) s = 1;
-
 	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, s, s);
-	cairo_t *cr = cairo_create(surface);
-
-	cairo_set_source_rgba(cr, pic_color->r / 255.0,
-		pic_color->g / 255.0, pic_color->b / 255.0,
-		pic_color->a / 255.0);
-	cairo_set_line_width(cr, fmax(1.0, s / 10.0));
-	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-
-	/* Margin around the glyph */
-	double m = s * 0.2;
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+	cairo_surface_flush(surface);
+	struct glyph_canvas c = {
+		.d = (uint32_t *)cairo_image_surface_get_data(surface),
+		.stride = cairo_image_surface_get_stride(surface) / 4,
+		.w = w, .h = h,
+		.px = 0xFF000000u | ((uint32_t)pic_color->r << 16) |
+			((uint32_t)pic_color->g << 8) | pic_color->b,
+	};
+	int odd_w = w % 2, odd_h = h % 2;
 
 	switch (type) {
-	case WM_BUTTON_CLOSE:
-		/* X shape */
-		cairo_move_to(cr, m, m);
-		cairo_line_to(cr, s - m, s - m);
-		cairo_stroke(cr);
-		cairo_move_to(cr, s - m, m);
-		cairo_line_to(cr, m, s - m);
-		cairo_stroke(cr);
-		break;
-
 	case WM_BUTTON_MAXIMIZE:
-		/* Square outline */
-		cairo_rectangle(cr, m, m, s - 2 * m, s - 2 * m);
-		cairo_stroke(cr);
+		if (w >= 6 && h >= 6) {
+			glyph_rect(&c, 2, 2, w - 5, h - 5);
+			glyph_line(&c, 2, 3, w - 3, 3);
+		}
 		break;
-
 	case WM_BUTTON_ICONIFY:
-		/* Horizontal line at bottom */
-		cairo_move_to(cr, m, s - m);
-		cairo_line_to(cr, s - m, s - m);
-		cairo_stroke(cr);
+		if (w >= 6 && h >= 6)
+			glyph_rect(&c, 2, w - 5, h - 5, 2);
 		break;
-
-	case WM_BUTTON_SHADE: {
-		/* Triangle pointing up */
-		double cx = s / 2.0;
-		cairo_move_to(cr, m, s - m);
-		cairo_line_to(cr, cx, m);
-		cairo_line_to(cr, s - m, s - m);
-		cairo_close_path(cr);
-		cairo_fill(cr);
-		break;
-	}
-
 	case WM_BUTTON_STICK: {
-		/* Small filled circle (dot) */
-		double cx = s / 2.0;
-		double cy = s / 2.0;
-		double r = (s - 2 * m) / 3.0;
-		cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
-		cairo_fill(cr);
+		/* Larger when the window is stuck */
+		int d = toggled ? 4 : 8;
+		glyph_fill(&c, w / 2 - w / d, h / 2 - h / d,
+			2 * (w / d) + odd_w, 2 * (h / d) + odd_h);
 		break;
 	}
+	case WM_BUTTON_CLOSE:
+		if (w >= 4 && h >= 4) {
+			glyph_line(&c, 2, 2, w - 3, h - 3);
+			glyph_line(&c, 2, w - 3, h - 3, 2);
+		}
+		break;
+	case WM_BUTTON_SHADE: {
+		int size = w - 5 - odd_w;
+		if (size < 4)
+			break;
+		glyph_rect(&c, 2, 2, size, 2);
+		/* A triangle under the bar, pointing down when shaded
+		 * (drawTriangle at scale 100 in a size-2 by size/2-1 box) */
+		int tw = size - 2, th = size / 2 - 1;
+		int ax = tw, ay = th;
+		if (ax % 2 == 0)
+			ax--;
+		int cx = 4 + tw / 2;
+		for (int row = 0; row <= ay; row++) {
+			int half = ay > 0 ? (ax / 2) * row / ay : 0;
+			int y = toggled ? 6 + th / 2 + ay / 2 - row :
+				6 + th / 2 - ay / 2 - 1 + row;
+			glyph_line(&c, cx - half, y, cx + half, y);
+		}
+		break;
 	}
-
-	cairo_destroy(cr);
+	case WM_BUTTON_MENUICON:
+		if (w >= 6 && h >= 6) {
+			for (int y = h / 3; y <= h; y += 3)
+				glyph_line(&c, w / 4, y, w - w / 4 - 1, y);
+			glyph_rect(&c, 2, 2, w - 5, h - 5);
+		}
+		break;
+	case WM_BUTTON_LHALF:
+		if (w >= 4 && h >= 5)
+			glyph_fill(&c, 2, 2, w / 2 - odd_w, h - 4);
+		break;
+	case WM_BUTTON_RHALF:
+		if (w >= 5 && h >= 5)
+			glyph_fill(&c, w / 2, 2, w / 2 - 2 + odd_w, h - 4);
+		break;
+	}
+	cairo_surface_mark_dirty(surface);
 	return surface;
 }
 

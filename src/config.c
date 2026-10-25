@@ -265,6 +265,30 @@ parse_struts(const char *value, int out[4])
 	}
 }
 
+/* Fluxbox's names (ScreenResource.cc), with Center spelled out too */
+static int
+parse_tab_placement(const char *value)
+{
+	static const struct { const char *name; int place; } names[] = {
+		{ "TopLeft", WM_TAB_TOP_LEFT }, { "Top", WM_TAB_TOP },
+		{ "TopCenter", WM_TAB_TOP }, { "TopRight", WM_TAB_TOP_RIGHT },
+		{ "BottomLeft", WM_TAB_BOTTOM_LEFT },
+		{ "Bottom", WM_TAB_BOTTOM }, { "BottomCenter", WM_TAB_BOTTOM },
+		{ "BottomRight", WM_TAB_BOTTOM_RIGHT },
+		{ "LeftTop", WM_TAB_LEFT_TOP }, { "Left", WM_TAB_LEFT },
+		{ "LeftCenter", WM_TAB_LEFT },
+		{ "LeftBottom", WM_TAB_LEFT_BOTTOM },
+		{ "RightTop", WM_TAB_RIGHT_TOP }, { "Right", WM_TAB_RIGHT },
+		{ "RightCenter", WM_TAB_RIGHT },
+		{ "RightBottom", WM_TAB_RIGHT_BOTTOM },
+	};
+	for (size_t i = 0; value && i < sizeof(names) / sizeof(names[0]); i++) {
+		if (strcasecmp(value, names[i].name) == 0)
+			return names[i].place;
+	}
+	return WM_TAB_TOP_LEFT;
+}
+
 static enum wm_workspace_transition
 parse_workspace_transition(const char *value)
 {
@@ -485,7 +509,7 @@ config_create(void)
 		"workspacename prevworkspace nextworkspace iconbar clock");
 
 	config->titlebar_left = strdup("Stick");
-	config->titlebar_right = strdup("Shade Minimize Maximize Close");
+	config->titlebar_right = strdup("Minimize Maximize Close");
 	config->clock_format = strdup("%H:%M");
 	config->iconbar_mode = 0;
 	config->iconbar_mode_spec = iconbar_mode_spec(NULL);
@@ -496,8 +520,8 @@ config_create(void)
 	config->auto_tab_placement = false;
 	config->tab_focus_model = 0; /* click */
 	config->tabs_intitlebar = true;
-	config->tab_placement = 0; /* Top */
-	config->tab_width = 0; /* auto from font */
+	config->tab_placement = WM_TAB_TOP_LEFT;
+	config->tab_width = 64;
 	config->tab_padding = 0;
 
 	config->full_maximization = false;
@@ -841,21 +865,12 @@ apply_tab_config(struct wm_config *config, struct rc_database *db)
 	/* External tab bar */
 	config->tabs_intitlebar =
 		rc_get_bool(db, "session.screen0.tabs.intitlebar", true);
-	val = rc_get_string(db, "session.screen0.tab.placement");
-	if (val) {
-		if (strcasecmp(val, "Bottom") == 0)
-			config->tab_placement = 1;
-		else if (strcasecmp(val, "Left") == 0)
-			config->tab_placement = 2;
-		else if (strcasecmp(val, "Right") == 0)
-			config->tab_placement = 3;
-		else
-			config->tab_placement = 0; /* Top */
-	}
+	config->tab_placement = parse_tab_placement(
+		rc_get_string(db, "session.screen0.tab.placement"));
 	config->tab_width =
-		rc_get_int(db, "session.screen0.tab.width", 0);
-	if (config->tab_width < 0)
-		config->tab_width = 0;
+		rc_get_int(db, "session.screen0.tab.width", 64);
+	if (config->tab_width <= 0)
+		config->tab_width = 64;
 	config->tab_padding =
 		rc_get_int(db, "session.tabPadding",
 			rc_get_int(db, "session.screen0.tabPadding", 0));

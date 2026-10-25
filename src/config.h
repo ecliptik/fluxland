@@ -144,6 +144,22 @@ enum wm_switch_event {
 	WM_SWITCH_EVENT_COUNT,
 };
 
+/* session.screen0.tab.placement, in Fluxbox's order */
+enum wm_tab_placement {
+	WM_TAB_TOP_LEFT,
+	WM_TAB_TOP,
+	WM_TAB_TOP_RIGHT,
+	WM_TAB_BOTTOM_LEFT,
+	WM_TAB_BOTTOM,
+	WM_TAB_BOTTOM_RIGHT,
+	WM_TAB_LEFT_TOP,
+	WM_TAB_LEFT,
+	WM_TAB_LEFT_BOTTOM,
+	WM_TAB_RIGHT_TOP,
+	WM_TAB_RIGHT,
+	WM_TAB_RIGHT_BOTTOM,
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -209,8 +225,8 @@ struct wm_config {
 
 	/* External tab bar configuration */
 	bool tabs_intitlebar;       /* true = tabs in titlebar (default), false = external */
-	int tab_placement;          /* 0=Top, 1=Bottom, 2=Left, 3=Right */
-	int tab_width;              /* external tab bar size in pixels (0 = auto from font) */
+	int tab_placement;          /* enum wm_tab_placement */
+	int tab_width;              /* an external tab's length (64) */
 	int tab_padding;            /* padding between tabs in pixels */
 
 	/* Full maximization (maximize over toolbar/slit) */

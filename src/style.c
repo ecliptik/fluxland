@@ -12,6 +12,7 @@
 #define _GNU_SOURCE
 
 #include "style.h"
+#include "x11_colors.h"
 #include "rcparser.h"
 #include "util.h"
 #include <ctype.h>
@@ -30,6 +31,9 @@
 static void style_clear(struct wm_style *s);
 static void texture_finish(struct wm_texture *tex);
 static void font_finish(struct wm_font *font);
+static char *load_pixmap_path(struct rc_database *db, const char *key,
+	const char *style_dir);
+static uint8_t parse_round_corners(const char *value);
 
 /* --- Default values --- */
 
@@ -103,71 +107,95 @@ scale_rgb_component(unsigned int val, size_t digits)
 	}
 }
 
+static int
+compare_x11_color(const void *key, const void *elem)
+{
+	return strcmp(key, ((const struct wm_x11_color *)elem)->name);
+}
+
+/*
+ * A colour as XParseColor reads one (Fluxbox's FbTk::Color): #RGB to
+ * #RRRRGGGGBBBB with the digits as the high bits, rgb:R/G/B with each
+ * scaled to its digits, or an X11 colour name in any case and with any
+ * spaces ("Light Steel Blue").  False for anything else.
+ */
+bool
+style_try_parse_color(const char *value, struct wm_color *out)
+{
+	if (!value)
+		return false;
+	while (isspace((unsigned char)*value))
+		value++;
+	size_t len = strlen(value);
+	while (len > 0 && isspace((unsigned char)value[len - 1]))
+		len--;
+	if (len == 0)
+		return false;
+
+	if (*value == '#') {
+		size_t digits = len - 1;
+		if (digits < 3 || digits > 12 || digits % 3 != 0)
+			return false;
+		size_t n = digits / 3;
+		unsigned int c[3];
+		for (int i = 0; i < 3; i++) {
+			c[i] = 0;
+			for (size_t j = 0; j < n; j++) {
+				char ch = value[1 + i * n + j];
+				if (!isxdigit((unsigned char)ch))
+					return false;
+				c[i] = c[i] * 16 + (unsigned int)(isdigit(
+					(unsigned char)ch) ? ch - '0' :
+					tolower((unsigned char)ch) - 'a' + 10);
+			}
+			/* The digits are the top bits of 16 */
+			c[i] <<= 16 - 4 * n;
+			c[i] >>= 8;
+		}
+		*out = make_color(c[0], c[1], c[2]);
+		return true;
+	}
+
+	if (strncasecmp(value, "rgb:", 4) == 0) {
+		char rs[8], gs[8], bs[8];
+		if (sscanf(value + 4, "%7[^/]/%7[^/]/%7s", rs, gs, bs) != 3)
+			return false;
+		const char *parts[3] = { rs, gs, bs };
+		unsigned int c[3];
+		for (int i = 0; i < 3; i++) {
+			size_t n = strspn(parts[i], "0123456789abcdefABCDEF");
+			if (n == 0 || n > 4 || parts[i][n] != '\0')
+				return false;
+			c[i] = scale_rgb_component(
+				(unsigned int)strtoul(parts[i], NULL, 16), n);
+			if (c[i] > 255)
+				c[i] = 255;
+		}
+		*out = make_color(c[0], c[1], c[2]);
+		return true;
+	}
+
+	char name[64];
+	size_t k = 0;
+	for (size_t i = 0; i < len && k < sizeof(name) - 1; i++) {
+		if (!isspace((unsigned char)value[i]))
+			name[k++] = (char)tolower((unsigned char)value[i]);
+	}
+	name[k] = '\0';
+	const struct wm_x11_color *x = bsearch(name, wm_x11_colors,
+		sizeof(wm_x11_colors) / sizeof(wm_x11_colors[0]),
+		sizeof(wm_x11_colors[0]), compare_x11_color);
+	if (!x)
+		return false;
+	*out = make_color(x->r, x->g, x->b);
+	return true;
+}
+
 struct wm_color
 style_parse_color(const char *value)
 {
-	if (!value || *value == '\0')
-		return make_color(0, 0, 0);
-
-	/* Skip leading whitespace */
-	while (isspace((unsigned char)*value))
-		value++;
-
-	/* #RRGGBB format */
-	if (*value == '#') {
-		unsigned int r = 0, g = 0, b = 0;
-		if (sscanf(value, "#%02x%02x%02x", &r, &g, &b) == 3)
-			return make_color(r, g, b);
-		/* Try short #RGB form */
-		if (sscanf(value, "#%1x%1x%1x", &r, &g, &b) == 3)
-			return make_color(r * 17, g * 17, b * 17);
-		return make_color(0, 0, 0);
-	}
-
-	/* rgb:R/G/B format per X11 spec — components are hex, scaled by
-	 * digit count: 1→×17, 2→as-is, 3→>>4, 4→>>8 */
-	if (strncasecmp(value, "rgb:", 4) == 0) {
-		char rs[8], gs[8], bs[8];
-		if (sscanf(value + 4, "%7[^/]/%7[^/]/%7s", rs, gs, bs) == 3) {
-			unsigned int r = strtoul(rs, NULL, 16);
-			unsigned int g = strtoul(gs, NULL, 16);
-			unsigned int b = strtoul(bs, NULL, 16);
-			r = scale_rgb_component(r, strlen(rs));
-			g = scale_rgb_component(g, strlen(gs));
-			b = scale_rgb_component(b, strlen(bs));
-			if (r > 255) r = 255;
-			if (g > 255) g = 255;
-			if (b > 255) b = 255;
-			return make_color(r, g, b);
-		}
-		return make_color(0, 0, 0);
-	}
-
-	/* Named colors */
-	if (strcasecmp(value, "white") == 0)
-		return make_color(255, 255, 255);
-	if (strcasecmp(value, "black") == 0)
-		return make_color(0, 0, 0);
-	if (strcasecmp(value, "red") == 0)
-		return make_color(255, 0, 0);
-	if (strcasecmp(value, "green") == 0)
-		return make_color(0, 255, 0);
-	if (strcasecmp(value, "blue") == 0)
-		return make_color(0, 0, 255);
-	if (strcasecmp(value, "grey") == 0 || strcasecmp(value, "gray") == 0)
-		return make_color(190, 190, 190);
-
-	/* X11 greyNN/grayNN colors (0-100 percent brightness) */
-	if (strncasecmp(value, "grey", 4) == 0 ||
-	    strncasecmp(value, "gray", 4) == 0) {
-		int pct;
-		if (safe_atoi(value + 4, &pct) && pct >= 0 && pct <= 100) {
-			uint8_t v = (uint8_t)((pct * 255 + 50) / 100);
-			return make_color(v, v, v);
-		}
-	}
-
-	return make_color(0, 0, 0);
+	struct wm_color c;
+	return style_try_parse_color(value, &c) ? c : make_color(0, 0, 0);
 }
 
 /* --- Font parsing --- */
@@ -586,9 +614,9 @@ load_texture(struct rc_database *db, const char *base_key,
 static void
 load_color(struct rc_database *db, const char *key, struct wm_color *color)
 {
-	const char *val = style_get(db, key);
-	if (val)
-		*color = style_parse_color(val);
+	struct wm_color c;
+	if (style_try_parse_color(style_get(db, key), &c))
+		*color = c;
 }
 
 static void
@@ -658,14 +686,16 @@ load_texture_chain(struct rc_database *db, const char *const *names,
 	texture_finish(tex);
 	*tex = style_parse_texture(style_get(db, name));
 
+	/* A colour that doesn't parse leaves darkgray or white */
 	char key[256];
+	struct wm_color c;
 	snprintf(key, sizeof(key), "%s.color", name);
-	const char *v = style_get(db, key);
-	if (v)
-		tex->color = argb_from_color(style_parse_color(v));
+	if (style_try_parse_color(style_get(db, key), &c))
+		tex->color = argb_from_color(c);
 	snprintf(key, sizeof(key), "%s.colorTo", name);
-	if ((v = style_get(db, key)))
-		tex->color_to = argb_from_color(style_parse_color(v));
+	if (style_try_parse_color(style_get(db, key), &c))
+		tex->color_to = argb_from_color(c);
+	const char *v;
 	snprintf(key, sizeof(key), "%s.pixmap", name);
 	if ((v = style_get(db, key)) && *v)
 		tex->pixmap_path = resolve_pixmap_file(style_dir, v);
@@ -676,8 +706,10 @@ static struct wm_color
 color_chain(struct rc_database *db, const char *const *keys,
 	struct wm_color def)
 {
+	/* Fluxbox's default too for one that doesn't parse (white) */
 	const char *key = first_key(db, keys);
-	return key ? style_parse_color(style_get(db, key)) : def;
+	struct wm_color c;
+	return key && style_try_parse_color(style_get(db, key), &c) ? c : def;
 }
 
 static int
@@ -719,6 +751,153 @@ load_tool_text(struct rc_database *db, struct wm_tool_style *t,
 }
 
 #define KEYS(...) ((const char *const []){ __VA_ARGS__, NULL })
+
+/*
+ * The window frame as Fluxbox's FbWinFrameTheme reads it, with the
+ * window.label.* IconbarThemes for the labels and tabs and the
+ * WinButtonTheme pictures.
+ */
+static void
+load_window(struct wm_style *s, struct rc_database *db, const char *sd)
+{
+	load_texture_chain(db, KEYS("window.title.focus"),
+		&s->window_title_focus, sd);
+	load_texture_chain(db, KEYS("window.title.unfocus"),
+		&s->window_title_unfocus, sd);
+	s->window_title_height = int_chain(db, KEYS("window.title.height"), 0);
+	if (s->window_title_height < 0)
+		s->window_title_height = 0;
+	font_chain(db, KEYS("window.font"), &s->window_font);
+
+	/* Labels and tabs: textures fall back to toolbar.windowLabel,
+	 * fonts to window.font, borders through window.* */
+	load_texture_chain(db,
+		KEYS("window.label.focus", "toolbar.windowLabel"),
+		&s->window_label_focus, sd);
+	load_texture_chain(db,
+		KEYS("window.label.unfocus", "toolbar.windowLabel"),
+		&s->window_label_unfocus, sd);
+	/* Fluxbox 1.0's, for fluxland 1.x styles; 1.3 has none */
+	load_texture_chain(db, KEYS("window.label.active",
+			"window.label.focus", "toolbar.windowLabel"),
+		&s->window_label_active, sd);
+	struct wm_tool_style lf = { 0 }, lu = { 0 };
+	lf.font = s->window_label_focus_font;
+	lu.font = s->window_label_unfocus_font;
+	if (style_get(db, "window.font")) {
+		/* load_font replaces the family it is given */
+		font_chain(db, KEYS("window.font"), &lf.font);
+		font_chain(db, KEYS("window.font"), &lu.font);
+	}
+	load_tool_text(db, &lf,
+		KEYS("window.label.focus.font"),
+		KEYS("window.label.focus.textColor"),
+		KEYS("window.label.focus.justify", "window.label.justify",
+			"window.justify"),
+		KEYS("window.label.focus.borderWidth",
+			"window.label.borderWidth", "window.borderWidth",
+			"borderWidth"),
+		KEYS("window.label.focus.borderColor",
+			"window.label.borderColor", "window.borderColor",
+			"borderColor"));
+	load_tool_text(db, &lu,
+		KEYS("window.label.unfocus.font"),
+		KEYS("window.label.unfocus.textColor"),
+		KEYS("window.label.unfocus.justify", "window.label.justify",
+			"window.justify"),
+		KEYS("window.label.unfocus.borderWidth",
+			"window.label.borderWidth", "window.borderWidth",
+			"borderWidth"),
+		KEYS("window.label.unfocus.borderColor",
+			"window.label.borderColor", "window.borderColor",
+			"borderColor"));
+	s->window_label_focus_font = lf.font;
+	s->window_label_unfocus_font = lu.font;
+	s->window_label_focus_text_color = lf.text_color;
+	s->window_label_unfocus_text_color = lu.text_color;
+	s->window_label_active_text_color = color_chain(db,
+		KEYS("window.label.active.textColor",
+			"window.label.focus.textColor"), lf.text_color);
+	s->window_justify = lf.justify;
+	s->window_label_focus_border_width = lf.border_width;
+	s->window_label_unfocus_border_width = lu.border_width;
+	s->window_label_focus_border_color = lf.border_color;
+	s->window_label_unfocus_border_color = lu.border_color;
+
+	/* Buttons */
+	load_texture_chain(db, KEYS("window.button.focus"),
+		&s->window_button_focus, sd);
+	load_texture_chain(db, KEYS("window.button.unfocus"),
+		&s->window_button_unfocus, sd);
+	load_texture_chain(db, KEYS("window.button.pressed"),
+		&s->window_button_pressed, sd);
+	const struct wm_color white = make_color(255, 255, 255);
+	s->window_button_focus_pic_color = color_chain(db,
+		KEYS("window.button.focus.picColor"), white);
+	s->window_button_unfocus_pic_color = color_chain(db,
+		KEYS("window.button.unfocus.picColor"), white);
+	s->window_button_pressed_pic_color = color_chain(db,
+		KEYS("window.button.pressed.picColor",
+			"window.button.focus.picColor"), white);
+
+	static const char *const pictures[WM_WINDOW_PIXMAPS] = {
+		"close", "maximize", "iconify", "shade", "unshade",
+		"stick", "stuck", "menuicon", "lhalf", "rhalf",
+	};
+	static const char *const states[WM_PIXMAP_STATES] = {
+		"", ".unfocus", ".pressed",
+	};
+	for (int i = 0; i < WM_WINDOW_PIXMAPS; i++) {
+		for (int j = 0; j < WM_PIXMAP_STATES; j++) {
+			char key[64];
+			snprintf(key, sizeof(key), "window.%s%s.pixmap",
+				pictures[i], states[j]);
+			safe_free(&s->window_pixmaps[i][j]);
+			s->window_pixmaps[i][j] = load_pixmap_path(db, key, sd);
+		}
+	}
+
+	/* Handle and grips */
+	load_texture_chain(db, KEYS("window.handle.focus"),
+		&s->window_handle_focus, sd);
+	load_texture_chain(db, KEYS("window.handle.unfocus"),
+		&s->window_handle_unfocus, sd);
+	load_texture_chain(db, KEYS("window.grip.focus"),
+		&s->window_grip_focus, sd);
+	load_texture_chain(db, KEYS("window.grip.unfocus"),
+		&s->window_grip_unfocus, sd);
+	s->window_handle_width = int_chain(db, KEYS("window.handleWidth"), 0);
+	if (s->window_handle_width < 0)
+		s->window_handle_width = 1;
+	if (s->window_handle_width > 200)
+		s->window_handle_width = 200;
+
+	/* fluxland 1.x's frame colours */
+	load_color(db, "window.frame.focusColor",
+		&s->window_frame_focus_color);
+	load_color(db, "window.frame.unfocusColor",
+		&s->window_frame_unfocus_color);
+
+	/* Borders and bevel */
+	s->window_border_width = int_chain(db,
+		KEYS("window.focus.borderWidth", "window.borderWidth"), 0);
+	if (s->window_border_width < 0)
+		s->window_border_width = 0;
+	s->window_border_color = color_chain(db,
+		KEYS("window.focus.borderColor", "window.borderColor"),
+		make_color(0, 0, 0));
+	s->window_border_unfocus_color = color_chain(db,
+		KEYS("window.unfocus.borderColor", "window.borderColor"),
+		make_color(0, 0, 0));
+	s->window_bevel_width = int_chain(db, KEYS("window.bevelWidth"), 0);
+	if (s->window_bevel_width < 0)
+		s->window_bevel_width = 0;
+	if (s->window_bevel_width > 20)
+		s->window_bevel_width = 20;
+	const char *rc = style_get(db, "window.roundCorners");
+	if (rc)
+		s->window_round_corners = parse_round_corners(rc);
+}
 
 /*
  * The toolbar and its tools, with the fallbacks of Fluxbox's
@@ -998,6 +1177,7 @@ style_create(void)
 	s->window_frame_focus_color = color_from_argb(DEFAULT_FRAME_COLOR);
 	s->window_frame_unfocus_color = color_from_argb(DEFAULT_UNFOCUS_COLOR);
 	s->window_border_color = color_from_argb(DEFAULT_BORDER_COLOR);
+	s->window_border_unfocus_color = color_from_argb(DEFAULT_BORDER_COLOR);
 	s->menu_title_text_color = color_from_argb(DEFAULT_TEXT_COLOR);
 	s->menu_frame_text_color = color_from_argb(DEFAULT_TEXT_COLOR);
 	s->menu_hilite_text_color = color_from_argb(DEFAULT_TEXT_COLOR);
@@ -1043,6 +1223,7 @@ style_create(void)
 	s->menu_title_font = default_font();
 	s->menu_frame_font = default_font();
 	s->toolbar_font = default_font();
+	s->window_font = default_font();
 
 	/* Default justify */
 	s->window_justify = WM_JUSTIFY_LEFT;
@@ -1056,112 +1237,8 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 {
 	const char *sd = s->style_dir;
 
-	/* --- Window title --- */
-	load_texture(db, "window.title.focus", &s->window_title_focus, sd);
-	load_texture(db, "window.title.unfocus", &s->window_title_unfocus, sd);
-	s->window_title_height = style_get_int(db, "window.title.height",
-		s->window_title_height);
-
-	/* --- Window label --- */
-	load_texture(db, "window.label.focus", &s->window_label_focus, sd);
-	load_texture(db, "window.label.unfocus", &s->window_label_unfocus, sd);
-	load_texture(db, "window.label.active", &s->window_label_active, sd);
-	load_color(db, "window.label.focus.textColor",
-		&s->window_label_focus_text_color);
-	load_color(db, "window.label.unfocus.textColor",
-		&s->window_label_unfocus_text_color);
-	load_color(db, "window.label.active.textColor",
-		&s->window_label_active_text_color);
-	load_font(db, "window.label.focus.font",
-		&s->window_label_focus_font);
-	load_font(db, "window.label.unfocus.font",
-		&s->window_label_unfocus_font);
-	s->window_justify = parse_justify(style_get(db, "window.justify"));
-
-	/* --- Window buttons --- */
-	load_texture(db, "window.button.focus", &s->window_button_focus, sd);
-	load_texture(db, "window.button.unfocus", &s->window_button_unfocus, sd);
-	load_texture(db, "window.button.pressed", &s->window_button_pressed, sd);
-	load_color(db, "window.button.focus.picColor",
-		&s->window_button_focus_pic_color);
-	load_color(db, "window.button.unfocus.picColor",
-		&s->window_button_unfocus_pic_color);
-	load_color(db, "window.button.pressed.picColor",
-		&s->window_button_pressed_pic_color);
-
-	/* Button pixmaps */
-	safe_free(&s->window_close_pixmap);
-	s->window_close_pixmap = load_pixmap_path(db, "window.close.pixmap", sd);
-	safe_free(&s->window_close_unfocus_pixmap);
-	s->window_close_unfocus_pixmap = load_pixmap_path(db,
-		"window.close.unfocus.pixmap", sd);
-	safe_free(&s->window_close_pressed_pixmap);
-	s->window_close_pressed_pixmap = load_pixmap_path(db,
-		"window.close.pressed.pixmap", sd);
-
-	safe_free(&s->window_maximize_pixmap);
-	s->window_maximize_pixmap = load_pixmap_path(db,
-		"window.maximize.pixmap", sd);
-	safe_free(&s->window_maximize_unfocus_pixmap);
-	s->window_maximize_unfocus_pixmap = load_pixmap_path(db,
-		"window.maximize.unfocus.pixmap", sd);
-	safe_free(&s->window_maximize_pressed_pixmap);
-	s->window_maximize_pressed_pixmap = load_pixmap_path(db,
-		"window.maximize.pressed.pixmap", sd);
-
-	safe_free(&s->window_iconify_pixmap);
-	s->window_iconify_pixmap = load_pixmap_path(db,
-		"window.iconify.pixmap", sd);
-	safe_free(&s->window_iconify_unfocus_pixmap);
-	s->window_iconify_unfocus_pixmap = load_pixmap_path(db,
-		"window.iconify.unfocus.pixmap", sd);
-	safe_free(&s->window_iconify_pressed_pixmap);
-	s->window_iconify_pressed_pixmap = load_pixmap_path(db,
-		"window.iconify.pressed.pixmap", sd);
-
-	safe_free(&s->window_shade_pixmap);
-	s->window_shade_pixmap = load_pixmap_path(db,
-		"window.shade.pixmap", sd);
-	safe_free(&s->window_shade_unfocus_pixmap);
-	s->window_shade_unfocus_pixmap = load_pixmap_path(db,
-		"window.shade.unfocus.pixmap", sd);
-	safe_free(&s->window_shade_pressed_pixmap);
-	s->window_shade_pressed_pixmap = load_pixmap_path(db,
-		"window.shade.pressed.pixmap", sd);
-
-	safe_free(&s->window_stick_pixmap);
-	s->window_stick_pixmap = load_pixmap_path(db,
-		"window.stick.pixmap", sd);
-	safe_free(&s->window_stick_unfocus_pixmap);
-	s->window_stick_unfocus_pixmap = load_pixmap_path(db,
-		"window.stick.unfocus.pixmap", sd);
-	safe_free(&s->window_stick_pressed_pixmap);
-	s->window_stick_pressed_pixmap = load_pixmap_path(db,
-		"window.stick.pressed.pixmap", sd);
-
-	/* --- Window handle and grips --- */
-	load_texture(db, "window.handle.focus", &s->window_handle_focus, sd);
-	load_texture(db, "window.handle.unfocus", &s->window_handle_unfocus, sd);
-	s->window_handle_width = style_get_int(db, "window.handleWidth",
-		s->window_handle_width);
-	load_texture(db, "window.grip.focus", &s->window_grip_focus, sd);
-	load_texture(db, "window.grip.unfocus", &s->window_grip_unfocus, sd);
-
-	/* --- Window frame --- */
-	load_color(db, "window.frame.focusColor",
-		&s->window_frame_focus_color);
-	load_color(db, "window.frame.unfocusColor",
-		&s->window_frame_unfocus_color);
-
-	/* --- Window borders and geometry --- */
-	load_color(db, "window.borderColor", &s->window_border_color);
-	s->window_border_width = style_get_int(db, "window.borderWidth",
-		s->window_border_width);
-	s->window_bevel_width = style_get_int(db, "window.bevelWidth",
-		s->window_bevel_width);
-	const char *rc = style_get(db, "window.roundCorners");
-	if (rc)
-		s->window_round_corners = parse_round_corners(rc);
+	/* --- Window frame, as FbWinFrameTheme and its label themes --- */
+	load_window(s, db, sd);
 
 	/* --- Focus border (accessibility) --- */
 	s->window_focus_border_width = style_get_int(db,
@@ -1376,26 +1453,15 @@ style_clear(struct wm_style *s)
 	font_finish(&s->menu_title_font);
 	font_finish(&s->menu_frame_font);
 	font_finish(&s->toolbar_font);
+	font_finish(&s->window_font);
 
 	/* Menu bullet */
 	free(s->menu_bullet);
 
 	/* Button pixmaps */
-	free(s->window_close_pixmap);
-	free(s->window_close_unfocus_pixmap);
-	free(s->window_close_pressed_pixmap);
-	free(s->window_maximize_pixmap);
-	free(s->window_maximize_unfocus_pixmap);
-	free(s->window_maximize_pressed_pixmap);
-	free(s->window_iconify_pixmap);
-	free(s->window_iconify_unfocus_pixmap);
-	free(s->window_iconify_pressed_pixmap);
-	free(s->window_shade_pixmap);
-	free(s->window_shade_unfocus_pixmap);
-	free(s->window_shade_pressed_pixmap);
-	free(s->window_stick_pixmap);
-	free(s->window_stick_unfocus_pixmap);
-	free(s->window_stick_pressed_pixmap);
+	for (int i = 0; i < WM_WINDOW_PIXMAPS; i++)
+		for (int j = 0; j < WM_PIXMAP_STATES; j++)
+			free(s->window_pixmaps[i][j]);
 
 	/* Metadata */
 	free(s->style_dir);

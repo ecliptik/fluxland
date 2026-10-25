@@ -795,10 +795,10 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 }
 
 static cairo_surface_t *
-wm_render_button_glyph(enum wm_button_type type, const struct wm_color *color,
-	int size, float scale)
+wm_render_button_glyph(enum wm_button_type type, bool toggled,
+	const struct wm_color *color, int w, int h)
 {
-	(void)type; (void)color; (void)size; (void)scale;
+	(void)type; (void)toggled; (void)color; (void)w; (void)h;
 	return NULL;
 }
 

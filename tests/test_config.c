@@ -79,7 +79,7 @@ test_create_destroy(void)
 	assert(c->titlebar_left != NULL);
 	assert(strcmp(c->titlebar_left, "Stick") == 0);
 	assert(c->titlebar_right != NULL);
-	assert(strcmp(c->titlebar_right, "Shade Minimize Maximize Close") == 0);
+	assert(strcmp(c->titlebar_right, "Minimize Maximize Close") == 0);
 	assert(c->clock_format != NULL);
 	assert(strcmp(c->clock_format, "%H:%M") == 0);
 	assert(c->iconbar_mode == 0);
@@ -1250,7 +1250,7 @@ test_tab_settings(void)
 
 	assert(c->tab_focus_model == 1); /* MouseTabFocus */
 	assert(c->tabs_intitlebar == false);
-	assert(c->tab_placement == 1); /* Bottom */
+	assert(c->tab_placement == WM_TAB_BOTTOM); /* Fluxbox's Bottom */
 	assert(c->tab_width == 80);
 	assert(c->tab_padding == 4);
 
@@ -1261,7 +1261,7 @@ test_tab_settings(void)
 		"session.screen0.tab.placement: Left\n");
 	c = config_create();
 	config_load(c, TEST_INIT);
-	assert(c->tab_placement == 2);
+	assert(c->tab_placement == WM_TAB_LEFT);
 	config_destroy(c);
 
 	/* Right tab placement */
@@ -1269,15 +1269,26 @@ test_tab_settings(void)
 		"session.screen0.tab.placement: Right\n");
 	c = config_create();
 	config_load(c, TEST_INIT);
-	assert(c->tab_placement == 3);
+	assert(c->tab_placement == WM_TAB_RIGHT);
 	config_destroy(c);
 
-	/* Top tab placement (default) */
+	/* Fluxbox's other names; TopLeft and 64 when unset */
 	write_file(TEST_INIT,
-		"session.screen0.tab.placement: Top\n");
+		"session.screen0.tab.placement: LeftTop\n");
 	c = config_create();
 	config_load(c, TEST_INIT);
-	assert(c->tab_placement == 0);
+	assert(c->tab_placement == WM_TAB_LEFT_TOP);
+	config_destroy(c);
+	write_file(TEST_INIT, "session.screen0.tab.placement: Top\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_placement == WM_TAB_TOP);
+	assert(c->tab_width == 64);
+	config_destroy(c);
+	write_file(TEST_INIT, "session.screen0.tabs.intitlebar: true\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->tab_placement == WM_TAB_TOP_LEFT);
 	config_destroy(c);
 
 	/* ClickTabFocus (default) */
@@ -1658,7 +1669,7 @@ test_tab_width_and_padding_clamp(void)
 	);
 	struct wm_config *c = config_create();
 	config_load(c, TEST_INIT);
-	assert(c->tab_width == 0);
+	assert(c->tab_width == 64);	/* Fluxbox's, for a bad one */
 	assert(c->tab_padding == 0);
 	config_destroy(c);
 

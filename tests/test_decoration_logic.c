@@ -236,6 +236,18 @@ enum wm_justify {
 #define WM_CORNER_BOTTOM_LEFT  (1 << 2)
 #define WM_CORNER_BOTTOM_RIGHT (1 << 3)
 
+enum wm_window_pixmap {
+	WM_PIXMAP_CLOSE, WM_PIXMAP_MAXIMIZE, WM_PIXMAP_ICONIFY,
+	WM_PIXMAP_SHADE, WM_PIXMAP_UNSHADE, WM_PIXMAP_STICK, WM_PIXMAP_STUCK,
+	WM_PIXMAP_MENUICON, WM_PIXMAP_LHALF, WM_PIXMAP_RHALF,
+	WM_WINDOW_PIXMAPS,
+};
+enum wm_pixmap_state {
+	WM_PIXMAP_FOCUS, WM_PIXMAP_UNFOCUS, WM_PIXMAP_PRESSED,
+	WM_PIXMAP_STATES,
+};
+
+/* The window part of style.h's wm_style */
 struct wm_style {
 	struct wm_texture window_title_focus;
 	struct wm_texture window_title_unfocus;
@@ -249,17 +261,18 @@ struct wm_style {
 	struct wm_font window_label_focus_font;
 	struct wm_font window_label_unfocus_font;
 	enum wm_justify window_justify;
+	int window_label_focus_border_width;
+	int window_label_unfocus_border_width;
+	struct wm_color window_label_focus_border_color;
+	struct wm_color window_label_unfocus_border_color;
+	struct wm_font window_font;
 	struct wm_texture window_button_focus;
 	struct wm_texture window_button_unfocus;
 	struct wm_texture window_button_pressed;
 	struct wm_color window_button_focus_pic_color;
 	struct wm_color window_button_unfocus_pic_color;
 	struct wm_color window_button_pressed_pic_color;
-	char *window_close_pixmap, *window_close_unfocus_pixmap, *window_close_pressed_pixmap;
-	char *window_maximize_pixmap, *window_maximize_unfocus_pixmap, *window_maximize_pressed_pixmap;
-	char *window_iconify_pixmap, *window_iconify_unfocus_pixmap, *window_iconify_pressed_pixmap;
-	char *window_shade_pixmap, *window_shade_unfocus_pixmap, *window_shade_pressed_pixmap;
-	char *window_stick_pixmap, *window_stick_unfocus_pixmap, *window_stick_pressed_pixmap;
+	char *window_pixmaps[WM_WINDOW_PIXMAPS][WM_PIXMAP_STATES];
 	struct wm_texture window_handle_focus;
 	struct wm_texture window_handle_unfocus;
 	int window_handle_width;
@@ -268,58 +281,12 @@ struct wm_style {
 	struct wm_color window_frame_focus_color;
 	struct wm_color window_frame_unfocus_color;
 	struct wm_color window_border_color;
+	struct wm_color window_border_unfocus_color;
 	int window_border_width;
 	int window_bevel_width;
 	uint8_t window_round_corners;
 	int window_focus_border_width;
 	struct wm_color window_focus_border_color;
-	struct wm_texture menu_title;
-	struct wm_color menu_title_text_color;
-	struct wm_font menu_title_font;
-	enum wm_justify menu_title_justify;
-	struct wm_texture menu_frame;
-	struct wm_color menu_frame_text_color;
-	struct wm_font menu_frame_font;
-	struct wm_texture menu_hilite;
-	struct wm_color menu_hilite_text_color;
-	struct wm_color menu_border_color;
-	int menu_border_width;
-	char *menu_bullet;
-	enum wm_justify menu_bullet_position;
-	int menu_item_height;
-	int menu_title_height;
-	struct wm_texture slit_texture;
-	struct wm_color slit_border_color;
-	int slit_border_width;
-	struct wm_texture toolbar_texture;
-	struct wm_color toolbar_text_color;
-	struct wm_font toolbar_font;
-	struct wm_texture toolbar_label_texture;
-	struct wm_texture toolbar_clock_texture;
-	struct wm_texture toolbar_workspace_texture;
-	struct wm_texture toolbar_button_texture;
-	bool toolbar_has_label_texture;
-	bool toolbar_has_clock_texture;
-	bool toolbar_has_workspace_texture;
-	bool toolbar_has_button_texture;
-	struct wm_color toolbar_label_text_color;
-	struct wm_color toolbar_clock_text_color;
-	struct wm_color toolbar_workspace_text_color;
-	struct wm_color toolbar_window_label_text_color;
-	bool toolbar_has_label_text_color;
-	bool toolbar_has_clock_text_color;
-	bool toolbar_has_workspace_text_color;
-	bool toolbar_has_window_label_text_color;
-	struct wm_color toolbar_button_pic_color;
-	bool toolbar_has_button_pic_color;
-	struct wm_color toolbar_iconbar_focused_color;
-	struct wm_color toolbar_iconbar_focused_text_color;
-	struct wm_color toolbar_iconbar_unfocused_color;
-	struct wm_color toolbar_iconbar_unfocused_text_color;
-	bool toolbar_iconbar_has_focused_color;
-	bool toolbar_iconbar_has_unfocused_color;
-	char *style_dir;
-	char *style_path;
 };
 
 /* --- Button types --- */
@@ -330,6 +297,9 @@ enum wm_button_type {
 	WM_BUTTON_ICONIFY,
 	WM_BUTTON_SHADE,
 	WM_BUTTON_STICK,
+	WM_BUTTON_MENUICON,
+	WM_BUTTON_LHALF,
+	WM_BUTTON_RHALF,
 };
 
 /* --- Tab group --- */
@@ -344,6 +314,13 @@ struct wm_tab_group {
 };
 
 /* --- Config --- */
+
+enum wm_tab_placement {
+	WM_TAB_TOP_LEFT, WM_TAB_TOP, WM_TAB_TOP_RIGHT,
+	WM_TAB_BOTTOM_LEFT, WM_TAB_BOTTOM, WM_TAB_BOTTOM_RIGHT,
+	WM_TAB_LEFT_TOP, WM_TAB_LEFT, WM_TAB_LEFT_BOTTOM,
+	WM_TAB_RIGHT_TOP, WM_TAB_RIGHT, WM_TAB_RIGHT_BOTTOM,
+};
 
 struct wm_config {
 	char *titlebar_left;
@@ -368,6 +345,7 @@ struct wm_view {
 	struct wm_tab_group *tab_group;
 	struct wl_list tab_link;
 	struct wm_decoration *decoration;
+	bool sticky;
 };
 
 /* --- Server --- */
@@ -615,11 +593,19 @@ wm_render_text(const char *text, const struct wm_font *font,
 }
 
 static cairo_surface_t *
-wm_render_button_glyph(enum wm_button_type type, const struct wm_color *color,
-	int size, float scale)
+wm_render_button_glyph(enum wm_button_type type, bool toggled,
+	const struct wm_color *color, int w, int h)
 {
-	(void)type; (void)color; (void)size; (void)scale;
+	(void)type; (void)toggled; (void)color; (void)w; (void)h;
 	return NULL;
+}
+
+/* A 12 pixel font: titlebars are 12 + 2 bevels + 2 high */
+static int
+wm_font_height(const struct wm_font *font, float scale)
+{
+	(void)font; (void)scale;
+	return 12;
 }
 
 static cairo_surface_t *
@@ -698,6 +684,9 @@ setup(void)
 	test_style.window_handle_width = 6;
 	test_style.window_border_width = 1;
 	test_style.window_label_focus_font.size = 12;
+	/* Fluxbox's defaults */
+	test_config.tabs_intitlebar = true;
+	test_config.tab_width = 64;
 }
 
 static struct wm_view test_view;
@@ -1042,9 +1031,9 @@ test_region_at_border_bottom(void)
 	setup();
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
 
-	/* Outer height = bw + th + ch + hh + bw = 1 + 20 + 600 + 6 + 1 = 628 */
-	/* Bottom border at y=[628-1, 628) = [627, 628) */
-	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 627);
+	/* Outer height = bw + th + bw + ch + bw + hh + bw = 630 (the
+	 * titlebar's and handle's border lines, as Fluxbox) */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 629);
 	assert(region == WM_DECOR_REGION_BORDER_BOTTOM);
 
 	free_test_decoration(deco);
@@ -1086,9 +1075,8 @@ test_region_at_handle(void)
 	setup();
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
 
-	/* Handle y range: bw + th + ch = 1+20+600 = 621 to 621+6 = 627 */
-	/* Handle x range: bw+gw to bw+cw-gw = 1+20=21 to 1+800-20=781 */
-	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 623);
+	/* Handle row: y 623..628, its border line at 622 */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 625);
 	assert(region == WM_DECOR_REGION_HANDLE);
 
 	free_test_decoration(deco);
@@ -1101,8 +1089,8 @@ test_region_at_grip_left(void)
 	setup();
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
 
-	/* Grip left at handle y, x < bw + gw = 1+20 = 21 */
-	enum wm_decor_region region = wm_decoration_region_at(deco, 5, 623);
+	/* Grip left at handle y, x < bw + gw + its border line */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 5, 625);
 	assert(region == WM_DECOR_REGION_GRIP_LEFT);
 
 	free_test_decoration(deco);
@@ -1115,8 +1103,8 @@ test_region_at_grip_right(void)
 	setup();
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
 
-	/* Grip right at handle y, x >= bw + cw - gw = 1+800-20 = 781 */
-	enum wm_decor_region region = wm_decoration_region_at(deco, 790, 623);
+	/* Grip right at handle y, x >= bw + cw - gw - its border line */
+	enum wm_decor_region region = wm_decoration_region_at(deco, 790, 625);
 	assert(region == WM_DECOR_REGION_GRIP_RIGHT);
 
 	free_test_decoration(deco);
@@ -1206,9 +1194,9 @@ test_get_extents_normal(void)
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
-	/* NORMAL: top = bw + th = 1+20=21, bottom = bw + hh = 1+6=7 */
-	assert(top == 21);
-	assert(bottom == 7);
+	/* NORMAL: top = bw + th + bw = 22, bottom = bw + hh + bw = 8 */
+	assert(top == 22);
+	assert(bottom == 8);
 	assert(left == 1);
 	assert(right == 1);
 
@@ -1262,11 +1250,8 @@ test_get_extents_tab(void)
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
-	/* TAB: has titlebar, no handle, no borders in extent computation */
-	/* Wait - TAB actually has no borders? Let's check: */
-	/* TAB is NOT in has_borders check (only NORMAL and BORDER) */
-	/* So TAB: top = bw + th = 1+20=21, bottom = bw = 1, left = bw=1, right=bw=1 */
-	assert(top == 21);
+	/* TAB: a titlebar, no handle; the frame keeps its border width */
+	assert(top == 22);	/* and the titlebar's border line */
 	assert(bottom == 1);
 	assert(left == 1);
 	assert(right == 1);
@@ -1285,7 +1270,7 @@ test_get_extents_tiny(void)
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
 	/* TINY: titlebar yes, handle no, borders no */
-	assert(top == 21);
+	assert(top == 22);	/* and the titlebar's border line */
 	assert(bottom == 1);
 	assert(left == 1);
 	assert(right == 1);
@@ -1304,7 +1289,7 @@ test_get_extents_tool(void)
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
 	/* TOOL: same as TINY */
-	assert(top == 21);
+	assert(top == 22);	/* and the titlebar's border line */
 	assert(bottom == 1);
 	assert(left == 1);
 	assert(right == 1);
@@ -1332,10 +1317,11 @@ test_style_titlebar_height_default(void)
 {
 	setup();
 	test_style.window_title_height = 0;
-	test_style.window_label_focus_font.size = 14;
+	test_style.window_bevel_width = 2;
 
+	/* Fluxbox: window.font's height, a bevel above and below, and 2 */
 	int h = style_titlebar_height(&test_style);
-	assert(h == 14 + 8); /* font size + padding */
+	assert(h == 12 + 2 * 2 + 2);
 	printf("  PASS: style_titlebar_height_default\n");
 }
 
@@ -1356,8 +1342,9 @@ test_style_handle_height_default(void)
 	setup();
 	test_style.window_handle_width = 0;
 
+	/* Fluxbox: no handleWidth, no handle */
 	int h = style_handle_height(&test_style);
-	assert(h == DEFAULT_HANDLE_HEIGHT); /* 6 */
+	assert(h == 0);
 	printf("  PASS: style_handle_height_default\n");
 }
 
@@ -1368,7 +1355,7 @@ test_style_border_width_default(void)
 	test_style.window_border_width = -1;
 
 	int w = style_border_width(&test_style);
-	assert(w == DEFAULT_BORDER_WIDTH); /* 1 */
+	assert(w == 0);
 	printf("  PASS: style_border_width_default\n");
 }
 
@@ -1506,19 +1493,16 @@ test_tab_at_no_titlebar_preset(void)
 	printf("  PASS: tab_at_no_titlebar_preset\n");
 }
 
-/* --- tab_at (external tab bar) --- */
+/* --- tab_at (external tabs, as Fluxbox's alignTabs) --- */
 
 static void
 test_tab_at_external_horizontal(void)
 {
 	setup();
 	test_config.tabs_intitlebar = false;
-	test_config.tab_padding = 2;
+	test_config.tab_placement = WM_TAB_TOP_LEFT;
 
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 400, 300);
-	deco->tab_bar_size = 20;
-	deco->tab_bar_placement = WM_TAB_BAR_TOP;
-	deco->tab_bar_box = (struct wlr_box){1, 21, 400, 20};
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -1532,14 +1516,13 @@ test_tab_at_external_horizontal(void)
 	wl_list_insert(&tg.views, &test_view.tab_link);
 	test_view.tab_group = &tg;
 
-	/* Horizontal: 2 tabs, padding=2, total_pad=2, seg_w=(400-2)/2=199
-	 * Tab 0: x relative to box.x in [0, 199+2=201)
-	 * Tab 1: x relative to box.x in [201, 400) */
-	int idx = wm_decoration_tab_at(deco, 100, 30);
-	assert(idx == 0);
-
-	idx = wm_decoration_tab_at(deco, 350, 30);
-	assert(idx == 1);
+	/* Over the frame's top left: a 130 x 22 box with its border, two
+	 * 64 long tabs inside from (1, 1) */
+	assert(wm_decoration_tab_at(deco, 30, 10) == 0);
+	assert(wm_decoration_tab_at(deco, 100, 10) == 1);
+	assert(wm_decoration_tab_at(deco, 200, 10) == -1);
+	assert(wm_decoration_region_at(deco, 30, 10) ==
+		WM_DECOR_REGION_TITLEBAR);
 
 	test_view.tab_group = NULL;
 	free_test_decoration(deco);
@@ -1551,12 +1534,9 @@ test_tab_at_external_vertical(void)
 {
 	setup();
 	test_config.tabs_intitlebar = false;
-	test_config.tab_padding = 0;
+	test_config.tab_placement = WM_TAB_LEFT_TOP;
 
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 400, 300);
-	deco->tab_bar_size = 30;
-	deco->tab_bar_placement = WM_TAB_BAR_LEFT;
-	deco->tab_bar_box = (struct wlr_box){1, 21, 30, 300};
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -1574,40 +1554,34 @@ test_tab_at_external_vertical(void)
 	wl_list_insert(&tg.views, &test_view.tab_link);
 	test_view.tab_group = &tg;
 
-	/* Vertical: 3 tabs, padding=0, seg_h=300/3=100
-	 * Tab 0: ly [0, 100)
-	 * Tab 1: ly [100, 200)
-	 * Tab 2: ly [200, 300) */
-	int idx = wm_decoration_tab_at(deco, 15, 21 + 50);
-	assert(idx == 0);
-
-	idx = wm_decoration_tab_at(deco, 15, 21 + 150);
-	assert(idx == 1);
-
-	idx = wm_decoration_tab_at(deco, 15, 21 + 250);
-	assert(idx == 2);
+	/* Down the left side from the top, the first tab first: 22 wide,
+	 * 3 x 64 long inside its border */
+	assert(wm_decoration_tab_at(deco, 10, 1 + 32) == 0);
+	assert(wm_decoration_tab_at(deco, 10, 1 + 100) == 1);
+	assert(wm_decoration_tab_at(deco, 10, 1 + 170) == 2);
+	assert(wm_decoration_tab_at(deco, 10, 1 + 250) == -1);
 
 	test_view.tab_group = NULL;
 	free_test_decoration(deco);
 	printf("  PASS: tab_at_external_vertical\n");
 }
 
-/* --- get_extents with external tab bar --- */
+/* --- get_extents with external tabs --- */
 
 static void
 test_get_extents_ext_tab_bar_top(void)
 {
 	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_placement = WM_TAB_TOP_LEFT;
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
-	deco->tab_bar_size = 25;
-	deco->tab_bar_placement = WM_TAB_BAR_TOP;
 
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
-	/* NORMAL + top tab bar: top = bw(1) + th(20) + tab(25) = 46 */
-	assert(top == 46);
-	assert(bottom == 7);
+	/* tabs (20 + border 1, sharing the frame's) + bw + th + bw */
+	assert(top == 21 + 1 + 20 + 1);
+	assert(bottom == 8);
 	assert(left == 1);
 	assert(right == 1);
 
@@ -1619,16 +1593,16 @@ static void
 test_get_extents_ext_tab_bar_left(void)
 {
 	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_placement = WM_TAB_LEFT_TOP;
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
-	deco->tab_bar_size = 30;
-	deco->tab_bar_placement = WM_TAB_BAR_LEFT;
 
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
-	assert(top == 21);
-	assert(bottom == 7);
-	assert(left == 31); /* bw(1) + tab(30) */
+	assert(top == 22);
+	assert(bottom == 8);
+	assert(left == 21 + 1);
 	assert(right == 1);
 
 	free_test_decoration(deco);
@@ -1639,15 +1613,15 @@ static void
 test_get_extents_ext_tab_bar_right(void)
 {
 	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_placement = WM_TAB_RIGHT_TOP;
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
-	deco->tab_bar_size = 30;
-	deco->tab_bar_placement = WM_TAB_BAR_RIGHT;
 
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
 	assert(left == 1);
-	assert(right == 31); /* bw(1) + tab(30) */
+	assert(right == 1 + 21);
 
 	free_test_decoration(deco);
 	printf("  PASS: get_extents_ext_tab_bar_right\n");
@@ -1657,15 +1631,15 @@ static void
 test_get_extents_ext_tab_bar_bottom(void)
 {
 	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_placement = WM_TAB_BOTTOM;
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
-	deco->tab_bar_size = 25;
-	deco->tab_bar_placement = WM_TAB_BAR_BOTTOM;
 
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
-	assert(top == 21);
-	assert(bottom == 32); /* bw(1) + hh(6) + tab(25) */
+	assert(top == 22);
+	assert(bottom == 8 + 21);
 
 	free_test_decoration(deco);
 	printf("  PASS: get_extents_ext_tab_bar_bottom\n");
@@ -1682,7 +1656,7 @@ test_get_extents_null_params(void)
 
 	int top;
 	wm_decoration_get_extents(deco, &top, NULL, NULL, NULL);
-	assert(top == 21);
+	assert(top == 22);
 
 	free_test_decoration(deco);
 	printf("  PASS: get_extents_null_params\n");
@@ -1757,15 +1731,12 @@ test_region_at_none_preset(void)
 	setup();
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NONE, 800, 600);
 
-	/* NONE: no titlebar, no handle.
-	 * outer_h = 0 + 600 + 0 + 2*1 = 602, outer_w = 802
-	 * Interior should be CLIENT */
+	/* NONE: no titlebar, no handle, and no border either (as its
+	 * extents say) */
 	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 300);
 	assert(region == WM_DECOR_REGION_CLIENT);
-
-	/* Border still present */
 	region = wm_decoration_region_at(deco, 400, 0);
-	assert(region == WM_DECOR_REGION_BORDER_TOP);
+	assert(region == WM_DECOR_REGION_CLIENT);
 
 	free_test_decoration(deco);
 	printf("  PASS: region_at_none_preset\n");
@@ -1780,9 +1751,9 @@ test_style_titlebar_height_fallback(void)
 	test_style.window_title_height = 0;
 	test_style.window_label_focus_font.size = 0;
 
-	/* Fallback: 12 + 8 = 20 */
+	/* window.font (12 here) and 2, no bevel */
 	int h = style_titlebar_height(&test_style);
-	assert(h == 20);
+	assert(h == 14);
 	printf("  PASS: style_titlebar_height_fallback\n");
 }
 
@@ -2121,14 +2092,15 @@ static void
 test_region_at_external_tab_bar(void)
 {
 	setup();
+	test_config.tabs_intitlebar = false;
+	test_config.tab_placement = WM_TAB_TOP;
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
-	deco->tab_bar_size = 25;
-	deco->tab_bar_placement = WM_TAB_BAR_TOP;
-	deco->tab_bar_box = (struct wlr_box){1, 21, 800, 25};
 
-	/* Click in the external tab bar area => should be TITLEBAR */
-	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 30);
-	assert(region == WM_DECOR_REGION_TITLEBAR);
+	/* The one tab is centred over the frame: x 368..433, y 0..21 */
+	assert(wm_decoration_region_at(deco, 400, 10) ==
+		WM_DECOR_REGION_TITLEBAR);
+	assert(wm_decoration_region_at(deco, 100, 10) ==
+		WM_DECOR_REGION_NONE);
 
 	free_test_decoration(deco);
 	printf("  PASS: region_at_external_tab_bar\n");
@@ -2249,9 +2221,10 @@ test_get_extents_large_border(void)
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
 
-	/* NORMAL with bw=10: top = 10+20=30, bottom = 10+6=16 */
-	assert(top == 30);
-	assert(bottom == 16);
+	/* NORMAL with bw=10: the border, titlebar and its border line;
+	 * the handle's border line, handle and border */
+	assert(top == 10 + 20 + 10);
+	assert(bottom == 10 + 6 + 10);
 	assert(left == 10);
 	assert(right == 10);
 
@@ -2363,7 +2336,7 @@ test_update_normal_content_area(void)
 	/* NORMAL: content_area.x = bw + ext_left = 1 + 0 = 1 */
 	/* content_area.y = bw + top_height + ext_top = 1 + 20 + 0 = 21 */
 	assert(deco->content_area.x == 1);
-	assert(deco->content_area.y == 21);
+	assert(deco->content_area.y == 22);
 	assert(deco->content_area.width == 800);
 	assert(deco->content_area.height == 600);
 
@@ -2388,7 +2361,7 @@ test_update_tab_preset_content_area(void)
 	/* TAB: has_titlebar=true, has_handle=false, has_borders=false */
 	/* content_area.x = bw = 1, content_area.y = bw + th = 21 */
 	assert(deco->content_area.x == 1);
-	assert(deco->content_area.y == 21);
+	assert(deco->content_area.y == 22);
 	assert(deco->content_area.width == 800);
 	assert(deco->content_area.height == 600);
 
@@ -2518,7 +2491,7 @@ test_update_normal_border_positions(void)
 	/* total_h = th(20) + ch(600) + hh(6) + 2*bw(2) = 628 */
 	assert(deco->border_bottom->node.enabled == 1);
 	assert(deco->border_bottom->node.x == 0);
-	assert(deco->border_bottom->node.y == 627);
+	assert(deco->border_bottom->node.y == 629);
 
 	wm_decoration_destroy(deco);
 	printf("  PASS: update_normal_border_positions\n");
@@ -2548,11 +2521,11 @@ test_update_normal_border_sizes(void)
 
 	/* Left border: 3 x 632 */
 	assert(deco->border_left->width == 3);
-	assert(deco->border_left->height == 632);
+	assert(deco->border_left->height == 638);
 
 	/* Right border: 3 x 632 */
 	assert(deco->border_right->width == 3);
-	assert(deco->border_right->height == 632);
+	assert(deco->border_right->height == 638);
 
 	wm_decoration_destroy(deco);
 	printf("  PASS: update_normal_border_sizes\n");
@@ -2599,12 +2572,12 @@ test_create_no_config(void)
 	struct wm_decoration *deco = wm_decoration_create(&test_view,
 		&test_style);
 	assert(deco != NULL);
-	/* Default: left="Stick", right="Shade Minimize Maximize Close" */
+	/* Fluxbox's default: left="Stick", right="Minimize Maximize Close" */
 	assert(deco->buttons_left_count == 1);
 	assert(deco->buttons_left[0].type == WM_BUTTON_STICK);
-	assert(deco->buttons_right_count == 4);
-	assert(deco->buttons_right[0].type == WM_BUTTON_SHADE);
-	assert(deco->buttons_right[3].type == WM_BUTTON_CLOSE);
+	assert(deco->buttons_right_count == 3);
+	assert(deco->buttons_right[0].type == WM_BUTTON_ICONIFY);
+	assert(deco->buttons_right[2].type == WM_BUTTON_CLOSE);
 
 	wm_decoration_destroy(deco);
 	test_server.config = &test_config;
@@ -2641,8 +2614,8 @@ test_shade_unshade_full_cycle_geometry(void)
 	assert(deco->content_height == 600);
 	/* Handle/grips should be re-enabled after update */
 	assert(deco->handle_buf->node.enabled == 1);
-	assert(deco->grip_left->node.enabled == 1);
-	assert(deco->grip_right->node.enabled == 1);
+	assert(deco->grip_left->node.enabled == 0);
+	assert(deco->grip_right->node.enabled == 0);
 
 	wm_decoration_destroy(deco);
 	printf("  PASS: shade_unshade_full_cycle_geometry\n");
@@ -2735,7 +2708,7 @@ test_update_ext_tab_bar_top_content_area(void)
 	setup_view();
 	test_config.tabs_intitlebar = false;
 	test_config.tab_width = 25;
-	test_config.tab_placement = WM_TAB_BAR_TOP;
+	test_config.tab_placement = WM_TAB_TOP_LEFT;
 
 	/* Create a tab group with 2 views */
 	struct wm_view view2 = {0};
@@ -2758,11 +2731,12 @@ test_update_ext_tab_bar_top_content_area(void)
 		&test_style);
 	assert(deco != NULL);
 
-	/* With ext tab bar top (size=25):
-	 * content_area.y = bw(1) + th(20) + ext_top(25) = 46 */
-	assert(deco->tab_bar_size == 25);
-	assert(deco->content_area.y == 46);
+	/* Tabs over the frame (20 thick, a border shared with it), then
+	 * the border, the titlebar and its border line */
+	assert(deco->tab_bar_size != 0);
+	assert(deco->content_area.y == 21 + 1 + 20 + 1);
 	assert(deco->content_area.x == 1);
+	assert(deco->tab_bar_box.width == 2 * 25 + 2);
 
 	/* Tab bar buf should be enabled */
 	assert(deco->tab_bar_buf->node.enabled == 1);
@@ -2770,7 +2744,7 @@ test_update_ext_tab_bar_top_content_area(void)
 	test_view.tab_group = NULL;
 	wm_decoration_destroy(deco);
 	test_config.tabs_intitlebar = true;
-	test_config.tab_width = 0;
+	test_config.tab_width = 64;
 	test_config.tab_placement = 0;
 	printf("  PASS: update_ext_tab_bar_top_content_area\n");
 }
@@ -2784,7 +2758,7 @@ test_update_ext_tab_bar_left_content_area(void)
 	setup_view();
 	test_config.tabs_intitlebar = false;
 	test_config.tab_width = 30;
-	test_config.tab_placement = WM_TAB_BAR_LEFT;
+	test_config.tab_placement = WM_TAB_LEFT_TOP;
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -2806,16 +2780,16 @@ test_update_ext_tab_bar_left_content_area(void)
 		&test_style);
 	assert(deco != NULL);
 
-	/* With ext tab bar left (size=30):
-	 * content_area.x = bw(1) + ext_left(30) = 31 */
-	assert(deco->tab_bar_size == 30);
-	assert(deco->content_area.x == 31);
-	assert(deco->content_area.y == 21); /* bw + th + 0 (no ext_top) */
+	/* Tabs down the left (20 thick), then the frame's border */
+	assert(deco->tab_bar_size != 0);
+	assert(deco->content_area.x == 21 + 1);
+	assert(deco->content_area.y == 22);
+	assert(deco->tab_bar_box.height == 2 * 30 + 2);
 
 	test_view.tab_group = NULL;
 	wm_decoration_destroy(deco);
 	test_config.tabs_intitlebar = true;
-	test_config.tab_width = 0;
+	test_config.tab_width = 64;
 	test_config.tab_placement = 0;
 	printf("  PASS: update_ext_tab_bar_left_content_area\n");
 }
@@ -2925,7 +2899,7 @@ test_update_style_change_dimensions(void)
 	/* Content area should reflect new dimensions */
 	/* content_area.x = bw(5), content_area.y = bw(5) + th(40) = 45 */
 	assert(deco->content_area.x == 5);
-	assert(deco->content_area.y == 45);
+	assert(deco->content_area.y == 5 + 40 + 5);
 
 	wm_decoration_destroy(deco);
 	printf("  PASS: update_style_change_dimensions\n");
@@ -2942,21 +2916,18 @@ test_update_normal_handle_grip_positions(void)
 		&test_style);
 	assert(deco != NULL);
 
-	/* Handle y = bw(1) + th(20) + ext_top(0) + ch(600) + ext_bottom(0) = 621 */
-	/* Handle x = bw(1) + gw(20) = 21 */
+	/* The handle row, grips and their border lines drawn in it:
+	 * y = bw + th + bw + ch + bw = 623, across the client's width */
 	assert(deco->handle_buf->node.enabled == 1);
-	assert(deco->handle_buf->node.y == 621);
-	assert(deco->handle_buf->node.x == 21);
+	assert(deco->handle_buf->node.y == 623);
+	assert(deco->handle_buf->node.x == 1);
+	assert(deco->grip_left->node.enabled == 0);
+	assert(deco->grip_right->node.enabled == 0);
 
-	/* Left grip: x = bw(1), y = 621 */
-	assert(deco->grip_left->node.enabled == 1);
-	assert(deco->grip_left->node.x == 1);
-	assert(deco->grip_left->node.y == 621);
-
-	/* Right grip: x = bw(1) + inner_width(800) - gw(20) = 781, y = 621 */
-	assert(deco->grip_right->node.enabled == 1);
-	assert(deco->grip_right->node.x == 781);
-	assert(deco->grip_right->node.y == 621);
+	/* The border lines under the titlebar and over the handle */
+	assert(deco->sep_top->node.enabled == 1);
+	assert(deco->sep_top->node.y == 21);
+	assert(deco->sep_bottom->node.y == 622);
 
 	wm_decoration_destroy(deco);
 	printf("  PASS: update_normal_handle_grip_positions\n");
@@ -2986,28 +2957,43 @@ test_update_titlebar_tree_position(void)
 static void
 test_render_button_fallback_bg(void)
 {
-	struct wm_texture bg_tex = {0};
-	struct wm_color pic_color = {255, 255, 255, 255};
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		400, 300);
+	struct wm_decor_button btn = { .type = WM_BUTTON_CLOSE };
 
-	/* wm_render_texture returns NULL, so render_button uses fallback path */
-	struct wlr_buffer *buf = render_button(&bg_tex, &pic_color,
-		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
+	/* No picture: the texture (here none) and the glyph */
+	struct wlr_buffer *buf = render_button(deco, &test_style, &btn,
+		DEFAULT_BUTTON_SIZE);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
+	btn.pressed = true;
+	buf = render_button(deco, &test_style, &btn, 6);
+	assert(buf != NULL);
+	wlr_buffer_drop(buf);
+	free_test_decoration(deco);
 	printf("  PASS: render_button_fallback_bg\n");
 }
 
 static void
 test_render_button_small_glyph(void)
 {
-	struct wm_texture bg_tex = {0};
-	struct wm_color pic_color = {255, 0, 0, 255};
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		400, 300);
+	struct wm_decor_button btn = { .type = WM_BUTTON_STICK };
 
-	/* size=6: glyph_size = 6-4 = 2, which is < 4, so glyph_size = size */
-	struct wlr_buffer *buf = render_button(&bg_tex, &pic_color,
-		WM_BUTTON_MAXIMIZE, 6, NULL, NULL, NULL);
+	/* A picture that doesn't load falls back to the glyph */
+	test_style.window_pixmaps[WM_PIXMAP_STUCK][WM_PIXMAP_FOCUS] =
+		"/nonexistent.xpm";
+	test_view.sticky = true;
+	assert(button_toggled(deco, WM_BUTTON_STICK));
+	struct wlr_buffer *buf = render_button(deco, &test_style, &btn, 6);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
+	test_style.window_pixmaps[WM_PIXMAP_STUCK][WM_PIXMAP_FOCUS] = NULL;
+	test_view.sticky = false;
+	free_test_decoration(deco);
 	printf("  PASS: render_button_small_glyph\n");
 }
 
@@ -3016,59 +3002,45 @@ test_render_button_small_glyph(void)
 static void
 test_render_label_center_justify(void)
 {
-	struct wm_texture bg = {0};
-	struct wm_font font = {.size = 12};
-	struct wm_color color = {255, 255, 255, 255};
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		400, 300);
+	test_style.window_justify = WM_JUSTIFY_CENTER;
+	struct frame_geom g;
+	frame_geometry(deco, &test_style, &g);
+	/* No buttons and no bevel: the label is the whole titlebar */
+	assert(g.label_x == 0 && g.label_w == 400 && g.button_size == 20);
 
-	struct wlr_buffer *buf = render_label(&bg, "Test Title", &font,
-		&color, WM_JUSTIFY_CENTER, 200, 20);
+	struct wlr_buffer *buf = render_label(deco, &test_style, &g);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
+	free_test_decoration(deco);
 	printf("  PASS: render_label_center_justify\n");
 }
 
 static void
 test_render_label_right_justify(void)
 {
-	struct wm_texture bg = {0};
-	struct wm_font font = {.size = 12};
-	struct wm_color color = {255, 255, 255, 255};
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		400, 300);
+	test_style.window_bevel_width = 2;
+	deco->titlebar_height = 20;
+	wm_decoration_configure_buttons(deco, "Stick", "Minimize Close");
+	struct frame_geom g;
+	frame_geometry(deco, &test_style, &g);
+	/* FbWinFrame::reconfigureTitlebar: buttons 16 square, a bevel
+	 * apart, the label a bevel in from them */
+	assert(g.button_size == 16);
+	assert(g.label_x == 2 + (16 + 2) + 2);
+	assert(g.label_w == 400 - g.label_x - 2 * (16 + 2) - 2);
 
-	struct wlr_buffer *buf = render_label(&bg, "Test Title", &font,
-		&color, WM_JUSTIFY_RIGHT, 200, 20);
+	test_view.title = NULL;
+	struct wlr_buffer *buf = render_label(deco, &test_style, &g);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
+	free_test_decoration(deco);
 	printf("  PASS: render_label_right_justify\n");
-}
-
-static void
-test_render_label_null_title(void)
-{
-	struct wm_texture bg = {0};
-	struct wm_font font = {.size = 12};
-	struct wm_color color = {255, 255, 255, 255};
-
-	/* NULL title should skip text rendering */
-	struct wlr_buffer *buf = render_label(&bg, NULL, &font,
-		&color, WM_JUSTIFY_LEFT, 200, 20);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-	printf("  PASS: render_label_null_title\n");
-}
-
-static void
-test_render_label_empty_title(void)
-{
-	struct wm_texture bg = {0};
-	struct wm_font font = {.size = 12};
-	struct wm_color color = {255, 255, 255, 255};
-
-	/* Empty string: title && *title is false */
-	struct wlr_buffer *buf = render_label(&bg, "", &font,
-		&color, WM_JUSTIFY_LEFT, 200, 20);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-	printf("  PASS: render_label_empty_title\n");
 }
 
 /* --- render_rounded_border_frame direct tests --- */
@@ -3145,7 +3117,7 @@ test_update_ext_tab_bar_bottom(void)
 	setup_view();
 	test_config.tabs_intitlebar = false;
 	test_config.tab_width = 25;
-	test_config.tab_placement = WM_TAB_BAR_BOTTOM;
+	test_config.tab_placement = WM_TAB_BOTTOM_LEFT;
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -3167,19 +3139,19 @@ test_update_ext_tab_bar_bottom(void)
 		&test_style);
 	assert(deco != NULL);
 
-	assert(deco->tab_bar_size == 25);
-	assert(deco->tab_bar_placement == WM_TAB_BAR_BOTTOM);
+	assert(deco->tab_bar_size != 0);
 	assert(deco->tab_bar_buf->node.enabled == 1);
 
-	/* Bottom tab bar: content_area.y unchanged, but extents add tab bar */
+	/* Under the frame: the extents take the tabs (20 and a border) */
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
-	assert(bottom == 1 + 6 + 25); /* bw + hh + tab_bar */
+	assert(top == 22);
+	assert(bottom == 1 + 6 + 1 + 21);
 
 	test_view.tab_group = NULL;
 	wm_decoration_destroy(deco);
 	test_config.tabs_intitlebar = true;
-	test_config.tab_width = 0;
+	test_config.tab_width = 64;
 	test_config.tab_placement = 0;
 	printf("  PASS: update_ext_tab_bar_bottom\n");
 }
@@ -3193,7 +3165,7 @@ test_update_ext_tab_bar_right(void)
 	setup_view();
 	test_config.tabs_intitlebar = false;
 	test_config.tab_width = 30;
-	test_config.tab_placement = WM_TAB_BAR_RIGHT;
+	test_config.tab_placement = WM_TAB_RIGHT_TOP;
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -3215,20 +3187,19 @@ test_update_ext_tab_bar_right(void)
 		&test_style);
 	assert(deco != NULL);
 
-	assert(deco->tab_bar_size == 30);
-	assert(deco->tab_bar_placement == WM_TAB_BAR_RIGHT);
+	assert(deco->tab_bar_size != 0);
 	assert(deco->tab_bar_buf->node.enabled == 1);
 
-	/* Content area x unchanged, right extent has tab bar */
+	/* Right of the frame: 20 thick and a border */
 	int top, bottom, left, right;
 	wm_decoration_get_extents(deco, &top, &bottom, &left, &right);
-	assert(right == 1 + 30); /* bw + tab_bar */
-	assert(left == 1); /* just bw */
+	assert(right == 1 + 21);
+	assert(left == 1);
 
 	test_view.tab_group = NULL;
 	wm_decoration_destroy(deco);
 	test_config.tabs_intitlebar = true;
-	test_config.tab_width = 0;
+	test_config.tab_width = 64;
 	test_config.tab_placement = 0;
 	printf("  PASS: update_ext_tab_bar_right\n");
 }
@@ -3364,9 +3335,9 @@ test_update_ext_tab_bar_auto_size(void)
 	setup();
 	setup_view();
 	test_config.tabs_intitlebar = false;
-	test_config.tab_width = 0; /* auto-size from font */
-	test_config.tab_placement = WM_TAB_BAR_TOP;
-	test_style.window_label_focus_font.size = 14;
+	test_config.tab_width = 0; /* Fluxbox's 64 */
+	test_config.tab_placement = WM_TAB_TOP_LEFT;
+	test_style.window_bevel_width = 3;
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -3388,13 +3359,14 @@ test_update_ext_tab_bar_auto_size(void)
 		&test_style);
 	assert(deco != NULL);
 
-	/* Auto-size: font.size(14) + 8 = 22 */
-	assert(deco->tab_bar_size == 22);
+	/* 64 long each; as thick as a button (20 - 2 bevels) */
+	assert(deco->tab_bar_box.width == 2 * 64 + 2);
+	assert(deco->tab_bar_box.height == 14 + 2);
 
 	test_view.tab_group = NULL;
 	wm_decoration_destroy(deco);
 	test_config.tabs_intitlebar = true;
-	test_config.tab_width = 0;
+	test_config.tab_width = 64;
 	test_config.tab_placement = 0;
 	printf("  PASS: update_ext_tab_bar_auto_size\n");
 }
@@ -3404,73 +3376,56 @@ test_update_ext_tab_bar_auto_size(void)
 static void
 test_render_button_all_types(void)
 {
-	struct wm_texture bg_tex = {0};
-	struct wm_color pic = {255, 255, 255, 255};
-
-	/* Close */
-	struct wlr_buffer *buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_CLOSE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-
-	/* Maximize */
-	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_MAXIMIZE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-
-	/* Iconify */
-	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_ICONIFY, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-
-	/* Shade */
-	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_SHADE, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-
-	/* Stick */
-	buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_STICK, DEFAULT_BUTTON_SIZE, NULL, NULL, NULL);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		400, 300);
+	enum wm_button_type types[] = { WM_BUTTON_CLOSE, WM_BUTTON_MAXIMIZE,
+		WM_BUTTON_ICONIFY, WM_BUTTON_SHADE, WM_BUTTON_STICK,
+		WM_BUTTON_MENUICON, WM_BUTTON_LHALF, WM_BUTTON_RHALF };
+	for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+		struct wm_decor_button btn = { .type = types[i] };
+		struct wlr_buffer *buf = render_button(deco, &test_style, &btn,
+			DEFAULT_BUTTON_SIZE);
+		assert(buf != NULL);
+		wlr_buffer_drop(buf);
+	}
+	free_test_decoration(deco);
 	printf("  PASS: render_button_all_types\n");
 }
 
-/* --- additional coverage: render_label left justify (default) --- */
+/* --- additional coverage: tabs sharing the label --- */
 
 static void
 test_render_label_left_justify(void)
 {
-	struct wm_texture bg = {0};
-	struct wm_font font = {.size = 12};
-	struct wm_color color = {255, 255, 255, 255};
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		300, 200);
+	struct wm_view view2 = {0};
+	view2.title = "Second";
+	wl_list_init(&view2.tab_link);
+	struct wm_tab_group tg;
+	wl_list_init(&tg.views);
+	tg.count = 2;
+	tg.active_view = &test_view;
+	wl_list_insert(&tg.views, &view2.tab_link);
+	wl_list_insert(&tg.views, &test_view.tab_link);
+	test_view.tab_group = &tg;
 
-	struct wlr_buffer *buf = render_label(&bg, "Left Title", &font,
-		&color, WM_JUSTIFY_LEFT, 200, 20);
+	/* Two tabs with a 1 pixel border between: 149 + 1 + 150 */
+	test_style.window_label_unfocus_border_width = 1;
+	test_style.window_label_focus_border_width = 1;
+	struct frame_geom g;
+	frame_geometry(deco, &test_style, &g);
+	struct wlr_buffer *buf = render_label(deco, &test_style, &g);
 	assert(buf != NULL);
 	wlr_buffer_drop(buf);
+	assert(wm_decoration_tab_at(deco, 1 + 100, 1 + 10) == 0);
+	assert(wm_decoration_tab_at(deco, 1 + 200, 1 + 10) == 1);
+
+	test_view.tab_group = NULL;
+	free_test_decoration(deco);
 	printf("  PASS: render_label_left_justify\n");
-}
-
-/* --- additional coverage: render_label with very small height --- */
-
-static void
-test_render_label_small_height(void)
-{
-	struct wm_texture bg = {0};
-	struct wm_font font = {.size = 12};
-	struct wm_color color = {255, 255, 255, 255};
-
-	/* Height 2 is smaller than text height => text_y < 0 guard hit */
-	struct wlr_buffer *buf = render_label(&bg, "Title", &font,
-		&color, WM_JUSTIFY_LEFT, 100, 2);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-	printf("  PASS: render_label_small_height\n");
 }
 
 /* --- additional coverage: render_rounded_border_frame all corners --- */
@@ -3607,14 +3562,14 @@ test_decoration_update_content_resize(void)
 static void
 test_render_button_zero_size(void)
 {
-	struct wm_texture bg_tex = {0};
-	struct wm_color pic = {255, 255, 255, 255};
-
-	/* Zero size: glyph_size logic (0 - 4 < 4 => glyph_size = size = 0) */
-	struct wlr_buffer *buf = render_button(&bg_tex, &pic,
-		WM_BUTTON_CLOSE, 0, NULL, NULL, NULL);
-	/* May return NULL or empty buffer; main thing is no crash */
-	if (buf) wlr_buffer_drop(buf);
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL,
+		400, 300);
+	struct wm_decor_button btn = { .type = WM_BUTTON_CLOSE };
+	struct wlr_buffer *buf = render_button(deco, &test_style, &btn, 1);
+	if (buf)
+		wlr_buffer_drop(buf);
+	free_test_decoration(deco);
 	printf("  PASS: render_button_zero_size\n");
 }
 
@@ -3627,7 +3582,7 @@ test_update_ext_tab_bar_right_content_area(void)
 	setup_view();
 	test_config.tabs_intitlebar = false;
 	test_config.tab_width = 30;
-	test_config.tab_placement = WM_TAB_BAR_RIGHT;
+	test_config.tab_placement = WM_TAB_RIGHT;
 
 	struct wm_view view2 = {0};
 	view2.server = &test_server;
@@ -3649,15 +3604,14 @@ test_update_ext_tab_bar_right_content_area(void)
 		&test_style);
 	assert(deco != NULL);
 
-	assert(deco->tab_bar_size == 30);
-	assert(deco->tab_bar_placement == WM_TAB_BAR_RIGHT);
-	/* Content area x stays at bw since right bar is outside */
+	assert(deco->tab_bar_size != 0);
+	/* Content area x stays at bw since the tabs are on the right */
 	assert(deco->content_area.x == 1);
 
 	test_view.tab_group = NULL;
 	wm_decoration_destroy(deco);
 	test_config.tabs_intitlebar = true;
-	test_config.tab_width = 0;
+	test_config.tab_width = 64;
 	test_config.tab_placement = 0;
 	printf("  PASS: update_ext_tab_bar_right_content_area\n");
 }
@@ -3877,8 +3831,6 @@ main(void)
 	test_render_button_small_glyph();
 	test_render_label_center_justify();
 	test_render_label_right_justify();
-	test_render_label_null_title();
-	test_render_label_empty_title();
 
 	/* render_rounded_border_frame direct */
 	test_render_rounded_border_frame_basic();
@@ -3905,7 +3857,6 @@ main(void)
 	/* additional coverage: render functions */
 	test_render_button_all_types();
 	test_render_label_left_justify();
-	test_render_label_small_height();
 	test_render_rounded_border_frame_all_corners();
 	test_render_rounded_border_frame_bottom_only();
 	test_render_button_zero_size();

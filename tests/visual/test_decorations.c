@@ -363,7 +363,7 @@ test_button_glyphs(void)
 	bool all_ok = true;
 	for (int i = 0; i < 5; i++) {
 		cairo_surface_t *glyph = wm_render_button_glyph(
-			types[i], &pic_color, btn_size, 1.0f);
+			types[i], false, &pic_color, btn_size, btn_size);
 		if (!glyph) {
 			all_ok = false;
 			continue;
@@ -528,7 +528,7 @@ test_titlebar_composition(void)
 		.r = 0xd8, .g = 0xde, .b = 0xe9, .a = 0xFF
 	};
 	cairo_surface_t *close_glyph = wm_render_button_glyph(
-		WM_BUTTON_CLOSE, &pic_color, 12, 1.0f);
+		WM_BUTTON_CLOSE, false, &pic_color, 12, 12);
 	if (close_glyph) {
 		cairo_set_source_surface(cr, close_glyph,
 					 width - 16, (height - 12) / 2);
@@ -1249,7 +1249,7 @@ test_null_texture_inputs(void)
 
 	/* NULL button color should return NULL */
 	cairo_surface_t *s6 = wm_render_button_glyph(WM_BUTTON_CLOSE,
-						       NULL, 16, 1.0f);
+						       false, NULL, 16, 16);
 	if (s6 != NULL) {
 		TEST_FAIL("expected NULL for NULL button color");
 		cairo_surface_destroy(s6);

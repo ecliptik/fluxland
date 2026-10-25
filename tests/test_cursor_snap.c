@@ -591,6 +591,9 @@ enum wm_button_type {
 	WM_BUTTON_ICONIFY,
 	WM_BUTTON_SHADE,
 	WM_BUTTON_STICK,
+	WM_BUTTON_MENUICON,
+	WM_BUTTON_LHALF,
+	WM_BUTTON_RHALF,
 };
 
 struct wm_decor_button {
@@ -1404,6 +1407,9 @@ static int wm_decoration_tab_at(struct wm_decoration *d, double x, double y)
 	{ (void)d; (void)x; (void)y; return -1; }
 static void wm_decoration_set_shaded(struct wm_decoration *d, bool s,
 	struct wm_style *st) { (void)d; (void)s; (void)st; }
+static void wm_decoration_set_pressed(struct wm_decoration *d,
+	struct wm_decor_button *b, struct wm_style *st)
+	{ (void)d; (void)b; (void)st; }
 static bool wm_session_is_locked(struct wm_server *server)
 	{ return server->session_lock.locked; }
 static struct wlr_surface *wm_session_lock_surface_at(
@@ -1513,6 +1519,13 @@ wm_command_execute(struct wm_server *server, struct wm_command *cmd,
 	g_last_command_target = target;
 	return true;
 }
+static struct wm_command *
+wm_command_parse(const char *str)
+{
+	(void)str;
+	return NULL;
+}
+static void wm_command_destroy(struct wm_command *cmd) { (void)cmd; }
 static int g_action_on_count;
 static int g_last_action_on;
 static struct wm_view *g_last_action_target;
