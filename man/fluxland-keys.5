@@ -288,6 +288,9 @@ Send the window there (Take goes with it).
 .TP
 .BR AddWorkspace ", " RemoveLastWorkspace ", " SetWorkspaceName " \fIname\fP"
 .TP
+.B SetWorkspaceNameDialog
+A dialog to type the workspace's name in.
+.TP
 .BR SetHead " \fIN\fP, " SendToNextHead ", " SendToPrevHead " [\fIn\fP]"
 .TP
 .BR ShowDesktop ", " CloseAllWindows
@@ -333,6 +336,20 @@ For each window (that meets the condition).
 .TP
 .BI SetStyle " path\fR, " ReloadStyle
 A style file, or a directory with theme.cfg or style.cfg.
+.TP
+.B CommandDialog
+A dialog to type a command in, as on a key binding: Return runs it,
+Escape closes it, Tab finishes a command's name.
+.TP
+.BI SetTitle " title\fR, " SetTitleDialog
+The window's title (or a dialog to type it in), kept whatever the
+program calls itself after.
+.TP
+.BI SetResourceValue " resource value\fR, " SetResourceValueDialog
+Set a resource of the init file (saved there) and read the
+configuration again, as
+.B SetResourceValue session.screen0.toolbar.visible false
+does.
 .TP
 .BR Reconfigure " (" Reconfig ", " Restart )
 Read the configuration again.

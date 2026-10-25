@@ -137,6 +137,8 @@ wm_server_set_style(struct wm_server *server, const char *path)
 			free(server->config->style_file);
 			server->config->style_file = copy;
 		}
+		/* Kept for the next session, as Fluxbox keeps it */
+		config_set_resource(server->config, "session.styleFile", path);
 	}
 	style_set_overlay(server->style, server->config ?
 		server->config->style_overlay : NULL);

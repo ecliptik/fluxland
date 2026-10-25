@@ -778,8 +778,8 @@ test_menu_file(void)
 	struct config_result r;
 	config_result_init(&r);
 	validate_menu_file(menu, &r);
-	/* [commanddialog] needs dialogs fluxland doesn't have: a warning */
-	assert(r.count == 1 && !r.errors[0].fatal && r.errors[0].line == 7);
+	/* [commanddialog] is CommandDialog: nothing to say */
+	assert(r.count == 0);
 	config_result_destroy(&r);
 
 	write_file(menu,

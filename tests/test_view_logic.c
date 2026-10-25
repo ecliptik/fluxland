@@ -73,6 +73,7 @@
 #define WM_SCREENCOPY_H
 #define WM_SESSION_LOCK_H
 #define WM_DRM_LEASE_H
+#define WM_DIALOG_H
 #define WM_DRM_SYNCOBJ_H
 #define WM_FOCUS_NAV_H
 #define WM_ATSPI_BRIDGE_H
@@ -609,6 +610,7 @@ struct wm_view {
 	bool rhalf;
 	bool show_decoration;
 	char *title;
+	bool title_override;
 	char *app_id;
 	char *instance;
 	char *role;
@@ -1433,6 +1435,10 @@ extern const struct wm_view_impl wm_xdg_view_impl;
 
 #include "view_focus.c"
 #include "view_geometry.c"
+/* dialog.h */
+static void wm_dialog_view_destroyed(struct wm_server *s, struct wm_view *v)
+	{ (void)s; (void)v; }
+
 #include "view.c"
 #include "view_xdg.c"
 

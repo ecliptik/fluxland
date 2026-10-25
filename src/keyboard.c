@@ -23,6 +23,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "keyboard.h"
+#include "dialog.h"
 #include "keyboard_actions.h"
 #include "server.h"
 #include "config.h"
@@ -349,6 +350,16 @@ handle_key(struct wl_listener *listener, void *data)
 				event->time_msec, event->keycode,
 				event->state);
 		}
+		return;
+	}
+
+	/* An open dialog (CommandDialog...) takes the keys typed */
+	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED &&
+	    wm_dialog_is_open(server) && nsyms > 0) {
+		char utf8[16] = "";
+		xkb_state_key_get_utf8(keyboard->wlr_keyboard->xkb_state,
+			keycode, utf8, sizeof(utf8));
+		wm_dialog_handle_key(server, syms[0], utf8, modifiers);
 		return;
 	}
 

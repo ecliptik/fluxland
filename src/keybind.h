@@ -118,6 +118,12 @@ enum wm_action {
 	WM_ACTION_RIGHT_WORKSPACE,
 	WM_ACTION_LEFT_WORKSPACE,
 	WM_ACTION_SET_WORKSPACE_NAME,
+	WM_ACTION_SET_WORKSPACE_NAME_DIALOG,
+	WM_ACTION_COMMAND_DIALOG,
+	WM_ACTION_SET_TITLE,
+	WM_ACTION_SET_TITLE_DIALOG,
+	WM_ACTION_SET_RESOURCE_VALUE,
+	WM_ACTION_SET_RESOURCE_VALUE_DIALOG,
 	WM_ACTION_REMEMBER,
 	WM_ACTION_TOGGLE_SLIT_ABOVE,
 	WM_ACTION_TOGGLE_SLIT_HIDDEN,
@@ -228,6 +234,10 @@ void keybind_destroy_list(struct wl_list *bindings);
 bool keybind_add_from_string(struct wl_list *bindings, const char *line);
 
 /* List all available action names to stdout (for --list-commands) */
+/* The first command name (in order) that starts with prefix, any case;
+ * NULL when none does (CommandDialog's Tab) */
+const char *wm_action_complete(const char *prefix);
+
 void wm_keybind_list_actions(void);
 
 /* Look up an action enum by name (case-insensitive).

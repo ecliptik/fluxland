@@ -38,6 +38,7 @@
 #define WM_DECORATION_H
 #define WM_IDLE_H
 #define WM_KEYBIND_H
+#define WM_DIALOG_H
 #define WM_MENU_H
 #define WM_PLACEMENT_H
 #define WM_PROTOCOLS_H
@@ -449,6 +450,38 @@ wlr_seat_keyboard_notify_modifiers(struct wlr_seat *seat,
 static xkb_keysym_t stub_keysyms[4];
 static int stub_nsyms;
 static int
+xkb_state_key_get_utf8(struct xkb_state *state, xkb_keycode_t key,
+	char *buf, size_t size)
+{
+	(void)state; (void)key;
+	if (size)
+		buf[0] = '\0';
+	return 0;
+}
+
+/* dialog.h */
+struct wm_server;
+struct wm_view;
+static int g_dialog_open_count;
+static char g_dialog_precommand[64];
+static bool g_dialog_open;
+static void
+wm_dialog_open(struct wm_server *s, const char *title, const char *pre,
+	const char *text, struct wm_view *target)
+{
+	(void)s; (void)title; (void)text; (void)target;
+	g_dialog_open_count++;
+	snprintf(g_dialog_precommand, sizeof(g_dialog_precommand), "%s",
+		pre ? pre : "");
+}
+static bool wm_dialog_is_open(struct wm_server *s)
+	{ (void)s; return g_dialog_open; }
+static bool
+wm_dialog_handle_key(struct wm_server *s, xkb_keysym_t sym,
+	const char *utf8, uint32_t mods)
+	{ (void)s; (void)sym; (void)utf8; (void)mods; return true; }
+
+static int
 xkb_state_key_get_syms(struct xkb_state *state, xkb_keycode_t key,
 	const xkb_keysym_t **syms_out)
 {
@@ -699,6 +732,12 @@ enum wm_action {
 	WM_ACTION_RIGHT_WORKSPACE,
 	WM_ACTION_LEFT_WORKSPACE,
 	WM_ACTION_SET_WORKSPACE_NAME,
+	WM_ACTION_SET_WORKSPACE_NAME_DIALOG,
+	WM_ACTION_COMMAND_DIALOG,
+	WM_ACTION_SET_TITLE,
+	WM_ACTION_SET_TITLE_DIALOG,
+	WM_ACTION_SET_RESOURCE_VALUE,
+	WM_ACTION_SET_RESOURCE_VALUE_DIALOG,
 	WM_ACTION_REMEMBER,
 	WM_ACTION_TOGGLE_SLIT_ABOVE,
 	WM_ACTION_TOGGLE_SLIT_HIDDEN,
@@ -896,6 +935,7 @@ struct wm_view {
 	bool rhalf;
 	bool show_decoration;
 	char *title;
+	bool title_override;
 	char *app_id;
 	struct wm_workspace *workspace;
 	bool sticky;
@@ -1121,6 +1161,13 @@ void wm_view_raise_layer(struct wm_view *v) { (void)v; stub_raise_layer_count++;
 void wm_view_lower_layer(struct wm_view *v) { (void)v; stub_lower_layer_count++; }
 void wm_view_set_layer(struct wm_view *v, enum wm_view_layer l) { (void)v; (void)l; stub_set_layer_count++; }
 void wm_view_set_sticky(struct wm_view *v, bool s) { (void)v; stub_set_sticky_count++; stub_set_sticky_value = s; }
+static char stub_title[128];
+void wm_view_set_title(struct wm_view *v, const char *t)
+{
+	if (v->title_override)
+		return;
+	snprintf(stub_title, sizeof(stub_title), "%s", t ? t : "");
+}
 void wm_view_set_opacity(struct wm_view *v, int a) { (void)v; stub_set_opacity_count++; stub_set_opacity_value = a; }
 void wm_view_begin_interactive(struct wm_view *v, enum wm_cursor_mode m, uint32_t e) { (void)v; (void)m; (void)e; stub_begin_interactive_count++; }
 void wm_view_maximize_vert(struct wm_view *v) { (void)v; stub_maximize_vert_count++; }
@@ -1210,6 +1257,13 @@ void wm_decoration_set_shaded(struct wm_decoration *d, bool shaded, struct wm_st
 
 int style_load(struct wm_style *s, const char *p) { (void)s; (void)p; stub_style_load_count++; return 0; }
 void wm_server_set_style(struct wm_server *s, const char *p);
+static char stub_resource[256];
+int config_set_resource(struct wm_config *c, const char *k, const char *v)
+{
+	(void)c;
+	snprintf(stub_resource, sizeof(stub_resource), "%s=%s", k, v);
+	return 0;
+}
 
 void wm_toolbar_relayout(struct wm_toolbar *t) { (void)t; stub_toolbar_relayout_count++; }
 void wm_toolbar_toggle_above(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_above_count++; }

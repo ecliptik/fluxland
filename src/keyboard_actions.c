@@ -28,6 +28,7 @@
 #include "foreign_toplevel.h"
 #include "i18n.h"
 #include "keyboard_actions.h"
+#include "dialog.h"
 #include "keyboard.h"
 #include "server.h"
 #include "config.h"
@@ -1059,6 +1060,54 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_SET_WORKSPACE_NAME:
 		if (argument)
 			wm_workspace_set_name(server, argument);
+		return true;
+	case WM_ACTION_SET_WORKSPACE_NAME_DIALOG: {
+		struct wm_workspace *ws = wm_workspace_get_active(server);
+		wm_dialog_open(server, _("Set Workspace Name:"),
+			"SetWorkspaceName ", ws ? ws->name : NULL, NULL);
+		return true;
+	}
+	case WM_ACTION_COMMAND_DIALOG:
+		wm_dialog_open(server, _("Fluxbox Command"), NULL, NULL, NULL);
+		return true;
+	case WM_ACTION_SET_TITLE:
+		/* The window keeps it, whatever it calls itself after */
+		if (view && argument) {
+			view->title_override = false;
+			wm_view_set_title(view, argument);
+			view->title_override = true;
+		}
+		return true;
+	case WM_ACTION_SET_RESOURCE_VALUE: {
+		/* SetResourceValue KEY VALUE: saved in the init, then
+		 * applied as Fluxbox does */
+		if (!argument || !server->config)
+			return false;
+		char key[256];
+		const char *p = argument;
+		size_t n = strcspn(p, " \t");
+		if (n == 0 || n >= sizeof(key))
+			return false;
+		snprintf(key, sizeof(key), "%.*s", (int)n, p);
+		p += n;
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (config_set_resource(server->config, key, p) != 0) {
+			wlr_log(WLR_ERROR, "SetResourceValue: cannot write "
+				"the init");
+			return false;
+		}
+		wm_server_reconfigure(server);
+		return true;
+	}
+	case WM_ACTION_SET_RESOURCE_VALUE_DIALOG:
+		wm_dialog_open(server, _("Type resource name and the value"),
+			"SetResourceValue ", NULL, NULL);
+		return true;
+	case WM_ACTION_SET_TITLE_DIALOG:
+		if (view)
+			wm_dialog_open(server, _("Set Title"), "SetTitle ",
+				view->title, view);
 		return true;
 	case WM_ACTION_STICK:
 		if (view)

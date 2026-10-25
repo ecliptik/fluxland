@@ -1038,6 +1038,16 @@ static bool wm_command_execute(struct wm_server *s, struct wm_command *cmd,
 }
 
 struct wm_toolbar;
+static int g_set_resource_count;
+static char g_last_resource[256];
+static int
+config_set_resource(struct wm_config *c, const char *k, const char *v)
+{
+	(void)c;
+	g_set_resource_count++;
+	snprintf(g_last_resource, sizeof(g_last_resource), "%s=%s", k, v);
+	return 0;
+}
 struct wm_slit;
 static int g_slit_relayout_count;
 static void wm_slit_relayout(struct wm_slit *slit)

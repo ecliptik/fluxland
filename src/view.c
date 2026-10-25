@@ -35,6 +35,7 @@
 #include "util.h"
 #include "icon.h"
 #include "view.h"
+#include "dialog.h"
 #include "view_focus.h"
 #include "view_geometry.h"
 #include "workspace.h"
@@ -516,6 +517,7 @@ void
 wm_view_unmap_common(struct wm_view *view)
 {
 	view->mapped = false;
+	wm_dialog_view_destroyed(view->server, view);
 	/* Uncount it for {N}; [Close] {yes} saves its state */
 	wm_rules_release(&view->server->rules, view,
 		view->server->config ? view->server->config->apps_file : NULL);
@@ -692,6 +694,8 @@ wm_view_unminimize(struct wm_view *view)
 void
 wm_view_set_title(struct wm_view *view, const char *title)
 {
+	if (view->title_override)
+		return;
 	if (view->title && title && strcmp(view->title, title) == 0)
 		return;
 	free(view->title);

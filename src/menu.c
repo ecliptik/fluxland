@@ -47,9 +47,8 @@ static void cancel_pending_submenu(void);
 /* --- Window menu --- */
 
 /*
- * Fluxbox's default windowmenu (data/windowmenu), without
- * [settitledialog] until there are dialogs; "Remember..." is Fluxbox's
- * [extramenus].
+ * Fluxbox's default windowmenu (data/windowmenu); "Remember..." is
+ * Fluxbox's [extramenus].
  */
 static const char default_window_menu[] =
 	"[begin]\n"
@@ -59,6 +58,7 @@ static const char default_window_menu[] =
 	"  [iconify]\n"
 	"  [raise]\n"
 	"  [lower]\n"
+	"  [settitledialog]\n"
 	"  [sendto]\n"
 	"  [layer]\n"
 	"  [alpha]\n"
@@ -224,6 +224,87 @@ wm_menu_create_workspace_menu(struct wm_server *server)
 /* --- Configuration submenu --- */
 
 /*
+ * A setting changed from a menu saved in the init under Fluxbox's name,
+ * as Fluxbox saves its own: a reconfigure (which reads the init) keeps
+ * it, and so does the next session.
+ */
+static void
+save_config_key(struct wm_config *cfg, const char *key)
+{
+	static const char *const bools[][2] = {
+		{ "focus_new_windows", "session.screen0.focusNewWindows" },
+		{ "opaque_move", "session.screen0.opaqueMove" },
+		{ "opaque_resize", "session.screen0.opaqueResize" },
+		{ "workspace_warping", "session.screen0.workspacewarping" },
+		{ "full_maximization", "session.screen0.fullMaximization" },
+		{ "toolbar_visible", "session.screen0.toolbar.visible" },
+		{ "toolbar_auto_hide", "session.screen0.toolbar.autoHide" },
+		{ "toolbar_max_over", "session.screen0.toolbar.maxOver" },
+		{ "iconbar_use_pixmap", "session.screen0.iconbar.usePixmap" },
+		{ "slit_auto_hide", "session.screen0.slit.autoHide" },
+		{ "slit_max_over", "session.screen0.slit.maxOver" },
+	};
+	const bool values[] = { cfg->focus_new_windows, cfg->opaque_move,
+		cfg->opaque_resize, cfg->workspace_warping,
+		cfg->full_maximization, cfg->toolbar_visible,
+		cfg->toolbar_auto_hide, cfg->toolbar_max_over,
+		cfg->iconbar_use_pixmap, cfg->slit_auto_hide,
+		cfg->slit_max_over };
+	for (size_t i = 0; i < sizeof(bools) / sizeof(bools[0]); i++) {
+		if (strcmp(key, bools[i][0]) == 0) {
+			config_set_resource(cfg, bools[i][1],
+				values[i] ? "true" : "false");
+			return;
+		}
+	}
+
+	static const char *const focus[] = { "ClickToFocus", "MouseFocus",
+		"StrictMouseFocus" };
+	static const char *const tabs[] = { "TopLeft", "Top", "TopRight",
+		"BottomLeft", "Bottom", "BottomRight", "LeftTop", "Left",
+		"LeftBottom", "RightTop", "Right", "RightBottom" };
+	static const char *const toolbar[] = { "TopLeft", "TopCenter",
+		"TopRight", "BottomLeft", "BottomCenter", "BottomRight" };
+	static const char *const slit[] = { "TopLeft", "TopCenter",
+		"TopRight", "RightTop", "RightCenter", "RightBottom",
+		"BottomLeft", "BottomCenter", "BottomRight", "LeftTop",
+		"LeftCenter", "LeftBottom" };
+	static const char *const aligns[] = { "Left", "Relative", "Right",
+		"Center" };
+#define NAME(list, i) ((i) >= 0 && (size_t)(i) < \
+	sizeof(list) / sizeof((list)[0]) ? (list)[i] : NULL)
+	const char *res = NULL, *val = NULL;
+	if (strcmp(key, "focus_policy") == 0) {
+		res = "session.screen0.focusModel";
+		val = NAME(focus, (int)cfg->focus_policy);
+	} else if (strcmp(key, "tab_placement") == 0) {
+		res = "session.screen0.tab.placement";
+		val = NAME(tabs, cfg->tab_placement);
+	} else if (strcmp(key, "toolbar_placement") == 0) {
+		res = "session.screen0.toolbar.placement";
+		val = NAME(toolbar, (int)cfg->toolbar_placement);
+	} else if (strcmp(key, "slit_placement") == 0) {
+		res = "session.screen0.slit.placement";
+		val = NAME(slit, cfg->slit_placement);
+	} else if (strcmp(key, "iconbar_alignment") == 0) {
+		res = "session.screen0.iconbar.alignment";
+		val = NAME(aligns, cfg->iconbar_alignment);
+	} else if (strcmp(key, "iconbar_mode") == 0) {
+		res = "session.screen0.iconbar.mode";
+		val = cfg->iconbar_mode_spec;
+	} else if (strcmp(key, "toolbar_layer") == 0 ||
+		   strcmp(key, "slit_layer") == 0) {
+		int layer = key[0] == 't' ? cfg->toolbar_layer : cfg->slit_layer;
+		res = key[0] == 't' ? "session.screen0.toolbar.layer" :
+			"session.screen0.slit.layer";
+		val = layer == 6 ? "AboveDock" : layer == 2 ? "Bottom" : "Dock";
+	}
+#undef NAME
+	if (res && val)
+		config_set_resource(cfg, res, val);
+}
+
+/*
  * Handle a "config:key value" command from the config submenu.
  * Modifies the in-memory config and triggers a reconfigure.
  */
@@ -300,6 +381,8 @@ handle_config_command(struct wm_server *server, const char *cmd)
 		wlr_log(WLR_ERROR, "config menu: unknown key '%s'", key);
 		return;
 	}
+
+	save_config_key(cfg, key);
 
 	/* Apply changes directly without full reconfigure.
 	 * A full wm_server_reconfigure() would re-read the config file from

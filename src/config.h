@@ -372,6 +372,11 @@ struct wm_config *config_create(void);
  * If path is NULL, searches standard locations for init file. */
 int config_load(struct wm_config *config, const char *path);
 
+/* Set a resource of the init file (added when it isn't there); 0, or -1
+ * when the file can't be written */
+int config_set_resource(struct wm_config *config, const char *key,
+	const char *value);
+
 /* Re-read the configuration file */
 int config_reload(struct wm_config *config);
 

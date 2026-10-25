@@ -734,8 +734,10 @@ window_menu_item(struct wm_menu *menu, const char *tag, const char *label,
 		add_submenu(menu, WM_MENU_SUBMENU, label, _("Transparency"),
 			create_alpha_menu(ctx->server));
 	} else if (strcasecmp(tag, "settitledialog") == 0) {
-		/* No dialogs yet: leave it out rather than show a dead item */
-		diag(ctx, false, "[settitledialog] isn't supported yet");
+		struct wm_menu_item *item = add_item(menu, WM_MENU_COMMAND,
+			label, _("Set Window Title"));
+		if (item)
+			item->command = strdup("SetTitleDialog");
 	} else {
 		return false;
 	}

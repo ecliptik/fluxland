@@ -14,6 +14,7 @@
 #include "rcparser.h"
 #include "util.h"
 #include <linux/input-event-codes.h>
+#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1654,6 +1655,69 @@ config_load(struct wm_config *config, const char *path)
 	apply_rc_to_config(config, db);
 
 	rc_destroy(db);
+	return 0;
+}
+
+/*
+ * One resource of the init file set, as Fluxbox's SetResourceValue and
+ * its saving of what its menus change do: the lines with the key (any
+ * case; the spelling kept) get the value, a key that isn't there is
+ * added.  The file is replaced whole.
+ */
+int
+config_set_resource(struct wm_config *config, const char *key,
+	const char *value)
+{
+	if (!config || !config->config_dir || !key || !*key || !value)
+		return -1;
+	char path[4096], tmp[4200];
+	snprintf(path, sizeof(path), "%s/init", config->config_dir);
+	snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+
+	FILE *in = fopen_config(path, "r");
+	int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW |
+		O_CLOEXEC, 0644);
+	FILE *out = fd >= 0 ? fdopen(fd, "w") : NULL;
+	if (!out) {
+		if (fd >= 0)
+			close(fd);
+		if (in)
+			fclose(in);
+		return -1;
+	}
+	bool found = false;
+	char line[4096];
+	size_t klen = strlen(key);
+	while (in && fgets(line, sizeof(line), in)) {
+		const char *p = line;
+		while (*p == ' ' || *p == '\t')
+			p++;
+		const char *colon = strchr(p, ':');
+		size_t n = colon ? (size_t)(colon - p) : 0;
+		while (n > 0 && (p[n - 1] == ' ' || p[n - 1] == '\t'))
+			n--;
+		if (colon && *p != '#' && *p != '!' && n == klen &&
+		    strncasecmp(p, key, klen) == 0) {
+			fprintf(out, "%.*s:\t%s\n", (int)n, p, value);
+			found = true;
+		} else {
+			fputs(line, out);
+			if (!strchr(line, '\n'))
+				fputc('\n', out);
+		}
+	}
+	if (!found)
+		fprintf(out, "%s:\t%s\n", key, value);
+	if (in)
+		fclose(in);
+	bool ok = fflush(out) == 0;
+	ok &= fclose(out) == 0;
+	if (ok)
+		ok = rename(tmp, path) == 0;
+	if (!ok) {
+		unlink(tmp);
+		return -1;
+	}
 	return 0;
 }
 

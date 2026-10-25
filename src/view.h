@@ -86,6 +86,7 @@ struct wm_view {
 
 	/* Metadata */
 	char *title;
+	bool title_override;	/* SetTitle: the client's titles are ignored */
 	char *app_id;     /* xdg app_id; X11 WM_CLASS class */
 	char *instance;   /* X11 WM_CLASS instance (NULL for xdg) */
 	char *role;       /* X11 WM_WINDOW_ROLE (NULL for xdg) */

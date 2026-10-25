@@ -506,6 +506,47 @@ test_fluxbox_init_keys(void)
 	printf("  PASS: test_fluxbox_init_keys\n");
 }
 
+/* Test: a resource set in the init (SetResourceValue, menus) */
+static void
+test_set_resource(void)
+{
+	write_file(TEST_INIT,
+		"# mine\n"
+		"session.screen0.showwindowposition:\tfalse\n"
+		"session.screen0.workspaces: 4\n"
+		"! not this: session.screen0.workspaces: 9\n"
+		"session.screen0.toolbar.visible: true");	/* no newline */
+	struct wm_config *c = config_create();
+	free(c->config_dir);
+	c->config_dir = strdup(TEST_DIR);
+
+	/* Any case, the file's spelling kept; a new key at the end */
+	assert(config_set_resource(c, "session.screen0.showWindowPosition",
+		"true") == 0);
+	assert(config_set_resource(c, "session.screen0.workspaces", "6") == 0);
+	assert(config_set_resource(c, "session.screen0.focusModel",
+		"MouseFocus") == 0);
+	FILE *f = fopen(TEST_INIT, "r");
+	char buf[1024];
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	buf[n] = '\0';
+	fclose(f);
+	assert(strcmp(buf,
+		"# mine\n"
+		"session.screen0.showwindowposition:\ttrue\n"
+		"session.screen0.workspaces:\t6\n"
+		"! not this: session.screen0.workspaces: 9\n"
+		"session.screen0.toolbar.visible: true\n"
+		"session.screen0.focusModel:\tMouseFocus\n") == 0);
+
+	/* And it reads back */
+	config_load(c, TEST_INIT);
+	assert(c->workspace_count == 6 && c->show_window_position);
+	assert(c->focus_policy == WM_FOCUS_SLOPPY);
+	config_destroy(c);
+	printf("  PASS: test_set_resource\n");
+}
+
 /* Test: double-click interval clamping */
 static void
 test_double_click_interval_clamp(void)
@@ -1712,6 +1753,7 @@ main(void)
 	test_reload();
 	test_phase5b_config_options();
 	test_fluxbox_init_keys();
+	test_set_resource();
 	test_double_click_interval_clamp();
 	test_menu_alpha_clamp();
 	test_phase5c_config_options();

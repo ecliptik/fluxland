@@ -145,6 +145,12 @@ static const struct action_map actions[] = {
 	{"SetLayer",           WM_ACTION_SET_LAYER},
 	{"SetWallpaper",       WM_ACTION_SET_WALLPAPER},
 	{"SetWorkspaceName",   WM_ACTION_SET_WORKSPACE_NAME},
+	{"SetWorkspaceNameDialog", WM_ACTION_SET_WORKSPACE_NAME_DIALOG},
+	{"CommandDialog",      WM_ACTION_COMMAND_DIALOG},
+	{"SetTitle",           WM_ACTION_SET_TITLE},
+	{"SetTitleDialog",     WM_ACTION_SET_TITLE_DIALOG},
+	{"SetResourceValue",   WM_ACTION_SET_RESOURCE_VALUE},
+	{"SetResourceValueDialog", WM_ACTION_SET_RESOURCE_VALUE_DIALOG},
 	{"SetStyle",           WM_ACTION_SET_STYLE},
 	{"Shade",              WM_ACTION_SHADE},
 	{"ShadeOff",           WM_ACTION_SHADE_OFF},
@@ -647,6 +653,22 @@ static int
 action_name_cmp(const void *a, const void *b)
 {
 	return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+const char *
+wm_action_complete(const char *prefix)
+{
+	/* The first in order, as CommandDialog::tabComplete takes it */
+	const char *best = NULL;
+	size_t n = prefix ? strlen(prefix) : 0;
+	if (n == 0)
+		return NULL;
+	for (size_t i = 0; i < sizeof(actions) / sizeof(actions[0]); i++) {
+		if (strncasecmp(actions[i].name, prefix, n) == 0 &&
+		    (!best || strcasecmp(actions[i].name, best) < 0))
+			best = actions[i].name;
+	}
+	return best;
 }
 
 void

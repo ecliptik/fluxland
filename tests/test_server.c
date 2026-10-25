@@ -1042,6 +1042,8 @@ static int style_load(struct wm_style *style, const char *path)
 	return 0;
 }
 
+static int config_set_resource(struct wm_config *c, const char *k,
+	const char *v) { (void)c; (void)k; (void)v; return 0; }
 static void style_set_overlay(struct wm_style *style, const char *path)
 {
 	(void)style;

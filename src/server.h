@@ -449,6 +449,7 @@ struct wm_server {
 	struct wm_menu *workspace_menu;
 	struct wm_menu *client_menu;
 	struct wm_menu *custom_menu;
+	struct wm_dialog *dialog;	/* CommandDialog... while open */
 
 #ifdef WM_HAS_XWAYLAND
 	/* XWayland bridge */

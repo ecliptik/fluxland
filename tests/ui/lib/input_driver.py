@@ -66,7 +66,7 @@ class InputDriver:
             for mod in reversed(modifiers):
                 cmd.extend(["-m", mod])
 
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=True, env=self.env)
 
     def type_text(self, text: str, delay_ms: int = 50):
         """Type a string of text.
@@ -77,7 +77,7 @@ class InputDriver:
         """
         self._require_wtype()
         cmd = ["wtype", "-d", str(delay_ms), text]
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=True, env=self.env)
 
     # ── Pointer (via wlrctl) ────────────────────────────────────────
 
