@@ -1484,6 +1484,16 @@ wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
 }
 
 bool
+wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly)
+{
+	if (!toolbar || !toolbar->visible ||
+	    (toolbar->auto_hide && !toolbar->shown))
+		return false;
+	double x = lx - toolbar->x, y = ly - toolbar->y;
+	return x >= 0 && x < toolbar->width && y >= 0 && y < toolbar->height;
+}
+
+bool
 wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 	double lx, double ly, uint32_t button)
 {

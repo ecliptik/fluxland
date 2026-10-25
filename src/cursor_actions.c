@@ -91,18 +91,21 @@ view_at(struct wm_server *server, double lx, double ly,
 }
 
 /*
- * Map a decoration region to a mouse context.
+ * The mouse contexts of a decoration region (FbWinFrame::getContext):
+ * the label holds the tabs, so it is OnTab and OnTitlebar; the middle
+ * of the handle is OnWindowBorder and OnWindow. Titlebar buttons have no
+ * context of their own until they are released (OnWinButton...).
  */
-enum wm_mouse_context
+uint32_t
 region_to_context(enum wm_decor_region region)
 {
 	switch (region) {
 	case WM_DECOR_REGION_TITLEBAR:
-	case WM_DECOR_REGION_LABEL:
-	case WM_DECOR_REGION_BUTTON:
 		return WM_MOUSE_CTX_TITLEBAR;
+	case WM_DECOR_REGION_LABEL:
+		return WM_MOUSE_CTX_TITLEBAR | WM_MOUSE_CTX_TAB;
 	case WM_DECOR_REGION_HANDLE:
-		return WM_MOUSE_CTX_WINDOW_BORDER;
+		return WM_MOUSE_CTX_WINDOW_BORDER | WM_MOUSE_CTX_WINDOW;
 	case WM_DECOR_REGION_GRIP_LEFT:
 		return WM_MOUSE_CTX_LEFT_GRIP;
 	case WM_DECOR_REGION_GRIP_RIGHT:
@@ -114,17 +117,18 @@ region_to_context(enum wm_decor_region region)
 		return WM_MOUSE_CTX_WINDOW_BORDER;
 	case WM_DECOR_REGION_CLIENT:
 		return WM_MOUSE_CTX_WINDOW;
+	case WM_DECOR_REGION_BUTTON:
 	case WM_DECOR_REGION_NONE:
 	default:
-		return WM_MOUSE_CTX_NONE;
+		return 0;
 	}
 }
 
 /*
- * Determine the mouse context at the current cursor position.
- * Returns the context and optionally the view under the cursor.
+ * The mouse contexts at the cursor, and the view under it. The desktop
+ * is OnDesktop and also where bindings without On* apply.
  */
-enum wm_mouse_context
+uint32_t
 get_cursor_context(struct wm_server *server, struct wm_view **out_view)
 {
 	double sx, sy;
@@ -148,7 +152,7 @@ get_cursor_context(struct wm_server *server, struct wm_view **out_view)
 				return WM_MOUSE_CTX_SLIT;
 			}
 		}
-		return WM_MOUSE_CTX_DESKTOP;
+		return WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP;
 	}
 
 	/* Check decoration hit region */
@@ -176,7 +180,8 @@ get_keyboard_modifiers(struct wm_server *server)
 {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
 	if (keyboard)
-		return wlr_keyboard_get_modifiers(keyboard);
+		return wlr_keyboard_get_modifiers(keyboard) &
+			~WM_MODIFIERS_IGNORED;
 	return 0;
 }
 

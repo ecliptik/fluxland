@@ -98,48 +98,91 @@ wm_get_active_bindings(struct wm_server *server)
 	return NULL;
 }
 
+/* A binding in list for one of the key's candidate keysyms */
+static struct wm_keybind *
+find_binding(struct wm_server *server, struct wl_list *list,
+	uint32_t modifiers, const xkb_keysym_t *cands, int ncands)
+{
+	for (int c = 0; c < ncands; c++) {
+		struct wm_keybind *bind = keybind_find(list, modifiers,
+			cands[c]);
+		if (!bind)
+			continue;
+		/*
+		 * A guard condition that fails passes to the next binding
+		 * of the same key, so one key can have several bindings
+		 * with different conditions.
+		 */
+		if (wm_keybind_check_condition(server, bind))
+			return bind;
+		bool past = false;
+		struct wm_keybind *b;
+		wl_list_for_each(b, list, link) {
+			if (b == bind) {
+				past = true;
+				continue;
+			}
+			if (!past || b->modifiers != modifiers ||
+			    b->keysym != cands[c])
+				continue;
+			if (wm_keybind_check_condition(server, b))
+				return b;
+		}
+	}
+	return NULL;
+}
+
+/*
+ * A key press, as the keysyms it can stand for (cands): the one the
+ * keyboard state gives, the key's unshifted one (bindings name keys,
+ * as Fluxbox's do: "Mod1 Shift Tab"), and its keycode.
+ */
 static bool
 handle_compositor_keybinding(struct wm_server *server,
-	uint32_t modifiers, xkb_keysym_t sym)
+	uint32_t modifiers, const xkb_keysym_t *cands, int ncands)
 {
 	/*
 	 * Check hardcoded emergency keybindings first.
 	 * These always work regardless of chain or keymode state.
 	 */
-
-	/* Ctrl+Alt+Fn: VT switch */
-	if ((modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) ==
-			(WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) {
-		if (sym >= XKB_KEY_XF86Switch_VT_1 &&
-				sym <= XKB_KEY_XF86Switch_VT_12) {
+	for (int c = 0; c < ncands; c++) {
+		xkb_keysym_t sym = cands[c];
+		/* Ctrl+Alt+Fn: VT switch */
+		if ((modifiers & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) ==
+				(WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT) &&
+		    sym >= XKB_KEY_XF86Switch_VT_1 &&
+		    sym <= XKB_KEY_XF86Switch_VT_12) {
 			if (server->session) {
-				struct wlr_session *session = server->session;
 				unsigned vt = sym - XKB_KEY_XF86Switch_VT_1 + 1;
-				wlr_session_change_vt(session, vt);
+				wlr_session_change_vt(server->session, vt);
 			}
 			return true;
 		}
-	}
-
-	/*
-	 * Hardcoded fallback: Mod4+Shift+E = exit compositor.
-	 * This ensures there's always a way out even if keys file
-	 * is broken.
-	 */
-	if ((modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT)) ==
-			(WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT) &&
-			sym == XKB_KEY_e) {
-		wl_display_terminate(server->wl_display);
-		return true;
+		/*
+		 * Hardcoded fallback: Mod4+Shift+E = exit compositor.
+		 * This ensures there's always a way out even if keys file
+		 * is broken.
+		 */
+		if ((modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT)) ==
+				(WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT) &&
+		    (sym == XKB_KEY_e || sym == XKB_KEY_E)) {
+			wl_display_terminate(server->wl_display);
+			return true;
+		}
 	}
 
 	struct wm_chain_state *cs = &server->chain_state;
 
 	/* Escape aborts any active chain */
-	if (sym == XKB_KEY_Escape && cs->in_chain) {
-		wlr_log(WLR_DEBUG, "%s", "chain aborted by Escape");
-		wm_chain_reset(server);
-		return true;
+	if (cs->in_chain) {
+		for (int c = 0; c < ncands; c++) {
+			if (cands[c] == XKB_KEY_Escape) {
+				wlr_log(WLR_DEBUG, "%s",
+					"chain aborted by Escape");
+				wm_chain_reset(server);
+				return true;
+			}
+		}
 	}
 
 	/* Determine which binding list to search */
@@ -156,7 +199,8 @@ handle_compositor_keybinding(struct wm_server *server,
 		}
 	}
 
-	struct wm_keybind *bind = keybind_find(search_list, modifiers, sym);
+	struct wm_keybind *bind = find_binding(server, search_list,
+		modifiers, cands, ncands);
 	if (!bind) {
 		/* No match — if we were in a chain, abort it */
 		if (cs->in_chain) {
@@ -164,41 +208,6 @@ handle_compositor_keybinding(struct wm_server *server,
 			wm_chain_reset(server);
 		}
 		return false;
-	}
-
-	/*
-	 * Check guard condition. If the binding has a condition that
-	 * fails, search for the next matching binding with the same
-	 * key combo. This allows multiple bindings on the same key
-	 * with different conditions.
-	 */
-	if (!wm_keybind_check_condition(server, bind)) {
-		struct wm_keybind *alt = NULL;
-		bool past = false;
-		struct wm_keybind *b;
-		wl_list_for_each(b, search_list, link) {
-			if (b == bind) {
-				past = true;
-				continue;
-			}
-			if (!past)
-				continue;
-			if (b->modifiers != modifiers || b->keysym != sym)
-				continue;
-			if (!wm_keybind_check_condition(server, b))
-				continue;
-			alt = b;
-			break;
-		}
-		bind = alt;
-		if (!bind) {
-			if (cs->in_chain) {
-				wlr_log(WLR_DEBUG, "%s",
-					"chain broken: condition failed");
-				wm_chain_reset(server);
-			}
-			return false;
-		}
 	}
 
 	/* Check if this is an intermediate chain node */
@@ -215,6 +224,30 @@ handle_compositor_keybinding(struct wm_server *server,
 	wm_chain_reset(server);
 	server->focus_user_initiated = true;
 	return wm_execute_keybind_action(server, bind);
+}
+
+/* The keysyms a key press can be bound as (see above) */
+static int
+key_candidates(struct wlr_keyboard *kb, uint32_t keycode,
+	const xkb_keysym_t *syms, int nsyms, xkb_keysym_t *out, int max)
+{
+	int n = 0;
+	for (int i = 0; i < nsyms && n < max - 1; i++)
+		out[n++] = syms[i];
+	const xkb_keysym_t *raw;
+	xkb_layout_index_t layout = xkb_state_key_get_layout(kb->xkb_state,
+		keycode);
+	int nraw = xkb_keymap_key_get_syms_by_level(kb->keymap, keycode,
+		layout, 0, &raw);
+	for (int i = 0; i < nraw && n < max - 1; i++) {
+		bool dup = false;
+		for (int j = 0; j < n; j++)
+			dup |= out[j] == raw[i];
+		if (!dup)
+			out[n++] = raw[i];
+	}
+	out[n++] = WM_KEYSYM_KEYCODE(keycode);
+	return n;
 }
 
 static void
@@ -335,13 +368,12 @@ handle_key(struct wl_listener *listener, void *data)
 		}
 
 		if (!handled) {
-			for (int i = 0; i < nsyms; i++) {
-				handled = handle_compositor_keybinding(
-					server, modifiers, syms[i]);
-				if (handled) {
-					break;
-				}
-			}
+			xkb_keysym_t cands[16];
+			int ncands = key_candidates(keyboard->wlr_keyboard,
+				keycode, syms, nsyms, cands, 16);
+			handled = handle_compositor_keybinding(server,
+				modifiers & ~WM_MODIFIERS_IGNORED,
+				cands, ncands);
 		}
 	}
 

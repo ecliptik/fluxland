@@ -101,6 +101,8 @@
 #define _INPUT_EVENT_CODES_H
 #define _LINUX_INPUT_EVENT_CODES_H
 #define BTN_LEFT 272
+#define BTN_RIGHT 273
+#define BTN_MIDDLE 274
 #define CAIRO_H
 
 /* Block drm_fourcc.h (system header guard is DRM_FOURCC_H) */
@@ -465,6 +467,7 @@ struct wlr_relative_pointer_manager_v1;
 
 /* Wayland protocol constants */
 #define WL_POINTER_AXIS_VERTICAL_SCROLL 0
+#define WL_POINTER_AXIS_SOURCE_WHEEL 0
 #define WL_POINTER_BUTTON_STATE_RELEASED 0
 #define WL_POINTER_BUTTON_STATE_PRESSED 1
 
@@ -599,17 +602,26 @@ struct wm_decor_button {
 
 /* From mousebind.h */
 enum wm_mouse_context {
-	WM_MOUSE_CTX_NONE = 0,
-	WM_MOUSE_CTX_DESKTOP,
-	WM_MOUSE_CTX_TOOLBAR,
-	WM_MOUSE_CTX_TITLEBAR,
-	WM_MOUSE_CTX_TAB,
-	WM_MOUSE_CTX_WINDOW,
-	WM_MOUSE_CTX_WINDOW_BORDER,
-	WM_MOUSE_CTX_LEFT_GRIP,
-	WM_MOUSE_CTX_RIGHT_GRIP,
-	WM_MOUSE_CTX_SLIT,
+	WM_MOUSE_CTX_NONE          = 0,
+	WM_MOUSE_CTX_GLOBAL        = 1 << 0,
+	WM_MOUSE_CTX_DESKTOP       = 1 << 1,
+	WM_MOUSE_CTX_TOOLBAR       = 1 << 2,
+	WM_MOUSE_CTX_TITLEBAR      = 1 << 4,
+	WM_MOUSE_CTX_WINDOW        = 1 << 5,
+	WM_MOUSE_CTX_WINDOW_BORDER = 1 << 6,
+	WM_MOUSE_CTX_LEFT_GRIP     = 1 << 7,
+	WM_MOUSE_CTX_RIGHT_GRIP    = 1 << 8,
+	WM_MOUSE_CTX_TAB           = 1 << 9,
+	WM_MOUSE_CTX_SLIT          = 1 << 10,
+	WM_MOUSE_CTX_WINBUTTON     = 1 << 11,
+	WM_MOUSE_CTX_MINBUTTON     = 1 << 12,
+	WM_MOUSE_CTX_MAXBUTTON     = 1 << 13,
 };
+#define WM_BUTTON_WHEEL_UP     0x7f04
+#define WM_BUTTON_WHEEL_DOWN   0x7f05
+#define WM_BUTTON_WHEEL_LEFT   0x7f06
+#define WM_BUTTON_WHEEL_RIGHT  0x7f07
+#define WM_MODIFIERS_IGNORED   ((1 << 1) | (1 << 4))
 
 enum wm_mouse_event {
 	WM_MOUSE_PRESS,
@@ -619,7 +631,7 @@ enum wm_mouse_event {
 };
 
 struct wm_mousebind {
-	enum wm_mouse_context context;
+	uint32_t context;
 	enum wm_mouse_event event;
 	uint32_t button;
 	uint32_t modifiers;
@@ -635,6 +647,11 @@ struct wm_mouse_state {
 	double press_x, press_y;
 	bool button_pressed;
 	uint32_t pressed_button;
+	bool press_consumed;
+	int pressed_decor_button;
+	struct wm_view *pressed_view;
+	uint32_t press_context;
+	int wheel_steps[2];
 };
 
 #define WM_DOUBLE_CLICK_MS  300
@@ -643,6 +660,8 @@ struct wm_mouse_state {
 /* From keybind.h */
 enum wm_action {
 	WM_ACTION_NOP,
+	WM_ACTION_MAXIMIZE_VERT,
+	WM_ACTION_MAXIMIZE_HORIZ,
 	WM_ACTION_EXEC,
 	WM_ACTION_CLOSE,
 	WM_ACTION_MAXIMIZE,
@@ -1414,10 +1433,15 @@ static void wm_menu_show_window_list(struct wm_server *s, int x, int y)
 	{ (void)s; (void)x; (void)y; }
 static void wm_menu_hide_all(struct wm_server *s) { (void)s; }
 static struct wm_mousebind *mousebind_find(struct wl_list *bindings,
-	enum wm_mouse_context ctx, enum wm_mouse_event event,
+	uint32_t ctx, enum wm_mouse_event event,
 	uint32_t button, uint32_t mods)
 	{ (void)bindings; (void)ctx; (void)event; (void)button;
 	  (void)mods; return NULL; }
+static bool mousebind_has_move(struct wl_list *bindings, uint32_t ctx,
+	uint32_t button, uint32_t mods)
+	{ (void)bindings; (void)ctx; (void)button; (void)mods; return false; }
+static bool wm_toolbar_contains(struct wm_toolbar *tb, double x, double y)
+	{ (void)tb; (void)x; (void)y; return false; }
 static void wm_snap_edges(struct wm_server *s, struct wm_view *v,
 	int *sx, int *sy) { (void)s; (void)v; (void)sx; (void)sy; }
 static void wm_focus_update_for_cursor(struct wm_server *s,
@@ -1570,8 +1594,8 @@ setup(void)
 /* ===== Tests ===== */
 
 /*
- * Test 1: region_to_context maps titlebar/label/button regions
- * to WM_MOUSE_CTX_TITLEBAR.
+ * Test 1: the titlebar is OnTitlebar, its label (the tabs) OnTab too,
+ * and a button nothing until it is released.
  */
 static void
 test_region_to_context_titlebar(void)
@@ -1579,9 +1603,8 @@ test_region_to_context_titlebar(void)
 	assert(region_to_context(WM_DECOR_REGION_TITLEBAR) ==
 		WM_MOUSE_CTX_TITLEBAR);
 	assert(region_to_context(WM_DECOR_REGION_LABEL) ==
-		WM_MOUSE_CTX_TITLEBAR);
-	assert(region_to_context(WM_DECOR_REGION_BUTTON) ==
-		WM_MOUSE_CTX_TITLEBAR);
+		(WM_MOUSE_CTX_TITLEBAR | WM_MOUSE_CTX_TAB));
+	assert(region_to_context(WM_DECOR_REGION_BUTTON) == 0);
 	printf("  PASS: region_to_context_titlebar\n");
 }
 
@@ -1593,7 +1616,7 @@ static void
 test_region_to_context_borders(void)
 {
 	assert(region_to_context(WM_DECOR_REGION_HANDLE) ==
-		WM_MOUSE_CTX_WINDOW_BORDER);
+		(WM_MOUSE_CTX_WINDOW_BORDER | WM_MOUSE_CTX_WINDOW));
 	assert(region_to_context(WM_DECOR_REGION_BORDER_TOP) ==
 		WM_MOUSE_CTX_WINDOW_BORDER);
 	assert(region_to_context(WM_DECOR_REGION_BORDER_BOTTOM) ==
@@ -3188,8 +3211,8 @@ test_get_cursor_context_desktop(void)
 	test_cursor.x = 500;
 	test_cursor.y = 400;
 	struct wm_view *view = NULL;
-	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
-	assert(ctx == WM_MOUSE_CTX_DESKTOP);
+	uint32_t ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == (WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP));
 	assert(view == NULL);
 	printf("  PASS: get_cursor_context_desktop\n");
 }
@@ -3213,7 +3236,7 @@ test_get_cursor_context_slit(void)
 	test_cursor.x = 130;
 	test_cursor.y = 350;
 	struct wm_view *view = NULL;
-	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
+	uint32_t ctx = get_cursor_context(&test_server, &view);
 	assert(ctx == WM_MOUSE_CTX_SLIT);
 	assert(view == NULL);
 	printf("  PASS: get_cursor_context_slit\n");
@@ -3238,8 +3261,8 @@ test_get_cursor_context_slit_hidden(void)
 	test_cursor.x = 130;
 	test_cursor.y = 350;
 	struct wm_view *view = NULL;
-	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
-	assert(ctx == WM_MOUSE_CTX_DESKTOP);
+	uint32_t ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == (WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP));
 	printf("  PASS: get_cursor_context_slit_hidden\n");
 }
 
@@ -3262,8 +3285,8 @@ test_get_cursor_context_slit_outside(void)
 	test_cursor.x = 50; /* outside slit */
 	test_cursor.y = 350;
 	struct wm_view *view = NULL;
-	enum wm_mouse_context ctx = get_cursor_context(&test_server, &view);
-	assert(ctx == WM_MOUSE_CTX_DESKTOP);
+	uint32_t ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == (WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP));
 	printf("  PASS: get_cursor_context_slit_outside\n");
 }
 

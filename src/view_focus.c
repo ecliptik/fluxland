@@ -515,16 +515,22 @@ wm_focus_cycle_end(struct wm_server *server)
 			++server->focus_seq_counter;
 }
 
-void
-wm_focus_cycle(struct wm_server *server,
-	const struct wm_window_list_spec *spec, bool reverse)
+/*
+ * The windows a window list goes through (FocusableList): those spec
+ * allows, most recently focused first, or in creation order with
+ * {static}. The caller frees *out; returns the count (-1 on error).
+ */
+static int
+focus_list(struct wm_server *server, const struct wm_window_list_spec *spec,
+	struct wm_view ***out)
 {
+	*out = NULL;
 	int n = wl_list_length(&server->views);
 	if (n <= 0)
-		return;
+		return 0;
 	struct wm_view **list = calloc((size_t)n, sizeof(*list));
 	if (!list)
-		return;
+		return -1;
 
 	int count = 0;
 	struct wm_view *v;
@@ -534,6 +540,56 @@ wm_focus_cycle(struct wm_server *server,
 	}
 	sort_views(list, count, spec && spec->static_order ?
 		before_creation_order : before_focus_order);
+	*out = list;
+	return count;
+}
+
+/* Bring a window forward: its workspace, deiconified, focused, raised */
+static void
+focus_raise(struct wm_server *server, struct wm_view *cand)
+{
+	if (!cand->sticky && cand->workspace &&
+	    cand->workspace != wm_workspace_get_active(server))
+		wm_workspace_switch(server, cand->workspace->index);
+	server->focus_user_initiated = true;
+	if (!cand->scene_tree->node.enabled) {
+		deiconify_view(cand);
+	} else {
+		wm_focus_view(cand, NULL);
+		wm_view_raise(cand);
+	}
+}
+
+void
+wm_focus_goto_window(struct wm_server *server,
+	const struct wm_window_list_spec *spec, int num)
+{
+	/* FocusControl::goToWindowNumber: from the end when negative, the
+	 * last there is when there are fewer */
+	struct wm_view **list;
+	int count = focus_list(server, spec, &list);
+	if (count <= 0 || num == 0) {
+		free(list);
+		return;
+	}
+	int i = num > 0 ? num - 1 : count + num;
+	if (i >= count)
+		i = count - 1;
+	if (i < 0)
+		i = 0;
+	struct wm_view *cand = list[i];
+	free(list);
+	focus_raise(server, cand);
+}
+
+void
+wm_focus_cycle(struct wm_server *server,
+	const struct wm_window_list_spec *spec, bool reverse)
+{
+	struct wm_view **list;
+	int count = focus_list(server, spec, &list);
+	if (count < 0)
+		return;
 
 	struct wm_view *focused = server->focused_view;
 	int cur = -1;

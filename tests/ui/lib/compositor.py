@@ -425,6 +425,16 @@ class CompositorManager:
         return self._socket_path
 
     @property
+    def client_env(self):
+        """Environment for a client of this compositor (wtype, wlrctl)."""
+        env = os.environ.copy()
+        if self._runtime_dir:
+            env["XDG_RUNTIME_DIR"] = self._runtime_dir
+        if self._wayland_display:
+            env["WAYLAND_DISPLAY"] = self._wayland_display
+        return env
+
+    @property
     def config_dir(self):
         """Return the fluxland config directory (headless mode)."""
         return self._config_dir

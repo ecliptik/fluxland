@@ -22,10 +22,10 @@ struct wm_view *view_at(struct wm_server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy);
 
 /* Map a decoration region to a mouse context */
-enum wm_mouse_context region_to_context(enum wm_decor_region region);
+uint32_t region_to_context(enum wm_decor_region region);
 
 /* Determine the mouse context at the current cursor position */
-enum wm_mouse_context get_cursor_context(struct wm_server *server,
+uint32_t get_cursor_context(struct wm_server *server,
 	struct wm_view **out_view);
 
 /* Get current keyboard modifiers from the first keyboard */

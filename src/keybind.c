@@ -40,6 +40,7 @@ struct action_map {
 };
 
 static const struct action_map actions[] = {
+	{"Activate",           WM_ACTION_FOCUS},
 	{"ActivateTab",        WM_ACTION_ACTIVATE_TAB},
 	{"AddWorkspace",       WM_ACTION_ADD_WORKSPACE},
 	{"ArrangeWindows",     WM_ACTION_ARRANGE_WINDOWS},
@@ -92,9 +93,11 @@ static const struct action_map actions[] = {
 	{"MacroCmd",           WM_ACTION_MACRO_CMD},
 	{"Map",                WM_ACTION_MAP},
 	{"Maximize",           WM_ACTION_MAXIMIZE},
+	{"MaximizeWindow",     WM_ACTION_MAXIMIZE},
 	{"MaximizeHorizontal", WM_ACTION_MAXIMIZE_HORIZ},
 	{"MaximizeVertical",   WM_ACTION_MAXIMIZE_VERT},
 	{"Minimize",           WM_ACTION_MINIMIZE},
+	{"MinimizeWindow",     WM_ACTION_MINIMIZE},
 	{"Move",               WM_ACTION_MOVE},
 	{"MoveDown",           WM_ACTION_MOVE_DOWN},
 	{"MoveLeft",           WM_ACTION_MOVE_LEFT},
@@ -120,6 +123,9 @@ static const struct action_map actions[] = {
 	{"Remember",           WM_ACTION_REMEMBER},
 	{"RootMenu",           WM_ACTION_ROOT_MENU},
 	{"Reconfigure",        WM_ACTION_RECONFIGURE},
+	{"Reconfig",           WM_ACTION_RECONFIGURE},
+	/* A compositor can't restart under its clients: re-read everything */
+	{"Restart",            WM_ACTION_RECONFIGURE},
 	{"ReloadStyle",        WM_ACTION_RELOAD_STYLE},
 	{"RemoveLastWorkspace", WM_ACTION_REMOVE_LAST_WORKSPACE},
 	{"Resize",             WM_ACTION_RESIZE},
@@ -148,6 +154,7 @@ static const struct action_map actions[] = {
 	{"StartResizing",      WM_ACTION_START_RESIZING},
 	{"StartTabbing",       WM_ACTION_START_TABBING},
 	{"Stick",              WM_ACTION_STICK},
+	{"Tab",                WM_ACTION_TAB},
 	{"StickWindow",        WM_ACTION_STICK},
 	{"TakeToNextWorkspace", WM_ACTION_TAKE_TO_NEXT_WORKSPACE},
 	{"TakeToPrevWorkspace", WM_ACTION_TAKE_TO_PREV_WORKSPACE},
@@ -156,6 +163,7 @@ static const struct action_map actions[] = {
 	{"Unclutter",          WM_ACTION_UNCLUTTER},
 	{"ToggleDecor",        WM_ACTION_TOGGLE_DECOR},
 	{"ToggleSlitAbove",    WM_ACTION_TOGGLE_SLIT_ABOVE},
+	{"ToggleSlitBarAbove", WM_ACTION_TOGGLE_SLIT_ABOVE},
 	{"ToggleSlitHidden",   WM_ACTION_TOGGLE_SLIT_HIDDEN},
 	{"ToggleToolbarAbove", WM_ACTION_TOGGLE_TOOLBAR_ABOVE},
 	{"ToggleToolbarVisible", WM_ACTION_TOGGLE_TOOLBAR_VISIBLE},
@@ -176,28 +184,31 @@ parse_action_name(const char *name)
 	return WM_ACTION_NOP;
 }
 
-static bool
-parse_modifier(const char *token, uint32_t *mods)
+bool
+wm_modifier_from_name(const char *name, uint32_t *mods)
 {
-	if (strcasecmp(token, "Mod1") == 0) {
-		*mods |= WLR_MODIFIER_ALT;
-		return true;
-	}
-	if (strcasecmp(token, "Mod4") == 0) {
-		*mods |= WLR_MODIFIER_LOGO;
-		return true;
-	}
-	if (strcasecmp(token, "Control") == 0 ||
-	    strcasecmp(token, "Ctrl") == 0) {
-		*mods |= WLR_MODIFIER_CTRL;
-		return true;
-	}
-	if (strcasecmp(token, "Shift") == 0) {
-		*mods |= WLR_MODIFIER_SHIFT;
-		return true;
-	}
-	if (strcasecmp(token, "None") == 0) {
-		return true;
+	/* FbTk::KeyUtil::getModifier */
+	static const struct {
+		const char *name;
+		uint32_t mod;
+	} names[] = {
+		{ "Shift",   WLR_MODIFIER_SHIFT },
+		{ "Lock",    WLR_MODIFIER_CAPS },
+		{ "Control", WLR_MODIFIER_CTRL },
+		{ "Ctrl",    WLR_MODIFIER_CTRL },
+		{ "Mod1",    WLR_MODIFIER_ALT },
+		{ "Alt",     WLR_MODIFIER_ALT },
+		{ "Mod2",    WLR_MODIFIER_MOD2 },
+		{ "Mod3",    WLR_MODIFIER_MOD3 },
+		{ "Mod4",    WLR_MODIFIER_LOGO },
+		{ "Mod5",    WLR_MODIFIER_MOD5 },
+		{ "None",    0 },
+	};
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (strcasecmp(name, names[i].name) == 0) {
+			*mods |= names[i].mod;
+			return true;
+		}
 	}
 	return false;
 }
@@ -230,7 +241,7 @@ parse_key_segment(char **tokens, int token_count, int *pos,
 
 	/* Consume modifiers until we find a non-modifier (the key) */
 	while (i < token_count) {
-		if (!parse_modifier(tokens[i], &mods))
+		if (!wm_modifier_from_name(tokens[i], &mods))
 			break;
 		i++;
 	}
@@ -238,12 +249,18 @@ parse_key_segment(char **tokens, int token_count, int *pos,
 	if (i >= token_count)
 		return false;
 
+	/* A keysym name, or else a number: a keycode ("Mod4 176 :...") */
 	xkb_keysym_t sym = xkb_keysym_from_name(tokens[i],
 		XKB_KEYSYM_CASE_INSENSITIVE);
+	int keycode;
+	if (sym == XKB_KEY_NoSymbol && safe_atoi(tokens[i], &keycode) &&
+	    keycode > 0 && keycode < 65536)
+		sym = WM_KEYSYM_KEYCODE(keycode);
 	if (sym == XKB_KEY_NoSymbol)
 		return false;
 
-	*out_mods = mods;
+	/* Lock modifiers are ignored when matching, so in bindings too */
+	*out_mods = mods & ~WM_MODIFIERS_IGNORED;
 	*out_keysym = sym;
 	*pos = i + 1;
 	return true;

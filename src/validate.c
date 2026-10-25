@@ -12,6 +12,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "config.h"
+#include "mousebind.h"
 #include "validate.h"
 #include "i18n.h"
 #include "rcparser.h"
@@ -287,6 +288,8 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.opaqueResize", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.edgeSnapThreshold", VT_INT, 0, 1000, NULL},
 	{"session.screen0.fullMaximization", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.maxDisableMove", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.maxDisableResize", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.showWindowPosition", VT_BOOL, 0, 0, NULL},
 
 	/* Placement */
@@ -681,125 +684,10 @@ validate_init_file(const char *path, struct config_result *result)
 
 /* ---- Keys file validation ---- */
 
-/* Known action names (same as keybind.c actions table) */
-static const char *valid_actions[] = {
-	"ActivateTab", "AddWorkspace", "ArrangeWindows", "BindKey",
-	"ArrangeWindowsHorizontal", "ArrangeWindowsStackBottom",
-	"ArrangeWindowsStackLeft", "ArrangeWindowsStackRight",
-	"ArrangeWindowsStackTop", "ArrangeWindowsVertical",
-	"CascadeWindows", "Close", "ClientMenu", "CloseAllWindows",
-	"CustomMenu", "Deiconify", "Delay", "DetachClient",
-	"Exec", "ExecCommand", "Execute", "Exit", "Export",
-	"Focus", "FocusActivate", "FocusDown", "FocusLeft", "ForEach",
-	"FocusNext", "FocusNextElement", "FocusPrev", "FocusPrevElement",
-	"FocusRight", "FocusToolbar", "FocusUp",
-	"Fullscreen", "GotoWindow", "HideMenus",
-	"Iconify", "If", "KeyMode", "Kill", "KillWindow",
-	"LeftWorkspace", "LHalf", "Lower", "LowerLayer",
-	"MacroCmd", "Map", "Maximize", "MaximizeHorizontal",
-	"MaximizeVertical", "Minimize", "Move", "MoveDown",
-	"MoveLeft", "MoveRight", "MoveTabLeft", "MoveTabRight",
-	"MoveTo", "MoveUp", "NextGroup", "NextLayout", "NextTab",
-	"NextWindow", "NextWorkspace",
-	"PrevGroup", "PrevLayout", "PrevTab", "PrevWindow",
-	"PrevWorkspace", "Quit", "RHalf", "Raise", "RaiseLayer",
-	"Remember", "RootMenu", "Reconfigure", "ReloadStyle",
-	"RemoveLastWorkspace", "Resize", "ResizeHorizontal",
-	"ResizeTo", "ResizeVertical", "RightWorkspace",
-	"SetAlpha", "SendToNextHead", "SendToNextWorkspace",
-	"SendToPrevHead", "SendToPrevWorkspace", "SendToWorkspace",
-	"SetHead", "SetDecor", "SetEnv", "SetLayer",
-	"SetWorkspaceName", "SetStyle", "Shade", "ShadeOff",
-	"ShadeOn", "ShadeWindow", "ShowDesktop",
-	"StartMoving", "StartResizing", "StartTabbing",
-	"Stick", "StickWindow",
-	"TakeToNextWorkspace", "TakeToPrevWorkspace", "TakeToWorkspace",
-	"ToggleCmd", "Unclutter", "ToggleDecor",
-	"ToggleSlitAbove", "ToggleSlitHidden",
-	"ToggleToolbarAbove", "ToggleToolbarVisible",
-	"ToggleShowPosition", "WindowList", "WindowMenu",
-	"WorkspaceMenu", "Workspace",
-	NULL
-};
-
-static bool
-is_valid_action(const char *name)
-{
-	for (int i = 0; valid_actions[i]; i++) {
-		if (strcasecmp(valid_actions[i], name) == 0)
-			return true;
-	}
-	return false;
-}
-
-/* Valid modifier names */
-static const char *valid_modifiers[] = {
-	"Mod1", "Mod4", "Control", "Ctrl", "Shift", "None", NULL
-};
-
-static bool
-is_valid_modifier(const char *name)
-{
-	for (int i = 0; valid_modifiers[i]; i++) {
-		if (strcasecmp(valid_modifiers[i], name) == 0)
-			return true;
-	}
-	return false;
-}
-
-/* Valid mouse context names */
-static const char *valid_contexts[] = {
-	"OnDesktop", "OnToolbar", "OnTitlebar", "OnTab",
-	"OnWindow", "OnWindowBorder", "OnLeftGrip", "OnRightGrip",
-	"OnSlit", NULL
-};
-
-static bool
-is_valid_context(const char *name)
-{
-	for (int i = 0; valid_contexts[i]; i++) {
-		if (strcasecmp(valid_contexts[i], name) == 0)
-			return true;
-	}
-	return false;
-}
-
-/* Check if token is a mouse event like Mouse1, Click3, etc. */
-static bool
-is_mouse_event(const char *token)
-{
-	const char *prefixes[] = {"Mouse", "Click", "Double", "Move", NULL};
-	for (int i = 0; prefixes[i]; i++) {
-		size_t plen = strlen(prefixes[i]);
-		if (strncasecmp(token, prefixes[i], plen) == 0) {
-			const char *num = token + plen;
-			int n;
-			if (*num && safe_atoi(num, &n))
-				return n >= 1 && n <= 5;
-		}
-	}
-	return false;
-}
-
-/* Check if token is a mouse event with bad button number */
-static bool
-is_mouse_event_bad_button(const char *token)
-{
-	const char *prefixes[] = {"Mouse", "Click", "Double", "Move", NULL};
-	for (int i = 0; prefixes[i]; i++) {
-		size_t plen = strlen(prefixes[i]);
-		if (strncasecmp(token, prefixes[i], plen) == 0) {
-			const char *num = token + plen;
-			int n;
-			if (*num && safe_atoi(num, &n)) {
-				if (n < 1 || n > 5)
-					return true;
-			}
-		}
-	}
-	return false;
-}
-
+/*
+ * Each line is checked by the parsers that load it (keybind.c and
+ * mousebind.c), so what passes here is what fluxland binds.
+ */
 void
 validate_keys_file(const char *path, struct config_result *result)
 {
@@ -820,99 +708,16 @@ validate_keys_file(const char *path, struct config_result *result)
 			int ch;
 			while ((ch = fgetc(f)) != EOF && ch != '\n')
 				;
-			continue;
-		}
-
-		char *p = strip(line);
-		if (*p == '\0' || *p == '#' || *p == '!')
-			continue;
-
-		/* Find the action separator ':'.
-		 * Handle keymode prefix lines like "mode: Mod4 x :Action"
-		 * where the first ':' is the mode separator and the
-		 * second ':' is the action separator. */
-		char *colon = strchr(p, ':');
-		if (!colon) {
 			config_result_add_error(result, path, lineno,
-				"missing ':' before action");
+				"line longer than %d characters is ignored",
+				LINE_MAX_LEN - 1);
 			continue;
 		}
 
-		/* Check for keymode prefix: if there's a second ':',
-		 * and the first token before the first ':' has no
-		 * spaces (mode name), use the second colon. */
-		char *second_colon = strchr(colon + 1, ':');
-		if (second_colon) {
-			/* Check if text before first colon is a single
-			 * word (mode name) */
-			const char *pre = p;
-			while (pre < colon &&
-			       !isspace((unsigned char)*pre))
-				pre++;
-			if (pre == colon) {
-				/* Single word before first colon = mode
-				 * prefix; skip to second colon */
-				colon = second_colon;
-			}
-		}
-
-		/* Extract action part */
-		char *action_str = colon + 1;
-		while (isspace((unsigned char)*action_str))
-			action_str++;
-
-		if (*action_str == '\0') {
+		char why[256];
+		if (!wm_keys_check_line(line, why, sizeof(why)))
 			config_result_add_error(result, path, lineno,
-				"empty action after ':'");
-			continue;
-		}
-
-		/* Extract action name (first word) */
-		char action_name[256];
-		const char *sp = action_str;
-		while (*sp && !isspace((unsigned char)*sp))
-			sp++;
-		size_t name_len = (size_t)(sp - action_str);
-		if (name_len >= sizeof(action_name))
-			name_len = sizeof(action_name) - 1;
-		memcpy(action_name, action_str, name_len);
-		action_name[name_len] = '\0';
-
-		if (!is_valid_action(action_name)) {
-			config_result_add_error(result, path, lineno,
-				"unknown action '%s'", action_name);
-		}
-
-		/* Validate key part tokens */
-		size_t key_part_len = (size_t)(colon - p);
-		char *key_part = strndup(p, key_part_len);
-		if (!key_part)
-			continue;
-
-		char *saveptr;
-		char *tok = strtok_r(key_part, " \t", &saveptr);
-		while (tok) {
-			/* Skip known contexts */
-			if (is_valid_context(tok) || is_valid_modifier(tok) ||
-			    is_mouse_event(tok)) {
-				tok = strtok_r(NULL, " \t", &saveptr);
-				continue;
-			}
-
-			/* Check for bad button numbers */
-			if (is_mouse_event_bad_button(tok)) {
-				config_result_add_error(result, path, lineno,
-					"invalid button number in '%s' "
-					"(must be 1-5)", tok);
-				tok = strtok_r(NULL, " \t", &saveptr);
-				continue;
-			}
-
-			/* Otherwise it's presumably a key name;
-			 * we can't fully validate without XKB, so skip */
-			tok = strtok_r(NULL, " \t", &saveptr);
-		}
-		free(key_part);
+				"%s", why);
 	}
 
 	fclose(f);

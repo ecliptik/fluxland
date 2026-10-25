@@ -311,7 +311,7 @@ OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
 OnTitlebar Move1 :StartMoving
 
 # Double-click: toggle shade
-OnTitlebar Double1 :Shade
+OnTitlebar Double Mouse1 :Shade
 
 # Middle-click: start tabbing (drag to another window to group)
 OnTitlebar Mouse2 :StartTabbing
@@ -346,14 +346,15 @@ OnLeftGrip Move1 :StartResizing NearestCorner
 OnRightGrip Move1 :StartResizing NearestCorner
 
 # -------------------------------------------------------------------
-# Mouse bindings: Global (Alt+click anywhere on a window)
+# Mouse bindings: Alt+click on a window (OnWindow is the window's
+# content; a binding without On* is for the desktop, as in Fluxbox)
 # -------------------------------------------------------------------
 
 # Alt+left-click: raise, focus, and move
-Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+OnWindow Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
 
 # Alt+right-click: raise, focus, and resize from nearest corner
-Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing NearestCorner}
+OnWindow Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing NearestCorner}
 
 # -------------------------------------------------------------------
 # MacroCmd / ToggleCmd examples

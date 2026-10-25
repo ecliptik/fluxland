@@ -27,6 +27,11 @@ void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
 	{ (void)v; (void)b; }
 struct wm_workspace *wm_workspace_get_active(struct wm_server *s)
 	{ (void)s; return NULL; }
+/* command.c runs commands through the dispatcher: not here */
+#include "keybind.h"
+bool wm_execute_action_on(struct wm_server *s, enum wm_action a,
+	const char *arg, struct wm_view *v)
+	{ (void)s; (void)a; (void)arg; (void)v; return true; }
 
 static void
 setup(void)
@@ -426,7 +431,7 @@ test_unknown_action(void)
 	for (int i = 0; i < result.count; i++) {
 		if (result.errors[i].fatal &&
 		    result.errors[i].message &&
-		    strstr(result.errors[i].message, "unknown action"))
+		    strstr(result.errors[i].message, "unknown or malformed command"))
 			found_action = true;
 	}
 	assert(found_action);
@@ -455,26 +460,88 @@ test_missing_action(void)
 static void
 test_invalid_button_number(void)
 {
+	/* Fluxbox numbers buttons from 1: Mouse9 is fine, Mouse0 isn't */
 	write_file(TEST_KEYS,
 		"OnDesktop Mouse9 :RootMenu\n"
+		"OnDesktop Mouse0 :RootMenu\n"
 	);
 
 	struct config_result result;
 	config_result_init(&result);
 	validate_keys_file(TEST_KEYS, &result);
 
-	assert(config_result_has_errors(&result) == true);
-	bool found_button = false;
-	for (int i = 0; i < result.count; i++) {
-		if (result.errors[i].fatal &&
-		    result.errors[i].message &&
-		    strstr(result.errors[i].message, "button number"))
-			found_button = true;
-	}
-	assert(found_button);
+	assert(result.count == 1 && result.errors[0].fatal &&
+		result.errors[0].line == 2 &&
+		strstr(result.errors[0].message, "mouse binding"));
 
 	config_result_destroy(&result);
 	printf("  PASS: test_invalid_button_number\n");
+}
+
+/* Fluxbox's own keys file (data/keys of the Fluxbox sources) checks clean */
+static void
+test_fluxbox_keys_file(void)
+{
+	write_file(TEST_KEYS,
+		"OnDesktop Mouse1 :HideMenus\n"
+		"OnDesktop Mouse2 :WorkspaceMenu\n"
+		"OnDesktop Mouse3 :RootMenu\n"
+		"OnDesktop Mouse4 :PrevWorkspace\n"
+		"OnDesktop Mouse5 :NextWorkspace\n"
+		"OnToolbar Mouse4 :PrevWorkspace\n"
+		"OnWindow Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}\n"
+		"OnWindowBorder Move1 :StartMoving\n"
+		"OnLeftGrip Move1 :StartResizing bottomleft\n"
+		"OnRightGrip Move1 :StartResizing bottomright\n"
+		"OnWindow Mod1 Mouse3 :MacroCmd {Raise} {Focus} "
+			"{StartResizing NearestCorner}\n"
+		"OnWindow Mod1 Mouse2 :Lower\n"
+		"OnTitlebar Control Mouse1 :StartTabbing\n"
+		"OnTitlebar Double Mouse1 :Shade\n"
+		"OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}\n"
+		"OnTitlebar Move1  :StartMoving\n"
+		"OnTitlebar Mouse2 :Lower\n"
+		"OnTitlebar Mouse3 :WindowMenu\n"
+		"Mod1 Tab :NextWindow {groups} (workspace=[current])\n"
+		"Mod1 Shift Tab :PrevWindow {groups} (workspace=[current])\n"
+		"Mod4 Tab :NextTab\n"
+		"Mod4 Shift Tab :PrevTab\n"
+		"Mod4 1 :Tab 1\n"
+		"Mod4 9 :Tab 9\n"
+		"Mod1 F1 :Exec xterm\n"
+		"Mod1 F2 :Exec fbrun\n"
+		"Mod1 F4 :Close\n"
+		"Mod1 F5 :Kill\n"
+		"Mod1 F9 :Minimize\n"
+		"Mod1 F10 :Maximize\n"
+		"Mod1 F11 :Fullscreen\n"
+		"Mod1 space :WindowMenu\n"
+		"Control Mod1 Delete :Exit\n"
+		"Control Mod1 BackSpace :Exit\n"
+		"Control Mod1 Left :PrevWorkspace\n"
+		"Control Mod1 Right :NextWorkspace\n"
+		"Control Mod1 Shift Left :SendToPrevWorkspace\n"
+		"Control F1 :Workspace 1\n"
+		"Shift F1 :SendToWorkspace 1\n"
+		"Control Shift F1 :TakeToWorkspace 1\n"
+		"176 :Exec amixer sset Master,0 1+\n"
+		"174 :Exec amixer sset Master,0 1-\n"
+		"160 :Exec amixer sset Master,0 toggle\n"
+		"Control Mod1 r :Reconfigure\n"
+		"Mod4 r :Restart\n"
+		"Mod5 a :MinimizeWindow\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_keys_file(TEST_KEYS, &result);
+	for (int i = 0; i < result.count; i++)
+		fprintf(stderr, "line %d: %s\n", result.errors[i].line,
+			result.errors[i].message);
+	assert(result.count == 0);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_fluxbox_keys_file\n");
 }
 
 /* ---- Style file validation tests ---- */
@@ -988,7 +1055,7 @@ test_keys_missing_colon(void)
 	for (int i = 0; i < result.count; i++) {
 		if (result.errors[i].fatal &&
 		    result.errors[i].message &&
-		    strstr(result.errors[i].message, "missing ':'"))
+		    strstr(result.errors[i].message, "no ':'"))
 			found = true;
 	}
 	assert(found);
@@ -1181,6 +1248,7 @@ main(void)
 	test_unknown_action();
 	test_missing_action();
 	test_invalid_button_number();
+	test_fluxbox_keys_file();
 
 	/* Style file validation */
 	test_valid_style_file();

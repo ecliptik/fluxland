@@ -244,6 +244,7 @@ struct wm_view {
 struct wm_server {
 	struct wl_list workspaces;
 	struct wm_workspace *current_workspace;
+	int former_workspace;
 	int workspace_count;
 	struct wm_config *config;
 	struct wm_toolbar *toolbar;

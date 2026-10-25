@@ -270,6 +270,14 @@ bool wm_view_request_activate(struct wm_view *view, bool allowed);
  * lowered and wanting attention.
  */
 void wm_view_focus_new(struct wm_view *view);
+
+/*
+ * GoToWindow: bring forward the num-th window of a window list (from the
+ * end when num is negative).
+ */
+struct wm_window_list_spec;
+void wm_focus_goto_window(struct wm_server *server,
+	const struct wm_window_list_spec *spec, int num);
 void wm_focus_prev_view(struct wm_server *server);
 
 struct wm_window_list_spec;

@@ -16,7 +16,10 @@ _BUTTON_MAP = {
 class InputDriver:
     """Simulate keyboard and pointer input on Wayland via wtype and wlrctl."""
 
-    def __init__(self):
+    def __init__(self, env=None):
+        """env: the environment for wtype/wlrctl (another compositor's
+        WAYLAND_DISPLAY and XDG_RUNTIME_DIR); None uses this one's."""
+        self.env = env
         """Detect available input tools."""
         self.has_wtype = shutil.which("wtype") is not None
         self.has_wlrctl = shutil.which("wlrctl") is not None
@@ -86,11 +89,15 @@ class InputDriver:
             y: Absolute Y coordinate.
         """
         self._require_wlrctl()
-        subprocess.run(
-            ["wlrctl", "pointer", "move", str(x), str(y)],
-            check=True,
-            capture_output=True,
-        )
+        # wlrctl moves by an offset: first into the top left corner (the
+        # cursor stops at the layout's edge), then out to (x, y)
+        for dx, dy in ((-100000, -100000), (x, y)):
+            subprocess.run(
+                ["wlrctl", "pointer", "move", str(dx), str(dy)],
+                check=True,
+                capture_output=True,
+            env=self.env,
+            )
 
     def click(self, x: int, y: int, button: int = 1):
         """Move pointer to (x, y) and click.
@@ -110,6 +117,7 @@ class InputDriver:
             ["wlrctl", "pointer", "click", btn_name],
             check=True,
             capture_output=True,
+            env=self.env,
         )
 
     def right_click(self, x: int, y: int):
@@ -135,12 +143,14 @@ class InputDriver:
             ["wlrctl", "pointer", "click", btn_name],
             check=True,
             capture_output=True,
+            env=self.env,
         )
         time.sleep(0.05)
         subprocess.run(
             ["wlrctl", "pointer", "click", btn_name],
             check=True,
             capture_output=True,
+            env=self.env,
         )
 
     def drag(self, x1, y1, x2, y2, button=1):
@@ -164,6 +174,7 @@ class InputDriver:
             ["wlrctl", "pointer", "click", btn_name, "--press"],
             check=True,
             capture_output=True,
+            env=self.env,
         )
         # Move to destination
         self.move_to(x2, y2)
@@ -172,4 +183,15 @@ class InputDriver:
             ["wlrctl", "pointer", "click", btn_name, "--release"],
             check=True,
             capture_output=True,
+            env=self.env,
+        )
+
+    def scroll(self, dy: int, dx: int = 0):
+        """Scroll the wheel: dy < 0 is up (Fluxbox's Mouse4), > 0 down."""
+        self._require_wlrctl()
+        subprocess.run(
+            ["wlrctl", "pointer", "scroll", str(dy), str(dx)],
+            check=True,
+            capture_output=True,
+            env=self.env,
         )

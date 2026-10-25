@@ -213,6 +213,8 @@ struct wm_config {
 
 	/* Full maximization (maximize over toolbar/slit) */
 	bool full_maximization;
+	bool max_disable_move;     /* maximized windows can't be moved */
+	bool max_disable_resize;   /* ...or resized */
 
 	/* Window opacity (0-255) */
 	int window_focus_alpha;

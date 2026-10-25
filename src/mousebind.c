@@ -30,32 +30,6 @@
 #define KEYS_LINE_MAX 1024
 
 
-static bool
-parse_modifier(const char *token, uint32_t *mods)
-{
-	if (strcasecmp(token, "Mod1") == 0) {
-		*mods |= WLR_MODIFIER_ALT;
-		return true;
-	}
-	if (strcasecmp(token, "Mod4") == 0) {
-		*mods |= WLR_MODIFIER_LOGO;
-		return true;
-	}
-	if (strcasecmp(token, "Control") == 0 ||
-	    strcasecmp(token, "Ctrl") == 0) {
-		*mods |= WLR_MODIFIER_CTRL;
-		return true;
-	}
-	if (strcasecmp(token, "Shift") == 0) {
-		*mods |= WLR_MODIFIER_SHIFT;
-		return true;
-	}
-	if (strcasecmp(token, "None") == 0) {
-		return true;
-	}
-	return false;
-}
-
 static char *
 strip(char *s)
 {
@@ -70,50 +44,32 @@ strip(char *s)
 	return s;
 }
 
-/*
- * Parse a context modifier token.
- * Returns true if the token is a context (On*).
- */
-static bool
-parse_context(const char *token, enum wm_mouse_context *ctx)
+/* An On* context name (Keys.cc), as its flag; 0 if it is not one */
+static uint32_t
+parse_context(const char *token)
 {
-	if (strcasecmp(token, "OnDesktop") == 0) {
-		*ctx = WM_MOUSE_CTX_DESKTOP;
-		return true;
+	static const struct {
+		const char *name;
+		uint32_t ctx;
+	} names[] = {
+		{ "OnDesktop",      WM_MOUSE_CTX_DESKTOP },
+		{ "OnToolbar",      WM_MOUSE_CTX_TOOLBAR },
+		{ "OnSlit",         WM_MOUSE_CTX_SLIT },
+		{ "OnWindow",       WM_MOUSE_CTX_WINDOW },
+		{ "OnTitlebar",     WM_MOUSE_CTX_TITLEBAR },
+		{ "OnWinButton",    WM_MOUSE_CTX_WINBUTTON },
+		{ "OnMinButton",    WM_MOUSE_CTX_MINBUTTON },
+		{ "OnMaxButton",    WM_MOUSE_CTX_MAXBUTTON },
+		{ "OnWindowBorder", WM_MOUSE_CTX_WINDOW_BORDER },
+		{ "OnLeftGrip",     WM_MOUSE_CTX_LEFT_GRIP },
+		{ "OnRightGrip",    WM_MOUSE_CTX_RIGHT_GRIP },
+		{ "OnTab",          WM_MOUSE_CTX_TAB },
+	};
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (strcasecmp(token, names[i].name) == 0)
+			return names[i].ctx;
 	}
-	if (strcasecmp(token, "OnToolbar") == 0) {
-		*ctx = WM_MOUSE_CTX_TOOLBAR;
-		return true;
-	}
-	if (strcasecmp(token, "OnTitlebar") == 0) {
-		*ctx = WM_MOUSE_CTX_TITLEBAR;
-		return true;
-	}
-	if (strcasecmp(token, "OnTab") == 0) {
-		*ctx = WM_MOUSE_CTX_TAB;
-		return true;
-	}
-	if (strcasecmp(token, "OnWindow") == 0) {
-		*ctx = WM_MOUSE_CTX_WINDOW;
-		return true;
-	}
-	if (strcasecmp(token, "OnWindowBorder") == 0) {
-		*ctx = WM_MOUSE_CTX_WINDOW_BORDER;
-		return true;
-	}
-	if (strcasecmp(token, "OnLeftGrip") == 0) {
-		*ctx = WM_MOUSE_CTX_LEFT_GRIP;
-		return true;
-	}
-	if (strcasecmp(token, "OnRightGrip") == 0) {
-		*ctx = WM_MOUSE_CTX_RIGHT_GRIP;
-		return true;
-	}
-	if (strcasecmp(token, "OnSlit") == 0) {
-		*ctx = WM_MOUSE_CTX_SLIT;
-		return true;
-	}
-	return false;
+	return 0;
 }
 
 /*
@@ -124,17 +80,21 @@ parse_context(const char *token, enum wm_mouse_context *ctx)
 static uint32_t
 button_number_to_code(int num, const uint32_t *button_map)
 {
-	if (num < 1 || num > 5)
-		return 0;
-	if (button_map)
+	if (num >= 1 && num <= 5 && button_map && button_map[num])
 		return button_map[num];
 	switch (num) {
 	case 1: return BTN_LEFT;
 	case 2: return BTN_MIDDLE;
 	case 3: return BTN_RIGHT;
-	case 4: return BTN_SIDE;
-	case 5: return BTN_EXTRA;
-	default: return 0;
+	case 4: return WM_BUTTON_WHEEL_UP;
+	case 5: return WM_BUTTON_WHEEL_DOWN;
+	case 6: return WM_BUTTON_WHEEL_LEFT;
+	case 7: return WM_BUTTON_WHEEL_RIGHT;
+	case 8: return BTN_SIDE;
+	case 9: return BTN_EXTRA;
+	default:
+		/* Further buttons follow BTN_EXTRA (BTN_FORWARD, BTN_BACK...) */
+		return num < 16 ? (uint32_t)(BTN_EXTRA + (num - 9)) : 0;
 	}
 }
 
@@ -168,7 +128,7 @@ parse_mouse_event(const char *token, enum wm_mouse_event *event,
 		return false;
 
 	int num;
-	if (!safe_atoi(num_str, &num) || num < 1 || num > 5)
+	if (!safe_atoi(num_str, &num) || num < 1)
 		return false;
 
 	*button = button_number_to_code(num, button_map);
@@ -216,30 +176,36 @@ parse_mousebind_line(const char *line, const uint32_t *button_map)
 		return NULL;
 	}
 
-	/* Parse tokens: context, modifiers, mouse event */
-	enum wm_mouse_context context = WM_MOUSE_CTX_NONE;
+	/*
+	 * Contexts, modifiers, "Double" and the event, in any order
+	 * (Keys.cc): "OnTitlebar Double Mouse1", "Mod1 OnWindow Mouse3".
+	 */
+	uint32_t context = 0;
 	uint32_t modifiers = 0;
-	enum wm_mouse_event event;
-	uint32_t button;
-	bool found_event = false;
-	int i = 0;
+	enum wm_mouse_event event = WM_MOUSE_PRESS;
+	uint32_t button = 0;
+	bool found_event = false, is_double = false;
 
-	/* First token might be a context */
-	if (i < token_count && parse_context(tokens[i], &context))
-		i++;
-
-	/* Consume modifiers */
-	while (i < token_count) {
-		if (!parse_modifier(tokens[i], &modifiers))
+	for (int i = 0; i < token_count; i++) {
+		uint32_t ctx = parse_context(tokens[i]);
+		if (ctx) {
+			context |= ctx;
+		} else if (strcasecmp(tokens[i], "Double") == 0) {
+			is_double = true;
+		} else if (wm_modifier_from_name(tokens[i], &modifiers)) {
+			continue;
+		} else if (!found_event &&
+		    parse_mouse_event(tokens[i], &event, &button, button_map)) {
+			found_event = true;
+		} else {
+			found_event = false;
 			break;
-		i++;
+		}
 	}
-
-	/* Next token should be the mouse event */
-	if (i < token_count && parse_mouse_event(tokens[i], &event, &button, button_map)) {
-		found_event = true;
-		i++;
-	}
+	/* "Double" goes with a press ("Double Mouse1" = "Double1") */
+	if (is_double && found_event && event == WM_MOUSE_PRESS)
+		event = WM_MOUSE_DOUBLE;
+	modifiers &= ~WM_MODIFIERS_IGNORED;
 
 	if (!found_event) {
 		free(key_part);
@@ -358,48 +324,117 @@ mousebind_load(struct wl_list *bindings, const char *path,
 	return 0;
 }
 
+/*
+ * The command after the binding's ':' (after "mode:" for a key mode
+ * line), or NULL.
+ */
+static const char *
+command_part(const char *line)
+{
+	const char *colon = strchr(line, ':');
+	return colon ? colon + 1 : NULL;
+}
+
+bool
+wm_keys_check_line(const char *line, char *why, size_t len)
+{
+	char buf[KEYS_LINE_MAX];
+	snprintf(buf, sizeof(buf), "%s", line);
+	char *p = strip(buf);
+	if (*p == '\0' || *p == '#' || *p == '!')
+		return true;
+
+	/* "mode: key :command" (as parse_mode_prefix reads it) */
+	const char *rest = p;
+	bool in_mode = false;
+	const char *q = p;
+	while (*q && !isspace((unsigned char)*q) && *q != ':')
+		q++;
+	if (*q == ':' && q != p && strchr(q + 1, ':')) {
+		in_mode = true;
+		rest = q + 1;
+		while (isspace((unsigned char)*rest))
+			rest++;
+	}
+
+	const char *cmd_text = command_part(rest);
+	if (!cmd_text) {
+		snprintf(why, len, "no ':' before the command");
+		return false;
+	}
+	while (isspace((unsigned char)*cmd_text))
+		cmd_text++;
+	if (!*cmd_text) {
+		snprintf(why, len, "no command after ':'");
+		return false;
+	}
+	struct wm_command *cmd = wm_command_parse(cmd_text);
+	if (!cmd) {
+		char word[64];
+		size_t n = strcspn(cmd_text, " \t");
+		snprintf(word, sizeof(word), "%.*s",
+			(int)(n < sizeof(word) ? n : sizeof(word) - 1),
+			cmd_text);
+		snprintf(why, len, "unknown or malformed command '%s'", word);
+		return false;
+	}
+	wm_command_destroy(cmd);
+
+	if (is_mouse_line(rest)) {
+		if (in_mode) {
+			snprintf(why, len, "mouse bindings in a key mode "
+				"aren't supported yet");
+			return false;
+		}
+		struct wm_mousebind *bind = parse_mousebind_line(rest, NULL);
+		if (!bind) {
+			snprintf(why, len, "not a mouse binding fluxland "
+				"understands");
+			return false;
+		}
+		wm_command_destroy(bind->command);
+		free(bind->argument);
+		free(bind);
+		return true;
+	}
+
+	struct wl_list tmp;
+	wl_list_init(&tmp);
+	bool ok = keybind_add_from_string(&tmp, rest);
+	keybind_destroy_list(&tmp);
+	if (!ok)
+		snprintf(why, len, "unknown key or modifier");
+	return ok;
+}
+
+/* A binding without On* is for the desktop (Fluxbox's GLOBAL) */
+static uint32_t
+bind_context(const struct wm_mousebind *bind)
+{
+	return bind->context ? bind->context : WM_MOUSE_CTX_GLOBAL;
+}
+
 struct wm_mousebind *
-mousebind_find(struct wl_list *bindings, enum wm_mouse_context context,
+mousebind_find(struct wl_list *bindings, uint32_t context,
 	enum wm_mouse_event event, uint32_t button, uint32_t modifiers)
 {
 	struct wm_mousebind *bind;
-
-	/* First pass: exact context match */
 	wl_list_for_each(bind, bindings, link) {
-		if (bind->context == context &&
+		if ((bind_context(bind) & context) &&
 		    bind->event == event &&
 		    bind->button == button &&
 		    bind->modifiers == modifiers)
 			return bind;
 	}
-
-	/* Second pass: global bindings (CTX_NONE) match any context */
-	if (context != WM_MOUSE_CTX_NONE) {
-		wl_list_for_each(bind, bindings, link) {
-			if (bind->context == WM_MOUSE_CTX_NONE &&
-			    bind->event == event &&
-			    bind->button == button &&
-			    bind->modifiers == modifiers)
-				return bind;
-		}
-	}
-
-	/* Third pass: OnWindow matches titlebar, border, grips too */
-	if (context == WM_MOUSE_CTX_TITLEBAR ||
-	    context == WM_MOUSE_CTX_WINDOW_BORDER ||
-	    context == WM_MOUSE_CTX_LEFT_GRIP ||
-	    context == WM_MOUSE_CTX_RIGHT_GRIP ||
-	    context == WM_MOUSE_CTX_TAB) {
-		wl_list_for_each(bind, bindings, link) {
-			if (bind->context == WM_MOUSE_CTX_WINDOW &&
-			    bind->event == event &&
-			    bind->button == button &&
-			    bind->modifiers == modifiers)
-				return bind;
-		}
-	}
-
 	return NULL;
+}
+
+bool
+mousebind_has_move(struct wl_list *bindings, uint32_t context,
+	uint32_t button, uint32_t modifiers)
+{
+	return mousebind_find(bindings, context, WM_MOUSE_MOVE, button,
+		modifiers) != NULL;
 }
 
 void

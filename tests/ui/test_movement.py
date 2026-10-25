@@ -80,7 +80,7 @@ class TestWindowResize:
     """Verify window resize commands via IPC."""
 
     def test_resize_to(self, ipc, windows):
-        """ResizeTo 640 480 sets window to exact size 640x480."""
+        """ResizeTo 640 480: the window, decorations included (Fluxbox)."""
         win = windows.open("ResizeToTest")
         ipc.command("MoveTo 100 100")
         time.sleep(0.2)
@@ -89,9 +89,10 @@ class TestWindowResize:
         time.sleep(0.2)
         after = ipc.get_focused_window()
 
-        assert after["width"] == pytest.approx(640, abs=5)
+        assert after["frame"]["width"] == pytest.approx(640, abs=5)
         # Height tolerance wider due to terminal cell-size quantization
-        assert after["height"] == pytest.approx(480, abs=15)
+        assert after["frame"]["height"] == pytest.approx(480, abs=15)
+        assert after["width"] < after["frame"]["width"]
 
     def test_resize_horizontal(self, ipc, windows):
         """ResizeHorizontal 50 increases window width."""

@@ -69,6 +69,7 @@ enum wm_action {
 	WM_ACTION_START_MOVING,
 	WM_ACTION_START_RESIZING,
 	WM_ACTION_ACTIVATE_TAB,
+	WM_ACTION_TAB,             /* Tab N */
 	WM_ACTION_ROOT_MENU,
 	WM_ACTION_WINDOW_MENU,
 	WM_ACTION_WINDOW_LIST,
@@ -173,6 +174,7 @@ struct wm_keymode {
 	char *name;
 	struct wl_list bindings;   /* wm_keybind.link */
 	struct wl_list link;       /* wm_server keymodes list */
+	bool end_bound;            /* KeyMode bound its end keys here */
 };
 
 /*
@@ -184,7 +186,22 @@ struct wm_chain_state {
 	struct wl_event_source *timeout;   /* auto-abort timer */
 };
 
-#define WM_CHAIN_TIMEOUT_MS 3000
+#define WM_CHAIN_TIMEOUT_MS 5000  /* Fluxbox's */
+
+/*
+ * A key given as a number in the keys file is a keycode (X numbering,
+ * evdev + 8), stored in place of a keysym above the keysym range.
+ */
+#define WM_KEYSYM_KEYCODE(kc)  (0x80000000u | (uint32_t)(kc))
+
+/* Lock modifiers (CapsLock, NumLock) never take part in a binding */
+#define WM_MODIFIERS_IGNORED   (WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)
+
+/*
+ * A modifier name of the keys file: Shift, Control (Ctrl), Mod1 (Alt),
+ * Mod2, Mod3, Mod4, Mod5, Lock, or None (no bit). False if it is not one.
+ */
+bool wm_modifier_from_name(const char *name, uint32_t *mods);
 
 /* Load keybindings from a keys file. Populates the default mode's bindings
  * and any additional keymodes. Returns 0 on success, -1 on error. */

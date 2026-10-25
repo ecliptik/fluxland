@@ -4807,6 +4807,27 @@ teardown_three(void)
 	test_server.focus_cycle.restore_minimized = NULL;
 }
 
+/* GoToWindow N: the Nth of the focus list, from the end when negative */
+static void
+test_goto_window(void)
+{
+	setup_three_mru();
+	wm_focus_goto_window(&test_server, NULL, 2);
+	assert(test_server.focused_view == &test_views[1]);
+	wm_focus_goto_window(&test_server, NULL, -1);
+	assert(test_server.focused_view == &test_views[2]);
+	/* Fewer windows than N: the last there is (v2 is newest now) */
+	test_server.focused_view = &test_views[1];
+	wm_focus_goto_window(&test_server, NULL, 9);
+	assert(test_server.focused_view == &test_views[0]);
+	/* 0 does nothing */
+	test_server.focused_view = &test_views[0];
+	wm_focus_goto_window(&test_server, NULL, 0);
+	assert(test_server.focused_view == &test_views[0]);
+	teardown_three();
+	printf("  PASS: goto_window\n");
+}
+
 static void
 test_cycle_walks_list_while_held(void)
 {
@@ -5444,6 +5465,7 @@ main(void)
 	test_view_at_foreign_node_data();
 
 	/* Focus cycling */
+	test_goto_window();
 	test_cycle_walks_list_while_held();
 	test_cycle_without_modifiers_commits();
 	test_cycle_lock_modifiers_not_held();

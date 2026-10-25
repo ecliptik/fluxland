@@ -44,6 +44,7 @@
 #include "style.h"
 #include "toolbar.h"
 #include "view.h"
+#include "view_geometry.h"
 #include "workspace.h"
 
 /* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
@@ -164,14 +165,41 @@ handle_minimize(struct wm_view *view)
 	return true;
 }
 
+/*
+ * The leading number of an argument, or dflt: Fluxbox reads "N" of
+ * "Workspace N" with an istream, so "2 more" is 2 and "" is the default.
+ */
+static int
+arg_int(const char *argument, int dflt)
+{
+	if (!argument)
+		return dflt;
+	char *end;
+	long v = strtol(argument, &end, 10);
+	if (end == argument || v < -100000 || v > 100000)
+		return dflt;
+	return (int)v;
+}
+
+/* A workspace number counting from 1, negative from the end, clamped */
+static int
+workspace_number(struct wm_server *server, int num)
+{
+	int total = server->workspace_count;
+	if (num < 0)
+		num += total + 1;
+	if (num < 1)
+		num = 1;
+	if (num > total)
+		num = total;
+	return num - 1;
+}
+
 static bool
 handle_workspace_switch(struct wm_server *server, const char *argument)
 {
-	if (argument) {
-		int ws;
-		if (safe_atoi(argument, &ws))
-			wm_workspace_switch(server, ws - 1);
-	}
+	wm_workspace_switch(server,
+		workspace_number(server, arg_int(argument, 1)));
 	return true;
 }
 
@@ -179,11 +207,143 @@ static bool
 handle_send_to_workspace(struct wm_server *server, struct wm_view *view,
 	const char *argument)
 {
-	if (argument) {
-		int ws;
-		if (safe_atoi(argument, &ws))
-			wm_view_send_to_workspace(server, view, ws - 1);
+	wm_view_send_to_workspace(server, view,
+		workspace_number(server, arg_int(argument, 1)));
+	return true;
+}
+
+/* NextWorkspace/PrevWorkspace n (wrapping; 0 = the one before) */
+static bool
+handle_workspace_offset(struct wm_server *server, const char *argument,
+	int sign)
+{
+	int delta = arg_int(argument, 1);
+	int total = server->workspace_count;
+	if (total <= 0)
+		return true;
+	if (delta == 0) {
+		if (server->former_workspace >= 0 &&
+		    server->former_workspace < total)
+			wm_workspace_switch(server, server->former_workspace);
+		return true;
 	}
+	struct wm_workspace *active = wm_workspace_get_active(server);
+	int cur = active ? active->index : 0;
+	int target = ((cur + sign * delta) % total + total) % total;
+	wm_workspace_switch(server, target);
+	return true;
+}
+
+/* RightWorkspace/LeftWorkspace n (no wrapping) */
+static bool
+handle_workspace_step(struct wm_server *server, const char *argument,
+	int sign)
+{
+	struct wm_workspace *active = wm_workspace_get_active(server);
+	int target = (active ? active->index : 0) +
+		sign * arg_int(argument, 1);
+	if (target >= 0 && target < server->workspace_count)
+		wm_workspace_switch(server, target);
+	return true;
+}
+
+/* Send/TakeToNext/PrevWorkspace n: from the window's workspace */
+static bool
+handle_send_offset(struct wm_server *server, struct wm_view *view,
+	const char *argument, int sign, bool take)
+{
+	int total = server->workspace_count;
+	if (!view || total <= 0)
+		return true;
+	struct wm_workspace *active = wm_workspace_get_active(server);
+	int cur = view->workspace ? view->workspace->index :
+		active ? active->index : 0;
+	int delta = sign * arg_int(argument, 1);
+	int target = ((cur + delta % total) % total + total) % total;
+	if (take)
+		wm_view_take_to_workspace(server, view, target);
+	else
+		wm_view_send_to_workspace(server, view, target);
+	return true;
+}
+
+/* Tab N: the Nth tab, from the end when negative */
+static bool
+handle_tab(struct wm_view *view, const char *argument)
+{
+	if (!view || !view->tab_group)
+		return true;
+	int count = view->tab_group->count;
+	int num = arg_int(argument, 1);
+	if (num < 0)
+		num += count + 1;
+	if (num < 1)
+		num = 1;
+	if (num > count)
+		num = count;
+	wm_view_activate_tab(view, num - 1);
+	return true;
+}
+
+/*
+ * Moving or resizing a maximized or fullscreen window un-maximizes it
+ * first (disableMaximizationIfNeeded), unless maxDisableMove or
+ * maxDisableResize forbid changing it at all. Returns false then.
+ */
+static bool
+leave_maximized(struct wm_view *view, bool resizing)
+{
+	bool full = view->maximized || view->fullscreen;
+	if (full && view->server->config &&
+	    (resizing ? view->server->config->max_disable_resize :
+	     view->server->config->max_disable_move))
+		return false;
+	if (view->fullscreen)
+		wm_view_toggle_fullscreen(view);
+	if (view->maximized)
+		wm_view_toggle_maximize(view);
+	if (view->maximized_horiz)
+		wm_view_maximize_horiz(view);
+	if (view->maximized_vert)
+		wm_view_maximize_vert(view);
+	return true;
+}
+
+/* The usable area of the window's head, for % and corners */
+static bool
+view_head_area(struct wm_view *view, struct wlr_box *area)
+{
+	struct wm_output *out = wm_output_for_view(view);
+	if (!out)
+		return false;
+	*area = out->usable_area;
+	if (wlr_box_empty(area))
+		wm_output_layout_box(out, area);
+	return !wlr_box_empty(area);
+}
+
+/* Up to three words of an argument */
+static int
+split_args(const char *argument, char *buf, size_t len, char *words[3])
+{
+	int n = 0;
+	if (!argument)
+		return 0;
+	snprintf(buf, len, "%s", argument);
+	char *save = NULL;
+	for (char *w = strtok_r(buf, " \t", &save); w && n < 3;
+	     w = strtok_r(NULL, " \t", &save))
+		words[n++] = w;
+	return n;
+}
+
+/* MoveRight/Left/Up/Down d, and Move dx dy */
+static bool
+handle_move_by(struct wm_view *view, int dx, int dy)
+{
+	if (!view || !leave_maximized(view, false))
+		return true;
+	wm_view_move(view, view->x + dx, view->y + dy);
 	return true;
 }
 
@@ -191,41 +351,115 @@ static bool
 handle_move_directional(struct wm_view *view, const char *argument,
 	int dx, int dy)
 {
-	if (view && argument) {
-		int px;
-		if (safe_atoi(argument, &px)) {
-			view->x += dx * px;
-			view->y += dy * px;
-			wlr_scene_node_set_position(
-				&view->scene_tree->node, view->x, view->y);
-		}
-	}
-	return true;
+	int d = arg_int(argument, 0);
+	return handle_move_by(view, dx * d, dy * d);
 }
 
+static bool
+handle_move(struct wm_view *view, const char *argument)
+{
+	if (!view)
+		return true;
+	char buf[128], *w[3];
+	int n = split_args(argument, buf, sizeof(buf), w);
+	if (n == 0) {
+		/* fluxland: no deltas, a mouse move as StartMoving */
+		wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
+		return true;
+	}
+	return handle_move_by(view, arg_int(w[0], 0),
+		n > 1 ? arg_int(w[1], 0) : 0);
+}
+
+/* MoveTo x y [corner]: pixels or %, "*" keeps a coordinate */
 static bool
 handle_move_to(struct wm_view *view, const char *argument)
 {
-	if (view && argument) {
-		int x = 0, y = 0;
-		sscanf(argument, "%d %d", &x, &y);
-		view->x = x;
-		view->y = y;
-		wlr_scene_node_set_position(
-			&view->scene_tree->node, x, y);
-	}
+	char buf[128], *w[3];
+	struct wm_size_token x, y;
+	struct wlr_box area;
+	if (!view || split_args(argument, buf, sizeof(buf), w) < 2 ||
+	    !wm_size_token_parse(w[0], &x) || !wm_size_token_parse(w[1], &y) ||
+	    !view_head_area(view, &area))
+		return true;
+	enum wm_corner corner = WM_CORNER_TOPLEFT;
+	if (w[2] && !wm_corner_from_name(w[2], &corner))
+		corner = WM_CORNER_TOPLEFT;
+	if (!leave_maximized(view, false))
+		return true;
+	struct wlr_box frame;
+	wm_view_frame_box(view, &frame);
+	int nx = x.ignore ? frame.x : wm_corner_x(corner, &area, frame.width,
+		wm_size_token_pixels(&x, area.width));
+	int ny = y.ignore ? frame.y : wm_corner_y(corner, &area, frame.height,
+		wm_size_token_pixels(&y, area.height));
+	wm_view_move(view, nx, ny);
 	return true;
 }
 
+/* ResizeTo w h: the window's size, pixels or % of the head; 0 keeps */
 static bool
 handle_resize_to(struct wm_view *view, const char *argument)
 {
-	if (view && argument) {
-		int w = 0, h = 0;
-		sscanf(argument, "%d %d", &w, &h);
-		if (w > 0 && h > 0)
-			wm_view_set_size(view, w, h);
+	char buf[128], *w[3];
+	struct wm_size_token tw, th;
+	struct wlr_box area;
+	if (!view || split_args(argument, buf, sizeof(buf), w) < 2 ||
+	    !wm_size_token_parse(w[0], &tw) || !wm_size_token_parse(w[1], &th) ||
+	    !view_head_area(view, &area) || !leave_maximized(view, true))
+		return true;
+	struct wlr_box frame;
+	wm_view_frame_box(view, &frame);
+	int fw = wm_size_token_pixels(&tw, area.width);
+	int fh = wm_size_token_pixels(&th, area.height);
+	if (fw > 0)
+		frame.width = fw;
+	if (fh > 0)
+		frame.height = fh;
+	wm_view_set_frame_box(view, &frame);
+	return true;
+}
+
+/*
+ * Resize dw dh, ResizeHorizontal dw, ResizeVertical dh: pixels, or % of
+ * the window's own size; never smaller than Fluxbox allows.
+ */
+static bool
+handle_resize_by(struct wm_view *view, const char *argument, bool horiz,
+	bool vert)
+{
+	char buf[128], *w[3];
+	int n = split_args(argument, buf, sizeof(buf), w);
+	if (!view)
+		return true;
+	if (n == 0 && horiz && vert) {
+		/* fluxland: no deltas, a mouse resize from the corner */
+		wm_view_begin_interactive(view, WM_CURSOR_RESIZE,
+			WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT);
+		return true;
 	}
+	struct wm_size_token dw = {0}, dh = {0};
+	if (horiz && vert) {
+		if (n < 2 || !wm_size_token_parse(w[0], &dw) ||
+		    !wm_size_token_parse(w[1], &dh))
+			return true;
+	} else if (n < 1 || !wm_size_token_parse(w[0], horiz ? &dw : &dh)) {
+		return true;
+	}
+	if (!leave_maximized(view, true))
+		return true;
+	struct wlr_box frame;
+	wm_view_frame_box(view, &frame);
+	int title = view->decoration ? view->decoration->titlebar_height : 0;
+	int nw = frame.width + wm_size_token_pixels(&dw, frame.width);
+	int nh = frame.height + wm_size_token_pixels(&dh, frame.height);
+	if (nw < title * 2 + 10)
+		nw = title * 2 + 10;
+	if (nh < title + 10)
+		nh = title + 10;
+	frame.width = nw;
+	frame.height = nh;
+	wm_view_set_frame_box(view, &frame);
 	return true;
 }
 
@@ -292,28 +526,47 @@ handle_show_desktop(struct wm_server *server)
 	return true;
 }
 
+/*
+ * KeyMode mode [end keys] (FbCommands::KeyModeCmd): the mode gets a
+ * binding of its end keys ("None Escape" unless given) back to the
+ * default mode; a mode the keys file doesn't have is the default one.
+ */
 static bool
 handle_key_mode(struct wm_server *server, const char *argument)
 {
-	if (argument) {
-		char mode_name[256];
-		const char *sp = argument;
-		while (*sp && !isspace((unsigned char)*sp))
-			sp++;
-		size_t len = sp - argument;
-		if (len >= sizeof(mode_name))
-			len = sizeof(mode_name) - 1;
-		memcpy(mode_name, argument, len);
-		mode_name[len] = '\0';
+	if (!argument)
+		return true;
+	char mode_name[256];
+	const char *sp = argument;
+	while (*sp && !isspace((unsigned char)*sp))
+		sp++;
+	size_t len = sp - argument;
+	if (len >= sizeof(mode_name))
+		len = sizeof(mode_name) - 1;
+	memcpy(mode_name, argument, len);
+	mode_name[len] = '\0';
+	while (isspace((unsigned char)*sp))
+		sp++;
 
-		free(server->current_keymode);
-		server->current_keymode = strdup(mode_name);
-		if (!server->current_keymode)
-			server->current_keymode = strdup("default");
-		wm_chain_reset(server);
-		wlr_log(WLR_INFO, "keymode switched to: %s",
-			mode_name);
+	struct wm_keymode *mode = NULL, *m;
+	wl_list_for_each(m, &server->keymodes, link) {
+		if (strcasecmp(m->name, mode_name) == 0)
+			mode = m;
 	}
+	if (!mode || strcasecmp(mode_name, "default") == 0) {
+		snprintf(mode_name, sizeof(mode_name), "default");
+	} else if (!mode->end_bound) {
+		char line[512];
+		snprintf(line, sizeof(line), "%s :KeyMode default",
+			*sp ? sp : "None Escape");
+		keybind_add_from_string(&mode->bindings, line);
+		mode->end_bound = true;
+	}
+
+	free(server->current_keymode);
+	server->current_keymode = strdup(mode_name);
+	wm_chain_reset(server);
+	wlr_log(WLR_INFO, "keymode switched to: %s", mode_name);
 	return true;
 }
 
@@ -326,10 +579,31 @@ handle_set_style(struct wm_server *server, const char *argument)
 		 * the compositor. (Any source may set a style: key and menu
 		 * styles live wherever [stylesdir] points.)
 		 */
-		char *resolved = realpath(argument, NULL);
+		char expanded[4096];
+		const char *home = getenv("HOME");
+		if (argument[0] == '~' && home)
+			snprintf(expanded, sizeof(expanded), "%s%s", home,
+				argument + 1);
+		else
+			snprintf(expanded, sizeof(expanded), "%s", argument);
+		/* A style directory (theme.cfg or style.cfg inside) too */
+		char *resolved = realpath(expanded, NULL);
 		struct stat st;
-		if (!resolved || stat(resolved, &st) != 0 ||
-		    !S_ISREG(st.st_mode)) {
+		bool ok = resolved && stat(resolved, &st) == 0 &&
+			S_ISREG(st.st_mode);
+		if (resolved && !ok && S_ISDIR(st.st_mode)) {
+			static const char *const cfg[] = {
+				"theme.cfg", "style.cfg" };
+			for (int i = 0; i < 2 && !ok; i++) {
+				char file[4096];
+				struct stat fst;
+				snprintf(file, sizeof(file), "%s/%s", resolved,
+					cfg[i]);
+				ok = stat(file, &fst) == 0 &&
+					S_ISREG(fst.st_mode);
+			}
+		}
+		if (!ok) {
 			wlr_log(WLR_ERROR, "SetStyle: not a style file: %s",
 				argument);
 			free(resolved);
@@ -380,18 +654,9 @@ handle_set_decor(struct wm_server *server, struct wm_view *view,
 	const char *argument)
 {
 	if (view && view->decoration && server->style && argument) {
-		enum wm_decor_preset preset = WM_DECOR_NORMAL;
-		if (strcasecmp(argument, "NONE") == 0 ||
-		    strcmp(argument, "0") == 0)
-			preset = WM_DECOR_NONE;
-		else if (strcasecmp(argument, "BORDER") == 0)
-			preset = WM_DECOR_BORDER;
-		else if (strcasecmp(argument, "TAB") == 0)
-			preset = WM_DECOR_TAB;
-		else if (strcasecmp(argument, "TINY") == 0)
-			preset = WM_DECOR_TINY;
-		else if (strcasecmp(argument, "TOOL") == 0)
-			preset = WM_DECOR_TOOL;
+		enum wm_decor_preset preset;
+		if (!wm_decor_parse(argument, &preset))
+			preset = WM_DECOR_NORMAL;
 		wm_decoration_set_preset(view->decoration,
 			preset, server->style);
 	}
@@ -402,48 +667,49 @@ static bool
 handle_take_to_workspace(struct wm_server *server, struct wm_view *view,
 	const char *argument)
 {
-	if (argument) {
-		int ws;
-		if (safe_atoi(argument, &ws))
-			wm_view_take_to_workspace(server, view, ws - 1);
-	}
+	wm_view_take_to_workspace(server, view,
+		workspace_number(server, arg_int(argument, 1)));
 	return true;
 }
 
-static bool
-handle_resize_delta(struct wm_view *view, const char *argument,
-	int horiz, int vert)
+
+/* One SetAlpha value: absolute, or relative with + or - */
+static int
+alpha_value(const char *word, int current)
 {
-	if (view && argument) {
-		int delta;
-		if (safe_atoi(argument, &delta))
-			wm_view_resize_by(view, horiz * delta,
-				vert * delta);
-	}
-	return true;
+	int v;
+	if (!safe_atoi(word, &v))
+		return current;
+	if (word[0] == '+' || word[0] == '-')
+		v += current;
+	return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
+/*
+ * SetAlpha [a [u]] (CurrentWindowCmd SetAlphaCmd): no value goes back to
+ * the init file's alphas, one sets both, two the focused and unfocused.
+ */
 static bool
 handle_set_alpha(struct wm_view *view, const char *argument)
 {
-	if (view && argument) {
-		int alpha;
-		if (argument[0] == '+' || argument[0] == '-') {
-			/* Relative adjustment */
-			int offset;
-			if (!safe_atoi(argument, &offset))
-				return true;
-			alpha = view->focus_alpha + offset;
-		} else {
-			if (!safe_atoi(argument, &alpha))
-				return true;
-		}
-		if (alpha < 0) alpha = 0;
-		if (alpha > 255) alpha = 255;
-		view->focus_alpha = alpha;
-		view->unfocus_alpha = alpha;
-		wm_view_set_opacity(view, alpha);
+	if (!view)
+		return true;
+	char buf[64], *w[3];
+	int n = split_args(argument, buf, sizeof(buf), w);
+	struct wm_config *config = view->server->config;
+	if (n == 0) {
+		view->focus_alpha = config ? config->window_focus_alpha : 255;
+		view->unfocus_alpha = config ?
+			config->window_unfocus_alpha : 255;
+	} else if (n == 1) {
+		view->focus_alpha = alpha_value(w[0], view->focus_alpha);
+		view->unfocus_alpha = alpha_value(w[0], view->unfocus_alpha);
+	} else {
+		view->focus_alpha = alpha_value(w[0], view->focus_alpha);
+		view->unfocus_alpha = alpha_value(w[1], view->unfocus_alpha);
 	}
+	wm_view_set_opacity(view, view == view->server->focused_view ?
+		view->focus_alpha : view->unfocus_alpha);
 	return true;
 }
 
@@ -503,27 +769,34 @@ handle_bind_key(struct wm_server *server, const char *argument)
 	return true;
 }
 
+/* GoToWindow N [{options}] [pattern] */
 static bool
 handle_goto_window(struct wm_server *server, const char *argument)
 {
-	if (argument) {
-		int n;
-		if (!safe_atoi(argument, &n) || n < 1)
-			return true;
-		struct wm_workspace *ws = wm_workspace_get_active(server);
-		int count = 0;
-		struct wm_view *v;
-		wl_list_for_each(v, &server->views, link) {
-			if (v->workspace != ws && !v->sticky)
-				continue;
-			count++;
-			if (count == n) {
-				wm_focus_view(v,
-					wm_view_surface(v));
-				break;
-			}
-		}
+	int num = arg_int(argument, 0);
+	const char *rest = argument ? strpbrk(argument, "({") : NULL;
+	struct wm_window_list_spec spec;
+	if (!wm_window_list_parse(rest, &spec)) {
+		wlr_log(WLR_ERROR, "bad window pattern: %s", rest);
+		return false;
 	}
+	wm_focus_goto_window(server, &spec, num);
+	wm_window_list_finish(&spec);
+	return true;
+}
+
+/* Focus / Activate [pattern]: with a pattern, GoToWindow 1 (pattern) */
+static bool
+handle_focus(struct wm_server *server, struct wm_view *view,
+	const char *argument)
+{
+	if (argument && *argument) {
+		char buf[1024];
+		snprintf(buf, sizeof(buf), "1 %s", argument);
+		return handle_goto_window(server, buf);
+	}
+	if (view)
+		wm_focus_view(view, NULL);
 	return true;
 }
 
@@ -721,17 +994,13 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_SEND_TO_WORKSPACE:
 		return handle_send_to_workspace(server, view, argument);
 	case WM_ACTION_NEXT_WORKSPACE:
-		wm_workspace_switch_next(server);
-		return true;
+		return handle_workspace_offset(server, argument, 1);
 	case WM_ACTION_PREV_WORKSPACE:
-		wm_workspace_switch_prev(server);
-		return true;
+		return handle_workspace_offset(server, argument, -1);
 	case WM_ACTION_RIGHT_WORKSPACE:
-		wm_workspace_switch_right(server);
-		return true;
+		return handle_workspace_step(server, argument, 1);
 	case WM_ACTION_LEFT_WORKSPACE:
-		wm_workspace_switch_left(server);
-		return true;
+		return handle_workspace_step(server, argument, -1);
 	case WM_ACTION_SET_WORKSPACE_NAME:
 		if (argument)
 			wm_workspace_set_name(server, argument);
@@ -744,14 +1013,9 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		wm_server_reconfigure(server);
 		return true;
 	case WM_ACTION_MOVE:
-		if (view)
-			wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
-		return true;
+		return handle_move(view, argument);
 	case WM_ACTION_RESIZE:
-		if (view)
-			wm_view_begin_interactive(view, WM_CURSOR_RESIZE,
-				WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT);
-		return true;
+		return handle_resize_by(view, argument, true, true);
 	case WM_ACTION_MOVE_LEFT:
 		return handle_move_directional(view, argument, -1, 0);
 	case WM_ACTION_MOVE_RIGHT:
@@ -795,10 +1059,7 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 			wm_view_begin_interactive(view, WM_CURSOR_TABBING, 0);
 		return true;
 	case WM_ACTION_FOCUS:
-		/* Focus is implicit in mouse binding dispatch */
-		if (view)
-			wm_focus_view(view, NULL);
-		return true;
+		return handle_focus(server, view, argument);
 	case WM_ACTION_START_MOVING:
 		if (view)
 			wm_view_begin_interactive(view, WM_CURSOR_MOVE, 0);
@@ -882,6 +1143,8 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		if (view)
 			wm_view_toggle_decoration(view);
 		return true;
+	case WM_ACTION_TAB:
+		return handle_tab(view, argument);
 	case WM_ACTION_ACTIVATE_TAB:
 		if (view && argument) {
 			int idx;
@@ -898,18 +1161,23 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 
 	/* Layer actions */
 	case WM_ACTION_RAISE_LAYER:
-		if (view)
-			wm_view_raise_layer(view);
-		return true;
 	case WM_ACTION_LOWER_LAYER:
-		if (view)
-			wm_view_lower_layer(view);
+		/* By n Fluxbox layers (2 by default): steps of fluxland's */
+		if (view) {
+			int steps = (arg_int(argument, 2) + 1) / 2;
+			for (int i = 0; i < (steps > 0 ? steps : 1); i++) {
+				if (action == WM_ACTION_RAISE_LAYER)
+					wm_view_raise_layer(view);
+				else
+					wm_view_lower_layer(view);
+			}
+		}
 		return true;
 	case WM_ACTION_SET_LAYER:
 		if (view && argument) {
-			enum wm_view_layer layer =
-				wm_view_layer_from_name(argument);
-			wm_view_set_layer(view, layer);
+			enum wm_view_layer layer;
+			if (wm_layer_parse(argument, &layer))
+				wm_view_set_layer(view, layer);
 		}
 		return true;
 	case WM_ACTION_SET_DECOR:
@@ -945,17 +1213,13 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_TAKE_TO_WORKSPACE:
 		return handle_take_to_workspace(server, view, argument);
 	case WM_ACTION_SEND_TO_NEXT_WORKSPACE:
-		wm_view_send_to_next_workspace(server, view);
-		return true;
+		return handle_send_offset(server, view, argument, 1, false);
 	case WM_ACTION_SEND_TO_PREV_WORKSPACE:
-		wm_view_send_to_prev_workspace(server, view);
-		return true;
+		return handle_send_offset(server, view, argument, -1, false);
 	case WM_ACTION_TAKE_TO_NEXT_WORKSPACE:
-		wm_view_take_to_next_workspace(server, view);
-		return true;
+		return handle_send_offset(server, view, argument, 1, true);
 	case WM_ACTION_TAKE_TO_PREV_WORKSPACE:
-		wm_view_take_to_prev_workspace(server, view);
-		return true;
+		return handle_send_offset(server, view, argument, -1, true);
 	case WM_ACTION_ADD_WORKSPACE:
 		wm_workspace_add(server);
 		return true;
@@ -975,9 +1239,9 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 
 	/* Resize by delta */
 	case WM_ACTION_RESIZE_HORIZ:
-		return handle_resize_delta(view, argument, 1, 0);
+		return handle_resize_by(view, argument, true, false);
 	case WM_ACTION_RESIZE_VERT:
-		return handle_resize_delta(view, argument, 0, 1);
+		return handle_resize_by(view, argument, false, true);
 
 	/* Focus direction */
 	case WM_ACTION_FOCUS_LEFT:

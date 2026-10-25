@@ -155,6 +155,7 @@ wm_workspaces_init(struct wm_server *server, int count)
 
 	/* Set the first workspace as current */
 	server->current_workspace = wm_workspace_get(server, 0);
+	server->former_workspace = -1;
 
 	/*
 	 * In per-output mode, all workspace trees must be enabled because
@@ -329,6 +330,10 @@ wm_workspace_switch(struct wm_server *server, int index)
 	if (!target) {
 		return;
 	}
+	/* For NextWorkspace 0: back to the one before */
+	struct wm_workspace *before = wm_workspace_get_active(server);
+	if (before && before != target)
+		server->former_workspace = before->index;
 
 	if (is_per_output_mode(server)) {
 		/*

@@ -184,7 +184,7 @@ test_event_types(void)
 	printf("  PASS: test_event_types\n");
 }
 
-/* Test: all button numbers (1-5) */
+/* Test: Fluxbox's button numbers: 4-7 are the wheel, 8 and 9 back/forward */
 static void
 test_button_numbers(void)
 {
@@ -194,28 +194,72 @@ test_button_numbers(void)
 		"OnDesktop Mouse3 :RootMenu\n"
 		"OnDesktop Mouse4 :NextWorkspace\n"
 		"OnDesktop Mouse5 :PrevWorkspace\n"
+		"OnDesktop Mouse6 :Focus\n"
+		"OnDesktop Mouse7 :Focus\n"
+		"OnDesktop Mouse8 :Focus\n"
+		"OnDesktop Mouse9 :Focus\n"
 	);
 
 	struct wl_list bindings;
 	wl_list_init(&bindings);
 	mousebind_load(&bindings, TEST_KEYS, NULL);
 
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
-		WM_MOUSE_PRESS, BTN_MIDDLE, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
-		WM_MOUSE_PRESS, BTN_RIGHT, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
-		WM_MOUSE_PRESS, BTN_SIDE, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
-		WM_MOUSE_PRESS, BTN_EXTRA, 0) != NULL);
+	uint32_t codes[] = { BTN_LEFT, BTN_MIDDLE, BTN_RIGHT,
+		WM_BUTTON_WHEEL_UP, WM_BUTTON_WHEEL_DOWN, WM_BUTTON_WHEEL_LEFT,
+		WM_BUTTON_WHEEL_RIGHT, BTN_SIDE, BTN_EXTRA };
+	for (size_t i = 0; i < sizeof(codes) / sizeof(codes[0]); i++)
+		assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
+			WM_MOUSE_PRESS, codes[i], 0) != NULL);
 
 	mousebind_destroy_list(&bindings);
 	printf("  PASS: test_button_numbers\n");
 }
 
-/* Test: modifier combinations */
+/* Test: Fluxbox's binding syntax: any order, several contexts, Double */
+static void
+test_fluxbox_syntax(void)
+{
+	write_file(TEST_KEYS,
+		"Mod1 OnWindow Mouse1 :Raise\n"
+		"OnTitlebar OnTab Mouse2 :Lower\n"
+		"OnTitlebar Double Mouse1 :Shade\n"
+		"OnTitlebar Double1 :Stick\n"
+		"OnMinButton Click3 :Close\n"
+		"OnMaxButton Click1 :Fullscreen\n"
+		"OnWinButton Mod5 Click1 :Kill\n"
+		"OnDesktop Mouse1 Mouse2 :Focus\n"
+	);
+	struct wl_list bindings;
+	wl_list_init(&bindings);
+	mousebind_load(&bindings, TEST_KEYS, NULL);
+
+	struct wm_mousebind *b = mousebind_find(&bindings,
+		WM_MOUSE_CTX_WINDOW, WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_ALT);
+	assert(b && b->action == WM_ACTION_RAISE);
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_TAB, WM_MOUSE_PRESS,
+		BTN_MIDDLE, 0);
+	assert(b && b->action == WM_ACTION_LOWER);
+	/* "Double Mouse1" and the first of two the same */
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_TITLEBAR, WM_MOUSE_DOUBLE,
+		BTN_LEFT, 0);
+	assert(b && b->action == WM_ACTION_SHADE);
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_MINBUTTON, WM_MOUSE_CLICK,
+		BTN_RIGHT, 0);
+	assert(b && b->action == WM_ACTION_CLOSE);
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_MAXBUTTON, WM_MOUSE_CLICK,
+		BTN_LEFT, 0);
+	assert(b && b->action == WM_ACTION_FULLSCREEN);
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_WINBUTTON, WM_MOUSE_CLICK,
+		BTN_LEFT, WLR_MODIFIER_MOD5);
+	assert(b && b->action == WM_ACTION_KILL);
+	/* Two events on one line isn't a binding */
+	assert(!mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
+		WM_MOUSE_PRESS, BTN_LEFT, 0));
+
+	mousebind_destroy_list(&bindings);
+	printf("  PASS: test_fluxbox_syntax\n");
+}
+
 static void
 test_modifiers(void)
 {
@@ -233,23 +277,23 @@ test_modifiers(void)
 	struct wm_mousebind *bind;
 
 	/* Mod4+Mouse1 (global, no context) */
-	bind = mousebind_find(&bindings, WM_MOUSE_CTX_NONE,
+	bind = mousebind_find(&bindings, WM_MOUSE_CTX_GLOBAL,
 		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO);
 	assert(bind && bind->action == WM_ACTION_START_MOVING);
 
 	/* Mod1+Mouse3 */
-	bind = mousebind_find(&bindings, WM_MOUSE_CTX_NONE,
+	bind = mousebind_find(&bindings, WM_MOUSE_CTX_GLOBAL,
 		WM_MOUSE_PRESS, BTN_RIGHT, WLR_MODIFIER_ALT);
 	assert(bind && bind->action == WM_ACTION_START_RESIZING);
 
 	/* Ctrl+Shift+Mouse1 */
-	bind = mousebind_find(&bindings, WM_MOUSE_CTX_NONE,
+	bind = mousebind_find(&bindings, WM_MOUSE_CTX_GLOBAL,
 		WM_MOUSE_PRESS, BTN_LEFT,
 		WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT);
 	assert(bind && bind->action == WM_ACTION_CLOSE);
 
 	/* None+Mouse2 (no modifiers) */
-	bind = mousebind_find(&bindings, WM_MOUSE_CTX_NONE,
+	bind = mousebind_find(&bindings, WM_MOUSE_CTX_GLOBAL,
 		WM_MOUSE_PRESS, BTN_MIDDLE, 0);
 	assert(bind && bind->action == WM_ACTION_SHOW_DESKTOP);
 
@@ -284,9 +328,9 @@ test_context_with_modifier(void)
 	printf("  PASS: test_context_with_modifier\n");
 }
 
-/* Test: global bindings (CTX_NONE) match any context as fallback */
+/* Test: a binding without On* is for the desktop only (Fluxbox) */
 static void
-test_global_fallback(void)
+test_no_context_is_desktop(void)
 {
 	write_file(TEST_KEYS,
 		"Mod4 Mouse1 :StartMoving\n"
@@ -296,23 +340,23 @@ test_global_fallback(void)
 	wl_list_init(&bindings);
 	mousebind_load(&bindings, TEST_KEYS, NULL);
 
-	/* Global binding should match any context via fallback */
+	uint32_t desktop = WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP;
+	assert(mousebind_find(&bindings, desktop,
+		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) != NULL);
 	assert(mousebind_find(&bindings, WM_MOUSE_CTX_TITLEBAR,
-		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
-		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) != NULL);
+		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) == NULL);
 	assert(mousebind_find(&bindings, WM_MOUSE_CTX_WINDOW,
-		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) != NULL);
+		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) == NULL);
 	assert(mousebind_find(&bindings, WM_MOUSE_CTX_TOOLBAR,
-		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) != NULL);
+		WM_MOUSE_PRESS, BTN_LEFT, WLR_MODIFIER_LOGO) == NULL);
 
 	mousebind_destroy_list(&bindings);
-	printf("  PASS: test_global_fallback\n");
+	printf("  PASS: test_no_context_is_desktop\n");
 }
 
-/* Test: OnWindow matches titlebar, border, grips, and tab */
+/* Test: OnWindow is the client and the middle of the handle */
 static void
-test_window_context_fallback(void)
+test_window_context(void)
 {
 	write_file(TEST_KEYS,
 		"OnWindow Mouse1 :Focus\n"
@@ -322,31 +366,24 @@ test_window_context_fallback(void)
 	wl_list_init(&bindings);
 	mousebind_load(&bindings, TEST_KEYS, NULL);
 
-	/* OnWindow should match titlebar, border, grips, tab */
+	assert(mousebind_find(&bindings, WM_MOUSE_CTX_WINDOW,
+		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
+	assert(mousebind_find(&bindings,
+		WM_MOUSE_CTX_WINDOW_BORDER | WM_MOUSE_CTX_WINDOW,
+		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
 	assert(mousebind_find(&bindings, WM_MOUSE_CTX_TITLEBAR,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_WINDOW_BORDER,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
+		WM_MOUSE_PRESS, BTN_LEFT, 0) == NULL);
 	assert(mousebind_find(&bindings, WM_MOUSE_CTX_LEFT_GRIP,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_RIGHT_GRIP,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_TAB,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) != NULL);
-
-	/* But NOT desktop, toolbar, or slit */
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
 		WM_MOUSE_PRESS, BTN_LEFT, 0) == NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_TOOLBAR,
-		WM_MOUSE_PRESS, BTN_LEFT, 0) == NULL);
-	assert(mousebind_find(&bindings, WM_MOUSE_CTX_SLIT,
+	assert(mousebind_find(&bindings,
+		WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP,
 		WM_MOUSE_PRESS, BTN_LEFT, 0) == NULL);
 
 	mousebind_destroy_list(&bindings);
-	printf("  PASS: test_window_context_fallback\n");
+	printf("  PASS: test_window_context\n");
 }
 
-/* Test: exact context takes priority over global fallback */
+/* Test: each place gets its own binding */
 static void
 test_context_priority(void)
 {
@@ -359,14 +396,13 @@ test_context_priority(void)
 	wl_list_init(&bindings);
 	mousebind_load(&bindings, TEST_KEYS, NULL);
 
-	/* Exact context match should win over global */
 	struct wm_mousebind *bind = mousebind_find(&bindings,
 		WM_MOUSE_CTX_TITLEBAR, WM_MOUSE_PRESS, BTN_LEFT, 0);
 	assert(bind && bind->action == WM_ACTION_RAISE);
 
-	/* Desktop should fall through to global binding */
 	bind = mousebind_find(&bindings,
-		WM_MOUSE_CTX_DESKTOP, WM_MOUSE_PRESS, BTN_LEFT, 0);
+		WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP, WM_MOUSE_PRESS,
+		BTN_LEFT, 0);
 	assert(bind && bind->action == WM_ACTION_LOWER);
 
 	mousebind_destroy_list(&bindings);
@@ -713,8 +749,9 @@ main(void)
 	test_button_numbers();
 	test_modifiers();
 	test_context_with_modifier();
-	test_global_fallback();
-	test_window_context_fallback();
+	test_no_context_is_desktop();
+	test_window_context();
+	test_fluxbox_syntax();
 	test_context_priority();
 	test_macrocmd();
 	test_togglecmd();

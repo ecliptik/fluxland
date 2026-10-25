@@ -157,6 +157,9 @@ void wm_toolbar_toggle_above(struct wm_toolbar *toolbar);
 void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
 
 /* Handle button click on toolbar; returns true if consumed */
+/* Is (lx, ly) on the shown toolbar? */
+bool wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly);
+
 bool wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 	double lx, double ly, uint32_t button);
 

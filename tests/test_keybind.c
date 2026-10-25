@@ -1698,6 +1698,43 @@ test_condition_destroy_null(void)
 }
 
 /* Test: keybind_destroy_list on populated list */
+/* Fluxbox's modifier names, keycodes, and lock modifiers left out */
+static void
+test_fluxbox_key_names(void)
+{
+	write_file(TEST_KEYS,
+		"Mod5 a :Exec one\n"
+		"Alt Mod3 b :Exec two\n"
+		"Lock Mod2 Mod4 c :Exec three\n"
+		"Mod4 176 :Exec four\n"
+		"Mod4 1 :Workspace 1\n"
+		"Ctrl Shift Tab :Exec five\n"
+		"Hyper x :Exec bad\n");
+	struct wl_list keymodes;
+	wl_list_init(&keymodes);
+	assert(keybind_load(&keymodes, TEST_KEYS) == 0);
+	struct wl_list *b = &keybind_get_mode(&keymodes, "default")->bindings;
+
+	assert(keybind_find(b, WLR_MODIFIER_MOD5, XKB_KEY_a));
+	assert(keybind_find(b, WLR_MODIFIER_ALT | WLR_MODIFIER_MOD3,
+		XKB_KEY_b));
+	/* Lock and Mod2 (NumLock) never take part */
+	assert(keybind_find(b, WLR_MODIFIER_LOGO, XKB_KEY_c));
+	/* A number that isn't a key name is a keycode */
+	assert(keybind_find(b, WLR_MODIFIER_LOGO, WM_KEYSYM_KEYCODE(176)));
+	assert(keybind_find(b, WLR_MODIFIER_LOGO, XKB_KEY_1));
+	assert(keybind_find(b, WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+		XKB_KEY_Tab));
+	/* An unknown modifier makes the line a bad key: dropped */
+	int count = 0;
+	struct wm_keybind *k;
+	wl_list_for_each(k, b, link)
+		count++;
+	assert(count == 6);
+	keybind_destroy_all(&keymodes);
+	printf("  PASS: test_fluxbox_key_names\n");
+}
+
 static void
 test_destroy_list(void)
 {
@@ -1759,6 +1796,7 @@ main(void)
 	test_delay_default();
 	test_condition_destroy_null();
 	test_destroy_list();
+	test_fluxbox_key_names();
 
 	cleanup();
 	printf("All keybind tests passed.\n");

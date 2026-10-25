@@ -243,6 +243,7 @@ struct wm_server {
 	/* Workspaces */
 	struct wl_list workspaces; /* wm_workspace.link */
 	struct wm_workspace *current_workspace;
+	int former_workspace;  /* index switched away from, or -1 */
 	int workspace_count;
 	struct wlr_scene_tree *sticky_tree; /* always-visible views */
 	struct wm_ws_transition *ws_transition; /* active slide/fade, or NULL */

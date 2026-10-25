@@ -212,7 +212,8 @@ test_validate = executable(
   'test_validate',
   files('test_validate.c', '../src/validate.c', '../src/rcparser.c',
     '../src/config.c', '../src/rules_parse.c', '../src/client_pattern.c',
-    '../src/fbcompat.c', '../src/regex_guard.c'),
+    '../src/fbcompat.c', '../src/regex_guard.c', '../src/keybind.c',
+    '../src/mousebind.c', '../src/command.c'),
   include_directories: test_inc,
   dependencies: [wayland_server, wlroots, server_protos, pangocairo,
     xkbcommon],
@@ -636,6 +637,27 @@ if wayland_client.found()
     install: false,
   )
   test('ext_workspace', test_ext_workspace, env: test_main_env, depends: fluxland_exe, timeout: 20, suite: 'integration')
+
+  # --- test_wheel_bindings: the wheel as Fluxbox's buttons 4 and 5 ---
+  virtual_pointer_xml = meson.project_source_root() / 'protocols/wlr-virtual-pointer-unstable-v1.xml'
+  virtual_pointer_client = [
+    custom_target('wlr-virtual-pointer-unstable-v1-client-protocol.h',
+      input: virtual_pointer_xml,
+      output: 'wlr-virtual-pointer-unstable-v1-client-protocol.h',
+      command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@']),
+    custom_target('wlr-virtual-pointer-unstable-v1-protocol.c',
+      input: virtual_pointer_xml,
+      output: 'wlr-virtual-pointer-unstable-v1-protocol.c',
+      command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@']),
+  ]
+  test_wheel_bindings = executable('test_wheel_bindings',
+    files('test_wheel_bindings.c'),
+    image_capture_client, foreign_toplevel_list_code, virtual_pointer_client,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('wheel_bindings', test_wheel_bindings, env: test_main_env, depends: fluxland_exe, timeout: 20, suite: 'integration')
 endif
 
 # --- Visual regression tests (decoration rendering) ---

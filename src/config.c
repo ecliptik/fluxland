@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "config.h"
+#include "mousebind.h"
 #include "i18n.h"
 #include "rcparser.h"
 #include <linux/input-event-codes.h>
@@ -482,8 +483,9 @@ config_create(void)
 	config->mouse_button_map[1] = BTN_LEFT;
 	config->mouse_button_map[2] = BTN_MIDDLE;
 	config->mouse_button_map[3] = BTN_RIGHT;
-	config->mouse_button_map[4] = BTN_SIDE;
-	config->mouse_button_map[5] = BTN_EXTRA;
+	/* Fluxbox's (X's) buttons 4 and 5 are the wheel */
+	config->mouse_button_map[4] = WM_BUTTON_WHEEL_UP;
+	config->mouse_button_map[5] = WM_BUTTON_WHEEL_DOWN;
 
 	config->gesture_workspace_switch = true;
 	config->gesture_overview = false;
@@ -602,6 +604,10 @@ apply_window_config(struct wm_config *config, struct rc_database *db)
 	/* Maximization */
 	config->full_maximization =
 		rc_get_bool(db, "session.screen0.fullMaximization", false);
+	config->max_disable_move =
+		rc_get_bool(db, "session.screen0.maxDisableMove", false);
+	config->max_disable_resize =
+		rc_get_bool(db, "session.screen0.maxDisableResize", false);
 
 	/* Opacity */
 	config->window_focus_alpha =
@@ -1283,7 +1289,8 @@ apply_mouse_config(struct wm_config *config, struct rc_database *db)
 		"session.mouse.button5.map",
 	};
 	static const uint32_t button_defaults[5] = {
-		BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA,
+		BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, WM_BUTTON_WHEEL_UP,
+		WM_BUTTON_WHEEL_DOWN,
 	};
 	for (int i = 0; i < 5; i++) {
 		val = rc_get_string(db, button_keys[i]);
@@ -1298,6 +1305,12 @@ apply_mouse_config(struct wm_config *config, struct rc_database *db)
 				config->mouse_button_map[i + 1] = BTN_SIDE;
 			else if (strcasecmp(val, "BTN_EXTRA") == 0)
 				config->mouse_button_map[i + 1] = BTN_EXTRA;
+			else if (strcasecmp(val, "WHEEL_UP") == 0)
+				config->mouse_button_map[i + 1] =
+					WM_BUTTON_WHEEL_UP;
+			else if (strcasecmp(val, "WHEEL_DOWN") == 0)
+				config->mouse_button_map[i + 1] =
+					WM_BUTTON_WHEEL_DOWN;
 			else
 				config->mouse_button_map[i + 1] =
 					button_defaults[i];

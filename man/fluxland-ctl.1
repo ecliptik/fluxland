@@ -53,6 +53,18 @@ List all managed windows as a JSON array.
 Each entry includes the window ID, title, app_id, workspace,
 geometry, and state flags (maximized, minimized, fullscreen,
 sticky, shaded).
+.B x
+and
+.B y
+are the window's top left corner and
+.BR width " and " height
+its content; the
+.B frame
+object has the whole window with its decorations, which is what
+.B MoveTo
+and
+.B ResizeTo
+place and size.
 .TP
 .B get_workspaces
 List all workspaces as a JSON array with names, window counts,

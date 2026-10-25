@@ -41,6 +41,7 @@
 #include "rules.h"
 #include "util.h"
 #include "view.h"
+#include "view_geometry.h"
 #include "command.h"
 #include "ipc_json.h"
 #include "workspace.h"
@@ -214,8 +215,10 @@ cmd_get_windows(struct wm_server *server)
 		bool focused = (view == server->focused_view);
 		bool minimized = !view->scene_tree->node.enabled;
 
-		struct wlr_box geo;
+		struct wlr_box geo, frame;
 		wm_view_get_geometry(view, &geo);
+		/* The whole window, decorations included (MoveTo, ResizeTo) */
+		wm_view_frame_box(view, &frame);
 
 		int ws_index = view->workspace ? view->workspace->index : -1;
 
@@ -235,7 +238,9 @@ cmd_get_windows(struct wm_server *server)
 			"\"minimized\":%s,\"shaded\":%s,\"sticky\":%s,"
 			"\"layer\":\"%s\",\"decorated\":%s,"
 			"\"role\":\"%s\",\"pid\":%d,\"xwayland\":%s,"
-			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
+			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,"
+			"\"frame\":{\"x\":%d,\"y\":%d,\"width\":%d,"
+			"\"height\":%d}}",
 			view->id,
 			app_id_esc, title_esc,
 			ws_index, focused ? "true" : "false",
@@ -249,7 +254,8 @@ cmd_get_windows(struct wm_server *server)
 				"true" : "false",
 			role, (int)pid,
 			view->type == WM_VIEW_XWAYLAND ? "true" : "false",
-			geo.x, geo.y, geo.width, geo.height);
+			geo.x, geo.y, geo.width, geo.height,
+			frame.x, frame.y, frame.width, frame.height);
 		free(title_esc);
 		free(app_id_esc);
 	}

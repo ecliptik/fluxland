@@ -1,439 +1,384 @@
-.TH FLUXLAND-KEYS 5 "2026-03-03" "fluxland 1.1.0" "File Formats Manual"
+.TH FLUXLAND-KEYS 5 "2026-10-24" "fluxland 1.1.0" "File Formats Manual"
 .SH NAME
-fluxland-keys \- key binding configuration for fluxland
+fluxland-keys \- key and mouse bindings (the Fluxbox keys file)
 .SH DESCRIPTION
-The keys file defines keyboard and mouse bindings for
-.BR fluxland (1).
-The format is compatible with the Fluxbox keys file format.
+The keys file binds keys and mouse buttons to commands.
+It is read the way Fluxbox reads its
+.IR ~/.fluxbox/keys ,
+so a Fluxbox keys file works unchanged; the commands are also used by
+menu items and by
+.BR fluxland-ctl (1).
 .PP
-By default, the file is located at
+The file is
 .I ~/.config/fluxland/keys
-but the path can be overridden in the init file via
-.BR session.keyFile .
+(or
+.I ~/.fluxbox/keys
+when fluxland uses a Fluxbox configuration directory); the init file's
+.B session.keyFile
+names another.
+.B fluxland \-\-check\-config
+reports every line fluxland would not bind, and why.
 .SH SYNTAX
-Each line defines one binding.
+Each line is one binding:
+.PP
+.RS 4
+.RI [ mode\fB:\fP "] [" modifier " ...] " key " [" modifier " ... " key " ...] :" command
+.RE
+.PP
 Blank lines and lines beginning with
 .B #
 or
 .B !
 are ignored.
-.PP
-The general format is:
-.PP
-.RS 4
-.RI [ Modifier " ...] " keyname " :" Action " [" argument ]
-.RE
-.PP
-The colon before the action name is required.
+The words are not case sensitive.
 .SH MODIFIERS
-The following modifier names are recognized (case-insensitive):
-.TP
-.B Mod1
-Alt key.
-.TP
-.B Mod4
-Super (Logo/Windows) key.
-.TP
-.B Control\fR, \fBCtrl
-Control key.
 .TP
 .B Shift
-Shift key.
+.TP
+.BR Control " (or " Ctrl )
+.TP
+.BR Mod1 " (or " Alt )
+The Alt key.
+.TP
+.B Mod4
+The Super (Windows) key.
+.TP
+.BR Mod2 ", " Mod3 ", " Mod5
+Mod5 is usually AltGr.
 .TP
 .B None
-No modifiers.
-Use this to bind an unmodified key.
+No modifier.
 .PP
-Multiple modifiers can be combined by listing them separated by spaces:
-.PP
-.RS 4
-.nf
-Mod4 Shift q :Close
-Control Mod1 t :Exec foot
-.fi
-.RE
-.SH KEY NAMES
-Key names follow the XKB naming convention as used by
-.BR xkbcommon .
-Common examples:
-.PP
-.RS 4
-.nf
-Return, space, Tab, Escape, BackSpace, Delete
-a\-z, 0\-9
-F1\-F12
-Left, Right, Up, Down
-Home, End, Page_Up, Page_Down
-bracketleft, bracketright, minus, equal, slash
-.fi
-.RE
-.PP
-Key names are case-insensitive.
-.SH KEY CHAINS
-Multiple key segments can be listed before the action to create a
-chained (multi-key) binding.
-The user presses each key combination in sequence:
+CapsLock and NumLock (Lock and Mod2) are left out when keys are
+matched, as in Fluxbox: bindings work whichever of them is on.
+.SH KEYS
+A key is an XKB keysym name, such as
+.BR Return ,
+.BR space ,
+.BR Tab ,
+.BR F1 ,
+.BR a ,
+.BR 1 ,
+.BR Left ,
+.BR XF86AudioRaiseVolume ,
+or a number that isn't a key name: a keycode, as
+.BR xev (1)
+shows it
+.RB ( "176 :Exec amixer sset Master 1+" ).
+A key is the key itself, whatever Shift does to it:
+.B Mod1 Shift Tab
+is Shift and the Tab key.
+.SS Chains
+Several keys before the command make a chain, pressed one after
+another (within 5 seconds):
 .PP
 .RS 4
 .nf
 Mod4 x Mod4 t :Exec foot
-Mod4 x Mod4 f :Exec firefox
 .fi
 .RE
 .PP
-After pressing
-.BR Mod4+x ,
-the compositor waits up to 3 seconds for the next key in the chain.
-Pressing
-.B Escape
-aborts the chain.
-If no matching continuation is found, the chain is also aborted.
-.SH KEYMODES
-A keymode is a named set of bindings that replaces the default bindings
-when activated.
-The default mode is called
-.BR default .
-.PP
-Keymode bindings are prefixed with the mode name followed by a colon:
+Escape, or a key the chain doesn't continue with, ends it.
+.SS Key modes
+A line that starts with a mode name and a colon belongs to that key
+mode; the others are the
+.B default
+mode.
+.B KeyMode
+.I name
+switches to a mode; its end keys
+.RB ( "None Escape"
+unless given) go back to the default mode:
 .PP
 .RS 4
 .nf
-moving: h :MoveLeft 10
-moving: l :MoveRight 10
-moving: j :MoveDown 10
-moving: k :MoveUp 10
-moving: Escape :KeyMode default
-Mod4 v :KeyMode moving Escape
+Mod4 v :KeyMode move Escape
+move: h :MoveLeft 10
+move: l :MoveRight 10
 .fi
 .RE
-.PP
-In this example, pressing
-.B Mod4+v
-enters the
-.I moving
-mode, where
-.BR h / j / k / l
-move the focused window.
-Pressing
-.B Escape
-returns to the default mode.
-.SH ACTIONS
-.SS Window Management
-.TP
-.B Close
-Send a close request to the focused window.
-.TP
-.B Kill\fR, \fBKillWindow
-Forcefully kill the focused window's process (SIGKILL).
-.TP
-.B Maximize
-Toggle maximize state.
-.TP
-.B MaximizeVertical
-Toggle vertical maximize.
-.TP
-.B MaximizeHorizontal
-Toggle horizontal maximize.
-.TP
-.B Fullscreen
-Toggle fullscreen state.
-.TP
-.B Minimize\fR, \fBIconify
-Minimize (iconify) the focused window.
-.TP
-.B Deiconify
-Restore the last minimized window.
-.TP
-.B Shade\fR, \fBShadeWindow
-Toggle window shade (collapse to title bar).
-.TP
-.B ShadeOn
-Shade the focused window.
-.TP
-.B ShadeOff
-Unshade the focused window.
-.TP
-.B Stick\fR, \fBStickWindow
-Toggle sticky state (visible on all workspaces).
-.TP
-.B ToggleDecor
-Toggle window decorations on/off.
-.TP
-.BI SetDecor " preset"
-Set decoration preset.
-.I preset
-is one of
-.BR NORMAL ,
-.BR NONE ,
-.BR BORDER ,
-.BR TAB ,
-.BR TINY ,
-or
-.BR TOOL .
-.SS Window Movement and Resizing
-.TP
-.B Move
-Begin interactive (mouse) move of the focused window.
-.TP
-.B Resize
-Begin interactive (mouse) resize of the focused window.
-.TP
-.B StartMoving
-Begin interactive move (used in mouse bindings).
-.TP
-.BI StartResizing " [edge]"
-Begin interactive resize (used in mouse bindings).
-.TP
-.BI MoveLeft " pixels"
-Move the focused window left by
-.I pixels
-pixels.
-.TP
-.BI MoveRight " pixels"
-Move right.
-.TP
-.BI MoveUp " pixels"
-Move up.
-.TP
-.BI MoveDown " pixels"
-Move down.
-.TP
-.BI MoveTo " x y"
-Move to absolute position
-.RI ( x ", " y ).
-.TP
-.BI ResizeTo " width height"
-Resize to the given dimensions.
-.SS Focus and Stacking
-.TP
-.B NextWindow
-Focus the next window in the stacking order.
-.TP
-.B PrevWindow
-Focus the previous window.
-.TP
-.B FocusNext
-Focus the next window (same as NextWindow).
-.TP
-.B FocusPrev
-Focus the previous window (same as PrevWindow).
-.TP
-.B Focus
-Explicitly focus the window under the cursor (mouse bindings).
-.TP
-.B Raise
-Raise the focused window to the top.
-.TP
-.B Lower
-Lower the focused window to the bottom.
-.TP
-.B RaiseLayer
-Move the focused window up one stacking layer.
-.TP
-.B LowerLayer
-Move down one layer.
-.TP
-.BI SetLayer " layer"
-Set the stacking layer explicitly.
-.I layer
-is one of
-.BR Desktop ,
-.BR Below " (or " Bottom ),
-.BR Normal ,
-or
-.BR Above " (or " Top ", " Dock ", " AboveDock ).
-.SS Window Arrangement
-.TP
-.B ArrangeWindows
-Tile all windows on the current workspace in a grid layout.
-.TP
-.B ArrangeWindowsVertical
-Tile windows in vertical columns.
-.TP
-.B ArrangeWindowsHorizontal
-Tile windows in horizontal rows.
-.TP
-.B CascadeWindows
-Cascade windows from the top-left corner.
-.SS Workspace Actions
-.TP
-.BI Workspace " N"
-Switch to workspace
-.I N
-(1-based).
-.TP
-.BI SendToWorkspace " N"
-Send the focused window to workspace
-.I N
-(1-based).
-.TP
-.B NextWorkspace
-Switch to the next workspace.
-.TP
-.B PrevWorkspace
-Switch to the previous workspace.
-.TP
-.B ShowDesktop
-Minimize all windows on the current workspace.
-.SS Tab Actions
-.TP
-.B NextTab
-Switch to the next tab in the focused tab group.
-.TP
-.B PrevTab
-Switch to the previous tab.
-.TP
-.BI ActivateTab " N"
-Activate tab number
-.I N
-(1-based).
-.TP
-.B DetachClient
-Detach the focused window from its tab group.
-.TP
-.B MoveTabLeft
-Move the current tab one position to the left.
-.TP
-.B MoveTabRight
-Move the current tab one position to the right.
-.TP
-.B StartTabbing
-Initiate tab-drag mode (mouse binding).
-.SS Menu Actions
-.TP
-.B RootMenu
-Show the root menu at the current cursor position.
-.TP
-.B WindowMenu
-Show the window menu at the current cursor position.
-.TP
-.B WindowList
-Show a menu listing all windows across all workspaces.
-.TP
-.B HideMenus
-Hide all visible menus.
-.SS Keyboard Layout Actions
-.TP
-.B NextLayout
-Switch to the next XKB keyboard layout.
-.TP
-.B PrevLayout
-Switch to the previous XKB keyboard layout.
-.SS Meta-Actions
-.TP
-.BI Exec " command"
-Execute
-.I command
-via
-.BR /bin/sh .
-Aliases:
-.BR ExecCommand ,
-.BR Execute .
-.TP
-.BI MacroCmd " {cmd1} {cmd2} ..."
-Execute multiple actions in sequence.
-Each sub-command is enclosed in braces:
-.PP
-.RS 8
-.nf
-Mod4 Return :MacroCmd {Raise} {Focus} {Exec foot}
-.fi
-.RE
-.TP
-.BI ToggleCmd " {cmd1} {cmd2} ..."
-Cycle through actions on each invocation.
-The first press executes
-.IR cmd1 ,
-the second
-.IR cmd2 ,
-and so on, wrapping around.
-.TP
-.BI KeyMode " name"
-Switch to the named keymode.
-See the
-.B KEYMODES
-section above.
-.SS Compositor Control
-.TP
-.B Reconfigure
-Reload all configuration files.
-.TP
-.B Exit\fR, \fBQuit
-Terminate the compositor.
 .SH MOUSE BINDINGS
-Mouse bindings use the same syntax but begin with a context prefix
-instead of modifier+key.
-Mouse bindings are parsed from the keys file but handled by the
-mouse binding subsystem.
-.PP
-The general format is:
-.PP
 .RS 4
-.nf
-.I Context
-.RI [ Modifier " ...] " ButtonEvent " :" Action " [" argument ]
-.fi
+.RI [ context " ...] [" modifier " ...] [" \fBDouble\fP "] " event " :" command
 .RE
+.PP
+The words can come in any order.
+.SS Events
+.TP
+.BI Mouse N
+The button is pressed.
+.TP
+.BI Click N
+The button is pressed and released without moving.
+.TP
+.BI Move N
+The pointer moves with the button held.
+.TP
+.BI "Double Mouse" N
+A double click (fluxland also takes
+.BI Double N\fR).
+.PP
+Buttons are numbered as in X: 1 left, 2 middle, 3 right, 4 and 5 the
+wheel up and down, 6 and 7 the wheel left and right, 8 and 9 back and
+forward.
+A wheel binding takes the wheel's steps there (a touchpad keeps
+scrolling).
+A press a binding takes isn't passed on to the window.
 .SS Contexts
 .TP
-.B OnTitlebar
-Window title bar.
-.TP
 .B OnDesktop
-Root (empty desktop) area.
+The desktop.
+A binding with no context is also for the desktop only, as in Fluxbox.
 .TP
-.B OnWindowBorder
-Window border.
+.B OnWindow
+A window's content.
 .TP
-.B OnLeftGrip\fR, \fBOnRightGrip
-Corner resize grips.
-.SS Button Events
+.B OnTitlebar
+A window's titlebar.
 .TP
-.B Mouse1\fR, \fBMouse2\fR, \fBMouse3
-Button press events (left, middle, right).
+.B OnTab
+A tab (the titlebar's label).
 .TP
-.B Move1
-Drag with button 1 held.
+.BR OnWindowBorder ", " OnLeftGrip ", " OnRightGrip
+The border and handle, and the handle's corners.
 .TP
-.B Double1
-Double-click button 1.
+.BR OnWinButton ", " OnMinButton ", " OnMaxButton
+A titlebar button: any, the minimize button, the maximize button.
+These are
+.BI Click N
+bindings; they replace the button's own action.
 .TP
-.B Mouse4\fR, \fBMouse5
-Scroll wheel up/down.
+.B OnToolbar
+The toolbar.
+.TP
+.B OnSlit
+The slit.
+.PP
+Several contexts can be given:
+.BR "OnTitlebar OnTab Mouse2 :Lower" .
+.SH CLIENT PATTERNS
+Commands that choose windows take a pattern: terms in parentheses,
+all of which must match, each
+.BI ( property = regex )
+or
+.BI ( property != regex ).
+The regex (POSIX extended) must match the whole value.
+A bare word matches the name:
+.B (xterm)
+is
+.BR (name=xterm) ;
+a bare property, or
+.BR [current] ,
+matches what the focused window (or the current workspace) has:
+.BR (workspace) ,
+.BR (class=[current]) .
+.TP
+.BR name ", " class
+X11 windows' WM_CLASS instance and class; a Wayland window's app_id.
+.TP
+.BR title ", " role ", " tag
+The title; X11 WM_WINDOW_ROLE; xdg-toplevel-tag.
+.TP
+.BR workspace ", " workspacename ", " head ", " layer
+Where the window is (workspaces count from 0 here).
+.TP
+.BR transient ", " maximized ", " maximizedhorizontal ", " maximizedvertical ", " minimized ", " fullscreen ", " shaded ", " stuck ", " focushidden ", " iconhidden ", " urgent
+.B yes
+or
+.BR no .
+.PP
+Window lists (NextWindow, GoToWindow...) also take
+.BR {static} ,
+creation order instead of focus order, and
+.BR {groups} ,
+one entry per tab group.
+.SH COMMANDS
+Commands act on a window: the one clicked for a mouse binding, each
+window for ForEach, otherwise the focused one.
+Numbers are workspaces, heads and tabs counting from 1; where noted, a
+negative number counts from the end.
+.SS Windows
+.TP
+.BR Close ", " Kill " (" KillWindow )
+.TP
+.BR Minimize " (" Iconify ", " MinimizeWindow "), " Maximize " (" MaximizeWindow "), " MaximizeHorizontal ", " MaximizeVertical ", " Fullscreen
+.TP
+.BR Shade " (" ShadeWindow "), " ShadeOn ", " ShadeOff ", " Stick " (" StickWindow )
+.TP
+.BR Raise ", " Lower ", " RaiseLayer " [\fIn\fP], " LowerLayer " [\fIn\fP]"
+By n Fluxbox layers (2, one layer, by default).
+.TP
+.BI SetLayer " layer"
+.BR Top ", " Normal ", " Bottom ", " Desktop ,
+the other Fluxbox names, or a Fluxbox layer number (see
+.BR fluxland-apps (5)).
+.TP
+.BI SetDecor " decoration\fR, " ToggleDecor
+.BR NORMAL ", " NONE ", " BORDER ", " TAB ", " TINY ", " TOOL ,
+or a Fluxbox decoration bitmask.
+.TP
+.BR SetAlpha " [\fIfocused\fP [\fIunfocused\fP]]"
+Opacity 0\-255, or relative with
+.B +
+or
+.BR \- ;
+one value for both; none goes back to the init file's.
+.TP
+.BR Deiconify " [\fImode\fP]"
+.BR LastWorkspace " (the default), " All ", " AllWorkspace .
+.SS Moving and resizing
+.TP
+.BR StartMoving ", " StartResizing " [\fIcorner\fP], " StartTabbing
+Mouse moves, resizes and tab drags.
+.TP
+.BI MoveTo " x y \fR[\fIcorner\fP]"
+Pixels or percent of the head,
+.B *
+to leave a coordinate, from a corner of the head
+.RB ( TopLeft " by default, " Top ", " TopRight ", " Left ", " Center ,
+.BR Right ", " BottomLeft ", " Bottom ", " BottomRight ).
+.TP
+.BI ResizeTo " width height"
+The window's size with its decorations, pixels or percent of the head;
+0 keeps one.
+.TP
+.BI Move " dx dy\fR, " MoveLeft " d\fR, " MoveRight " d\fR, " MoveUp " d\fR, " MoveDown " d"
+.TP
+.BI Resize " dw dh\fR, " ResizeHorizontal " dw\fR, " ResizeVertical " dh"
+Pixels, or percent of the window's size.
+.PP
+Moving or resizing a maximized window un-maximizes it, unless
+.B session.screen0.maxDisableMove
+or
+.B maxDisableResize
+are set.
+.B Move
+and
+.B Resize
+without numbers start a mouse move or resize (fluxland).
+.SS Focus
+.TP
+.BR NextWindow ", " PrevWindow " [{\fIoptions\fP}] [\fIpattern\fP]"
+Cycle through the window list while the modifiers are held.
+.TP
+.BR NextGroup ", " PrevGroup " [\fIpattern\fP]"
+.TP
+.BI GoToWindow " N \fR[{\fIoptions\fP}] [\fIpattern\fP]"
+The Nth window of the list (from the end when negative).
+.TP
+.BR Focus " [\fIpattern\fP], " Activate " [\fIpattern\fP]"
+Focus the window, or the first matching the pattern.
+.TP
+.BR FocusLeft ", " FocusRight ", " FocusUp ", " FocusDown
+.SS Workspaces
+.TP
+.BI Workspace " N"
+(Negative from the end; out of range is the first or last.)
+.TP
+.BR NextWorkspace ", " PrevWorkspace " [\fIn\fP]"
+n workspaces on, wrapping; 0 goes back to the workspace before.
+.TP
+.BR RightWorkspace ", " LeftWorkspace " [\fIn\fP]"
+Without wrapping.
+.TP
+.BI SendToWorkspace " N\fR, " TakeToWorkspace " N"
+Send the window there (Take goes with it).
+.TP
+.BR SendToNextWorkspace ", " SendToPrevWorkspace ", " TakeToNextWorkspace ", " TakeToPrevWorkspace " [\fIn\fP]"
+.TP
+.BR AddWorkspace ", " RemoveLastWorkspace ", " SetWorkspaceName " \fIname\fP"
+.TP
+.BR SetHead " \fIN\fP, " SendToNextHead ", " SendToPrevHead " [\fIn\fP]"
+.TP
+.BR ShowDesktop ", " CloseAllWindows
+.TP
+.BR ArrangeWindows ", " ArrangeWindowsVertical ", " ArrangeWindowsHorizontal ", " ArrangeWindowsStackLeft ", " ArrangeWindowsStackRight ", " ArrangeWindowsStackTop ", " ArrangeWindowsStackBottom ", " CascadeWindows ", " Unclutter
+.SS Tabs
+.TP
+.BI Tab " N"
+The Nth tab (from the end when negative).
+.TP
+.BR NextTab ", " PrevTab ", " MoveTabLeft ", " MoveTabRight ", " DetachClient
+.TP
+.BR ActivateTab " [\fIN\fP]"
+The tab under the pointer (or tab N).
+.SS Menus
+.TP
+.BR RootMenu ", " WorkspaceMenu ", " WindowMenu ", " ClientMenu ", " WindowList ", " HideMenus
+.TP
+.BI CustomMenu " path"
+.SS Commands
+.TP
+.BI Exec " command\fR (" ExecCommand ", " Execute )
+Run a shell command.
+.TP
+.BI MacroCmd " {command} {command} ..."
+.TP
+.BI ToggleCmd " {command} {command} ..."
+The next command each time.
+.TP
+.BI Delay " {command} \fR[\fImicroseconds\fP]"
+Run it once the binding stops repeating (200 by default).
+.TP
+.BI If " {condition} {then} \fR[{\fIelse\fP}]" "\fR (" Cond )
+.TP
+.BI ForEach " {command} \fR[{\fIcondition\fP}]" "\fR (" Map )
+For each window (that meets the condition).
+.TP
+.BI KeyMode " mode \fR[\fIend keys\fP]"
+.TP
+.BI BindKey " binding"
+.TP
+.BI SetEnv " name value\fR, " Export " name=value"
+.TP
+.BI SetStyle " path\fR, " ReloadStyle
+A style file, or a directory with theme.cfg or style.cfg.
+.TP
+.BR Reconfigure " (" Reconfig ", " Restart )
+Read the configuration again.
+fluxland can't restart under its windows, so Restart does this too.
+.TP
+.BR Exit " (" Quit )
+.SS Conditions
+.TP
+.BI Matches " pattern"
+The window matches.
+.TP
+.BI Some " condition\fR, " Every " condition"
+Some or every window meets it.
+.TP
+.BI Not " condition\fR, " And " {c} {c} ...\fR, " Or " ...\fR, " Xor " ..."
 .SH EXAMPLES
 .PP
 .RS 4
 .nf
-# Launch terminal
-Mod4 Return :Exec foot
-
-# Close focused window
-Mod4 Shift q :Close
-
-# Workspace switching
-Mod4 1 :Workspace 1
-Mod4 2 :Workspace 2
-
-# Move window by keyboard
-Mod4 Left :MoveLeft 20
-Mod4 Right :MoveRight 20
-
-# Key chain
-Mod4 x Mod4 t :Exec foot
-Mod4 x Mod4 f :Exec firefox
-
-# Mouse: titlebar click raises and focuses
-OnTitlebar Mouse1 :MacroCmd {Raise} {Focus} {ActivateTab}
+OnDesktop Mouse3 :RootMenu
+OnDesktop Mouse4 :NextWorkspace
+OnTitlebar Double Mouse1 :Shade
 OnTitlebar Move1 :StartMoving
-OnTitlebar Double1 :Shade
+OnWindow Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
+OnMaxButton Click3 :Fullscreen
 
-# Alt+click move/resize
-Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
-Mod1 Mouse3 :MacroCmd {Raise} {Focus} {StartResizing NearestCorner}
+Mod1 Tab :NextWindow {groups} (workspace=[current])
+Mod4 Return :Exec foot
+Mod4 Left :MoveTo 0 0 TopLeft
+Mod4 h :MacroCmd {ResizeTo 50% 100%} {MoveTo 0 0}
+Mod4 e :If {Some Matches (class=firefox)} {Focus (class=firefox)} {Exec firefox}
+Control Mod1 Right :NextWorkspace
+Control Mod1 BackSpace :NextWorkspace 0
 .fi
 .RE
+.SH COMPATIBILITY
+fluxland 1.x bound a mouse binding with no context everywhere, and
+.B OnWindow
+covered the decorations too; both now follow Fluxbox: write
+.BR "OnWindow Mod1 Mouse1" .
+Buttons 4 and 5 are the wheel (they were the side buttons, now 8
+and 9).
 .SH SEE ALSO
 .BR fluxland (1),
 .BR fluxland-apps (5),
-.BR fluxland-style (5),
-.BR fluxland-menu (5)
+.BR fluxland-init (5),
+.BR fluxland-menu (5),
+.BR fluxland-ctl (1),
+.BR regex (7)

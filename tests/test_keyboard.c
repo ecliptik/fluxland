@@ -231,6 +231,8 @@ struct wlr_scene_buffer {
 #define WLR_MODIFIER_LOGO  (1 << 3)
 #define WLR_MODIFIER_CAPS  (1 << 4)
 #define WLR_MODIFIER_MOD2  (1 << 5)
+#define WM_MODIFIERS_IGNORED   (WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)
+#define WM_KEYSYM_KEYCODE(kc)  (0x80000000u | (uint32_t)(kc))
 
 #define WLR_EDGE_TOP    (1 << 0)
 #define WLR_EDGE_BOTTOM (1 << 1)
@@ -269,6 +271,7 @@ enum xkb_state_component {
 #define XKB_KEY_XF86Switch_VT_12 0x1008FE0C
 #define XKB_KEY_Escape 0xff1b
 #define XKB_KEY_e      0x0065
+#define XKB_KEY_E      0x0045
 #define XKB_KEY_a      0x0061
 #define XKB_KEY_t      0x0074
 
@@ -454,6 +457,25 @@ xkb_state_key_get_syms(struct xkb_state *state, xkb_keycode_t key,
 	return stub_nsyms;
 }
 
+/* The key's unshifted keysyms (level 0); none unless a test sets them */
+static xkb_keysym_t stub_level0_keysyms[4];
+static int stub_level0_nsyms;
+static xkb_layout_index_t
+xkb_state_key_get_layout(struct xkb_state *state, xkb_keycode_t key)
+{
+	(void)state; (void)key;
+	return 0;
+}
+static int
+xkb_keymap_key_get_syms_by_level(struct xkb_keymap *keymap,
+	xkb_keycode_t key, xkb_layout_index_t layout, uint32_t level,
+	const xkb_keysym_t **syms_out)
+{
+	(void)keymap; (void)key; (void)layout; (void)level;
+	*syms_out = stub_level0_keysyms;
+	return stub_level0_nsyms;
+}
+
 static xkb_layout_index_t stub_num_layouts_value = 1;
 static xkb_layout_index_t stub_active_layout_index;
 
@@ -627,6 +649,7 @@ enum wm_action {
 	WM_ACTION_START_MOVING,
 	WM_ACTION_START_RESIZING,
 	WM_ACTION_ACTIVATE_TAB,
+	WM_ACTION_TAB,
 	WM_ACTION_ROOT_MENU,
 	WM_ACTION_WINDOW_MENU,
 	WM_ACTION_WINDOW_LIST,
@@ -728,6 +751,7 @@ struct wm_keymode {
 	char *name;
 	struct wl_list bindings;
 	struct wl_list link;
+	bool end_bound;
 };
 
 struct wm_chain_state {
@@ -796,6 +820,7 @@ struct wm_focus_nav {
 
 struct wm_decoration {
 	bool shaded;
+	int titlebar_height;
 };
 
 struct wm_style {
@@ -817,6 +842,10 @@ struct wm_workspace {
 struct wm_config {
 	char *style_file;
 	char *apps_file;
+	bool max_disable_move;
+	bool max_disable_resize;
+	int window_focus_alpha;
+	int window_unfocus_alpha;
 	const char *xkb_rules;
 	const char *xkb_model;
 	const char *xkb_layout;
@@ -935,6 +964,8 @@ struct wm_server {
 	enum wm_cursor_mode cursor_mode;
 	struct wl_list views;
 	struct wl_list workspaces;
+	int workspace_count;
+	int former_workspace;
 	struct wl_list outputs;
 	struct wl_list keyboards;
 	struct wlr_keyboard_group *keyboard_group;
@@ -1111,9 +1142,11 @@ void wm_focus_cycle(struct wm_server *s, const struct wm_window_list_spec *spec,
 void wm_view_deiconify_last(struct wm_server *s) { (void)s; stub_deiconify_last_count++; }
 void wm_view_deiconify_all(struct wm_server *s) { (void)s; stub_deiconify_all_count++; }
 void wm_view_deiconify_all_workspace(struct wm_server *s) { (void)s; stub_deiconify_all_ws_count++; }
-void wm_view_activate_tab(struct wm_view *v, int i) { (void)v; (void)i; stub_activate_tab_count++; }
-void wm_view_send_to_workspace(struct wm_server *s, struct wm_view *v, int i) { (void)s; (void)v; (void)i; stub_send_to_ws_count++; }
-void wm_view_take_to_workspace(struct wm_server *s, struct wm_view *v, int i) { (void)s; (void)v; (void)i; stub_take_to_ws_count++; }
+static int stub_activate_tab_index = -1;
+void wm_view_activate_tab(struct wm_view *v, int i) { (void)v; stub_activate_tab_index = i; stub_activate_tab_count++; }
+static int stub_send_take_index = -1;
+void wm_view_send_to_workspace(struct wm_server *s, struct wm_view *v, int i) { (void)s; (void)v; stub_send_take_index = i; stub_send_to_ws_count++; }
+void wm_view_take_to_workspace(struct wm_server *s, struct wm_view *v, int i) { (void)s; (void)v; stub_send_take_index = i; stub_take_to_ws_count++; }
 void wm_view_send_to_next_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_send_next_ws_count++; }
 void wm_view_send_to_prev_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_send_prev_ws_count++; }
 void wm_view_take_to_next_workspace(struct wm_server *s, struct wm_view *v) { (void)s; (void)v; stub_take_next_ws_count++; }
@@ -1121,7 +1154,8 @@ void wm_view_take_to_prev_workspace(struct wm_server *s, struct wm_view *v) { (v
 
 enum wm_view_layer wm_view_layer_from_name(const char *n) { (void)n; return (enum wm_view_layer)stub_view_layer_from_name_result; }
 
-void wm_workspace_switch(struct wm_server *s, int i) { (void)s; (void)i; stub_ws_switch_count++; }
+static int stub_ws_switch_index = -1;
+void wm_workspace_switch(struct wm_server *s, int i) { (void)s; stub_ws_switch_index = i; stub_ws_switch_count++; }
 void wm_workspace_switch_next(struct wm_server *s) { (void)s; stub_ws_switch_next_count++; }
 void wm_workspace_switch_prev(struct wm_server *s) { (void)s; stub_ws_switch_prev_count++; }
 void wm_workspace_switch_right(struct wm_server *s) { (void)s; stub_ws_switch_right_count++; }
@@ -1301,6 +1335,33 @@ wm_window_list_finish(struct wm_window_list_spec *spec)
 	(void)spec;
 }
 
+/* The real Fluxbox argument formats (their enums are mocked above) */
+#define WM_VIEW_LAYER_H
+#define WLR_UTIL_BOX_H
+static inline bool wlr_box_empty(const struct wlr_box *b)
+	{ return !b || b->width <= 0 || b->height <= 0; }
+#include "fbcompat.c"
+
+/* Window geometry the move and resize commands use */
+static struct wlr_box stub_frame_box;
+static struct wlr_box stub_set_frame_box;
+static int stub_set_frame_box_count;
+static struct wm_output *stub_output_for_view;
+void wm_view_move(struct wm_view *v, int x, int y) { v->x = x; v->y = y; }
+void wm_view_frame_box(struct wm_view *v, struct wlr_box *b)
+	{ *b = stub_frame_box; b->x = v->x; b->y = v->y; }
+void wm_view_set_frame_box(struct wm_view *v, const struct wlr_box *b)
+	{ v->x = b->x; v->y = b->y; stub_set_frame_box = *b;
+	  stub_set_frame_box_count++; }
+struct wm_output *wm_output_for_view(struct wm_view *v)
+	{ (void)v; return stub_output_for_view; }
+void wm_output_layout_box(struct wm_output *o, struct wlr_box *b)
+	{ *b = o->full_area; }
+static int stub_goto_window_num;
+void wm_focus_goto_window(struct wm_server *s,
+	const struct wm_window_list_spec *spec, int num)
+	{ (void)s; (void)spec; stub_goto_window_num = num; }
+
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_CLOSE
 #define VIEW_STUB_KILL
@@ -1310,6 +1371,36 @@ wm_window_list_finish(struct wm_window_list_spec *spec)
 
 #include "keyboard_actions.c"
 #include "keyboard.c"
+
+/* One keysym, as most tests press keys */
+static bool
+hck(struct wm_server *server, uint32_t mods, xkb_keysym_t sym)
+{
+	return handle_compositor_keybinding(server, mods, &sym, 1);
+}
+
+/* A key press is looked up as typed, unshifted, and by keycode */
+static void
+test_key_candidates(void)
+{
+	stub_keysyms[0] = 0xfe20;          /* ISO_Left_Tab (Shift+Tab) */
+	stub_nsyms = 1;
+	stub_level0_keysyms[0] = 0xff09;   /* Tab */
+	stub_level0_nsyms = 1;
+	struct wlr_keyboard kb = {0};
+	xkb_keysym_t out[16];
+	const xkb_keysym_t *syms = stub_keysyms;
+	int n = key_candidates(&kb, 23 + 8, syms, 1, out, 16);
+	assert(n == 3);
+	assert(out[0] == 0xfe20 && out[1] == 0xff09);
+	assert(out[2] == WM_KEYSYM_KEYCODE(31));
+	/* The same keysym twice is listed once */
+	stub_level0_keysyms[0] = 0xfe20;
+	n = key_candidates(&kb, 31, syms, 1, out, 16);
+	assert(n == 2);
+	stub_level0_nsyms = 0;
+	printf("  PASS: test_key_candidates\n");
+}
 
 /* --- Mock listener callbacks --- */
 
@@ -1500,6 +1591,13 @@ setup(void)
 	test_server.chain_state.current_level = NULL;
 	test_server.chain_state.timeout = NULL;
 	test_server.focused_view = NULL;
+	/* Four workspaces, the first shown */
+	memset(&test_workspace, 0, sizeof(test_workspace));
+	test_server.workspace_count = 4;
+	test_server.former_workspace = -1;
+	stub_active_workspace = &test_workspace;
+	stub_ws_switch_index = -1;
+	stub_send_take_index = -1;
 }
 
 static void
@@ -1836,7 +1934,16 @@ test_action_next_workspace(void)
 {
 	setup();
 	assert(wm_execute_action(&test_server, WM_ACTION_NEXT_WORKSPACE, NULL) == true);
-	assert(stub_ws_switch_next_count == 1);
+	assert(stub_ws_switch_index == 1);
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WORKSPACE, "6");
+	assert(stub_ws_switch_index == 2);   /* wraps */
+	/* NextWorkspace 0: back to the workspace before */
+	stub_ws_switch_index = -1;
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WORKSPACE, "0");
+	assert(stub_ws_switch_index == -1);
+	test_server.former_workspace = 3;
+	wm_execute_action(&test_server, WM_ACTION_NEXT_WORKSPACE, "0");
+	assert(stub_ws_switch_index == 3);
 	printf("  PASS: test_action_next_workspace\n");
 }
 
@@ -1846,7 +1953,9 @@ test_action_prev_workspace(void)
 {
 	setup();
 	assert(wm_execute_action(&test_server, WM_ACTION_PREV_WORKSPACE, NULL) == true);
-	assert(stub_ws_switch_prev_count == 1);
+	assert(stub_ws_switch_index == 3);
+	wm_execute_action(&test_server, WM_ACTION_PREV_WORKSPACE, "2");
+	assert(stub_ws_switch_index == 2);
 	printf("  PASS: test_action_prev_workspace\n");
 }
 
@@ -1856,7 +1965,14 @@ test_action_workspace_number(void)
 {
 	setup();
 	assert(wm_execute_action(&test_server, WM_ACTION_WORKSPACE, "3") == true);
-	assert(stub_ws_switch_count == 1);
+	assert(stub_ws_switch_index == 2);
+	/* Fluxbox: from the end when negative, clamped */
+	wm_execute_action(&test_server, WM_ACTION_WORKSPACE, "-1");
+	assert(stub_ws_switch_index == 3);
+	wm_execute_action(&test_server, WM_ACTION_WORKSPACE, "9");
+	assert(stub_ws_switch_index == 3);
+	wm_execute_action(&test_server, WM_ACTION_WORKSPACE, "0");
+	assert(stub_ws_switch_index == 0);
 	printf("  PASS: test_action_workspace_number\n");
 }
 
@@ -2130,7 +2246,6 @@ test_action_move_directional(void)
 
 	wm_execute_action(&test_server, WM_ACTION_MOVE_LEFT, "10");
 	assert(test_view.x == 90);
-	assert(stub_set_pos_called == 1);
 
 	wm_execute_action(&test_server, WM_ACTION_MOVE_RIGHT, "20");
 	assert(test_view.x == 110);
@@ -2148,9 +2263,27 @@ static void
 test_action_move_to(void)
 {
 	setup_with_view();
+	static struct wm_output out;
+	out.usable_area = (struct wlr_box){ 100, 0, 1000, 800 };
+	stub_output_for_view = &out;
+	stub_frame_box = (struct wlr_box){ 0, 0, 200, 100 };
+
+	/* On the head, from its top left by default */
 	wm_execute_action(&test_server, WM_ACTION_MOVE_TO, "50 75");
-	assert(test_view.x == 50);
-	assert(test_view.y == 75);
+	assert(test_view.x == 150 && test_view.y == 75);
+	/* "*" keeps a coordinate; % of the head */
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TO, "* 50%");
+	assert(test_view.x == 150 && test_view.y == 400);
+	/* Corners: offsets from right and bottom count inwards */
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TO, "10 20 BottomRight");
+	assert(test_view.x == 100 + 1000 - 200 - 10);
+	assert(test_view.y == 800 - 100 - 20);
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TO, "0 0 Center");
+	assert(test_view.x == 100 + 400 && test_view.y == 350);
+	/* Fewer than two values: nothing */
+	wm_execute_action(&test_server, WM_ACTION_MOVE_TO, "5");
+	assert(test_view.x == 500);
+	stub_output_for_view = NULL;
 	printf("  PASS: test_action_move_to\n");
 }
 
@@ -2159,10 +2292,46 @@ static void
 test_action_resize_to(void)
 {
 	setup_with_view();
+	static struct wm_output out;
+	out.usable_area = (struct wlr_box){ 0, 0, 1000, 800 };
+	stub_output_for_view = &out;
+	stub_frame_box = (struct wlr_box){ 0, 0, 200, 100 };
+
 	wm_execute_action(&test_server, WM_ACTION_RESIZE_TO, "800 600");
-	assert(stub_set_size_w == 800);
-	assert(stub_set_size_h == 600);
+	assert(stub_set_frame_box.width == 800);
+	assert(stub_set_frame_box.height == 600);
+	/* % of the head; 0 keeps */
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_TO, "50% 0");
+	assert(stub_set_frame_box.width == 500);
+	assert(stub_set_frame_box.height == 100);
+	stub_output_for_view = NULL;
 	printf("  PASS: test_action_resize_to\n");
+}
+
+/* Move and Resize by deltas (Fluxbox's MoveCmd, ResizeCmd) */
+static void
+test_action_move_resize_deltas(void)
+{
+	setup_with_view();
+	test_view.x = 100;
+	test_view.y = 100;
+	stub_frame_box = (struct wlr_box){ 0, 0, 200, 100 };
+	wm_execute_action(&test_server, WM_ACTION_MOVE, "10 -20");
+	assert(test_view.x == 110 && test_view.y == 80);
+	/* A maximized window is un-maximized first */
+	test_view.maximized = true;
+	int toggles = stub_maximize_listener_count;
+	wm_execute_action(&test_server, WM_ACTION_MOVE, "1 1");
+	assert(stub_maximize_listener_count == toggles + 1);
+	assert(test_view.x == 111);
+	test_view.maximized = false;
+
+	wm_execute_action(&test_server, WM_ACTION_RESIZE, "10 50%");
+	assert(stub_set_frame_box.width == 210);
+	assert(stub_set_frame_box.height == 150);
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_HORIZ, "-500");
+	assert(stub_set_frame_box.width == 10);   /* the minimum */
+	printf("  PASS: test_action_move_resize_deltas\n");
 }
 
 /* Test FocusDirection actions */
@@ -2253,11 +2422,25 @@ test_action_key_mode(void)
 {
 	setup();
 	test_server.current_keymode = strdup("default");
+	static struct wm_keymode vim;
+	memset(&vim, 0, sizeof(vim));
+	vim.name = "vim";
+	wl_list_init(&vim.bindings);
+	wl_list_insert(&test_server.keymodes, &vim.link);
 
+	/* The mode gets its end key bound back to default, once */
+	int adds = stub_keybind_add_count;
 	wm_execute_action(&test_server, WM_ACTION_KEY_MODE, "vim");
-	assert(test_server.current_keymode != NULL);
 	assert(strcmp(test_server.current_keymode, "vim") == 0);
+	assert(stub_keybind_add_count == adds + 1 && vim.end_bound);
+	wm_execute_action(&test_server, WM_ACTION_KEY_MODE, "vim Control g");
+	assert(stub_keybind_add_count == adds + 1);
 
+	/* A mode the keys file doesn't have is the default mode */
+	wm_execute_action(&test_server, WM_ACTION_KEY_MODE, "nosuch");
+	assert(strcmp(test_server.current_keymode, "default") == 0);
+
+	wl_list_remove(&vim.link);
 	free(test_server.current_keymode);
 	test_server.current_keymode = NULL;
 	printf("  PASS: test_action_key_mode\n");
@@ -2306,19 +2489,21 @@ test_action_conditional_direct(void)
 static void
 test_action_workspace_ops(void)
 {
-	setup();
+	setup_with_view();
+	test_view.workspace = &test_workspace;
 	wm_execute_action(&test_server, WM_ACTION_SEND_TO_WORKSPACE, "2");
-	assert(stub_send_to_ws_count == 1);
-	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_WORKSPACE, "3");
-	assert(stub_take_to_ws_count == 1);
+	assert(stub_send_to_ws_count == 1 && stub_send_take_index == 1);
+	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_WORKSPACE, "-1");
+	assert(stub_take_to_ws_count == 1 && stub_send_take_index == 3);
+	/* Next/Prev n: from the window's workspace, wrapping */
 	wm_execute_action(&test_server, WM_ACTION_SEND_TO_NEXT_WORKSPACE, NULL);
-	assert(stub_send_next_ws_count == 1);
+	assert(stub_send_to_ws_count == 2 && stub_send_take_index == 1);
 	wm_execute_action(&test_server, WM_ACTION_SEND_TO_PREV_WORKSPACE, NULL);
-	assert(stub_send_prev_ws_count == 1);
-	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_NEXT_WORKSPACE, NULL);
-	assert(stub_take_next_ws_count == 1);
-	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_PREV_WORKSPACE, NULL);
-	assert(stub_take_prev_ws_count == 1);
+	assert(stub_send_to_ws_count == 3 && stub_send_take_index == 3);
+	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_NEXT_WORKSPACE, "2");
+	assert(stub_take_to_ws_count == 2 && stub_send_take_index == 2);
+	wm_execute_action(&test_server, WM_ACTION_TAKE_TO_PREV_WORKSPACE, "5");
+	assert(stub_take_to_ws_count == 3 && stub_send_take_index == 3);
 	wm_execute_action(&test_server, WM_ACTION_ADD_WORKSPACE, NULL);
 	assert(stub_ws_add_count == 1);
 	wm_execute_action(&test_server, WM_ACTION_REMOVE_LAST_WORKSPACE, NULL);
@@ -2376,7 +2561,7 @@ static void
 test_compositor_vt_switch(void)
 {
 	setup();
-	bool result = handle_compositor_keybinding(&test_server,
+	bool result = hck(&test_server,
 		WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT,
 		XKB_KEY_XF86Switch_VT_1);
 	assert(result == true);
@@ -2390,7 +2575,7 @@ static void
 test_compositor_vt_switch_5(void)
 {
 	setup();
-	bool result = handle_compositor_keybinding(&test_server,
+	bool result = hck(&test_server,
 		WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT,
 		XKB_KEY_XF86Switch_VT_1 + 4);
 	assert(result == true);
@@ -2403,7 +2588,7 @@ static void
 test_compositor_fallback_exit(void)
 {
 	setup();
-	bool result = handle_compositor_keybinding(&test_server,
+	bool result = hck(&test_server,
 		WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT,
 		XKB_KEY_e);
 	assert(result == true);
@@ -2419,7 +2604,7 @@ test_compositor_escape_chain(void)
 	test_server.chain_state.in_chain = true;
 	test_server.chain_state.current_level = &test_server.keybindings;
 
-	bool result = handle_compositor_keybinding(&test_server, 0, XKB_KEY_Escape);
+	bool result = hck(&test_server, 0, XKB_KEY_Escape);
 	assert(result == true);
 	assert(test_server.chain_state.in_chain == false);
 	printf("  PASS: test_compositor_escape_chain\n");
@@ -2449,7 +2634,7 @@ test_compositor_chain_entry(void)
 
 	stub_keybind_find_result = &chain_bind;
 
-	bool result = handle_compositor_keybinding(&test_server, 0, XKB_KEY_a);
+	bool result = hck(&test_server, 0, XKB_KEY_a);
 	assert(result == true);
 	assert(test_server.chain_state.in_chain == true);
 	assert(test_server.chain_state.current_level == &chain_bind.children);
@@ -2476,7 +2661,7 @@ test_compositor_leaf_node(void)
 
 	stub_keybind_find_result = &leaf;
 
-	bool result = handle_compositor_keybinding(&test_server, 0, XKB_KEY_a);
+	bool result = hck(&test_server, 0, XKB_KEY_a);
 	assert(result == true);
 	assert(stub_terminate_called == 1);
 	assert(test_server.chain_state.in_chain == false);
@@ -2499,7 +2684,7 @@ test_compositor_no_match(void)
 
 	stub_keybind_find_result = NULL;
 
-	bool result = handle_compositor_keybinding(&test_server, 0, XKB_KEY_a);
+	bool result = hck(&test_server, 0, XKB_KEY_a);
 	assert(result == false);
 
 	wl_list_remove(&mode.link);
@@ -2515,7 +2700,7 @@ test_compositor_no_match_in_chain(void)
 	test_server.chain_state.current_level = &test_server.keybindings;
 	stub_keybind_find_result = NULL;
 
-	bool result = handle_compositor_keybinding(&test_server, 0, XKB_KEY_a);
+	bool result = hck(&test_server, 0, XKB_KEY_a);
 	assert(result == false);
 	assert(test_server.chain_state.in_chain == false);
 	printf("  PASS: test_compositor_no_match_in_chain\n");
@@ -3103,6 +3288,22 @@ test_action_set_style_rejects_paths(void)
 	assert(!wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "/tmp"));
 	assert(stub_style_load_count == 0);
 	assert(test_config.style_file == NULL);
+
+	/* "~" is home; a directory with theme.cfg is a style */
+	char dir[4200], cfg[4300];
+	snprintf(dir, sizeof(dir), "%s/Bloe", style_home);
+	mkdir(dir, 0755);
+	snprintf(cfg, sizeof(cfg), "%s/theme.cfg", dir);
+	FILE *f = fopen(cfg, "w");
+	assert(f);
+	fclose(f);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_STYLE, "~/Bloe"));
+	assert(stub_style_load_count == 1);
+	assert(test_config.style_file && strstr(test_config.style_file, "Bloe"));
+	unlink(cfg);
+	rmdir(dir);
+	free(test_config.style_file);
+	test_config.style_file = NULL;
 	printf("  PASS: test_action_set_style_rejects_paths\n");
 }
 
@@ -3168,8 +3369,12 @@ static void
 test_action_resize_horiz(void)
 {
 	setup_with_view();
+	stub_frame_box = (struct wlr_box){ 0, 0, 200, 100 };
 	wm_execute_action(&test_server, WM_ACTION_RESIZE_HORIZ, "10");
-	assert(stub_resize_by_count == 1);
+	assert(stub_set_frame_box.width == 210);
+	assert(stub_set_frame_box.height == 100);
+	wm_execute_action(&test_server, WM_ACTION_RESIZE_HORIZ, "50%");
+	assert(stub_set_frame_box.width == 300);
 	printf("  PASS: test_action_resize_horiz\n");
 }
 
@@ -3178,8 +3383,10 @@ static void
 test_action_resize_vert(void)
 {
 	setup_with_view();
+	stub_frame_box = (struct wlr_box){ 0, 0, 200, 100 };
 	wm_execute_action(&test_server, WM_ACTION_RESIZE_VERT, "20");
-	assert(stub_resize_by_count == 1);
+	assert(stub_set_frame_box.width == 200);
+	assert(stub_set_frame_box.height == 120);
 	printf("  PASS: test_action_resize_vert\n");
 }
 
@@ -3308,9 +3515,15 @@ test_action_right_left_workspace(void)
 {
 	setup();
 	wm_execute_action(&test_server, WM_ACTION_RIGHT_WORKSPACE, NULL);
-	assert(stub_ws_switch_right_count == 1);
+	assert(stub_ws_switch_index == 1);
+	/* No wrapping: nothing left of the first, or 5 to the right */
+	stub_ws_switch_index = -1;
 	wm_execute_action(&test_server, WM_ACTION_LEFT_WORKSPACE, NULL);
-	assert(stub_ws_switch_left_count == 1);
+	assert(stub_ws_switch_index == -1);
+	wm_execute_action(&test_server, WM_ACTION_RIGHT_WORKSPACE, "5");
+	assert(stub_ws_switch_index == -1);
+	wm_execute_action(&test_server, WM_ACTION_RIGHT_WORKSPACE, "3");
+	assert(stub_ws_switch_index == 3);
 	printf("  PASS: test_action_right_left_workspace\n");
 }
 
@@ -3396,44 +3609,67 @@ test_action_set_decor_more(void)
  * Group N: GotoWindow / NextGroup / PrevGroup / Unclutter
  * ==================================================================== */
 
-/* Test GotoWindow jumps to nth window on current workspace */
+/* GoToWindow N [pattern] and Focus/Activate (pattern) */
 static void
 test_action_goto_window(void)
 {
 	setup_with_view();
-	test_workspace.index = 0;
-	stub_active_workspace = &test_workspace;
-	test_view.workspace = &test_workspace;
-	test_view.sticky = false;
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
-	assert(stub_focus_view_count == 1);
-
-	wl_list_remove(&test_view.link);
+	stub_goto_window_num = 99;
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "2");
+	assert(stub_goto_window_num == 2);
+	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW,
+		"-1 {static} (class=foot)");
+	assert(stub_goto_window_num == -1);
+	/* Focus with a pattern is GoToWindow 1 (pattern) */
+	stub_goto_window_num = 99;
+	wm_execute_action(&test_server, WM_ACTION_FOCUS, "(title=x)");
+	assert(stub_goto_window_num == 1);
+	/* Without one it focuses the window it acts on */
+	stub_goto_window_num = 99;
+	wm_execute_action_on(&test_server, WM_ACTION_FOCUS, NULL, &test_view);
+	assert(stub_goto_window_num == 99 && stub_focus_view_count == 1);
 	printf("  PASS: test_action_goto_window\n");
 }
 
-/* Test GotoWindow with no argument does nothing */
+/* Tab N: the Nth tab of the window's group, from the end when negative */
 static void
-test_action_goto_window_no_arg(void)
+test_action_tab(void)
 {
-	setup();
-	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, NULL);
-	assert(stub_focus_view_count == 0);
-	printf("  PASS: test_action_goto_window_no_arg\n");
+	setup_with_view();
+	static struct wm_tab_group tg;
+	memset(&tg, 0, sizeof(tg));
+	tg.count = 3;
+	test_view.tab_group = &tg;
+	stub_activate_tab_index = -9;
+	wm_execute_action_on(&test_server, WM_ACTION_TAB, "2", &test_view);
+	assert(stub_activate_tab_index == 1);
+	wm_execute_action_on(&test_server, WM_ACTION_TAB, "-1", &test_view);
+	assert(stub_activate_tab_index == 2);
+	wm_execute_action_on(&test_server, WM_ACTION_TAB, "7", &test_view);
+	assert(stub_activate_tab_index == 2);
+	test_view.tab_group = NULL;
+	printf("  PASS: test_action_tab\n");
 }
 
-/* Test GotoWindow with invalid number does nothing */
+/* SetAlpha: none resets, one sets both, two set each */
 static void
-test_action_goto_window_invalid(void)
+test_action_set_alpha_forms(void)
 {
-	setup();
-	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "0");
-	assert(stub_focus_view_count == 0);
-	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "-1");
-	assert(stub_focus_view_count == 0);
-	printf("  PASS: test_action_goto_window_invalid\n");
+	setup_with_view();
+	test_config.window_focus_alpha = 240;
+	test_config.window_unfocus_alpha = 180;
+	wm_execute_action_on(&test_server, WM_ACTION_SET_ALPHA, "100 -20",
+		&test_view);
+	assert(test_view.focus_alpha == 100);
+	test_view.focus_alpha = 100;
+	test_view.unfocus_alpha = 150;
+	wm_execute_action_on(&test_server, WM_ACTION_SET_ALPHA, "+10 +10",
+		&test_view);
+	assert(test_view.focus_alpha == 110 && test_view.unfocus_alpha == 160);
+	wm_execute_action_on(&test_server, WM_ACTION_SET_ALPHA, NULL,
+		&test_view);
+	assert(test_view.focus_alpha == 240 && test_view.unfocus_alpha == 180);
+	printf("  PASS: test_action_set_alpha_forms\n");
 }
 
 /* Test Unclutter cascades views within usable area */
@@ -3600,7 +3836,7 @@ test_compositor_fallback_legacy(void)
 
 	/* keybind_find returns NULL for the legacy list too */
 	stub_keybind_find_result = NULL;
-	bool result = handle_compositor_keybinding(&test_server, 0, XKB_KEY_a);
+	bool result = hck(&test_server, 0, XKB_KEY_a);
 	assert(result == false);
 
 	free(test_server.current_keymode);
@@ -3941,44 +4177,7 @@ test_action_resize_horiz_vert_no_view(void)
 	printf("  PASS: test_action_resize_horiz_vert_no_view\n");
 }
 
-/* Test GotoWindow skips views on different workspace */
-static void
-test_action_goto_window_skip_ws(void)
-{
-	struct wm_workspace other_ws = {0};
-	other_ws.name = "other";
-	other_ws.index = 1;
 
-	setup_multi_view(3);
-	stub_active_workspace = &test_workspace;
-	test_views_arr[0].workspace = &other_ws; /* different ws */
-	test_views_arr[1].workspace = &test_workspace;
-	test_views_arr[2].workspace = &test_workspace;
-
-	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
-	/* views_arr[0] is on other ws, so window 1 = views_arr[1] */
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(3);
-	printf("  PASS: test_action_goto_window_skip_ws\n");
-}
-
-/* Test GotoWindow counts sticky views */
-static void
-test_action_goto_window_sticky(void)
-{
-	setup_multi_view(2);
-	stub_active_workspace = &test_workspace;
-	test_views_arr[0].sticky = true;
-	test_views_arr[0].workspace = NULL; /* sticky, no ws */
-	test_views_arr[1].workspace = &test_workspace;
-
-	wm_execute_action(&test_server, WM_ACTION_GOTO_WINDOW, "1");
-	assert(stub_focus_view_count == 1);
-
-	cleanup_multi_view(2);
-	printf("  PASS: test_action_goto_window_sticky\n");
-}
 
 /* Test Unclutter skips minimized views */
 static void
@@ -4070,6 +4269,7 @@ main(void)
 	test_action_move_directional();
 	test_action_move_to();
 	test_action_resize_to();
+	test_action_move_resize_deltas();
 	test_action_focus_directions();
 	test_action_tab_group();
 	test_action_focus_nav();
@@ -4164,8 +4364,8 @@ main(void)
 
 	printf("\n  Group N: GotoWindow / NextGroup / PrevGroup / Unclutter\n");
 	test_action_goto_window();
-	test_action_goto_window_no_arg();
-	test_action_goto_window_invalid();
+	test_action_tab();
+	test_action_set_alpha_forms();
 	test_action_unclutter();
 
 	printf("\n  Group O: wm_keyboard_setup()\n");
@@ -4207,9 +4407,8 @@ main(void)
 	test_action_tab_no_group();
 	test_action_move_resize_no_view();
 	test_action_resize_horiz_vert_no_view();
-	test_action_goto_window_skip_ws();
-	test_action_goto_window_sticky();
 	test_action_unclutter_skips_minimized();
+	test_key_candidates();
 
 	printf("\nAll keyboard tests passed!\n");
 	return 0;

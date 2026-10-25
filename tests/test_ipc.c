@@ -63,6 +63,8 @@ void wm_view_set_opacity(struct wm_view *v, int a) { (void)v; (void)a; }
 void wm_view_set_sticky(struct wm_view *v, bool s) { (void)v; (void)s; }
 void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
 	{ (void)v; b->x = 0; b->y = 0; b->width = 100; b->height = 100; }
+void wm_view_frame_box(struct wm_view *v, struct wlr_box *b)
+	{ (void)v; b->x = 0; b->y = 0; b->width = 102; b->height = 126; }
 void wm_view_begin_interactive(struct wm_view *v, enum wm_cursor_mode m,
 	uint32_t e) { (void)v; (void)m; (void)e; }
 void wm_view_maximize_vert(struct wm_view *v) { (void)v; }

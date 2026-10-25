@@ -371,14 +371,12 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		double dist = sqrt(dx * dx + dy * dy);
 
 		if (dist > WM_CLICK_MOVE_THRESHOLD) {
-			/* This is a drag — check for Move binding */
-			struct wm_view *view = NULL;
-			enum wm_mouse_context ctx =
-				get_cursor_context(server, &view);
+			/* A drag: Move bindings of where it started */
+			struct wm_view *view = ms->pressed_view;
 			uint32_t mods = get_keyboard_modifiers(server);
 
 			struct wm_mousebind *bind = mousebind_find(
-				&server->mousebindings, ctx,
+				&server->mousebindings, ms->press_context,
 				WM_MOUSE_MOVE, ms->pressed_button, mods);
 			if (bind) {
 				execute_mousebind(server, bind, view);
@@ -495,6 +493,94 @@ handle_cursor_motion_absolute(struct wl_listener *listener, void *data)
 	process_cursor_motion(server, event->time_msec);
 }
 
+/* The mouse contexts at the cursor: the toolbar's, or a window's... */
+static uint32_t
+pointer_context(struct wm_server *server, struct wm_view **view)
+{
+	if (wm_toolbar_contains(server->toolbar, server->cursor->x,
+	    server->cursor->y)) {
+		*view = NULL;
+		return WM_MOUSE_CTX_TOOLBAR;
+	}
+	return get_cursor_context(server, view);
+}
+
+/*
+ * A titlebar button's own action (WinButton): close, iconify, shade and
+ * stick on the left button; maximize fully, vertically or horizontally
+ * on the left, middle or right one.
+ */
+static void
+decor_button_action(struct wm_server *server, struct wm_view *view,
+	enum wm_button_type type, uint32_t button)
+{
+	enum wm_action action = WM_ACTION_NOP;
+	switch (type) {
+	case WM_BUTTON_CLOSE:
+		action = button == BTN_LEFT ? WM_ACTION_CLOSE : WM_ACTION_NOP;
+		break;
+	case WM_BUTTON_MAXIMIZE:
+		action = button == BTN_LEFT ? WM_ACTION_MAXIMIZE :
+			button == BTN_MIDDLE ? WM_ACTION_MAXIMIZE_VERT :
+			button == BTN_RIGHT ? WM_ACTION_MAXIMIZE_HORIZ :
+			WM_ACTION_NOP;
+		break;
+	case WM_BUTTON_ICONIFY:
+		action = button == BTN_LEFT ? WM_ACTION_MINIMIZE : WM_ACTION_NOP;
+		break;
+	case WM_BUTTON_SHADE:
+		action = button == BTN_LEFT ? WM_ACTION_SHADE : WM_ACTION_NOP;
+		break;
+	case WM_BUTTON_STICK:
+		action = button == BTN_LEFT ? WM_ACTION_STICK : WM_ACTION_NOP;
+		break;
+	}
+	if (action != WM_ACTION_NOP)
+		execute_mouse_action(server, action, NULL, view);
+}
+
+/*
+ * A press and release in one place: Click bindings, or on a titlebar
+ * button pressed and released over, OnWinButton/OnMinButton/OnMaxButton
+ * Click bindings and otherwise the button's own action.
+ */
+static void
+handle_click(struct wm_server *server, uint32_t button)
+{
+	struct wm_mouse_state *ms = &server->mouse_state;
+	struct wm_view *view = NULL;
+	uint32_t ctx = pointer_context(server, &view);
+	uint32_t mods = get_keyboard_modifiers(server);
+
+	if (ms->pressed_decor_button >= 0 && view && view->decoration &&
+	    view == ms->pressed_view) {
+		struct wm_decor_button *btn = wm_decoration_button_at(
+			view->decoration, server->cursor->x - view->x,
+			server->cursor->y - view->y);
+		int type = ms->pressed_decor_button;
+		ms->pressed_decor_button = -1;
+		if (btn && (int)btn->type == type) {
+			ctx = type == WM_BUTTON_ICONIFY ? WM_MOUSE_CTX_MINBUTTON :
+				type == WM_BUTTON_MAXIMIZE ?
+				WM_MOUSE_CTX_MAXBUTTON : WM_MOUSE_CTX_WINBUTTON;
+			struct wm_mousebind *bind = mousebind_find(
+				&server->mousebindings, ctx, WM_MOUSE_CLICK,
+				button, mods);
+			if (bind)
+				execute_mousebind(server, bind, view);
+			else
+				decor_button_action(server, view, btn->type,
+					button);
+			return;
+		}
+	}
+
+	struct wm_mousebind *bind = mousebind_find(&server->mousebindings,
+		ctx, WM_MOUSE_CLICK, button, mods);
+	if (bind)
+		execute_mousebind(server, bind, view);
+}
+
 static void
 handle_cursor_button(struct wl_listener *listener, void *data)
 {
@@ -529,23 +615,10 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 			double dy = server->cursor->y - ms->press_y;
 			double dist = sqrt(dx * dx + dy * dy);
 
-			if (dist <= WM_CLICK_MOVE_THRESHOLD) {
-				struct wm_view *view = NULL;
-				enum wm_mouse_context ctx =
-					get_cursor_context(server, &view);
-				uint32_t mods =
-					get_keyboard_modifiers(server);
-
-				struct wm_mousebind *bind = mousebind_find(
-					&server->mousebindings, ctx,
-					WM_MOUSE_CLICK, event->button,
-					mods);
-				if (bind) {
-					execute_mousebind(server, bind,
-						view);
-				}
-			}
+			if (dist <= WM_CLICK_MOVE_THRESHOLD)
+				handle_click(server, event->button);
 			ms->button_pressed = false;
+			ms->pressed_view = NULL;
 		}
 
 		/* End any interactive mode on button release */
@@ -697,7 +770,11 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 			position_overlay_destroy(server);
 		}
 
-		/* Notify seat */
+		/* A press a binding took doesn't reach the client: nor its release */
+		if (ms->press_consumed) {
+			ms->press_consumed = false;
+			return;
+		}
 		wlr_seat_pointer_notify_button(server->seat,
 			event->time_msec, event->button, event->state);
 		return;
@@ -751,18 +828,9 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	}
 #endif
 
-	/* Check if click is on a toolbar tool */
-	if (server->toolbar && server->toolbar->visible &&
-	    wm_toolbar_handle_button(server->toolbar,
-		    server->cursor->x, server->cursor->y, event->button)) {
-		wlr_seat_pointer_notify_button(server->seat,
-			event->time_msec, event->button, event->state);
-		return;
-	}
-
-	/* Determine context */
+	/* Where it happened, for Fluxbox's contexts */
 	struct wm_view *view = NULL;
-	enum wm_mouse_context ctx = get_cursor_context(server, &view);
+	uint32_t ctx = pointer_context(server, &view);
 	uint32_t mods = get_keyboard_modifiers(server);
 
 	/* Track press state for click/move detection */
@@ -770,6 +838,10 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	ms->pressed_button = event->button;
 	ms->press_x = server->cursor->x;
 	ms->press_y = server->cursor->y;
+	ms->press_context = ctx;
+	ms->pressed_view = view;
+	ms->press_consumed = false;
+	ms->pressed_decor_button = -1;
 
 	/* Check for double click */
 	bool is_double = false;
@@ -783,75 +855,53 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	ms->last_button = event->button;
 	ms->last_time_msec = event->time_msec;
 
-	/* Try double-click binding first */
-	if (is_double) {
-		struct wm_mousebind *bind = mousebind_find(
-			&server->mousebindings, ctx,
+	/*
+	 * Bindings first (Keys::doAction): a double click tries Double
+	 * bindings, then the single ones. A press a binding takes, or that
+	 * starts a Move binding, isn't passed to the client.
+	 */
+	struct wm_mousebind *bind = NULL;
+	if (is_double)
+		bind = mousebind_find(&server->mousebindings, ctx,
 			WM_MOUSE_DOUBLE, event->button, mods);
-		if (bind) {
-			execute_mousebind(server, bind, view);
-			wlr_seat_pointer_notify_button(server->seat,
-				event->time_msec, event->button,
-				event->state);
-			return;
-		}
-	}
-
-	/* Try Mouse (press) binding */
-	struct wm_mousebind *bind = mousebind_find(
-		&server->mousebindings, ctx,
-		WM_MOUSE_PRESS, event->button, mods);
+	if (!bind)
+		bind = mousebind_find(&server->mousebindings, ctx,
+			WM_MOUSE_PRESS, event->button, mods);
 	if (bind) {
 		execute_mousebind(server, bind, view);
-
-		/* If click was on a decoration button, also dispatch its action */
-		if (view && view->decoration && ctx == WM_MOUSE_CTX_TITLEBAR &&
-		    event->button == BTN_LEFT) {
-			double dx = server->cursor->x - view->x;
-			double dy = server->cursor->y - view->y;
-			struct wm_decor_button *btn =
-				wm_decoration_button_at(view->decoration,
-					dx, dy);
-			if (btn) {
-				switch (btn->type) {
-				case WM_BUTTON_CLOSE:
-					execute_mouse_action(server,
-						WM_ACTION_CLOSE, NULL, view);
-					break;
-				case WM_BUTTON_MAXIMIZE:
-					execute_mouse_action(server,
-						WM_ACTION_MAXIMIZE, NULL,
-						view);
-					break;
-				case WM_BUTTON_ICONIFY:
-					execute_mouse_action(server,
-						WM_ACTION_MINIMIZE, NULL,
-						view);
-					break;
-				case WM_BUTTON_SHADE:
-					execute_mouse_action(server,
-						WM_ACTION_SHADE, NULL, view);
-					break;
-				case WM_BUTTON_STICK:
-					execute_mouse_action(server,
-						WM_ACTION_STICK, NULL, view);
-					break;
-				default:
-					break;
-				}
-			}
-		}
-
-		wlr_seat_pointer_notify_button(server->seat,
-			event->time_msec, event->button, event->state);
+		ms->press_consumed = true;
+		return;
+	}
+	if (mousebind_has_move(&server->mousebindings, ctx, event->button,
+	    mods)) {
+		ms->press_consumed = true;
 		return;
 	}
 
-	/* No binding matched — default behavior: focus + raise on click */
+	/* The toolbar's own tools */
+	if (ctx & WM_MOUSE_CTX_TOOLBAR) {
+		wm_toolbar_handle_button(server->toolbar, server->cursor->x,
+			server->cursor->y, event->button);
+		return;
+	}
+
+	/* A titlebar button acts when it is released over (handle_click) */
+	if (view && view->decoration) {
+		struct wm_decor_button *btn = wm_decoration_button_at(
+			view->decoration, server->cursor->x - view->x,
+			server->cursor->y - view->y);
+		if (btn)
+			ms->pressed_decor_button = (int)btn->type;
+	}
+
+	/* No binding: focus, and raise unless clickRaises is off */
 	if (view) {
 		server->focus_user_initiated = true;
 		wm_focus_view(view, NULL);
-		wm_view_raise(view);
+		bool on_client = ctx == WM_MOUSE_CTX_WINDOW;
+		if (!on_client || !server->config ||
+		    server->config->click_raises)
+			wm_view_raise(view);
 	}
 
 	wlr_seat_pointer_notify_button(server->seat,
@@ -1112,12 +1162,65 @@ handle_cursor_hold_end(struct wl_listener *listener, void *data)
 		event->time_msec, event->cancelled);
 }
 
+/*
+ * A mouse wheel step as Fluxbox sees it: a press of button 4 (up), 5
+ * (down), 6 (left) or 7 (right). If a Mouse or Click binding takes it,
+ * the scroll goes no further. High-resolution wheels report fractions
+ * of a step (120 a step); touchpads and other scrolling without steps
+ * stay scrolling.
+ */
+static bool
+handle_wheel_binding(struct wm_server *server,
+	struct wlr_pointer_axis_event *event)
+{
+	if (event->delta_discrete == 0 ||
+	    event->source != WL_POINTER_AXIS_SOURCE_WHEEL)
+		return false;
+	bool vertical = event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL;
+	uint32_t button = vertical ?
+		(event->delta_discrete < 0 ? WM_BUTTON_WHEEL_UP :
+			WM_BUTTON_WHEEL_DOWN) :
+		(event->delta_discrete < 0 ? WM_BUTTON_WHEEL_LEFT :
+			WM_BUTTON_WHEEL_RIGHT);
+
+	struct wm_view *view = NULL;
+	uint32_t ctx = pointer_context(server, &view);
+	uint32_t mods = get_keyboard_modifiers(server);
+	struct wm_mousebind *bind = mousebind_find(&server->mousebindings,
+		ctx, WM_MOUSE_PRESS, button, mods);
+	if (!bind)
+		bind = mousebind_find(&server->mousebindings, ctx,
+			WM_MOUSE_CLICK, button, mods);
+	struct wm_mouse_state *ms = &server->mouse_state;
+	int axis = vertical ? 0 : 1;
+	if (!bind) {
+		ms->wheel_steps[axis] = 0;
+		return false;
+	}
+
+	/* A whole step in this direction? */
+	int acc = ms->wheel_steps[axis];
+	if ((acc < 0) != (event->delta_discrete < 0))
+		acc = 0;
+	acc += event->delta_discrete;
+	while (acc >= 120 || acc <= -120) {
+		execute_mousebind(server, bind, view);
+		acc += acc > 0 ? -120 : 120;
+	}
+	ms->wheel_steps[axis] = acc;
+	return true;
+}
+
 static void
 handle_cursor_axis(struct wl_listener *listener, void *data)
 {
 	struct wm_server *server =
 		wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
+
+	/* The wheel is buttons 4-7 to mouse bindings */
+	if (handle_wheel_binding(server, event))
+		return;
 
 	/* Check if toolbar consumes this scroll event */
 	if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL &&

@@ -161,7 +161,9 @@ def test_x11_knows_its_position(ipc, xterm):
     # Client area sits inside the frame (border + titlebar offset)
     assert frame["x"] <= x < frame["x"] + 20
     assert frame["y"] <= y < frame["y"] + 60
-    assert (w, h) == (600, 400)
+    # ResizeTo sizes the frame (Fluxbox); X11 gets what's inside it
+    assert (frame["frame"]["width"], frame["frame"]["height"]) == (600, 400)
+    assert (w, h) == (frame["width"], frame["height"])
 
 
 def test_x11_in_window_cycling(ipc, xterm, windows):
