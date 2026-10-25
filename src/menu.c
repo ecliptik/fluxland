@@ -1004,9 +1004,9 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 		break;
 
 	case WM_MENU_WINDOW_ENTRY: {
-		/* Switch to workspace and focus the target view */
-		struct wm_view *target = item->data;
-		if (!target) {
+		/* Switch to workspace and focus the entry view */
+		struct wm_view *entry = item->data;
+		if (!entry) {
 			break;
 		}
 		/* Validate the view still exists (may have been destroyed
@@ -1014,13 +1014,13 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 		bool found = false;
 		struct wm_view *v;
 		wl_list_for_each(v, &server->views, link) {
-			if (v == target) {
+			if (v == entry) {
 				found = true;
 				break;
 			}
 		}
 		if (!found) {
-			wlr_log(WLR_DEBUG, "%s", "menu: target view no longer exists");
+			wlr_log(WLR_DEBUG, "%s", "menu: entry view no longer exists");
 			break;
 		}
 		/* Switch to the view's workspace */
@@ -1030,15 +1030,15 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 				wm_workspace_switch(server, ws_idx);
 		}
 		/* De-iconify if minimized */
-		if (!target->scene_tree->node.enabled) {
+		if (!entry->scene_tree->node.enabled) {
 			wlr_scene_node_set_enabled(
-				&target->scene_tree->node, true);
-			wm_foreign_toplevel_set_minimized(target, false);
+				&entry->scene_tree->node, true);
+			wm_foreign_toplevel_set_minimized(entry, false);
 		}
 		/* Focus and raise */
-		wm_focus_view(target,
-			wm_view_surface(target));
-		wm_view_raise(target);
+		wm_focus_view(entry,
+			wm_view_surface(entry));
+		wm_view_raise(entry);
 		break;
 	}
 

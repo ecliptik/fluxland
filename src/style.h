@@ -235,6 +235,7 @@ struct wm_style {
 	/* Style metadata */
 	char *style_dir;	/* directory containing style file */
 	char *style_path;	/* full path to loaded style file */
+	char *overlay_path;	/* session.styleOverlay, read with every style */
 };
 
 /* --- API --- */
@@ -242,11 +243,15 @@ struct wm_style {
 /* Create a style with sensible defaults (Fluxbox-like dark style) */
 struct wm_style *style_create(void);
 
-/* Load style from a file, returns 0 on success, -1 on error */
+/*
+ * Load style from a file, with the overlay over it, onto the defaults
+ * (nothing of the style before is kept).  Returns 0 on success, -1 on
+ * error, leaving the style as it was.
+ */
 int style_load(struct wm_style *style, const char *path);
 
-/* Apply an overlay file on top of already-loaded style */
-int style_load_overlay(struct wm_style *style, const char *path);
+/* The overlay (or NULL) the next style_load reads over the style */
+void style_set_overlay(struct wm_style *style, const char *path);
 
 /* Reload the style from the previously loaded path */
 int style_reload(struct wm_style *style);

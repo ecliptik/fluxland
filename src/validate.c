@@ -269,7 +269,6 @@ struct init_key_spec {
 	int int_min;
 	int int_max;
 	const char **valid_values; /* for VT_ENUM */
-	const char **unsupported_values; /* VT_ENUM: Fluxbox's, not yet */
 };
 
 static const struct init_key_spec init_keys[] = {
@@ -298,15 +297,14 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.showWindowPosition", VT_BOOL, 0, 0, NULL},
 
 	/* Placement */
-	{"session.screen0.windowPlacement", VT_ENUM, 0, 0, valid_placements,
-		unsupported_placements},
+	{"session.screen0.windowPlacement", VT_ENUM, 0, 0, valid_placements},
 	{"session.screen0.rowPlacementDirection", VT_STRING, 0, 0, NULL},
 	{"session.screen0.colPlacementDirection", VT_STRING, 0, 0, NULL},
 
 	/* Toolbar */
 	{"session.screen0.toolbar.visible", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.toolbar.placement", VT_ENUM, 0, 0,
-		valid_toolbar_placements, unsupported_toolbar_placements},
+		valid_toolbar_placements},
 	{"session.screen0.toolbar.autoHide", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.toolbar.autoHideDelay", VT_INT, 0, 10000, NULL},
 	{"session.screen0.toolbar.widthPercent", VT_INT, 10, 100, NULL},
@@ -474,6 +472,28 @@ key_matches(const char *spec, const char *key)
 			return false;
 	}
 	return *key == '\0';
+}
+
+/* VT_ENUM values that are Fluxbox's but not fluxland's yet */
+static const struct {
+	const char *key;
+	const char **values;
+} unsupported_enum_values[] = {
+	{ "session.screen0.windowPlacement", unsupported_placements },
+	{ "session.screen0.toolbar.placement", unsupported_toolbar_placements },
+};
+
+static bool
+is_unsupported_value(const char *key, const char *value)
+{
+	size_t n = sizeof(unsupported_enum_values) /
+		sizeof(unsupported_enum_values[0]);
+	for (size_t i = 0; i < n; i++) {
+		if (strcmp(unsupported_enum_values[i].key, key) == 0)
+			return is_valid_enum(value,
+				unsupported_enum_values[i].values);
+	}
+	return false;
 }
 
 static const struct init_key_spec *
@@ -751,8 +771,7 @@ validate_init_file(const char *path, struct config_result *result)
 			break;
 
 		case VT_ENUM:
-			if (spec->unsupported_values &&
-			    is_valid_enum(value, spec->unsupported_values))
+			if (is_unsupported_value(spec->key, value))
 				config_result_add_warning(result, path, lineno,
 					"'%s': '%s' isn't supported by fluxland "
 					"yet, the default is used",

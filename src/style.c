@@ -357,49 +357,145 @@ style_parse_texture(const char *value)
 /* --- Style resource mapping --- */
 
 /*
- * Get a value from the database, supporting wildcard fallback.
- * First tries the exact key, then tries replacing the specific prefix
- * with '*' to match wildcard entries.
+ * X resource matching, as Fluxbox reads styles with XrmGetResource: an
+ * entry such as "*unfocus.color" or "menu*Color" matches a key when its
+ * components match the key's in order, '.' binding to the next one,
+ * '*' skipping any number, '?' standing for one.  Names and class
+ * names (Color) are told apart by case only, so matching without case
+ * covers both.  The most specific entry wins, compared level by level
+ * from the left: a component over a skipped level, a name over '?',
+ * '.' over '*'.
  */
-static const char *
-style_get(struct rc_database *db, const char *key)
+#define XRM_MAX_LEVELS 12
+
+struct xrm_entry {
+	int count;
+	const char *name[XRM_MAX_LEVELS];
+	size_t len[XRM_MAX_LEVELS];
+	bool loose[XRM_MAX_LEVELS];   /* '*' before the component */
+};
+
+static bool
+xrm_split_entry(const char *key, struct xrm_entry *e)
 {
+	e->count = 0;
+	bool loose = false;
+	const char *p = key;
+	while (*p) {
+		if (*p == '*' || *p == '.') {
+			loose |= *p == '*';
+			p++;
+			continue;
+		}
+		if (e->count == XRM_MAX_LEVELS)
+			return false;
+		size_t n = strcspn(p, ".*");
+		e->name[e->count] = p;
+		e->len[e->count] = n;
+		e->loose[e->count] = loose;
+		e->count++;
+		loose = false;
+		p += n;
+	}
+	/* "a.b*" can't match: the last component must be named */
+	return e->count > 0 && p[-1] != '*' && p[-1] != '.';
+}
+
+/* Best score of entry components j.. against key levels i.. */
+static bool
+xrm_match(const struct xrm_entry *e, int j, const struct xrm_entry *k,
+	int i, int *score, int *best)
+{
+	if (j == e->count || i == k->count) {
+		if (j != e->count || i != k->count)
+			return false;
+		for (int l = 0; l < k->count; l++) {
+			if (score[l] != best[l]) {
+				if (score[l] > best[l])
+					memcpy(best, score, sizeof(int) * k->count);
+				break;
+			}
+		}
+		return true;
+	}
+	bool any = false;
+	bool any_one = e->len[j] == 1 && e->name[j][0] == '?';
+	if (any_one || (e->len[j] == k->len[i] &&
+	    strncasecmp(e->name[j], k->name[i], k->len[i]) == 0)) {
+		score[i] = (any_one ? 2 : 4) + !e->loose[j];
+		any |= xrm_match(e, j + 1, k, i + 1, score, best);
+	}
+	if (e->loose[j]) {
+		score[i] = 0;
+		any |= xrm_match(e, j, k, i + 1, score, best);
+	}
+	return any;
+}
+
+static const char *
+xrm_get(struct rc_database *db, const char *key)
+{
+	/* An exact key needs no search */
 	const char *val = rc_get_string(db, key);
 	if (val)
 		return val;
 
-	/* Try wildcard: extract the last component after the last '.' */
-	const char *last_dot = strrchr(key, '.');
-	if (!last_dot)
+	struct xrm_entry k, e;
+	if (!xrm_split_entry(key, &k))
 		return NULL;
-
-	/* Try "*.component" (e.g. "*.font") */
-	char wildcard[256];
-	int written = snprintf(wildcard, sizeof(wildcard), "*%s", last_dot);
-	if (written >= 0 && (size_t)written < sizeof(wildcard)) {
-		val = rc_get_string(db, wildcard);
-		if (val)
-			return val;
-	}
-
-	/* Try "*component" without dot (Fluxbox compat: *font, *Font) */
-	written = snprintf(wildcard, sizeof(wildcard), "*%s", last_dot + 1);
-	if (written >= 0 && (size_t)written < sizeof(wildcard)) {
-		val = rc_get_string(db, wildcard);
-		if (val)
-			return val;
-		/* Try capitalized variant (*Font vs *font) */
-		if (wildcard[1] >= 'a' && wildcard[1] <= 'z') {
-			wildcard[1] = wildcard[1] - 'a' + 'A';
-			val = rc_get_string(db, wildcard);
-			if (val)
-				return val;
+	int best[XRM_MAX_LEVELS], score[XRM_MAX_LEVELS];
+	int best_entry[XRM_MAX_LEVELS];
+	for (int l = 0; l < k.count; l++)
+		best_entry[l] = -1;
+	for (int n = 0; n < db->count; n++) {
+		const char *ekey = db->entries[n].key;
+		if (!strpbrk(ekey, "*?") || !xrm_split_entry(ekey, &e))
+			continue;
+		for (int l = 0; l < k.count; l++)
+			best[l] = -1;
+		if (!xrm_match(&e, 0, &k, 0, score, best))
+			continue;
+		int l = 0;
+		while (l < k.count && best[l] == best_entry[l])
+			l++;
+		if (l < k.count && best[l] > best_entry[l]) {
+			memcpy(best_entry, best, sizeof(best));
+			val = db->entries[n].value;
 		}
 	}
-
-	/* Try bare key without prefix (Fluxbox compat: borderColor) */
-	val = rc_get_string(db, last_dot + 1);
 	return val;
+}
+
+/*
+ * Look a style resource up, with the fallbacks Fluxbox's themes have:
+ * borders take window.borderWidth/borderColor and then the top-level
+ * borderWidth/borderColor of old styles, bevelWidth and handleWidth
+ * the top-level ones.
+ */
+static const char *
+style_get(struct rc_database *db, const char *key)
+{
+	const char *val = xrm_get(db, key);
+	if (val)
+		return val;
+
+	const char *last = strrchr(key, '.');
+	if (!last)
+		return NULL;
+	last++;
+	if (strcmp(last, "borderWidth") == 0 ||
+	    strcmp(last, "borderColor") == 0) {
+		char window_key[64];
+		snprintf(window_key, sizeof(window_key), "window.%s", last);
+		if (strcmp(key, window_key) != 0 &&
+		    (val = xrm_get(db, window_key)))
+			return val;
+		return xrm_get(db, last);
+	}
+	if (strcmp(last, "bevelWidth") == 0 ||
+	    strcmp(last, "handleWidth") == 0)
+		return xrm_get(db, last);
+	return NULL;
 }
 
 static int
@@ -1043,57 +1139,52 @@ style_load(struct wm_style *s, const char *path)
 	if (!actual_path)
 		return -1;
 
-	/* Set style_dir: the directory of the style file, or the style
-	 * directory itself if it was a directory-based style */
-	safe_free(&s->style_dir);
-	if (is_dir_style) {
-		s->style_dir = strdup(path);
-	} else {
-		s->style_dir = resolve_style_dir(actual_path);
-	}
-	/* style_dir NULL is non-fatal; pixmaps just won't resolve */
-
-	safe_free(&s->style_path);
-	s->style_path = strdup(actual_path);
-	/* style_path NULL is non-fatal; reload won't work */
-
 	struct rc_database *db = rc_create();
 	if (!db) {
 		free(actual_path);
 		return -1;
 	}
-
-	int ret = rc_load(db, actual_path);
-	free(actual_path);
-
-	if (ret != 0) {
+	if (rc_load(db, actual_path) != 0) {
 		rc_destroy(db);
+		free(actual_path);
 		return -1;
 	}
+	/* The overlay's resources replace the style's, as Fluxbox reads
+	 * both into one database */
+	if (s->overlay_path)
+		rc_load(db, s->overlay_path);
 
-	style_apply_db(s, db);
+	struct wm_style *fresh = style_create();
+	if (!fresh) {
+		rc_destroy(db);
+		free(actual_path);
+		return -1;
+	}
+	/* The directory of the style file, or the style directory itself
+	 * for a directory style; NULL is non-fatal (no pixmaps) */
+	fresh->style_dir = is_dir_style ? strdup(path) :
+		resolve_style_dir(actual_path);
+	fresh->style_path = actual_path;
+	fresh->overlay_path = s->overlay_path;
+	s->overlay_path = NULL;
+	style_apply_db(fresh, db);
 	rc_destroy(db);
+
+	/* Swap the contents in: callers keep their pointer */
+	style_clear(s);
+	memcpy(s, fresh, sizeof(*s));
+	free(fresh);
 	return 0;
 }
 
-int
-style_load_overlay(struct wm_style *s, const char *path)
+void
+style_set_overlay(struct wm_style *s, const char *path)
 {
-	if (!s || !path)
-		return -1;
-
-	struct rc_database *db = rc_create();
-	if (!db)
-		return -1;
-
-	if (rc_load(db, path) != 0) {
-		rc_destroy(db);
-		return -1;
-	}
-
-	style_apply_db(s, db);
-	rc_destroy(db);
-	return 0;
+	if (!s)
+		return;
+	safe_free(&s->overlay_path);
+	if (path && *path)
+		s->overlay_path = strdup(path);
 }
 
 int
@@ -1101,45 +1192,12 @@ style_reload(struct wm_style *s)
 {
 	if (!s || !s->style_path)
 		return -1;
-
 	char *path = strdup(s->style_path);
 	if (!path)
 		return -1;
-
-	/* Re-initialize to defaults, then reload */
-	struct wm_style *fresh = style_create();
-	if (!fresh) {
-		free(path);
-		return -1;
-	}
-
-	/* Preserve style_path and style_dir temporarily */
-	free(fresh->style_dir);
-	free(fresh->style_path);
-	fresh->style_dir = s->style_dir;
-	fresh->style_path = s->style_path;
-	s->style_dir = NULL;
-	s->style_path = NULL;
-
-	/* Destroy the old style contents (but not the struct itself) */
-	style_clear(s);
-
-	/* Copy fresh defaults into s (caller still owns the pointer) */
-	/* Actually we need to load into fresh and copy back */
-	int ret = style_load(fresh, path);
+	int ret = style_load(s, path);
 	free(path);
-
-	if (ret != 0) {
-		style_destroy(fresh);
-		return -1;
-	}
-
-	/* Copy everything from fresh to s */
-	memcpy(s, fresh, sizeof(*s));
-	/* Free the shell without freeing contents (now owned by s) */
-	free(fresh);
-
-	return 0;
+	return ret;
 }
 
 /*
@@ -1205,6 +1263,7 @@ style_clear(struct wm_style *s)
 	/* Metadata */
 	free(s->style_dir);
 	free(s->style_path);
+	free(s->overlay_path);
 }
 
 void

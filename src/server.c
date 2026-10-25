@@ -146,6 +146,11 @@ wm_server_reconfigure(struct wm_server *server)
 		!server->config->style_file ||
 		config_file_changed(server->config->style_file,
 			&server->config->style_file_mtime);
+	/* config_file_changed records the mtime: always ask both */
+	if (server->config && server->config->style_overlay &&
+	    config_file_changed(server->config->style_overlay,
+			&server->config->style_overlay_mtime))
+		style_changed = true;
 	bool menu_changed = !server->config ||
 		!server->config->menu_file ||
 		config_file_changed(server->config->menu_file,
@@ -192,12 +197,10 @@ wm_server_reconfigure(struct wm_server *server)
 	if (style_changed) {
 		if (server->style && server->config &&
 		    server->config->style_file) {
+			style_set_overlay(server->style,
+				server->config->style_overlay);
 			style_load(server->style,
 				server->config->style_file);
-			if (server->config->style_overlay) {
-				style_load_overlay(server->style,
-					server->config->style_overlay);
-			}
 
 			/* Broadcast style_changed event to IPC subscribers */
 			wm_ipc_broadcast_event(&server->ipc,
@@ -494,14 +497,12 @@ wm_server_init(struct wm_server *server)
 	/* Load style */
 	server->style = style_create();
 	if (server->style && server->config && server->config->style_file) {
+		style_set_overlay(server->style,
+			server->config->style_overlay);
 		if (style_load(server->style,
 				server->config->style_file) == 0) {
 			wlr_log(WLR_INFO, "loaded style from %s",
 				server->config->style_file);
-		}
-		if (server->config->style_overlay) {
-			style_load_overlay(server->style,
-				server->config->style_overlay);
 		}
 	}
 

@@ -517,6 +517,95 @@ test_argb_conversion(void)
 	printf("  PASS: test_argb_conversion\n");
 }
 
+/* Test: X resource matching, as Fluxbox reads styles */
+static void
+test_xrm_matching(void)
+{
+	write_file(TEST_STYLE,
+		"*textColor: #111111\n"
+		"*unfocus.textColor: #222222\n"
+		"Window.Label.Focus.TextColor: #333333\n"
+		"window*label*unfocus*textColor: #444444\n"
+		"borderWidth: 3\n"
+		"handleWidth: 7\n"
+		"borderColor: #555555\n"
+		"window.borderColor: #666666\n"
+		"?.?.border.width: 9\n"
+		"?.borderColor: #999999\n"
+	);
+	struct wm_style *s = style_create();
+	style_load(s, TEST_STYLE);
+
+	/* Class names match names */
+	assert(s->window_label_focus_text_color.r == 0x33);
+	/* Named components win over skipped ones, from the left */
+	assert(s->window_label_unfocus_text_color.r == 0x44);
+	/* The loosest entry fills in the rest */
+	assert(s->menu_title_text_color.r == 0x11);
+	/* Old top-level keys, as Fluxbox falls back to them */
+	assert(s->window_border_width == 3);
+	assert(s->window_handle_width == 7);
+	assert(s->window_border_color.r == 0x66);
+	/* '?' is one level: it takes slit.borderColor before a fallback */
+	assert(s->slit_border_color.r == 0x99);
+	assert(s->window_focus_border_width == 9);
+	assert(s->menu_border_width == 3);
+	/* A named level beats '?' (window.borderColor) */
+	assert(s->window_border_color.r == 0x66);
+	assert(s->menu_border_color.r == 0x99);
+	style_destroy(s);
+
+	write_file(TEST_STYLE,
+		"menu*borderWidth: 4\n"
+		"*.borderWidth: 2\n"
+		"window.title.focus: flat solid\n"
+		"*.focus.color: #777777\n"
+		"*.color: #888888\n"
+	);
+	s = style_create();
+	style_load(s, TEST_STYLE);
+	assert(s->menu_border_width == 4);
+	assert(s->window_border_width == 2);
+	assert(s->window_title_focus.color == 0xFF777777);
+	assert(s->window_title_unfocus.color == 0xFF888888);
+	style_destroy(s);
+	printf("  PASS: test_xrm_matching\n");
+}
+
+/* Test: each style starts from the defaults, with the overlay over it */
+static void
+test_load_fresh_with_overlay(void)
+{
+	const char *overlay = "/tmp/fluxland-test/test_overlay";
+	struct wm_style *s = style_create();
+	int default_bw = s->window_border_width;
+
+	write_file(TEST_STYLE, "window.borderWidth: 9\n"
+		"toolbar.textColor: #101010\n");
+	write_file(overlay, "toolbar.textColor: #202020\n");
+	style_set_overlay(s, overlay);
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->window_border_width == 9);
+	assert(s->toolbar_text_color.r == 0x20);
+
+	/* Another style: nothing of the first is kept, the overlay is */
+	write_file(TEST_STYLE, "toolbar.textColor: #303030\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->window_border_width == default_bw);
+	assert(s->toolbar_text_color.r == 0x20);
+
+	/* A style that can't be read leaves the style as it was */
+	assert(style_load(s, "/tmp/fluxland-test/no-such-style") == -1);
+	assert(s->toolbar_text_color.r == 0x20);
+
+	style_set_overlay(s, NULL);
+	assert(style_reload(s) == 0);
+	assert(s->toolbar_text_color.r == 0x30);
+	unlink(overlay);
+	style_destroy(s);
+	printf("  PASS: test_load_fresh_with_overlay\n");
+}
+
 /* Test: toolbar style loading */
 static void
 test_toolbar_style(void)
@@ -1002,6 +1091,8 @@ main(void)
 	test_load_nonexistent();
 	test_argb_conversion();
 	test_toolbar_style();
+	test_xrm_matching();
+	test_load_fresh_with_overlay();
 
 	/* New coverage tests */
 	test_color_invalid_formats();

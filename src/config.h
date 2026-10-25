@@ -336,6 +336,7 @@ struct wm_config {
 	/* Cached mtimes for conditional reload */
 	time_t keys_file_mtime;
 	time_t style_file_mtime;
+	time_t style_overlay_mtime;
 	time_t menu_file_mtime;
 	time_t apps_file_mtime;
 };

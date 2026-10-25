@@ -32,6 +32,7 @@
 #include "config.h"
 #include "i18n.h"
 #include "menu.h"
+#include "validate.h"
 #include "menu_parse.h"
 #include "server.h"
 #include "util.h"

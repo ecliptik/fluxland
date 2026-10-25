@@ -369,6 +369,7 @@ struct wm_config {
 	int workspace_count;
 	time_t keys_file_mtime;
 	time_t style_file_mtime;
+	time_t style_overlay_mtime;
 	time_t menu_file_mtime;
 	time_t apps_file_mtime;
 };
@@ -1040,10 +1041,11 @@ static int style_load(struct wm_style *style, const char *path)
 	return 0;
 }
 
-static void style_load_overlay(struct wm_style *style, const char *path)
+static void style_set_overlay(struct wm_style *style, const char *path)
 {
-	(void)style; (void)path;
-	g_style_load_overlay_count++;
+	(void)style;
+	if (path)
+		g_style_load_overlay_count++;
 }
 
 static void style_destroy(struct wm_style *style)
