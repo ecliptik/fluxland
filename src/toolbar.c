@@ -1726,8 +1726,8 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 
 /* A button.NAME's command for a mouse button: the Nth of its commands
  * separated by ':' (left 1, middle 2, right 3), on the focused window */
-static void
-run_button_command(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
+void
+wm_toolbar_run_button(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
 	uint32_t button)
 {
 	int n = button == 272 ? 1 : button == 274 ? 2 : button == 273 ? 3 : 0;
@@ -1780,7 +1780,7 @@ wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx, double ly,
 		wm_focus_next_view(toolbar->server);
 		break;
 	case WM_TOOL_BUTTON:
-		run_button_command(toolbar, tool, button);
+		wm_toolbar_run_button(toolbar, tool, button);
 		break;
 	default:
 		break;

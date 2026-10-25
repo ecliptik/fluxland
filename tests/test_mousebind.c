@@ -260,6 +260,60 @@ test_fluxbox_syntax(void)
 	printf("  PASS: test_fluxbox_syntax\n");
 }
 
+/* Test: Fluxbox's events (Keys.cc): FocusIn, ChangeWorkspace, MouseOver */
+static void
+test_fluxbox_events(void)
+{
+	write_file(TEST_KEYS,
+		"FocusIn :Raise\n"
+		"OnDesktop Mod1 FocusOut :Lower\n"
+		"ChangeWorkspace :Exec true\n"
+		"MouseOver :Focus\n"
+		"OnToolbar Mod4 MouseOut :Lower\n"
+		"OnSlit MouseOver :Raise\n"
+	);
+	struct wl_list bindings;
+	wl_list_init(&bindings);
+	mousebind_load(&bindings, TEST_KEYS, NULL);
+
+	struct wm_mousebind *b = mousebind_find(&bindings,
+		WM_MOUSE_CTX_WINDOW, WM_MOUSE_FOCUS_IN, 0, 0);
+	assert(b && b->action == WM_ACTION_RAISE);
+	/* FocusOut is on the window whatever came before, and has no
+	 * modifiers */
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_WINDOW,
+		WM_MOUSE_FOCUS_OUT, 0, 0);
+	assert(b && b->action == WM_ACTION_LOWER);
+	/* ChangeWorkspace is FocusIn on the desktop */
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
+		WM_MOUSE_FOCUS_IN, 0, 0);
+	assert(b && b->action == WM_ACTION_EXEC);
+	/* MouseOver is on the window unless the toolbar or slit is given */
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_WINDOW, WM_MOUSE_OVER,
+		0, 0);
+	assert(b && b->action == WM_ACTION_FOCUS);
+	assert(!mousebind_find(&bindings, WM_MOUSE_CTX_TOOLBAR,
+		WM_MOUSE_OUT, 0, 0));
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_TOOLBAR, WM_MOUSE_OUT,
+		0, WLR_MODIFIER_LOGO);
+	assert(b && b->action == WM_ACTION_LOWER);
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_SLIT, WM_MOUSE_OVER,
+		0, 0);
+	assert(b && b->action == WM_ACTION_RAISE);
+	assert(!mousebind_find(&bindings, WM_MOUSE_CTX_SLIT, WM_MOUSE_OUT,
+		0, 0));
+
+	/* And the validator takes them */
+	char why[128];
+	assert(wm_keys_check_line("ChangeWorkspace :Exec true", why,
+		sizeof(why)));
+	assert(wm_keys_check_line("OnToolbar MouseOver :Raise", why,
+		sizeof(why)));
+
+	mousebind_destroy_list(&bindings);
+	printf("  PASS: test_fluxbox_events\n");
+}
+
 static void
 test_modifiers(void)
 {
@@ -764,6 +818,7 @@ main(void)
 	test_no_match();
 	test_destroy_empty();
 	test_window_actions();
+	test_fluxbox_events();
 
 	cleanup();
 	printf("All mousebind tests passed.\n");

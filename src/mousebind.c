@@ -192,6 +192,29 @@ parse_mousebind_line(const char *line, const uint32_t *button_map)
 			context |= ctx;
 		} else if (strcasecmp(tokens[i], "Double") == 0) {
 			is_double = true;
+		} else if (!found_event &&
+		    (strcasecmp(tokens[i], "FocusIn") == 0 ||
+		     strcasecmp(tokens[i], "FocusOut") == 0 ||
+		     strcasecmp(tokens[i], "ChangeWorkspace") == 0)) {
+			/* As Keys.cc: the context is set, modifiers dropped */
+			bool ws = tolower((unsigned char)tokens[i][0]) == 'c';
+			context = ws ? WM_MOUSE_CTX_DESKTOP :
+				WM_MOUSE_CTX_WINDOW;
+			event = strcasecmp(tokens[i], "FocusOut") == 0 ?
+				WM_MOUSE_FOCUS_OUT : WM_MOUSE_FOCUS_IN;
+			modifiers = 0;
+			button = 0;
+			found_event = true;
+		} else if (!found_event &&
+		    (strcasecmp(tokens[i], "MouseOver") == 0 ||
+		     strcasecmp(tokens[i], "MouseOut") == 0)) {
+			event = strcasecmp(tokens[i], "MouseOut") == 0 ?
+				WM_MOUSE_OUT : WM_MOUSE_OVER;
+			if (!(context & (WM_MOUSE_CTX_WINDOW |
+			    WM_MOUSE_CTX_TOOLBAR | WM_MOUSE_CTX_SLIT)))
+				context |= WM_MOUSE_CTX_WINDOW;
+			button = 0;
+			found_event = true;
 		} else if (wm_modifier_from_name(tokens[i], &modifiers)) {
 			continue;
 		} else if (!found_event &&
@@ -202,6 +225,9 @@ parse_mousebind_line(const char *line, const uint32_t *button_map)
 			break;
 		}
 	}
+	/* Modifiers after FocusIn are Keys.cc's too: none */
+	if (event == WM_MOUSE_FOCUS_IN || event == WM_MOUSE_FOCUS_OUT)
+		modifiers = 0;
 	/* "Double" goes with a press ("Double Mouse1" = "Double1") */
 	if (is_double && found_event && event == WM_MOUSE_PRESS)
 		event = WM_MOUSE_DOUBLE;
@@ -267,6 +293,14 @@ is_mouse_line(const char *line)
 	char *saveptr;
 	char *tok = strtok_r(copy, " \t", &saveptr);
 	while (tok) {
+		if (strcasecmp(tok, "FocusIn") == 0 ||
+		    strcasecmp(tok, "FocusOut") == 0 ||
+		    strcasecmp(tok, "ChangeWorkspace") == 0 ||
+		    strcasecmp(tok, "MouseOver") == 0 ||
+		    strcasecmp(tok, "MouseOut") == 0) {
+			found = true;
+			break;
+		}
 		if (strncasecmp(tok, "Mouse", 5) == 0 ||
 		    strncasecmp(tok, "Click", 5) == 0 ||
 		    strncasecmp(tok, "Double", 6) == 0 ||

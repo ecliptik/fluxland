@@ -19,6 +19,7 @@
 #include "command.h"
 #include "config.h"
 #include "keyboard_actions.h"
+#include "cursor.h"
 #include "cursor_actions.h"
 #include "server.h"
 #include "decoration.h"
@@ -27,6 +28,7 @@
 #include "mousebind.h"
 #include "slit.h"
 #include "tabgroup.h"
+#include "toolbar.h"
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
@@ -206,4 +208,56 @@ execute_mousebind(struct wm_server *server, struct wm_mousebind *bind,
 	struct wm_view *view)
 {
 	wm_command_execute(server, bind->command, view);
+}
+
+void
+wm_cursor_run_event(struct wm_server *server, uint32_t context,
+	int event, struct wm_view *view)
+{
+	/* Commands here can focus or move the pointer's window, which
+	 * fires events again: X delivers those later, here they nest */
+	static int depth;
+	if (depth > 4)
+		return;
+	uint32_t mods = event == WM_MOUSE_OVER || event == WM_MOUSE_OUT ?
+		get_keyboard_modifiers(server) : 0;
+	struct wm_mousebind *bind = mousebind_find(&server->mousebindings,
+		context, (enum wm_mouse_event)event, 0, mods);
+	if (!bind)
+		return;
+	depth++;
+	execute_mousebind(server, bind, view);
+	depth--;
+}
+
+void
+update_pointer_crossing(struct wm_server *server, struct wm_view *view)
+{
+	struct wm_mouse_state *ms = &server->mouse_state;
+	double cx = server->cursor->x, cy = server->cursor->y;
+	uint32_t ctx = 0;
+	if (wm_toolbar_contains(server->toolbar, cx, cy)) {
+		ctx = WM_MOUSE_CTX_TOOLBAR;
+		view = NULL;
+	} else if (view) {
+		ctx = WM_MOUSE_CTX_WINDOW;
+	} else if (server->slit && server->slit->visible &&
+		   cx >= server->slit->x &&
+		   cx < server->slit->x + server->slit->width &&
+		   cy >= server->slit->y &&
+		   cy < server->slit->y + server->slit->height) {
+		ctx = WM_MOUSE_CTX_SLIT;
+	}
+	if (ctx == ms->over_context && view == ms->over_view)
+		return;
+
+	uint32_t old_ctx = ms->over_context;
+	struct wm_view *old_view = ms->over_view;
+	ms->over_context = ctx;
+	ms->over_view = view;
+	if (old_ctx)
+		wm_cursor_run_event(server, old_ctx, WM_MOUSE_OUT, old_view);
+	/* The MouseOut command may have closed the new window */
+	if (ctx && ms->over_context == ctx && ms->over_view == view)
+		wm_cursor_run_event(server, ctx, WM_MOUSE_OVER, view);
 }

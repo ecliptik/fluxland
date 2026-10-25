@@ -632,6 +632,10 @@ enum wm_mouse_event {
 	WM_MOUSE_CLICK,
 	WM_MOUSE_DOUBLE,
 	WM_MOUSE_MOVE,
+	WM_MOUSE_FOCUS_IN,
+	WM_MOUSE_FOCUS_OUT,
+	WM_MOUSE_OVER,
+	WM_MOUSE_OUT,
 };
 
 struct wm_mousebind {
@@ -656,6 +660,8 @@ struct wm_mouse_state {
 	struct wm_view *pressed_view;
 	uint32_t press_context;
 	int wheel_steps[2];
+	uint32_t over_context;
+	struct wm_view *over_view;
 };
 
 #define WM_DOUBLE_CLICK_MS  300

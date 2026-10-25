@@ -181,6 +181,10 @@ void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
 /* Is (lx, ly) on the shown toolbar? */
 bool wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly);
 
+/* A button.NAME tool's command for a mouse button (BTN_LEFT...) */
+void wm_toolbar_run_button(struct wm_toolbar *toolbar,
+	struct wm_toolbar_tool *tool, uint32_t button);
+
 /* A button released: the arrow button pressed acts if it is still under
  * the pointer.  Returns true when the toolbar had a button down. */
 bool wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx,

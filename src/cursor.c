@@ -399,6 +399,12 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	struct wm_view *view = view_at(server,
 		server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
+	update_pointer_crossing(server, view);
+	/* A MouseOver command may have closed or moved it */
+	if (view && server->mouse_state.over_view != view)
+		view = view_at(server, server->cursor->x, server->cursor->y,
+			&surface, &sx, &sy);
+
 	if (!view) {
 		wlr_cursor_set_xcursor(server->cursor,
 			server->cursor_mgr, "default");

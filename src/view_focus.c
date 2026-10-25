@@ -30,6 +30,8 @@
 #include "text_input.h"
 #include "toolbar.h"
 #include "util.h"
+#include "cursor.h"
+#include "mousebind.h"
 #include "view.h"
 #include "view_focus.h"
 #include "workspace.h"
@@ -79,6 +81,7 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 		server->focus_user_initiated = false;
 		return;
 	}
+	struct wm_view *was_focused = server->focused_view;
 
 	/* It has the user's attention now */
 	if (view->urgent) {
@@ -206,6 +209,16 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 
 	/* Clear the user-initiated flag after focus change completes */
 	server->focus_user_initiated = false;
+
+	/* The keys file's FocusOut and FocusIn (Window.cc setFocusFlag) */
+	if (was_focused != view) {
+		if (was_focused && was_focused->mapped)
+			wm_cursor_run_event(server, WM_MOUSE_CTX_WINDOW,
+				WM_MOUSE_FOCUS_OUT, was_focused);
+		if (server->focused_view == view && view->mapped)
+			wm_cursor_run_event(server, WM_MOUSE_CTX_WINDOW,
+				WM_MOUSE_FOCUS_IN, view);
+	}
 }
 
 void
@@ -223,6 +236,7 @@ wm_focus_view_noraise(struct wm_view *view)
 void
 wm_unfocus_current(struct wm_server *server)
 {
+	struct wm_view *was_focused = server->focused_view;
 	struct wlr_surface *prev_surface =
 		server->seat->keyboard_state.focused_surface;
 	if (prev_surface) {
@@ -239,6 +253,9 @@ wm_unfocus_current(struct wm_server *server)
 	wm_protocols_update_kb_shortcuts_inhibitor(server, NULL);
 	server->focused_view = NULL;
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
+	if (was_focused && was_focused->mapped)
+		wm_cursor_run_event(server, WM_MOUSE_CTX_WINDOW,
+			WM_MOUSE_FOCUS_OUT, was_focused);
 }
 
 void

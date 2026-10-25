@@ -35,6 +35,10 @@ uint32_t get_keyboard_modifiers(struct wm_server *server);
 void execute_mouse_action(struct wm_server *server,
 	enum wm_action action, const char *argument, struct wm_view *view);
 
+/* MouseOver/MouseOut as the pointer crosses into a window (view, from
+ * view_at), the toolbar or the slit */
+void update_pointer_crossing(struct wm_server *server, struct wm_view *view);
+
 /* Dispatch a mouse binding's command against the clicked view */
 void execute_mousebind(struct wm_server *server, struct wm_mousebind *bind,
 	struct wm_view *view);

@@ -23,6 +23,24 @@
 #include "workspace.h"
 #include "view.h"
 
+static const char *
+tool_type_name(enum wm_toolbar_tool_type type)
+{
+	switch (type) {
+	case WM_TOOL_PREV_WORKSPACE: return "Previous Workspace";
+	case WM_TOOL_NEXT_WORKSPACE: return "Next Workspace";
+	case WM_TOOL_WORKSPACE_NAME: return "Workspace Name";
+	case WM_TOOL_ICONBAR: return "Icon Bar";
+	case WM_TOOL_CLOCK: return "Clock";
+	case WM_TOOL_PREV_WINDOW: return "Previous Window";
+	case WM_TOOL_NEXT_WINDOW: return "Next Window";
+	case WM_TOOL_SYSTRAY: return "System Tray";
+	case WM_TOOL_SPACER: return "Spacer";
+	case WM_TOOL_BUTTON: return "Button";
+	}
+	return "toolbar";
+}
+
 void
 wm_focus_nav_init(struct wm_focus_nav *nav)
 {
@@ -53,16 +71,7 @@ wm_focus_nav_enter_toolbar(struct wm_server *server)
 
 	/* Broadcast focus_changed event for screen readers */
 	struct wm_toolbar_tool *tool = &toolbar->tools[0];
-	const char *name = "toolbar";
-	switch (tool->type) {
-	case WM_TOOL_PREV_WORKSPACE: name = "Previous Workspace"; break;
-	case WM_TOOL_NEXT_WORKSPACE: name = "Next Workspace"; break;
-	case WM_TOOL_WORKSPACE_NAME: name = "Workspace Name"; break;
-	case WM_TOOL_ICONBAR: name = "Icon Bar"; break;
-	case WM_TOOL_CLOCK: name = "Clock"; break;
-	case WM_TOOL_PREV_WINDOW: name = "Previous Window"; break;
-	case WM_TOOL_NEXT_WINDOW: name = "Next Window"; break;
-	}
+	const char *name = tool_type_name(tool->type);
 
 	char buf[512];
 	snprintf(buf, sizeof(buf),
@@ -113,21 +122,6 @@ wm_focus_nav_return_to_windows(struct wm_server *server)
 	}
 
 	wlr_log(WLR_DEBUG, "focus_nav: returned to windows");
-}
-
-static const char *
-tool_type_name(enum wm_toolbar_tool_type type)
-{
-	switch (type) {
-	case WM_TOOL_PREV_WORKSPACE: return "Previous Workspace";
-	case WM_TOOL_NEXT_WORKSPACE: return "Next Workspace";
-	case WM_TOOL_WORKSPACE_NAME: return "Workspace Name";
-	case WM_TOOL_ICONBAR: return "Icon Bar";
-	case WM_TOOL_CLOCK: return "Clock";
-	case WM_TOOL_PREV_WINDOW: return "Previous Window";
-	case WM_TOOL_NEXT_WINDOW: return "Next Window";
-	}
-	return "toolbar";
 }
 
 void
@@ -257,8 +251,14 @@ wm_focus_nav_activate(struct wm_server *server)
 		wm_focus_next_view(server);
 		wm_focus_nav_return_to_windows(server);
 		break;
+	case WM_TOOL_BUTTON:
+		/* As its left click */
+		wm_toolbar_run_button(toolbar, tool, 272 /* BTN_LEFT */);
+		break;
 	case WM_TOOL_CLOCK:
-		/* No action for clock */
+	case WM_TOOL_SYSTRAY:
+	case WM_TOOL_SPACER:
+		/* Nothing to activate */
 		break;
 	}
 }

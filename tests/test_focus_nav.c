@@ -57,6 +57,10 @@ void wm_json_escape(char *dst, size_t dst_size, const char *src)
 
 void wm_toolbar_update_iconbar(struct wm_toolbar *t)
 	{ (void)t; stub_update_iconbar_count++; }
+static int stub_run_button_count;
+void wm_toolbar_run_button(struct wm_toolbar *t, struct wm_toolbar_tool *tool,
+	uint32_t button)
+	{ (void)t; (void)tool; (void)button; stub_run_button_count++; }
 void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 	enum wm_ipc_event event, const char *json)
 	{ (void)ipc; (void)event; stub_broadcast_count++;

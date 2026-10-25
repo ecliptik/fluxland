@@ -21,6 +21,8 @@
 #include "server.h"
 #include "toolbar.h"
 #include "util.h"
+#include "cursor.h"
+#include "mousebind.h"
 #include "view.h"
 #include "wallpaper.h"
 #include "workspace.h"
@@ -409,24 +411,25 @@ wm_workspace_switch(struct wm_server *server, int index)
 	 * Walk the views list (stacking order) and find the first
 	 * view that belongs to this workspace.
 	 */
-	struct wm_view *view;
+	struct wm_view *view, *top = NULL;
 	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace == target &&
-		    view->scene_tree->node.enabled) {
-			wm_focus_view(view,
-				wm_view_surface(view));
-			return;
-		}
 		/* Also consider sticky views */
-		if (view->sticky && view->scene_tree->node.enabled) {
-			wm_focus_view(view,
-				wm_view_surface(view));
-			return;
+		if ((view->workspace == target || view->sticky) &&
+		    view->scene_tree->node.enabled) {
+			top = view;
+			break;
 		}
 	}
+	if (top)
+		wm_focus_view(top, wm_view_surface(top));
+	else
+		/* No views on new workspace, clear focus */
+		wm_unfocus_current(server);
 
-	/* No views on new workspace, clear focus */
-	wm_unfocus_current(server);
+	/* The keys file's ChangeWorkspace, once the switch is done
+	 * (BScreen::changeWorkspaceID) */
+	wm_cursor_run_event(server, WM_MOUSE_CTX_DESKTOP, WM_MOUSE_FOCUS_IN,
+		NULL);
 }
 
 void

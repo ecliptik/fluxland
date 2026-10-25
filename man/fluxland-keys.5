@@ -118,6 +118,22 @@ The pointer moves with the button held.
 A double click (fluxland also takes
 .BI Double N\fR).
 .PP
+Lines can also bind these events, without a button:
+.TP
+.BR FocusIn ", " FocusOut
+A window gets or loses the focus (always
+.BR OnWindow ,
+without modifiers), as in
+.BR "FocusIn :Raise" .
+.TP
+.B ChangeWorkspace
+Another workspace is shown (after its window has the focus).
+.TP
+.BR MouseOver ", " MouseOut
+The pointer moves onto or off a window, or the toolbar or slit with
+.BR OnToolbar " or " OnSlit ;
+modifiers held count.
+.PP
 Buttons are numbered as in X: 1 left, 2 middle, 3 right, 4 and 5 the
 wheel up and down, 6 and 7 the wheel left and right, 8 and 9 back and
 forward.

@@ -496,7 +496,27 @@ struct wm_rules {
 
 /* Keybind / mousebind (opaque, from blocked headers) */
 struct wm_chain_state { int dummy; };
-struct wm_mouse_state { int dummy; };
+struct wm_mouse_state {
+	struct wm_view *pressed_view;
+	int pressed_decor_button;
+	uint32_t over_context;
+	struct wm_view *over_view;
+};
+/* mousebind.h, cursor.h */
+struct wm_server;
+#define WM_MOUSE_CTX_DESKTOP (1 << 1)
+#define WM_MOUSE_CTX_WINDOW (1 << 5)
+enum { WM_MOUSE_FOCUS_IN = 4, WM_MOUSE_FOCUS_OUT = 5 };
+static int g_event_count[8];
+static struct wm_view *g_event_view;
+static void
+wm_cursor_run_event(struct wm_server *s, uint32_t ctx, int event,
+	struct wm_view *v)
+{
+	(void)s; (void)ctx;
+	g_event_count[event]++;
+	g_event_view = v;
+}
 
 /* Output */
 struct wm_output {

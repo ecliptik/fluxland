@@ -420,6 +420,8 @@ wm_focus_view(struct wm_view *view, struct wlr_surface *surface)
 	g_focus_view_count++;
 }
 
+static int g_change_workspace_events;
+
 static void
 wm_unfocus_current(struct wm_server *server)
 {
@@ -510,6 +512,15 @@ void wm_json_escape(char *dst, size_t dst_size, const char *src)
 
 #include "workspace.c"
 
+void
+wm_cursor_run_event(struct wm_server *server, uint32_t context, int event,
+	struct wm_view *view)
+{
+	(void)server; (void)view;
+	if (context == WM_MOUSE_CTX_DESKTOP && event == WM_MOUSE_FOCUS_IN)
+		g_change_workspace_events++;
+}
+
 /* --- Test helpers --- */
 
 static struct wm_server test_server;
@@ -534,6 +545,7 @@ static struct wlr_output test_wlr_output;
 static void
 reset_globals(void)
 {
+	g_change_workspace_events = 0;
 	g_toolbar_ws_update_count = 0;
 	g_toolbar_iconbar_update_count = 0;
 	g_ipc_broadcast_count = 0;
@@ -957,6 +969,11 @@ test_workspace_switch_empty_unfocuses(void)
 	wm_workspace_switch(&test_server, 2);
 	assert(test_server.current_workspace->index == 2);
 	assert(g_unfocus_count == 1);
+	/* The keys file's ChangeWorkspace, once */
+	assert(g_change_workspace_events == 1);
+	/* Not for the workspace it's on */
+	wm_workspace_switch(&test_server, 2);
+	assert(g_change_workspace_events == 1);
 
 	cleanup_test_server();
 	printf("  PASS: workspace_switch_empty_unfocuses\n");

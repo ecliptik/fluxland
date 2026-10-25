@@ -60,6 +60,11 @@ enum wm_mouse_event {
 	WM_MOUSE_CLICK,   /* ClickN - press + release without move */
 	WM_MOUSE_DOUBLE,  /* Double MouseN (or DoubleN) - double click */
 	WM_MOUSE_MOVE,    /* MoveN - button held while moving (drag) */
+	/* Fluxbox's events (Keys.cc): no button */
+	WM_MOUSE_FOCUS_IN,  /* FocusIn (OnWindow), ChangeWorkspace (OnDesktop) */
+	WM_MOUSE_FOCUS_OUT, /* FocusOut */
+	WM_MOUSE_OVER,      /* MouseOver: on a window, the toolbar, the slit */
+	WM_MOUSE_OUT,       /* MouseOut */
 };
 
 struct wm_view;
@@ -92,6 +97,9 @@ struct wm_mouse_state {
 	struct wm_view *pressed_view;
 	uint32_t press_context;     /* wm_mouse_context flags of the press */
 	int wheel_steps[2];         /* 1/120 wheel steps not yet acted on */
+	uint32_t over_context;      /* MouseOver/MouseOut: the window, the
+	                               toolbar or the slit under the pointer */
+	struct wm_view *over_view;  /* the window, when it's one */
 };
 
 #define WM_DOUBLE_CLICK_MS  250  /* Fluxbox's */

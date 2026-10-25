@@ -518,6 +518,17 @@ wm_view_unmap_common(struct wm_view *view)
 {
 	view->mapped = false;
 	wm_dialog_view_destroyed(view->server, view);
+	/* The pointer's window for MouseOut, the pressed one for the
+	 * release: gone */
+	struct wm_mouse_state *ms = &view->server->mouse_state;
+	if (ms->over_view == view) {
+		ms->over_view = NULL;
+		ms->over_context = 0;
+	}
+	if (ms->pressed_view == view) {
+		ms->pressed_view = NULL;
+		ms->pressed_decor_button = -1;
+	}
 	/* Uncount it for {N}; [Close] {yes} saves its state */
 	wm_rules_release(&view->server->rules, view,
 		view->server->config ? view->server->config->apps_file : NULL);
