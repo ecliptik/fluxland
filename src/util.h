@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* Safe integer parsing — returns false on overflow, non-numeric input, or empty string */
@@ -79,6 +80,54 @@ static inline FILE *fopen_nofollow(const char *path, const char *mode) {
 		if (errno == ELOOP)
 			fprintf(stderr, "[fluxland] Refusing to open"
 				" symlink: %s\n", path);
+		return NULL;
+	}
+	FILE *f = fdopen(fd, mode);
+	if (!f)
+		close(fd);
+	return f;
+}
+
+/*
+ * Open a configuration file, following a symlink only to a file that is
+ * the user's (or root's) and that no one else can write: dotfile
+ * managers (stow, chezmoi, home-manager) link ~/.fluxbox/menu and the
+ * rest, while a link planted to someone else's file is still refused.
+ * Only regular files are opened (a FIFO or device would hang).
+ */
+static inline bool config_file_trusted(const struct stat *st) {
+	return S_ISREG(st->st_mode) &&
+		(st->st_uid == getuid() || st->st_uid == 0) &&
+		!(st->st_mode & (S_IWGRP | S_IWOTH));
+}
+
+static inline FILE *fopen_config(const char *path, const char *mode) {
+	struct stat st;
+	if (lstat(path, &st) != 0 || !S_ISLNK(st.st_mode)) {
+		if (lstat(path, &st) == 0 && !S_ISREG(st.st_mode))
+			return NULL;
+		return fopen_nofollow(path, mode);
+	}
+	bool writing = strchr(mode, 'w') || strchr(mode, 'a');
+	/* Check a write's target before opening it (it truncates) */
+	if (writing && (stat(path, &st) != 0 || !config_file_trusted(&st))) {
+		fprintf(stderr, "[fluxland] Refusing to follow symlink: %s\n",
+			path);
+		return NULL;
+	}
+	int flags = O_RDONLY;
+	if (strchr(mode, 'w'))
+		flags = O_WRONLY | O_TRUNC;
+	if (strchr(mode, 'a'))
+		flags = O_WRONLY | O_APPEND;
+	int fd = open(path, flags);
+	if (fd < 0)
+		return NULL;
+	/* What was opened, not what the name points to now */
+	if (fstat(fd, &st) != 0 || !config_file_trusted(&st)) {
+		fprintf(stderr, "[fluxland] Refusing to follow symlink: %s\n",
+			path);
+		close(fd);
 		return NULL;
 	}
 	FILE *f = fdopen(fd, mode);

@@ -45,105 +45,178 @@ static void cancel_pending_submenu(void);
 
 /* --- Window menu --- */
 
+/*
+ * Fluxbox's default windowmenu (data/windowmenu), without
+ * [settitledialog] until there are dialogs; "Remember..." is Fluxbox's
+ * [extramenus].
+ */
+static const char default_window_menu[] =
+	"[begin]\n"
+	"  [shade]\n"
+	"  [stick]\n"
+	"  [maximize]\n"
+	"  [iconify]\n"
+	"  [raise]\n"
+	"  [lower]\n"
+	"  [sendto]\n"
+	"  [layer]\n"
+	"  [alpha]\n"
+	"  [extramenus]\n"
+	"  [separator]\n"
+	"  [close]\n"
+	"[end]\n";
+
 struct wm_menu *
 wm_menu_create_window_menu(struct wm_server *server)
 {
-	struct wm_menu *menu = menu_create(server, _("Window"));
-
-	struct {
-		enum wm_menu_item_type type;
-		const char *label;
-	} entries[] = {
-		{WM_MENU_SHADE,    N_("Shade")},
-		{WM_MENU_STICK,    N_("Stick")},
-		{WM_MENU_MAXIMIZE, N_("Maximize")},
-		{WM_MENU_ICONIFY,  N_("Iconify")},
-		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_SENDTO,   N_("Send To...")},
-		{WM_MENU_LAYER,    N_("Layer")},
-		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_RAISE,    N_("Raise")},
-		{WM_MENU_LOWER,    N_("Lower")},
-		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_CLOSE,    N_("Close")},
-		{WM_MENU_KILL,     N_("Kill")},
-		{WM_MENU_SEPARATOR, NULL},
-		{WM_MENU_REMEMBER, N_("Remember")},
-	};
-
-	for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
-		struct wm_menu_item *item = menu_item_create(
-			entries[i].type,
-			entries[i].label ? _(entries[i].label)
-					 : NULL);
-		if (item) {
-			/* Create SendTo submenu with workspace list */
-			if (entries[i].type == WM_MENU_SENDTO) {
-				item->submenu = wm_menu_create_workspace_menu(
-					server);
-				if (item->submenu) {
-					item->submenu->parent = menu;
-				}
-			}
-			/* Create Layer submenu */
-			if (entries[i].type == WM_MENU_LAYER) {
-				item->submenu = menu_create(server, _("Layer"));
-				if (item->submenu) {
-					item->submenu->parent = menu;
-					const char *layers[] = {
-						_("Above Dock"), _("Dock"),
-						_("Normal"), _("Bottom"), _("Desktop")
-					};
-					for (int j = 0; j < 5; j++) {
-						struct wm_menu_item *li =
-							menu_item_create(
-								WM_MENU_COMMAND,
-								layers[j]);
-						if (li) {
-							char cmd[64];
-							snprintf(cmd,
-								sizeof(cmd),
-								"SetLayer %d",
-								j);
-							li->command =
-								strdup(cmd);
-							wl_list_insert(
-								item->submenu->items.prev,
-								&li->link);
-						}
-					}
-				}
-			}
-			wl_list_insert(menu->items.prev, &item->link);
-		}
+	struct wm_menu *menu = wm_menu_load_string(server, default_window_menu);
+	if (menu) {
+		free(menu->title);
+		menu->title = strdup(_("Window"));
 	}
-
 	return menu;
 }
 
-/* --- Workspace menu --- */
+/* --- Lists rebuilt each time a menu opens --- */
+
+static void
+clear_items(struct wm_menu *menu)
+{
+	struct wm_menu_item *item, *tmp;
+	wl_list_for_each_safe(item, tmp, &menu->items, link) {
+		wl_list_remove(&item->link);
+		menu_item_destroy(item);
+	}
+	menu->selected_index = -1;
+}
+
+static struct wm_menu_item *
+append_command(struct wm_menu *menu, const char *label, const char *cmd)
+{
+	struct wm_menu_item *item = menu_item_create(WM_MENU_COMMAND, label);
+	if (item) {
+		item->command = cmd ? strdup(cmd) : NULL;
+		wl_list_insert(menu->items.prev, &item->link);
+	}
+	return item;
+}
+
+static const char *
+workspace_label(struct wm_workspace *ws, char *buf, size_t len)
+{
+	if (ws->name && *ws->name)
+		return ws->name;
+	snprintf(buf, len, "%s %d", _("Workspace"), ws->index + 1);
+	return buf;
+}
+
+/* [sendto]: the workspaces to send the window to (SendToMenu) */
+static void
+fill_sendto_menu(struct wm_menu *menu, struct wm_server *server)
+{
+	clear_items(menu);
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &server->workspaces, link) {
+		char name[64], cmd[64];
+		snprintf(cmd, sizeof(cmd), "SendToWorkspace %d", ws->index + 1);
+		append_command(menu, workspace_label(ws, name, sizeof(name)),
+			cmd);
+	}
+}
+
+/* [workspaces]: switch, add, remove (WorkspaceMenu) */
+static void
+fill_workspaces_menu(struct wm_menu *menu, struct wm_server *server)
+{
+	clear_items(menu);
+	struct wm_workspace *active = wm_workspace_get_active(server);
+	struct wm_workspace *ws;
+	wl_list_for_each(ws, &server->workspaces, link) {
+		char name[64], cmd[64];
+		snprintf(cmd, sizeof(cmd), "Workspace %d", ws->index + 1);
+		struct wm_menu_item *item = append_command(menu,
+			workspace_label(ws, name, sizeof(name)), cmd);
+		if (item)
+			item->checked = ws == active;
+	}
+	struct wm_menu_item *sep = menu_item_create(WM_MENU_SEPARATOR, NULL);
+	if (sep)
+		wl_list_insert(menu->items.prev, &sep->link);
+	append_command(menu, _("New Workspace"), "AddWorkspace");
+	append_command(menu, _("Remove Last"), "RemoveLastWorkspace");
+}
+
+/* A window list entry */
+static void
+append_window(struct wm_menu *menu, struct wm_view *view, bool show_ws)
+{
+	const char *title = view->title && *view->title ? view->title :
+		view->app_id ? view->app_id : _("(untitled)");
+	char label[256];
+	if (!view->scene_tree->node.enabled)
+		snprintf(label, sizeof(label), "( %s )", title);
+	else
+		snprintf(label, sizeof(label), "%s", title);
+	struct wm_menu_item *item = menu_item_create(WM_MENU_WINDOW_ENTRY,
+		label);
+	if (!item)
+		return;
+	item->data = view;
+	item->checked = view == view->server->focused_view;
+	if (show_ws && view->workspace) {
+		char cmd[32];
+		snprintf(cmd, sizeof(cmd), "%d", view->workspace->index);
+		item->command = strdup(cmd);
+	}
+	wl_list_insert(menu->items.prev, &item->link);
+}
+
+/* [icons]: the iconified windows (Fluxbox's icon menu) */
+static void
+fill_icons_menu(struct wm_menu *menu, struct wm_server *server)
+{
+	clear_items(menu);
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->mapped && !view->docked && !view->icon_hidden &&
+		    !view->scene_tree->node.enabled)
+			append_window(menu, view, true);
+	}
+}
+
+/* Bring a menu's lists up to date before it is shown */
+static void
+refresh_lists(struct wm_menu *menu, int depth)
+{
+	if (!menu || depth > 16)
+		return;
+	struct wm_menu_item *item;
+	wl_list_for_each(item, &menu->items, link) {
+		if (!item->submenu)
+			continue;
+		switch (item->type) {
+		case WM_MENU_SENDTO:
+			fill_sendto_menu(item->submenu, menu->server);
+			break;
+		case WM_MENU_WORKSPACES:
+			fill_workspaces_menu(item->submenu, menu->server);
+			break;
+		case WM_MENU_ICONS:
+			fill_icons_menu(item->submenu, menu->server);
+			break;
+		default:
+			refresh_lists(item->submenu, depth + 1);
+			break;
+		}
+	}
+}
 
 struct wm_menu *
 wm_menu_create_workspace_menu(struct wm_server *server)
 {
-	struct wm_menu *menu = menu_create(server, _("Workspaces"));
-
-	struct wm_workspace *ws;
-	wl_list_for_each(ws, &server->workspaces, link) {
-		char label[128];
-		snprintf(label, sizeof(label), "%d: %s", ws->index + 1,
-			ws->name ? ws->name : _("Workspace"));
-		struct wm_menu_item *item = menu_item_create(
-			WM_MENU_COMMAND, label);
-		if (item) {
-			char cmd[64];
-			snprintf(cmd, sizeof(cmd), "SendToWorkspace %d",
-				ws->index + 1);
-			item->command = strdup(cmd);
-			wl_list_insert(menu->items.prev, &item->link);
-		}
-	}
-
+	struct wm_menu *menu = menu_create(server, _("Send To..."));
+	if (menu)
+		fill_sendto_menu(menu, server);
 	return menu;
 }
 
@@ -325,26 +398,8 @@ struct wm_menu *
 wm_menu_create_ws_switch_menu(struct wm_server *server)
 {
 	struct wm_menu *menu = menu_create(server, _("Workspaces"));
-	if (!menu) {
-		return NULL;
-	}
-
-	struct wm_workspace *ws;
-	wl_list_for_each(ws, &server->workspaces, link) {
-		char label[128];
-		snprintf(label, sizeof(label), "%d: %s", ws->index + 1,
-			ws->name ? ws->name : _("Workspace"));
-		struct wm_menu_item *item = menu_item_create(
-			WM_MENU_COMMAND, label);
-		if (item) {
-			char cmd[64];
-			snprintf(cmd, sizeof(cmd), "Workspace %d",
-				ws->index + 1);
-			item->command = strdup(cmd);
-			wl_list_insert(menu->items.prev, &item->link);
-		}
-	}
-
+	if (menu)
+		fill_workspaces_menu(menu, server);
 	return menu;
 }
 
@@ -450,6 +505,9 @@ wm_menu_create_window_list(struct wm_server *server)
 void
 wm_menu_show(struct wm_menu *menu, int x, int y)
 {
+	/* A menu opening lists the workspaces and windows as they are */
+	if (menu && !menu->parent)
+		refresh_lists(menu, 0);
 	if (!menu || !menu->server) {
 		return;
 	}
@@ -775,13 +833,54 @@ find_menu_at(struct wm_menu *menu, double lx, double ly)
 
 /* --- Action execution --- */
 
+static bool
+view_alive(struct wm_server *server, struct wm_view *view)
+{
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v == view)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * The window an item acts on: for the window menu, the window it was
+ * opened for (FbMenu::window()); otherwise the focused one.
+ */
+static struct wm_view *
+menu_target(struct wm_menu *menu)
+{
+	struct wm_server *server = menu->server;
+	struct wm_menu *root = menu;
+	while (root->parent)
+		root = root->parent;
+	if (root == server->window_menu && server->menu_view &&
+	    view_alive(server, server->menu_view))
+		return server->menu_view;
+	return server->focused_view;
+}
+
+static void execute_menu_item_now(struct wm_menu *menu,
+	struct wm_menu_item *item, struct wm_view *target);
+
 static void
 execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 {
 	if (!menu || !item) {
 		return;
 	}
+	struct wm_server *server = menu->server;
+	struct wm_view *target = menu_target(menu);
+	server->menu_executing = true;
+	execute_menu_item_now(menu, item, target);
+	server->menu_executing = false;
+}
 
+static void
+execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
+	struct wm_view *target)
+{
 	struct wm_server *server = menu->server;
 
 	switch (item->type) {
@@ -846,47 +945,35 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 		break;
 
 	case WM_MENU_SHADE:
-		wm_execute_action(server, WM_ACTION_SHADE, NULL);
+		wm_execute_action_on(server, WM_ACTION_SHADE, NULL, target);
 		break;
 
 	case WM_MENU_STICK:
-		if (server->focused_view) {
-			wm_view_set_sticky(server->focused_view,
-				!server->focused_view->sticky);
-		}
+		wm_execute_action_on(server, WM_ACTION_STICK, NULL, target);
 		break;
 
 	case WM_MENU_MAXIMIZE:
-		wm_execute_action(server, WM_ACTION_MAXIMIZE, NULL);
+		wm_execute_action_on(server, WM_ACTION_MAXIMIZE, NULL, target);
 		break;
 
 	case WM_MENU_ICONIFY:
-		wm_execute_action(server, WM_ACTION_MINIMIZE, NULL);
+		wm_execute_action_on(server, WM_ACTION_MINIMIZE, NULL, target);
 		break;
 
 	case WM_MENU_CLOSE:
-		if (server->focused_view)
-			wm_view_close(server->focused_view);
+		wm_execute_action_on(server, WM_ACTION_CLOSE, NULL, target);
 		break;
 
 	case WM_MENU_KILL:
-		if (server->focused_view)
-			wm_view_kill(server->focused_view);
+		wm_execute_action_on(server, WM_ACTION_KILL, NULL, target);
 		break;
 
 	case WM_MENU_RAISE:
-		if (server->focused_view) {
-			wm_view_raise(server->focused_view);
-		}
+		wm_execute_action_on(server, WM_ACTION_RAISE, NULL, target);
 		break;
 
 	case WM_MENU_LOWER:
-		/* Lower view to bottom of stacking order */
-		if (server->focused_view &&
-		    server->focused_view->scene_tree) {
-			wlr_scene_node_lower_to_bottom(
-				&server->focused_view->scene_tree->node);
-		}
+		wm_execute_action_on(server, WM_ACTION_LOWER, NULL, target);
 		break;
 
 	case WM_MENU_COMMAND:
@@ -911,7 +998,7 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 					item->command);
 				break;
 			}
-			wm_command_execute(server, cmd, NULL);
+			wm_command_execute(server, cmd, target);
 			wm_command_destroy(cmd);
 		}
 		break;
@@ -956,13 +1043,13 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 	}
 
 	case WM_MENU_REMEMBER:
-		if (server->focused_view && server->config &&
-		    server->config->apps_file) {
-			wm_rules_remember_window(server->focused_view,
+		if (target && server->config && server->config->apps_file) {
+			wm_rules_remember_window(target,
 				server->config->apps_file);
 		}
 		break;
 
+	case WM_MENU_ICONS:
 	case WM_MENU_CONFIG:
 	case WM_MENU_WORKSPACES:
 	case WM_MENU_SENDTO:
@@ -1085,6 +1172,27 @@ menu_type_ahead(struct wm_menu *menu, char ch)
 
 /* --- Keyboard interaction --- */
 
+/*
+ * The menus that can be open, the most likely to be on top first: the
+ * lists and the menus opened by a command, then the window menu, then
+ * the root menu.
+ */
+static int
+open_menus(struct wm_server *server, struct wm_menu *out[6])
+{
+	struct wm_menu *all[] = {
+		server->window_list_menu, server->client_menu,
+		server->workspace_menu, server->custom_menu,
+		server->window_menu, server->root_menu,
+	};
+	int n = 0;
+	for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
+		if (all[i] && all[i]->visible)
+			out[n++] = all[i];
+	}
+	return n;
+}
+
 bool
 wm_menu_handle_key(struct wm_server *server, uint32_t keycode,
 	xkb_keysym_t sym, bool pressed)
@@ -1095,19 +1203,9 @@ wm_menu_handle_key(struct wm_server *server, uint32_t keycode,
 		return false;
 	}
 
-	/* Dispatch to whichever menu is currently visible */
-	if (server->window_list_menu && server->window_list_menu->visible) {
-		return wm_menu_handle_key_for(server->window_list_menu, sym);
-	}
-
-	if (server->window_menu && server->window_menu->visible) {
-		return wm_menu_handle_key_for(server->window_menu, sym);
-	}
-
-	if (server->root_menu && server->root_menu->visible) {
-		return wm_menu_handle_key_for(server->root_menu, sym);
-	}
-
+	struct wm_menu *menus[6];
+	if (open_menus(server, menus) > 0)
+		return wm_menu_handle_key_for(menus[0], sym);
 	return false;
 }
 
@@ -1127,7 +1225,27 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 		return false;
 	}
 
+	/*
+	 * With type-ahead search on (session.menuSearch, Fluxbox's
+	 * default), letters search; h/j/k/l move only when it is off.
+	 */
+	bool searching = menu->server && menu->server->config &&
+		menu->server->config->menu_search != WM_MENU_SEARCH_NOWHERE;
+	if (searching && (sym == XKB_KEY_h || sym == XKB_KEY_j ||
+	    sym == XKB_KEY_k || sym == XKB_KEY_l))
+		return menu_type_ahead(menu, (char)sym);
+
 	switch (sym) {
+	case XKB_KEY_BackSpace:
+		/* Edit the search; with none, back to the parent menu */
+		if (menu->search_len > 0) {
+			menu->search_buf[--menu->search_len] = '\0';
+			return true;
+		}
+		if (menu->parent && menu->parent->visible)
+			wm_menu_hide(menu);
+		return true;
+
 	case XKB_KEY_Up:
 	case XKB_KEY_k: {
 		/* Move selection up, skip separators */
@@ -1267,15 +1385,10 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 		return true;
 	}
 
-	case XKB_KEY_Escape: {
-		/* Close current submenu, or close all if at root */
-		if (menu->parent && menu->parent->visible) {
-			wm_menu_hide(menu);
-		} else {
-			wm_menu_hide(root_menu);
-		}
+	case XKB_KEY_Escape:
+		/* Close the menus (Fluxbox's Menu::keyPressEvent) */
+		wm_menu_hide(root_menu);
 		return true;
-	}
 
 	default: {
 		/* Type-ahead search for printable characters */
@@ -1306,27 +1419,12 @@ wm_menu_handle_motion(struct wm_server *server, double lx, double ly)
 		return false;
 	}
 
-	/* Check window list menu first (it's typically on top) */
-	if (server->window_list_menu && server->window_list_menu->visible) {
-		if (wm_menu_handle_motion_for(server->window_list_menu,
-			lx, ly)) {
+	struct wm_menu *menus[6];
+	int n = open_menus(server, menus);
+	for (int i = 0; i < n; i++) {
+		if (wm_menu_handle_motion_for(menus[i], lx, ly))
 			return true;
-		}
 	}
-
-	/* Check window menu next */
-	if (server->window_menu && server->window_menu->visible) {
-		if (wm_menu_handle_motion_for(server->window_menu, lx, ly)) {
-			return true;
-		}
-	}
-
-	if (server->root_menu && server->root_menu->visible) {
-		if (wm_menu_handle_motion_for(server->root_menu, lx, ly)) {
-			return true;
-		}
-	}
-
 	return false;
 }
 
@@ -1446,29 +1544,13 @@ wm_menu_handle_button(struct wm_server *server, double lx, double ly,
 		return false;
 	}
 
-	/* Check window list menu first (it's typically on top) */
-	if (server->window_list_menu && server->window_list_menu->visible) {
-		if (wm_menu_handle_button_for(server->window_list_menu,
-			lx, ly, button, pressed)) {
+	struct wm_menu *menus[6];
+	int n = open_menus(server, menus);
+	for (int i = 0; i < n; i++) {
+		if (wm_menu_handle_button_for(menus[i], lx, ly, button,
+		    pressed))
 			return true;
-		}
 	}
-
-	/* Check window menu next */
-	if (server->window_menu && server->window_menu->visible) {
-		if (wm_menu_handle_button_for(server->window_menu, lx, ly,
-			button, pressed)) {
-			return true;
-		}
-	}
-
-	if (server->root_menu && server->root_menu->visible) {
-		if (wm_menu_handle_button_for(server->root_menu, lx, ly,
-			button, pressed)) {
-			return true;
-		}
-	}
-
 	return false;
 }
 
@@ -1570,6 +1652,9 @@ wm_menu_destroy(struct wm_menu *menu)
 		wl_event_source_remove(menu->search_timer);
 	}
 
+	for (int i = 0; i < menu->source_count; i++)
+		free(menu->sources[i]);
+	free(menu->sources);
 	free(menu->title);
 	free(menu);
 }
@@ -1591,6 +1676,22 @@ wm_menu_show_root(struct wm_server *server, int x, int y)
 
 	/* Hide any other menus first, then show root */
 	wm_menu_hide_all(server);
+
+	/*
+	 * Like Fluxbox, read it again if its file, an included one or a
+	 * listed directory changed; not while one of its items runs (the
+	 * item would be freed under it).
+	 */
+	if (!server->menu_executing && server->config &&
+	    server->config->menu_file &&
+	    wm_menu_sources_changed(server->root_menu)) {
+		struct wm_menu *fresh = wm_menu_load(server,
+			server->config->menu_file);
+		if (fresh) {
+			wm_menu_destroy(server->root_menu);
+			server->root_menu = fresh;
+		}
+	}
 
 	wm_menu_show(server->root_menu, x, y);
 }
@@ -1618,8 +1719,11 @@ wm_menu_show_window(struct wm_server *server, int x, int y)
 		return;
 	}
 
-	/* Update checked state from focused view */
-	struct wm_view *view = server->focused_view;
+	/* Checked states of the window it is for */
+	struct wm_view *view = server->menu_view &&
+		view_alive(server, server->menu_view) ?
+		server->menu_view : server->focused_view;
+	server->menu_view = view;
 	if (view) {
 		struct wm_menu_item *item;
 		wl_list_for_each(item, &server->window_menu->items, link) {

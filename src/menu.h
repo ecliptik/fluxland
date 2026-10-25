@@ -57,6 +57,7 @@ enum wm_menu_item_type {
 	WM_MENU_LAYER,		/* layer selection submenu */
 	WM_MENU_WINDOW_ENTRY,	/* window list entry (focus/deiconify) */
 	WM_MENU_REMEMBER,	/* remember window properties to apps file */
+	WM_MENU_ICONS,		/* [icons]: the iconified windows */
 };
 
 /* --- Menu item --- */
@@ -99,6 +100,12 @@ struct wm_menu {
 	int item_count;
 	int border_width;
 
+	/* The files and directories it was read from, and the newest of
+	 * their times when it was: it is read again when one changes */
+	char **sources;
+	int source_count;
+	long long sources_mtime;
+
 	/* Type-ahead search buffer */
 	char search_buf[64];
 	int search_len;
@@ -112,6 +119,13 @@ struct wm_menu {
  * Returns the menu, or NULL on error.
  */
 struct wm_menu *wm_menu_load(struct wm_server *server, const char *path);
+
+/* Has a file or directory the menu was read from changed since? */
+bool wm_menu_sources_changed(const struct wm_menu *menu);
+
+/* A menu from text in the menu file format (the built-in window menu) */
+struct wm_menu *wm_menu_load_string(struct wm_server *server,
+	const char *text);
 
 /*
  * Create the default window context menu.

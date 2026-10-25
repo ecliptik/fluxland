@@ -612,6 +612,8 @@ wm_view_destroy_common(struct wm_view *view)
 	}
 	if (view->server->focus_cycle.restore_minimized == view)
 		view->server->focus_cycle.restore_minimized = NULL;
+	if (view->server->menu_view == view)
+		view->server->menu_view = NULL;
 
 	wl_list_remove(&view->link);
 

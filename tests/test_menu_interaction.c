@@ -364,6 +364,7 @@ enum wm_menu_search {
 
 struct wm_config {
 	int workspace_count;
+	char *menu_file;
 	char *titlebar_left;
 	char *titlebar_right;
 	enum wm_menu_search menu_search;
@@ -421,6 +422,7 @@ struct wm_view {
 	struct wlr_scene_tree *scene_tree;
 	uint32_t id;
 	int x, y;
+	bool mapped, docked, icon_hidden;
 	bool sticky;
 	bool maximized;
 	char *title;
@@ -456,6 +458,8 @@ struct wm_server {
 	struct wm_ipc ipc;
 	struct wm_menu *root_menu;
 	struct wm_menu *window_menu;
+	struct wm_view *menu_view;
+	bool menu_executing;
 	struct wm_menu *window_list_menu;
 	struct wm_menu *workspace_menu;
 	struct wm_menu *client_menu;
@@ -871,10 +875,16 @@ static inline FILE *fopen_nofollow(const char *path, const char *mode) {
 	return fopen(path, "r");
 }
 
+static inline FILE *fopen_config(const char *path, const char *mode) {
+	(void)mode;
+	return fopen(path, "r");
+}
+
 /* --- xkbcommon key symbols --- */
 
 typedef uint32_t xkb_keysym_t;
 
+#define XKB_KEY_BackSpace 0xff08
 #define XKB_KEY_Up        0xff52
 #define XKB_KEY_Down      0xff54
 #define XKB_KEY_Left      0xff51
@@ -910,6 +920,11 @@ enum wm_action {
 	WM_ACTION_MINIMIZE,
 	WM_ACTION_SHADE,
 	WM_ACTION_RECONFIGURE,
+	WM_ACTION_STICK,
+	WM_ACTION_CLOSE,
+	WM_ACTION_KILL,
+	WM_ACTION_RAISE,
+	WM_ACTION_LOWER,
 };
 
 static enum wm_action wm_action_from_name(const char *name)
@@ -922,6 +937,20 @@ static bool wm_execute_action(struct wm_server *server,
 	enum wm_action action, const char *argument)
 {
 	(void)server; (void)action; (void)argument;
+	return true;
+}
+
+/* The last window-menu action and the window it was for */
+static enum wm_action stub_action_on;
+static struct wm_view *stub_action_target;
+static int stub_action_on_count;
+static bool wm_execute_action_on(struct wm_server *server,
+	enum wm_action action, const char *argument, struct wm_view *view)
+{
+	(void)server; (void)argument;
+	stub_action_on = action;
+	stub_action_target = view;
+	stub_action_on_count++;
 	return true;
 }
 
@@ -1004,6 +1033,20 @@ PangoDirection find_base_dir(const char *text)
 #include "menu_parse.c"
 #include "menu_render.c"
 #include "menu.c"
+
+/* The parser's helpers under the names these tests were written for */
+static char *parse_paren(const char **pos) { return parse_field(pos, '(', ')'); }
+static char *parse_brace(const char **pos) { return parse_field(pos, '{', '}'); }
+static char *parse_angle(const char **pos) { return parse_field(pos, '<', '>'); }
+static void
+parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
+	struct wm_server *server, int depth)
+{
+	struct parse_ctx ctx = { .server = server, .depth = depth };
+	parse_items(menu, fp, &ctx);
+	for (int i = 0; i < ctx.encoding_count; i++)
+		free(ctx.encodings[i]);
+}
 
 /* ===================== Test helpers ===================== */
 
@@ -1880,12 +1923,25 @@ test_execute_stick(void)
 	struct wm_menu_item *item = menu_item_create(WM_MENU_STICK, "Stick");
 	wl_list_insert(menu->items.prev, &item->link);
 
+	/* The Stick command, on the focused window (not the window menu) */
 	execute_menu_item(menu, item);
-	assert(view.sticky == true);
+	assert(stub_action_on == WM_ACTION_STICK);
+	assert(stub_action_target == &view);
 
-	/* Toggle again */
+	/* The window menu acts on the window it was opened for */
+	struct wm_view other;
+	memset(&other, 0, sizeof(other));
+	wl_list_insert(&test_server.views, &other.link);
+	test_server.window_menu = menu;
+	test_server.menu_view = &other;
 	execute_menu_item(menu, item);
-	assert(view.sticky == false);
+	assert(stub_action_target == &other);
+	/* ...while it exists */
+	wl_list_remove(&other.link);
+	execute_menu_item(menu, item);
+	assert(stub_action_target == &view);
+	test_server.window_menu = NULL;
+	test_server.menu_view = NULL;
 
 	test_server.focused_view = NULL;
 	wm_menu_destroy(menu);
@@ -2275,9 +2331,10 @@ test_create_workspace_menu(void)
 	wl_list_insert(test_server.workspaces.prev, &ws0.link);
 	wl_list_insert(test_server.workspaces.prev, &ws1.link);
 
+	/* The window menu's Send To list */
 	struct wm_menu *menu = wm_menu_create_workspace_menu(&test_server);
 	assert(menu != NULL);
-	assert(strcmp(menu->title, "Workspaces") == 0);
+	assert(strcmp(menu->title, "Send To...") == 0);
 
 	/* Should have 2 items */
 	int count = 0;
@@ -2619,23 +2676,6 @@ test_handle_motion_dispatches(void)
 	printf("  PASS: handle_motion_dispatches\n");
 }
 
-/* --- is_image_file helper --- */
-
-static void
-test_is_image_file(void)
-{
-	assert(is_image_file("photo.png") == true);
-	assert(is_image_file("photo.PNG") == true);
-	assert(is_image_file("photo.jpg") == true);
-	assert(is_image_file("photo.jpeg") == true);
-	assert(is_image_file("photo.bmp") == true);
-	assert(is_image_file("photo.gif") == true);
-	assert(is_image_file("photo.webp") == true);
-	assert(is_image_file("photo.txt") == false);
-	assert(is_image_file("noext") == false);
-	assert(is_image_file("photo.c") == false);
-	printf("  PASS: is_image_file\n");
-}
 
 /* --- Pixel buffer data ptr access --- */
 
@@ -3005,13 +3045,17 @@ test_window_menu_submenus(void)
 		if (item->type == WM_MENU_LAYER) {
 			found_layer = true;
 			assert(item->submenu != NULL);
-			/* Layer submenu should have 5 entries */
+			/* Fluxbox's six layers, by name (numbers would be
+			 * Fluxbox layer numbers) */
 			int layer_count = 0;
 			struct wm_menu_item *li;
 			wl_list_for_each(li, &item->submenu->items, link) {
 				layer_count++;
+				assert(li->type == WM_MENU_COMMAND);
+				assert(strncmp(li->command, "SetLayer ", 9) == 0);
+				assert(!isdigit((unsigned char)li->command[9]));
 			}
-			assert(layer_count == 5);
+			assert(layer_count == 6);
 		}
 	}
 	assert(found_sendto == true);
@@ -3481,231 +3525,13 @@ test_strcmp_qsort(void)
 	printf("  PASS: strcmp_qsort\n");
 }
 
-/* --- add_stylesdir_entries: scans directory --- */
 
-static void
-test_add_stylesdir_entries(void)
-{
-	setup_server();
 
-	/* Create a temp directory with some "style" files */
-	const char *tmpdir = "/tmp/fluxland_test_stylesdir";
-	char cmd[256];
-	snprintf(cmd, sizeof(cmd),
-		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
-	system(cmd);
 
-	/* Create some files */
-	snprintf(cmd, sizeof(cmd), "touch %s/dark %s/light", tmpdir, tmpdir);
-	system(cmd);
 
-	struct wm_menu *menu = menu_create(&test_server, "Styles");
-	add_stylesdir_entries(menu, tmpdir);
 
-	int count = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		count++;
-		assert(item->type == WM_MENU_STYLE);
-		assert(item->command != NULL);
-	}
-	assert(count == 2);
 
-	/* Clean up */
-	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
-	system(cmd);
-	wm_menu_destroy(menu);
-	printf("  PASS: add_stylesdir_entries\n");
-}
 
-/* --- add_stylesdir_entries: nonexistent directory --- */
-
-static void
-test_add_stylesdir_nonexistent(void)
-{
-	setup_server();
-
-	struct wm_menu *menu = menu_create(&test_server, "Styles");
-	add_stylesdir_entries(menu, "/tmp/fluxland_no_such_dir_12345");
-
-	/* No entries added */
-	assert(wl_list_empty(&menu->items));
-
-	wm_menu_destroy(menu);
-	printf("  PASS: add_stylesdir_nonexistent\n");
-}
-
-/* --- add_wallpaper_entries: scans for image files --- */
-
-static void
-test_add_wallpaper_entries(void)
-{
-	setup_server();
-
-	const char *tmpdir = "/tmp/fluxland_test_wallpapers";
-	char cmd[256];
-	snprintf(cmd, sizeof(cmd),
-		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
-	system(cmd);
-
-	/* Create some image and non-image files */
-	snprintf(cmd, sizeof(cmd),
-		"touch %s/beach.png %s/mountain.jpg %s/readme.txt %s/.hidden.png",
-		tmpdir, tmpdir, tmpdir, tmpdir);
-	system(cmd);
-
-	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
-	add_wallpaper_entries(menu, tmpdir);
-
-	int count = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		count++;
-		assert(item->type == WM_MENU_EXEC);
-		assert(item->command != NULL);
-		/* Commands should contain swaybg */
-		assert(strstr(item->command, "swaybg") != NULL);
-	}
-	/* Should find beach.png and mountain.jpg (not .txt, not .hidden.png) */
-	assert(count == 2);
-
-	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
-	system(cmd);
-	wm_menu_destroy(menu);
-	printf("  PASS: add_wallpaper_entries\n");
-}
-
-/* --- add_wallpaper_entries: empty directory shows (empty) --- */
-
-static void
-test_add_wallpaper_entries_empty(void)
-{
-	setup_server();
-
-	const char *tmpdir = "/tmp/fluxland_test_wall_empty";
-	char cmd[256];
-	snprintf(cmd, sizeof(cmd),
-		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
-	system(cmd);
-
-	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
-	add_wallpaper_entries(menu, tmpdir);
-
-	/* Should have one NOP "(empty)" entry */
-	int count = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		count++;
-		assert(item->type == WM_MENU_NOP);
-		assert(strcmp(item->label, "(empty)") == 0);
-	}
-	assert(count == 1);
-
-	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
-	system(cmd);
-	wm_menu_destroy(menu);
-	printf("  PASS: add_wallpaper_entries_empty\n");
-}
-
-/* --- add_wallpaper_entries: nonexistent directory shows (empty) --- */
-
-static void
-test_add_wallpaper_entries_nonexistent(void)
-{
-	setup_server();
-
-	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
-	add_wallpaper_entries(menu, "/tmp/fluxland_no_such_wall_dir");
-
-	int count = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		count++;
-		assert(item->type == WM_MENU_NOP);
-	}
-	assert(count == 1);
-
-	wm_menu_destroy(menu);
-	printf("  PASS: add_wallpaper_entries_nonexistent\n");
-}
-
-/* --- add_wallpaper_entries: path with single quote rejected --- */
-
-static void
-test_add_wallpaper_entries_quote_path(void)
-{
-	setup_server();
-
-	struct wm_menu *menu = menu_create(&test_server, "Wallpapers");
-	/* Path containing single quote should be rejected */
-	add_wallpaper_entries(menu, "/tmp/fluxland_it's_bad");
-
-	int count = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		count++;
-		assert(item->type == WM_MENU_NOP);
-		assert(strcmp(item->label, "(invalid path)") == 0);
-	}
-	assert(count == 1);
-
-	wm_menu_destroy(menu);
-	printf("  PASS: add_wallpaper_entries_quote_path\n");
-}
-
-/* --- add_stylesmenu_entries: scans directory --- */
-
-static void
-test_add_stylesmenu_entries(void)
-{
-	setup_server();
-
-	const char *tmpdir = "/tmp/fluxland_test_stylesmenu";
-	char cmd[256];
-	snprintf(cmd, sizeof(cmd),
-		"rm -rf %s && mkdir -p %s", tmpdir, tmpdir);
-	system(cmd);
-
-	snprintf(cmd, sizeof(cmd),
-		"touch %s/modern %s/classic %s/.hidden",
-		tmpdir, tmpdir, tmpdir);
-	system(cmd);
-
-	struct wm_menu *menu = menu_create(&test_server, "Styles");
-	add_stylesmenu_entries(menu, tmpdir);
-
-	int count = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		count++;
-		assert(item->type == WM_MENU_STYLE);
-		assert(item->command != NULL);
-	}
-	/* Should find modern and classic (not .hidden) */
-	assert(count == 2);
-
-	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
-	system(cmd);
-	wm_menu_destroy(menu);
-	printf("  PASS: add_stylesmenu_entries\n");
-}
-
-/* --- add_stylesmenu_entries: nonexistent directory --- */
-
-static void
-test_add_stylesmenu_nonexistent(void)
-{
-	setup_server();
-
-	struct wm_menu *menu = menu_create(&test_server, "Styles");
-	add_stylesmenu_entries(menu, "/tmp/fluxland_no_such_styles_dir");
-
-	/* No entries added when dir doesn't exist */
-	assert(wl_list_empty(&menu->items));
-
-	wm_menu_destroy(menu);
-	printf("  PASS: add_stylesmenu_nonexistent\n");
-}
 
 /* --- parse_menu_items_depth: encoding block --- */
 
@@ -3893,99 +3719,7 @@ test_parse_stylesdir_tag(void)
 	printf("  PASS: parse_stylesdir_tag\n");
 }
 
-/* --- parse_menu_items_depth: wallpapers tag --- */
 
-static void
-test_parse_wallpapers_tag(void)
-{
-	setup_server();
-
-	const char *tmpdir = "/tmp/fluxland_test_parse_wallpapers";
-	char cmd[256];
-	snprintf(cmd, sizeof(cmd),
-		"rm -rf %s && mkdir -p %s && touch %s/sky.png",
-		tmpdir, tmpdir, tmpdir);
-	system(cmd);
-
-	const char *tmpfile = "/tmp/fluxland_test_menu_wallpapers.txt";
-	FILE *fp = fopen(tmpfile, "w");
-	assert(fp != NULL);
-	fprintf(fp, "[begin] (Root)\n");
-	fprintf(fp, "[wallpapers] (Backgrounds) {%s}\n", tmpdir);
-	fprintf(fp, "[end]\n");
-	fclose(fp);
-
-	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
-	assert(menu != NULL);
-
-	/* Should have one submenu item */
-	struct wm_menu_item *item = menu_get_item(menu, 0);
-	assert(item != NULL);
-	assert(item->type == WM_MENU_SUBMENU);
-	assert(strcmp(item->label, "Backgrounds") == 0);
-	assert(item->submenu != NULL);
-
-	/* Submenu should have wallpaper entries */
-	int sub_count = 0;
-	struct wm_menu_item *sub;
-	wl_list_for_each(sub, &item->submenu->items, link) {
-		sub_count++;
-	}
-	assert(sub_count == 1); /* sky.png */
-
-	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
-	system(cmd);
-	wm_menu_destroy(menu);
-	remove(tmpfile);
-	printf("  PASS: parse_wallpapers_tag\n");
-}
-
-/* --- parse_menu_items_depth: stylesmenu tag --- */
-
-static void
-test_parse_stylesmenu_tag(void)
-{
-	setup_server();
-
-	const char *tmpdir = "/tmp/fluxland_test_parse_stylesmenu";
-	char cmd[256];
-	snprintf(cmd, sizeof(cmd),
-		"rm -rf %s && mkdir -p %s && touch %s/retro %s/modern",
-		tmpdir, tmpdir, tmpdir, tmpdir);
-	system(cmd);
-
-	const char *tmpfile = "/tmp/fluxland_test_menu_stylesmenu.txt";
-	FILE *fp = fopen(tmpfile, "w");
-	assert(fp != NULL);
-	fprintf(fp, "[begin] (Root)\n");
-	fprintf(fp, "[stylesmenu] (My Styles) {%s}\n", tmpdir);
-	fprintf(fp, "[end]\n");
-	fclose(fp);
-
-	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
-	assert(menu != NULL);
-
-	struct wm_menu_item *item = menu_get_item(menu, 0);
-	assert(item != NULL);
-	assert(item->type == WM_MENU_SUBMENU);
-	assert(strcmp(item->label, "My Styles") == 0);
-	assert(item->submenu != NULL);
-
-	/* Submenu should have style entries */
-	int sub_count = 0;
-	struct wm_menu_item *sub;
-	wl_list_for_each(sub, &item->submenu->items, link) {
-		sub_count++;
-		assert(sub->type == WM_MENU_STYLE);
-	}
-	assert(sub_count == 2);
-
-	snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpdir);
-	system(cmd);
-	wm_menu_destroy(menu);
-	remove(tmpfile);
-	printf("  PASS: parse_stylesmenu_tag\n");
-}
 
 /* --- maybe_convert_label: actual ISO-8859-1 conversion --- */
 
@@ -4093,14 +3827,16 @@ test_parse_long_line(void)
 	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
 	assert(menu != NULL);
 
-	/* The long line should be skipped, only Normal should be parsed */
+	/* Lines of any length are read (Fluxbox has no limit) */
 	int count = 0;
 	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
 		count++;
 	}
-	assert(count == 1);
+	assert(count == 2);
 	item = menu_get_item(menu, 0);
+	assert(strlen(item->label) == 1100);
+	item = menu_get_item(menu, 1);
 	assert(strcmp(item->label, "Normal") == 0);
 
 	wm_menu_destroy(menu);
@@ -5138,65 +4874,7 @@ test_parse_stylesdir_brace(void)
 	printf("  PASS: parse_stylesdir_brace\n");
 }
 
-/* --- parse_menu_items_depth: wallpapers with no label and no dir --- */
 
-static void
-test_parse_wallpapers_defaults(void)
-{
-	setup_server();
-
-	const char *tmpfile = "/tmp/fluxland_test_menu_wall_default.txt";
-	FILE *fp = fopen(tmpfile, "w");
-	assert(fp != NULL);
-	fprintf(fp, "[begin] (Root)\n");
-	fprintf(fp, "[wallpapers]\n"); /* No label, no dir */
-	fprintf(fp, "[end]\n");
-	fclose(fp);
-
-	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
-	assert(menu != NULL);
-
-	/* Should have one submenu labeled "Wallpapers" (default) */
-	struct wm_menu_item *item = menu_get_item(menu, 0);
-	assert(item != NULL);
-	assert(item->type == WM_MENU_SUBMENU);
-	assert(strcmp(item->label, "Wallpapers") == 0);
-
-	wm_menu_destroy(menu);
-	remove(tmpfile);
-	printf("  PASS: parse_wallpapers_defaults\n");
-}
-
-/* --- parse_menu_items_depth: stylesmenu with no dir --- */
-
-static void
-test_parse_stylesmenu_no_dir(void)
-{
-	setup_server();
-
-	const char *tmpfile = "/tmp/fluxland_test_menu_stymenu_nodir.txt";
-	FILE *fp = fopen(tmpfile, "w");
-	assert(fp != NULL);
-	fprintf(fp, "[begin] (Root)\n");
-	fprintf(fp, "[stylesmenu] (My Styles)\n"); /* No brace dir */
-	fprintf(fp, "[end]\n");
-	fclose(fp);
-
-	struct wm_menu *menu = wm_menu_load(&test_server, tmpfile);
-	assert(menu != NULL);
-
-	/* Should have one submenu but with no entries (no dir) */
-	struct wm_menu_item *item = menu_get_item(menu, 0);
-	assert(item != NULL);
-	assert(item->type == WM_MENU_SUBMENU);
-	assert(item->submenu != NULL);
-	/* Submenu should be empty since no dir was provided */
-	assert(wl_list_empty(&item->submenu->items));
-
-	wm_menu_destroy(menu);
-	remove(tmpfile);
-	printf("  PASS: parse_stylesmenu_no_dir\n");
-}
 
 /* --- parse_menu_items_depth: simple tags with default labels --- */
 
@@ -6430,7 +6108,6 @@ main(void)
 	test_handle_motion_dispatches();
 
 	/* Helper functions */
-	test_is_image_file();
 	test_pixel_buffer_read_access();
 	test_submenu_position_basic();
 
@@ -6481,14 +6158,6 @@ main(void)
 
 	/* Directory scanning helpers */
 	test_strcmp_qsort();
-	test_add_stylesdir_entries();
-	test_add_stylesdir_nonexistent();
-	test_add_wallpaper_entries();
-	test_add_wallpaper_entries_empty();
-	test_add_wallpaper_entries_nonexistent();
-	test_add_wallpaper_entries_quote_path();
-	test_add_stylesmenu_entries();
-	test_add_stylesmenu_nonexistent();
 
 	/* Parser: encoding, include, depth, stylesdir, wallpapers, stylesmenu */
 	test_parse_encoding_block();
@@ -6496,8 +6165,6 @@ main(void)
 	test_parse_include_dotdot();
 	test_parse_max_depth();
 	test_parse_stylesdir_tag();
-	test_parse_wallpapers_tag();
-	test_parse_stylesmenu_tag();
 
 	/* Encoding conversion */
 	test_maybe_convert_label_latin1();

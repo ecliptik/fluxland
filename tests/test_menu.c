@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -64,6 +65,13 @@ void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 bool wm_execute_action(struct wm_server *s, enum wm_action a,
 	const char *arg)
 	{ (void)s; (void)a; (void)arg; return true; }
+/* The last window-menu action and the window it was for */
+static enum wm_action stub_action_on;
+static struct wm_view *stub_action_target;
+bool wm_execute_action_on(struct wm_server *s, enum wm_action a,
+	const char *arg, struct wm_view *v)
+	{ (void)s; (void)arg; stub_action_on = a; stub_action_target = v;
+	  return true; }
 #include "server.h"
 void wm_server_reconfigure(struct wm_server *s)
 	{ (void)s; }
@@ -90,7 +98,16 @@ struct wm_command *wm_command_parse(const char *str)
 {
 	if (!str || !*str)
 		return NULL;
-	return calloc(1, sizeof(struct wm_command));
+	/* A command word the parser knows (a few, for the menu tests) */
+	static const char *const known[] = { "MaximizeWindow", "SetStyle",
+		"Workspace", "MacroCmd", "SetAlpha", "SetLayer", "Exec",
+		"SendToWorkspace", "SetWallpaper", "AddWorkspace",
+		"RemoveLastWorkspace", "Raise", "Focus", NULL };
+	size_t n = strcspn(str, " \t");
+	bool ok = false;
+	for (int i = 0; known[i]; i++)
+		ok |= strlen(known[i]) == n && strncasecmp(str, known[i], n) == 0;
+	return ok ? calloc(1, sizeof(struct wm_command)) : NULL;
 }
 void wm_command_destroy(struct wm_command *cmd) { free(cmd); }
 bool wm_command_execute(struct wm_server *s, struct wm_command *cmd,
@@ -749,67 +766,56 @@ test_stylesdir(void)
 	printf("  PASS: test_stylesdir\n");
 }
 
-/* Test: wallpapers tag creates a submenu with image files */
+/* Test: [wallpapers] (dir) {command}: the directory's files, in place */
 static void
 test_wallpapers(void)
 {
-	/* Create wallpaper directory */
 	char wpdir[] = TEST_DIR "/walls";
 	mkdir(wpdir, 0755);
-
-	FILE *f1 = fopen(TEST_DIR "/walls/beach.jpg", "w");
-	assert(f1);
-	fputs("fake jpg\n", f1);
-	fclose(f1);
-
-	FILE *f2 = fopen(TEST_DIR "/walls/forest.png", "w");
-	assert(f2);
-	fputs("fake png\n", f2);
-	fclose(f2);
-
-	/* non-image file should be skipped */
-	FILE *f3 = fopen(TEST_DIR "/walls/readme.txt", "w");
-	assert(f3);
-	fputs("not an image\n", f3);
-	fclose(f3);
-
-	write_file(TEST_MENU,
-		"[begin] (Menu)\n"
-		"[wallpapers] (Backgrounds) {" TEST_DIR "/walls}\n"
-		"[end]\n"
-	);
-
-	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
-	assert(menu != NULL);
-	assert(count_items(menu) == 1);
-
-	struct wm_menu_item *wp_item = get_item(menu, 0);
-	assert(wp_item != NULL);
-	assert(wp_item->type == WM_MENU_SUBMENU);
-	assert(strcmp(wp_item->label, "Backgrounds") == 0);
-	assert(wp_item->submenu != NULL);
-
-	/* Submenu should have 2 image entries (beach.jpg, forest.png) */
-	assert(count_items(wp_item->submenu) == 2);
-
-	/* Verify items are EXEC with swaybg commands */
-	struct wm_menu_item *sub_item;
-	wl_list_for_each(sub_item, &wp_item->submenu->items, link) {
-		assert(sub_item->type == WM_MENU_EXEC);
-		assert(sub_item->command != NULL);
-		assert(strstr(sub_item->command, "swaybg") != NULL);
+	unlink(TEST_DIR "/walls/readme.txt"); /* left by older versions */
+	const char *files[] = { "beach.jpg", "forest.png", "notes~", ".hidden" };
+	for (int i = 0; i < 4; i++) {
+		char path[256];
+		snprintf(path, sizeof(path), "%s/%s", wpdir, files[i]);
+		FILE *f = fopen(path, "w");
+		assert(f);
+		fclose(f);
 	}
 
+	/* Fluxbox's default setter is X11's: the file becomes the wallpaper */
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[wallpapers] (" TEST_DIR "/walls) {fbsetbg}\n"
+		"[separator]\n"
+		"[wallpapermenu] (" TEST_DIR "/walls) {swaybg -m fill -i}\n"
+		"[end]\n"
+	);
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu != NULL);
+	/* Two files each (no dotfiles or backups~), sorted, and the line */
+	assert(count_items(menu) == 5);
+	struct wm_menu_item *item = get_item(menu, 0);
+	assert(item->type == WM_MENU_COMMAND);
+	assert(strcmp(item->label, "beach.jpg") == 0);
+	assert(strcmp(item->command,
+		"SetWallpaper " TEST_DIR "/walls/beach.jpg") == 0);
+	item = get_item(menu, 3);
+	assert(item->type == WM_MENU_EXEC);
+	assert(strcmp(item->label, "beach.jpg") == 0);
+	assert(strcmp(item->command,
+		"swaybg -m fill -i '" TEST_DIR "/walls/beach.jpg'") == 0);
 	wm_menu_destroy(menu);
 
-	unlink(TEST_DIR "/walls/beach.jpg");
-	unlink(TEST_DIR "/walls/forest.png");
-	unlink(TEST_DIR "/walls/readme.txt");
+	for (int i = 0; i < 4; i++) {
+		char path[256];
+		snprintf(path, sizeof(path), "%s/%s", wpdir, files[i]);
+		unlink(path);
+	}
 	rmdir(wpdir);
 	printf("  PASS: test_wallpapers\n");
 }
 
-/* Test: wallpapers with empty directory shows (empty) nop */
+/* Test: an empty or missing wallpaper directory adds nothing */
 static void
 test_wallpapers_empty_dir(void)
 {
@@ -818,57 +824,59 @@ test_wallpapers_empty_dir(void)
 
 	write_file(TEST_MENU,
 		"[begin] (Menu)\n"
-		"[wallpapers] (BG) {" TEST_DIR "/emptywalls}\n"
+		"[wallpapers] (" TEST_DIR "/emptywalls)\n"
+		"[wallpapers] (" TEST_DIR "/nowhere)\n"
 		"[end]\n"
 	);
 
 	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
 	assert(menu != NULL);
-	assert(count_items(menu) == 1);
-
-	struct wm_menu_item *wp_item = get_item(menu, 0);
-	assert(wp_item->submenu != NULL);
-	assert(count_items(wp_item->submenu) == 1);
-
-	struct wm_menu_item *empty = get_item(wp_item->submenu, 0);
-	assert(empty->type == WM_MENU_NOP);
-	assert(strcmp(empty->label, "(empty)") == 0);
+	assert(count_items(menu) == 0);
 
 	wm_menu_destroy(menu);
 	rmdir(wpdir);
 	printf("  PASS: test_wallpapers_empty_dir\n");
 }
 
-/* Test: stylesmenu creates a submenu with style entries */
+/* Test: [stylesmenu] {dir} lists the styles in place, like [stylesdir] */
 static void
 test_stylesmenu(void)
 {
 	char stylesdir[] = TEST_DIR "/sm_styles";
 	mkdir(stylesdir, 0755);
+	mkdir(TEST_DIR "/sm_styles/Bloe", 0755);
 
 	FILE *f1 = fopen(TEST_DIR "/sm_styles/theme_a", "w");
 	assert(f1);
-	fputs("# theme a\n", f1);
 	fclose(f1);
+	/* A style directory: one with a theme.cfg */
+	FILE *f2 = fopen(TEST_DIR "/sm_styles/Bloe/theme.cfg", "w");
+	assert(f2);
+	fclose(f2);
 
 	write_file(TEST_MENU,
 		"[begin] (Menu)\n"
-		"[stylesmenu] (Themes) {" TEST_DIR "/sm_styles}\n"
+		"[submenu] (Styles)\n"
+		"  [stylesmenu] (ignored) {" TEST_DIR "/sm_styles}\n"
+		"  [themesdir] (" TEST_DIR "/sm_styles)\n"
+		"[end]\n"
 		"[end]\n"
 	);
 
 	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
 	assert(menu != NULL);
 	assert(count_items(menu) == 1);
-
-	struct wm_menu_item *sm_item = get_item(menu, 0);
-	assert(sm_item->type == WM_MENU_SUBMENU);
-	assert(strcmp(sm_item->label, "Themes") == 0);
-	assert(sm_item->submenu != NULL);
-	assert(count_items(sm_item->submenu) >= 1);
+	struct wm_menu *sub = get_item(menu, 0)->submenu;
+	assert(sub && count_items(sub) == 4);
+	struct wm_menu_item *item = get_item(sub, 0);
+	assert(item->type == WM_MENU_STYLE);
+	assert(strcmp(item->label, "Bloe") == 0);   /* sorted */
+	assert(strcmp(get_item(sub, 1)->label, "theme_a") == 0);
 
 	wm_menu_destroy(menu);
 
+	unlink(TEST_DIR "/sm_styles/Bloe/theme.cfg");
+	rmdir(TEST_DIR "/sm_styles/Bloe");
 	unlink(TEST_DIR "/sm_styles/theme_a");
 	rmdir(stylesdir);
 	printf("  PASS: test_stylesmenu\n");
@@ -1210,25 +1218,123 @@ test_submenu_label_as_title(void)
 	printf("  PASS: test_submenu_label_as_title\n");
 }
 
-/* Test: unknown tag is silently ignored */
+/* Test: a tag that isn't Fluxbox's is a command; one that isn't either goes */
 static void
 test_unknown_tag_ignored(void)
 {
 	write_file(TEST_MENU,
 		"[begin] (Menu)\n"
 		"[unknowntag] (Foo) {bar}\n"
+		"[MaximizeWindow] (Max)\n"
+		"[SetStyle] (Bloe) {~/.fluxbox/styles/Bloe} <~/bloe.png>\n"
+		"[macrocmd] (Both) {{Raise} {Focus}}\n"
 		"[exec] (A) {a}\n"
 		"[end]\n"
 	);
 
 	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
 	assert(menu != NULL);
-	/* Unknown tag is skipped, only exec item remains */
-	assert(count_items(menu) == 1);
-	assert(get_item(menu, 0)->type == WM_MENU_EXEC);
+	assert(count_items(menu) == 4);
+	struct wm_menu_item *item = get_item(menu, 0);
+	assert(item->type == WM_MENU_COMMAND);
+	assert(strcmp(item->label, "Max") == 0);
+	assert(strcmp(item->command, "MaximizeWindow") == 0);
+	item = get_item(menu, 1);
+	assert(strcmp(item->command, "SetStyle ~/.fluxbox/styles/Bloe") == 0);
+	/* The <icon> belongs to whatever the line made */
+	assert(item->icon_path && strstr(item->icon_path, "/bloe.png"));
+	assert(!strchr(item->icon_path, '~'));
+	item = get_item(menu, 2);
+	assert(strcmp(item->command, "MacroCmd {Raise} {Focus}") == 0);
+	assert(get_item(menu, 3)->type == WM_MENU_EXEC);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: test_unknown_tag_ignored\n");
+}
+
+/* Test: [begin] starts the menu; [encoding] carries into submenus and
+ * included files; [include] of a directory; default labels */
+static void
+test_fluxbox_structure(void)
+{
+	mkdir(TEST_DIR "/inc", 0755);
+	write_file(TEST_DIR "/inc/10-games", "[exec] (Caf\xe9) {nethack}\n");
+	write_file(TEST_DIR "/inc/20-net", "[exec] (Mail) {mutt}\n");
+	write_file(TEST_DIR "/inc/20-net~", "[exec] (Backup) {no}\n");
+	write_file(TEST_MENU,
+		"[exec] (before begin) {ignored}\n"
+		"[begin] (Fluxbox)\n"
+		"[encoding] {ISO-8859-1}\n"
+		"[submenu] (Caf\xe9s)\n"
+		"  [include] (" TEST_DIR "/inc)\n"
+		"[end]\n"
+		"[endencoding]\n"
+		"[exit]\n"
+		"[reconfig] ()\n"
+		"[end]\n"
+	);
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu && strcmp(menu->title, "Fluxbox") == 0);
+	assert(count_items(menu) == 3);
+	struct wm_menu_item *sub = get_item(menu, 0);
+	assert(strcmp(sub->label, "Caf\xc3\xa9s") == 0);
+	assert(sub->submenu && count_items(sub->submenu) == 2);
+	assert(strcmp(get_item(sub->submenu, 0)->label, "Caf\xc3\xa9") == 0);
+	assert(strcmp(get_item(sub->submenu, 1)->label, "Mail") == 0);
+	assert(strcmp(get_item(menu, 1)->label, "Exit") == 0);
+	assert(strcmp(get_item(menu, 2)->label, "Reload Config") == 0);
+	wm_menu_destroy(menu);
+	unlink(TEST_DIR "/inc/10-games");
+	unlink(TEST_DIR "/inc/20-net");
+	unlink(TEST_DIR "/inc/20-net~");
+	rmdir(TEST_DIR "/inc");
+	printf("  PASS: test_fluxbox_structure\n");
+}
+
+/* Test: a menu notices when its file or an included one changes */
+static void
+test_sources_changed(void)
+{
+	write_file(TEST_DIR "/part", "[exec] (Part) {part}\n");
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[include] (" TEST_DIR "/part)\n"
+		"[end]\n");
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu && menu->source_count == 2);
+	assert(!wm_menu_sources_changed(menu));
+	/* The included file changes */
+	struct timespec later[2] = { { .tv_sec = 2000000000 },
+		{ .tv_sec = 2000000000 } };
+	assert(utimensat(AT_FDCWD, TEST_DIR "/part", later, 0) == 0);
+	assert(wm_menu_sources_changed(menu));
+	wm_menu_destroy(menu);
+	/* A built-in menu has no files */
+	menu = wm_menu_load_string(NULL, "[begin]\n[exit]\n[end]\n");
+	assert(menu && !wm_menu_sources_changed(menu));
+	wm_menu_destroy(menu);
+	unlink(TEST_DIR "/part");
+	printf("  PASS: test_sources_changed\n");
+}
+
+/* Test: Fluxbox's escapes, and brackets that don't balance */
+static void
+test_escapes(void)
+{
+	write_file(TEST_MENU,
+		"[begin] (Menu)\n"
+		"[exec] (a \\) b) {echo}\n"
+		"[exec] (awk) {awk '{print $1\\}'}\n"
+		"[exec] (open ( paren) {x}\n"
+		"[end]\n"
+	);
+	struct wm_menu *menu = wm_menu_load(NULL, TEST_MENU);
+	assert(menu && count_items(menu) == 3);
+	assert(strcmp(get_item(menu, 0)->label, "a ) b") == 0);
+	assert(strcmp(get_item(menu, 1)->command, "awk '{print $1}'") == 0);
+	assert(strcmp(get_item(menu, 2)->label, "open ( paren") == 0);
+	wm_menu_destroy(menu);
+	printf("  PASS: test_escapes\n");
 }
 
 /* Test: line without tag bracket is skipped */
@@ -1354,6 +1460,9 @@ main(void)
 	test_nested_brace_command();
 	test_submenu_label_as_title();
 	test_unknown_tag_ignored();
+	test_escapes();
+	test_fluxbox_structure();
+	test_sources_changed();
 	test_no_bracket_skipped();
 	test_submenu_with_icon();
 	test_style_with_icon();

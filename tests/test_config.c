@@ -538,11 +538,11 @@ test_phase5c_config_options(void)
 	assert(c->menu_search == WM_MENU_SEARCH_NOWHERE);
 	config_destroy(c);
 
-	/* Test defaults (no config set) */
+	/* Test defaults (no config set): Fluxbox searches from item starts */
 	write_file(TEST_INIT, "\n");
 	c = config_create();
 	config_load(c, TEST_INIT);
-	assert(c->menu_search == WM_MENU_SEARCH_NOWHERE);
+	assert(c->menu_search == WM_MENU_SEARCH_ITEMSTART);
 	assert(c->menu_delay == 200);
 	assert(c->window_menu_file == NULL);
 	config_destroy(c);

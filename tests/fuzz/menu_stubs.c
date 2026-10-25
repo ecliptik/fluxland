@@ -58,6 +58,9 @@ void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 bool wm_execute_action(struct wm_server *s, enum wm_action a,
 	const char *arg)
 	{ (void)s; (void)a; (void)arg; return true; }
+bool wm_execute_action_on(struct wm_server *s, enum wm_action a,
+	const char *arg, struct wm_view *v)
+	{ (void)s; (void)a; (void)arg; (void)v; return true; }
 #include "server.h"
 void wm_server_reconfigure(struct wm_server *s)
 	{ (void)s; }

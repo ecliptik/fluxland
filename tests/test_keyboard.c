@@ -54,6 +54,7 @@
 #define WM_FOREIGN_TOPLEVEL_H
 #define WM_COMMAND_H
 #define WM_CLIENT_PATTERN_H
+#define WM_WALLPAPER_H
 #define WLR_TYPES_WLR_CURSOR_H
 
 /* Block real xkbcommon header */
@@ -650,6 +651,7 @@ enum wm_action {
 	WM_ACTION_START_RESIZING,
 	WM_ACTION_ACTIVATE_TAB,
 	WM_ACTION_TAB,
+	WM_ACTION_SET_WALLPAPER,
 	WM_ACTION_ROOT_MENU,
 	WM_ACTION_WINDOW_MENU,
 	WM_ACTION_WINDOW_LIST,
@@ -839,9 +841,17 @@ struct wm_workspace {
 	struct wl_list link;
 };
 
+enum wm_wallpaper_mode {
+	WM_WALLPAPER_STRETCH, WM_WALLPAPER_CENTER, WM_WALLPAPER_TILE,
+	WM_WALLPAPER_FILL,
+};
+
 struct wm_config {
 	char *style_file;
 	char *apps_file;
+	char *config_dir;
+	char *wallpaper;
+	enum wm_wallpaper_mode wallpaper_mode;
 	bool max_disable_move;
 	bool max_disable_resize;
 	int window_focus_alpha;
@@ -985,6 +995,8 @@ struct wm_server {
 	struct wlr_scene_buffer *snap_preview;
 	struct wlr_scene_buffer *position_overlay;
 	bool ipc_no_exec;
+	struct wm_wallpaper *wallpaper;
+	struct wm_view *menu_view;
 };
 
 /* --- Stub function counters --- */
@@ -1341,6 +1353,15 @@ wm_window_list_finish(struct wm_window_list_spec *spec)
 static inline bool wlr_box_empty(const struct wlr_box *b)
 	{ return !b || b->width <= 0 || b->height <= 0; }
 #include "fbcompat.c"
+
+/* wallpaper.c */
+struct wm_wallpaper { int dummy; };
+static int stub_wallpaper_reloads;
+static struct wm_wallpaper stub_wallpaper;
+void wm_wallpaper_reload(struct wm_wallpaper *wp)
+	{ (void)wp; stub_wallpaper_reloads++; }
+struct wm_wallpaper *wm_wallpaper_create(struct wm_server *s)
+	{ (void)s; return &stub_wallpaper; }
 
 /* Window geometry the move and resize commands use */
 static struct wlr_box stub_frame_box;
@@ -3631,6 +3652,51 @@ test_action_goto_window(void)
 	printf("  PASS: test_action_goto_window\n");
 }
 
+/* SetWallpaper [-f|-c|-t|-a] file: set, and remembered like fbsetbg's */
+static void
+test_action_set_wallpaper(void)
+{
+	setup();
+	char dir[] = "/tmp/fluxland-test/kbwall-XXXXXX";
+	mkdir("/tmp/fluxland-test", 0755);
+	assert(mkdtemp(dir));
+	char img[256], last[256];
+	snprintf(img, sizeof(img), "%s/sea.png", dir);
+	snprintf(last, sizeof(last), "%s/lastwallpaper", dir);
+	FILE *f = fopen(img, "w");
+	assert(f);
+	fclose(f);
+	test_config.config_dir = dir;
+	test_config.wallpaper = NULL;
+	test_server.wallpaper = NULL;
+
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_WALLPAPER, NULL));
+	assert(!wm_execute_action(&test_server, WM_ACTION_SET_WALLPAPER,
+		"/nonexistent.png"));
+	char arg[300];
+	snprintf(arg, sizeof(arg), "-t %s", img);
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_WALLPAPER, arg));
+	assert(strcmp(test_config.wallpaper, img) == 0);
+	assert(test_config.wallpaper_mode == WM_WALLPAPER_TILE);
+	assert(test_server.wallpaper == &stub_wallpaper);
+	/* fluxland reads this back at the next start */
+	f = fopen(last, "r");
+	assert(f);
+	char line[300];
+	assert(fgets(line, sizeof(line), f) && strncmp(line, img, strlen(img)) == 0);
+	assert(fgets(line, sizeof(line), f) && strcmp(line, "Tile\n") == 0);
+	fclose(f);
+
+	free(test_config.wallpaper);
+	test_config.wallpaper = NULL;
+	test_config.config_dir = NULL;
+	test_server.wallpaper = NULL;
+	unlink(last);
+	unlink(img);
+	rmdir(dir);
+	printf("  PASS: test_action_set_wallpaper\n");
+}
+
 /* Tab N: the Nth tab of the window's group, from the end when negative */
 static void
 test_action_tab(void)
@@ -4365,6 +4431,7 @@ main(void)
 	printf("\n  Group N: GotoWindow / NextGroup / PrevGroup / Unclutter\n");
 	test_action_goto_window();
 	test_action_tab();
+	test_action_set_wallpaper();
 	test_action_set_alpha_forms();
 	test_action_unclutter();
 

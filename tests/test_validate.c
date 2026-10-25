@@ -27,6 +27,24 @@ void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
 	{ (void)v; (void)b; }
 struct wm_workspace *wm_workspace_get_active(struct wm_server *s)
 	{ (void)s; return NULL; }
+/* menu.c's parts menu_parse.c uses */
+#include "menu.h"
+#include "menu_parse.h"
+void wm_menu_destroy(struct wm_menu *menu)
+{
+	if (!menu)
+		return;
+	struct wm_menu_item *item, *tmp;
+	wl_list_for_each_safe(item, tmp, &menu->items, link) {
+		wl_list_remove(&item->link);
+		menu_item_destroy(item);
+	}
+	free(menu->title);
+	free(menu);
+}
+struct wm_menu *wm_menu_create_config_menu(struct wm_server *s)
+	{ (void)s; return NULL; }
+
 /* command.c runs commands through the dispatcher: not here */
 #include "keybind.h"
 bool wm_execute_action_on(struct wm_server *s, enum wm_action a,
@@ -706,6 +724,53 @@ test_apps_file(void)
 	printf("  PASS: test_apps_file\n");
 }
 
+/* ---- Menu file ---- */
+
+static void
+test_menu_file(void)
+{
+	clean_files();
+	const char *menu = TEST_DIR "/menu";
+	/* What fluxbox-generate_menu writes: no problems */
+	write_file(menu,
+		"[begin] (Fluxbox)\n"
+		"[encoding] {UTF-8}\n"
+		"  [exec] (xterm) {xterm} <~/.fluxbox/icons/xterm.xpm>\n"
+		"  [submenu] (Styles) {Choose a style...}\n"
+		"    [stylesdir] (/usr/share/fluxbox/styles)\n"
+		"  [end]\n"
+		"  [commanddialog] (Fluxbox Command)\n"
+		"  [workspaces] (Workspace List)\n"
+		"  [config] (Configure)\n"
+		"  [reconfig] (Reload config)\n"
+		"  [exit] (Exit)\n"
+		"[endencoding]\n"
+		"[end]\n");
+	struct config_result r;
+	config_result_init(&r);
+	validate_menu_file(menu, &r);
+	/* [commanddialog] needs dialogs fluxland doesn't have: a warning */
+	assert(r.count == 1 && !r.errors[0].fatal && r.errors[0].line == 7);
+	config_result_destroy(&r);
+
+	write_file(menu,
+		"[begin] (Menu)\n"
+		"[include] (/nonexistent/menu)\n"     /* 2: error */
+		"[submenu] (Open)\n"                  /* 3: no [end] */
+		"  [exec (broken) {x}\n");            /* 4: no ] */
+	config_result_init(&r);
+	validate_menu_file(menu, &r);
+	int fatal = 0;
+	for (int i = 0; i < r.count; i++)
+		fatal += r.errors[i].fatal;
+	assert(r.count == 3 && fatal == 2);
+	assert(r.errors[0].line == 2 && r.errors[1].line == 4 &&
+		r.errors[2].line == 3);
+	config_result_destroy(&r);
+	unlink(menu);
+	printf("  PASS: test_menu_file\n");
+}
+
 /* ---- Top-level validation test ---- */
 
 static void
@@ -1228,6 +1293,7 @@ main(void)
 	/* Result helpers */
 	test_result_init_destroy();
 	test_apps_file();
+	test_menu_file();
 	test_result_no_errors();
 
 	/* Init file validation */

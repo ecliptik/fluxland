@@ -414,7 +414,7 @@ wm_rules_remember_window(struct wm_view *view, const char *apps_path)
 		return -1;
 	}
 	bool replaced = false, skipping = false;
-	FILE *in = fopen_nofollow(apps_path, "r");
+	FILE *in = fopen_config(apps_path, "r");
 	if (in) {
 		char *line = NULL;
 		size_t cap = 0;
@@ -446,7 +446,7 @@ wm_rules_remember_window(struct wm_view *view, const char *apps_path)
 	fclose(out);
 
 	int ret = -1;
-	FILE *wf = fopen_nofollow(apps_path, "w");
+	FILE *wf = fopen_config(apps_path, "w");
 	if (wf) {
 		if (fwrite(content, 1, content_len, wf) == content_len)
 			ret = 0;

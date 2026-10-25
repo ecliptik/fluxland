@@ -296,6 +296,7 @@ handle_xdg_toplevel_request_show_window_menu(struct wl_listener *listener,
 		view->server->focus_user_initiated = true;
 		wm_focus_view(view, wm_view_surface(view));
 	}
+	view->server->menu_view = view;
 	wm_menu_show_window(view->server,
 		view->x + left + event->x - geo.x,
 		view->y + top + event->y - geo.y);

@@ -12,6 +12,7 @@
 #include "mousebind.h"
 #include "i18n.h"
 #include "rcparser.h"
+#include "util.h"
 #include <linux/input-event-codes.h>
 #include <math.h>
 #include <stdio.h>
@@ -475,7 +476,7 @@ config_create(void)
 	config->menu_alpha = 255;
 	config->toolbar_max_over = false;
 	config->edge_resize_snap_threshold = 0;
-	config->menu_search = WM_MENU_SEARCH_NOWHERE;
+	config->menu_search = WM_MENU_SEARCH_ITEMSTART; /* Fluxbox's */
 	config->menu_delay = 200;
 
 	/* Default mouse button mappings (identity map) */
@@ -871,6 +872,7 @@ apply_menu_config(struct wm_config *config, struct rc_database *db)
 
 	/* Type-ahead search */
 	val = rc_get_string(db, "session.menuSearch");
+	config->menu_search = WM_MENU_SEARCH_ITEMSTART;
 	if (val) {
 		if (strcasecmp(val, "itemstart") == 0)
 			config->menu_search = WM_MENU_SEARCH_ITEMSTART;
@@ -886,11 +888,22 @@ apply_menu_config(struct wm_config *config, struct rc_database *db)
 	if (config->menu_delay < 0) config->menu_delay = 0;
 	if (config->menu_delay > 5000) config->menu_delay = 5000;
 
-	/* Custom window menu file */
+	/* Window menu file: the init's, else a windowmenu file in the
+	 * config directory (Fluxbox's ~/.fluxbox/windowmenu), else the
+	 * built-in copy of Fluxbox's */
+	free(config->window_menu_file);
+	config->window_menu_file = NULL;
 	val = rc_get_string(db, "session.screen0.windowMenu");
 	if (val) {
-		free(config->window_menu_file);
-		config->window_menu_file = strdup(val);
+		config->window_menu_file = resolve_path(config->config_dir,
+			val, "windowmenu");
+	} else if (config->config_dir) {
+		char *path = resolve_path(config->config_dir, NULL,
+			"windowmenu");
+		if (path && access(path, R_OK) == 0)
+			config->window_menu_file = path;
+		else
+			free(path);
 	}
 }
 
@@ -1418,6 +1431,27 @@ apply_wallpaper_config(struct wm_config *config, struct rc_database *db)
 
 	val = rc_get_string(db, "session.screen0.wallpaperMode");
 	config->wallpaper_mode = parse_wallpaper_mode(val);
+
+	/* None in the init: the last one SetWallpaper set (fbsetbg -l) */
+	if (!config->wallpaper && config->config_dir) {
+		char *last = resolve_path(config->config_dir, NULL,
+			"lastwallpaper");
+		FILE *f = last ? fopen_config(last, "r") : NULL;
+		char line[4096], mode[64];
+		if (f && fgets(line, sizeof(line), f)) {
+			line[strcspn(line, "\n")] = '\0';
+			if (*line)
+				config->wallpaper = strdup(line);
+			if (fgets(mode, sizeof(mode), f)) {
+				mode[strcspn(mode, "\n")] = '\0';
+				config->wallpaper_mode =
+					parse_wallpaper_mode(mode);
+			}
+		}
+		if (f)
+			fclose(f);
+		free(last);
+	}
 
 	val = rc_get_string(db, "session.screen0.wallpaperColor");
 	if (val) {

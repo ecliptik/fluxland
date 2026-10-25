@@ -45,6 +45,7 @@
 #include "toolbar.h"
 #include "view.h"
 #include "view_geometry.h"
+#include "wallpaper.h"
 #include "workspace.h"
 
 /* Security helpers are in util.h: wm_is_blocked_env_var(), wm_spawn_command() */
@@ -327,6 +328,7 @@ static int
 split_args(const char *argument, char *buf, size_t len, char *words[3])
 {
 	int n = 0;
+	words[0] = words[1] = words[2] = NULL;
 	if (!argument)
 		return 0;
 	snprintf(buf, len, "%s", argument);
@@ -624,6 +626,70 @@ handle_set_style(struct wm_server *server, const char *argument)
 						v->decoration,
 						server->style);
 			}
+		}
+	}
+	return true;
+}
+
+/*
+ * SetWallpaper [-f|-c|-t|-a] file (fluxland; fbsetbg's options: full,
+ * center, tile, aspect): the wallpaper of every workspace without its
+ * own, remembered in the config directory's lastwallpaper as fbsetbg
+ * remembers its last one.
+ */
+static bool
+handle_set_wallpaper(struct wm_server *server, const char *argument)
+{
+	struct wm_config *config = server->config;
+	if (!argument || !config)
+		return true;
+	const char *p = argument;
+	enum wm_wallpaper_mode mode = config->wallpaper_mode;
+	if (p[0] == '-' && p[1] && isspace((unsigned char)p[2])) {
+		switch (p[1]) {
+		case 'f': mode = WM_WALLPAPER_STRETCH; break;
+		case 'c': mode = WM_WALLPAPER_CENTER; break;
+		case 't': mode = WM_WALLPAPER_TILE; break;
+		case 'a': mode = WM_WALLPAPER_FILL; break;
+		default: break;
+		}
+		p += 2;
+		while (isspace((unsigned char)*p))
+			p++;
+	}
+	char path[4096];
+	const char *home = getenv("HOME");
+	if (p[0] == '~' && home)
+		snprintf(path, sizeof(path), "%s%s", home, p + 1);
+	else
+		snprintf(path, sizeof(path), "%s", p);
+	struct stat st;
+	if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+		wlr_log(WLR_ERROR, "SetWallpaper: not a file: %s", path);
+		return false;
+	}
+	free(config->wallpaper);
+	config->wallpaper = strdup(path);
+	config->wallpaper_mode = mode;
+	if (server->wallpaper)
+		wm_wallpaper_reload(server->wallpaper);
+	else
+		server->wallpaper = wm_wallpaper_create(server);
+
+	if (config->config_dir) {
+		static const char *const names[] = {
+			[WM_WALLPAPER_STRETCH] = "Stretch",
+			[WM_WALLPAPER_CENTER] = "Center",
+			[WM_WALLPAPER_TILE] = "Tile",
+			[WM_WALLPAPER_FILL] = "Fill",
+		};
+		char last[4096];
+		snprintf(last, sizeof(last), "%s/lastwallpaper",
+			config->config_dir);
+		FILE *f = fopen_config(last, "w");
+		if (f) {
+			fprintf(f, "%s\n%s\n", path, names[mode]);
+			fclose(f);
 		}
 	}
 	return true;
@@ -1144,6 +1210,8 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		if (view)
 			wm_view_toggle_decoration(view);
 		return true;
+	case WM_ACTION_SET_WALLPAPER:
+		return handle_set_wallpaper(server, argument);
 	case WM_ACTION_TAB:
 		return handle_tab(view, argument);
 	case WM_ACTION_ACTIVATE_TAB:

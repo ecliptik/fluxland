@@ -1,183 +1,228 @@
-.TH FLUXLAND-MENU 5 "2026-03-03" "fluxland 1.1.0" "File Formats Manual"
+.TH FLUXLAND-MENU 5 "2026-10-24" "fluxland 1.1.0" "File Formats Manual"
 .SH NAME
-fluxland-menu \- menu configuration for fluxland
+fluxland-menu \- menu files (the Fluxbox menu format)
 .SH DESCRIPTION
-The menu file defines the root menu shown by the
+The root menu (right click on the desktop, or the
 .B RootMenu
-action in
-.BR fluxland (1).
-The format is compatible with the Fluxbox menu file format.
+command), the window menu, and menus opened with
+.B CustomMenu
+are read from files in Fluxbox's menu format, so a Fluxbox
+.I ~/.fluxbox/menu
+and menus made by
+.BR fluxbox-generate_menu (1)
+work unchanged.
 .PP
-By default, the file is located at
+The root menu is
 .I ~/.config/fluxland/menu
-but the path can be overridden in the init file via
+(or
+.IR ~/.fluxbox/menu ),
+or the init file's
 .BR session.menuFile .
+The window menu is the
+.I windowmenu
+file next to it when there is one (or
+.BR session.screen0.windowMenu ),
+otherwise a copy of Fluxbox's default.
+A menu file and the files it includes are read again when they change.
+.B fluxland \-\-check\-config
+reports lines fluxland wouldn't use.
 .SH SYNTAX
-The menu file is a series of tagged entries enclosed by
-.B [begin]
-and
-.BR [end] .
-Blank lines and lines beginning with
-.B #
-are ignored.
-.PP
-Tags use square brackets.
-Arguments are enclosed in parentheses for labels, braces for
-commands/paths, and angle brackets for optional icons:
+Each line is
 .PP
 .RS 4
-.nf
-[\fItag\fP] (\fIlabel\fP) {\fIcommand\fP} <\fIicon\fP>
-.fi
+.BI [ tag "] (" label ") {" command "} <" icon >
 .RE
-.SH TAGS
+.PP
+with any field but the tag left out.
+Lines that don't start with
+.B [
+(and so the comments,
+.B #
+and
+.BR ! )
+are ignored.
+A backslash before a closing bracket makes it part of the field:
+.BR "(a \e) b)" .
+Brackets that balance can be nested:
+.BR "(vim (as root))" .
+.PP
+The menu starts at
+.BI [begin] " (title)"
+and ends at its
+.BR [end] ;
+lines before the
+.B [begin]
+are ignored.
+An
+.I icon
+is an image file shown beside the item's label; any line can have one.
+.SH ITEMS
 .TP
-.BI [begin] " (" title )
-Start of the root menu.
-The
-.I title
-is displayed at the top of the menu.
+.BI [exec] " (label) {command}"
+Run a shell command.
 .TP
-.B [end]
-End of the current menu or submenu block.
-.TP
-.BI [exec] " (" label ") {" command "}" " [<" icon ">]"
-Execute
-.I command
-via
-.BR /bin/sh .
-.TP
-.BI [submenu] " (" label ") [{" title "}] [<" icon ">]"
-Open a submenu.
-The optional
-.I title
-in braces is displayed as the submenu's title bar.
-The submenu body follows, terminated by
+.BI [submenu] " (label) {title}"
+A submenu, up to its own
 .BR [end] .
 .TP
+.BI [include] " (file or directory)"
+The items of another file here, or of every file in a directory (in
+order, without dotfiles and backup~ files).
+.TP
 .B [separator]
-Draw a horizontal separator line.
 .TP
-.BI [nop] " (" label )
-A disabled (greyed-out) label item.
+.BI [nop] " (label)"
+A label that does nothing.
 .TP
-.BI [style] " (" label ") {" path "}"
-Load the style file at
-.IR path .
+.BI [style] " (label) {file}"
+Switch to a style.
 .TP
-.BI [stylesdir] " (" directory )
-Scan
-.I directory
-for style files and create a menu entry for each one.
-Tilde expansion is supported.
+.BI [stylesdir] " (directory)\fR, " [stylesmenu] " {directory}"
+Every style in a directory, here (files, and directories with a
+.I theme.cfg
+or
+.IR style.cfg ).
+.B [themesdir]
+and
+.B [themesmenu]
+are the same.
 .TP
-.BI [include] " (" path )
-Include another menu file at
-.IR path .
-Tilde expansion is supported.
+.BI [wallpapers] " (directory) {command}"
+Every file of a directory, here, each running
+.I "command file"
+(also
+.B [wallpapermenu]
+and
+.BR [rootcommands] ).
+Without a command, or with an X11 setter such as Fluxbox's
+.BR fbsetbg ,
+the file becomes the wallpaper
+.RB ( SetWallpaper ).
 .TP
-.BI [workspaces] " (" label )
-Insert a workspace list submenu.
+.BI [workspaces] " (label)"
+The workspaces, to switch to, add or remove one.
 .TP
-.BI [config] " (" label )
-Insert a configuration submenu.
+.BI [icons] " (label)"
+The iconified windows.
 .TP
-.BI [reconfig] " (" label )
-Reload configuration files.
+.BI [config] " (label)"
+Some settings to change.
 .TP
-.BI [restart] " (" label ") [{" command "}]"
-Restart the compositor, optionally executing
-.I command
-instead.
+.BI [reconfig] " (label)"
+Read the configuration again (Reload Config).
 .TP
-.BI [exit] " (" label )
-Exit the compositor.
+.BI [restart] " (label)"
+The same, since a compositor can't restart under its windows.
 .TP
-.BI [command] " (" label ") {" action }
-Execute a compositor action (same actions as in the keys file).
-.SS Window Menu Tags
-These tags are used in the built-in window context menu:
+.BI [exit] " (label)"
+Quit.
 .TP
-.BI [shade] " (" label )
-Toggle window shade.
+.BI [macrocmd] " (label) {{command} {command} ...}"
 .TP
-.BI [stick] " (" label )
-Toggle sticky.
+.BI [ Command "] (label) {arguments}"
+Any other tag is a command of
+.BR fluxland-keys (5)
+with the
+.I arguments
+after it:
+.B "[MaximizeWindow] (Maximize)"
+or
+.BR "[SetStyle] (Bloe) {~/.fluxbox/styles/Bloe}" .
+fluxland's
+.BI [command] " (label) {command}"
+takes any command.
 .TP
-.BI [maximize] " (" label )
-Toggle maximize.
+.BI [encoding] " {charset}\fR ... " [endencoding]
+The labels between are in another character set, such as
+.BR ISO-8859-1 ;
+this carries into submenus and included files.
+.PP
+A label left out takes a default for the tag.
+.SH WINDOW MENU
+The window menu's items act on the window it was opened for:
+.BR [shade] ,
+.BR [stick] ,
+.BR [maximize] ,
+.BR [iconify] ,
+.BR [raise] ,
+.BR [lower] ,
+.B [close]
+and
+.B [kill]
+.RB ( [killwindow] ),
+.B [sendto]
+(the workspaces),
+.B [layer]
+(Fluxbox's layers),
+.B [alpha]
+(its opacity), and
+.B [extramenus]
+(Remember, see
+.BR fluxland-apps (5)).
+.B [settitledialog]
+isn't supported yet.
+.SH USING MENUS
+Hovering over a submenu opens it (after
+.BR session.screen0.menuDelay ).
+Typing searches the menu for an item whose label starts with what was
+typed
+.RB ( session.menuSearch :
+.BR itemstart ,
+the default;
+.B somewhere
+to search the whole label;
+.B nowhere
+to turn it off); Backspace edits what was typed.
 .TP
-.BI [iconify] " (" label )
-Minimize window.
+.BR Up ", " Down
+Select the item above or below.
 .TP
-.BI [close] " (" label )
-Close window.
+.BR Right ", " Return
+Open the submenu, or run the item.
 .TP
-.BI [kill] " (" label )
-Kill the window's client.
-.TP
-.BI [raise] " (" label )
-Raise window.
-.TP
-.BI [lower] " (" label )
-Lower window.
-.TP
-.BI [sendto] " (" label )
-Insert a "Send to workspace" submenu.
-.TP
-.BI [layer] " (" label )
-Insert a stacking layer submenu.
-.SH MENU NAVIGATION
-When a menu is open, the following keys navigate it:
-.TP
-.BR Up ", " k
-Move selection up.
-.TP
-.BR Down ", " j
-Move selection down.
-.TP
-.BR Right ", " l
-Enter submenu.
-.TP
-.BR Left ", " h
-Go back to parent menu.
-.TP
-.BR Return ", " Enter
-Activate selected item or enter submenu.
+.B Left
+Back to the menu above.
 .TP
 .B Escape
-Close current submenu, or close all menus if at the root.
+Close the menus.
 .PP
-Mouse interaction: hover to select, click to activate, click outside to
-close.
-Hovering over a submenu item automatically opens it.
+With
+.B session.menuSearch: nowhere ,
+.BR h ", " j ", " k ", " l
+move as the arrow keys do.
 .SH EXAMPLES
 .PP
 .RS 4
 .nf
 [begin] (fluxland)
-  [exec] (Terminal) {foot}
-  [exec] (File Manager) {thunar}
+  [exec] (Terminal) {foot} <~/.icons/terminal.png>
   [exec] (Web Browser) {firefox}
   [separator]
-  [submenu] (Editors)
-    [exec] (Vim) {foot vim}
-    [exec] (VS Code) {code}
+  [submenu] (Styles) {Choose a style}
+    [stylesdir] (~/.fluxbox/styles)
+    [stylesdir] (/usr/share/fluxland/styles)
   [end]
-  [submenu] (Styles)
-    [stylesdir] (~/.config/fluxland/styles)
+  [submenu] (Backgrounds)
+    [wallpapers] (~/Pictures/Wallpapers)
   [end]
   [workspaces] (Workspaces)
+  [include] (~/.config/fluxland/menu.d)
   [separator]
   [config] (Configuration)
   [reconfig] (Reload Config)
-  [restart] (Restart)
   [exit] (Exit)
 [end]
 .fi
 .RE
+.SH COMPATIBILITY
+fluxland 1.x put
+.B [wallpapers]
+and
+.B [stylesmenu]
+in submenus of their own (with the directory in braces); they are now
+listed in place, as in Fluxbox.
 .SH SEE ALSO
 .BR fluxland (1),
 .BR fluxland-keys (5),
 .BR fluxland-apps (5),
-.BR fluxland-style (5)
+.BR fluxland-init (5)

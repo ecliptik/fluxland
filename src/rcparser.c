@@ -113,7 +113,7 @@ rc_set(struct rc_database *db, const char *key, const char *value)
 int
 rc_load(struct rc_database *db, const char *path)
 {
-	FILE *f = fopen_nofollow(path, "r");
+	FILE *f = fopen_config(path, "r");
 	if (!f)
 		return -1;
 

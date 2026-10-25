@@ -57,6 +57,14 @@ void validate_apps_file(const char *path, struct config_result *result);
  * Read an apps file only to report its problems (rules_parse.c); returns
  * false if it can't be read.
  */
+void validate_menu_file(const char *path, struct config_result *result);
+
+/* Read a menu file only to report its problems (menu_parse.c) */
+bool wm_menu_check_file(const char *path,
+	void (*report)(void *data, const char *path, int line, bool fatal,
+		const char *msg),
+	void *data);
+
 bool wm_rules_check_file(const char *path,
 	void (*report)(void *data, const char *path, int line, bool fatal,
 		const char *msg),

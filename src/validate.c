@@ -877,6 +877,7 @@ validate_style_file(const char *path, struct config_result *result)
 
 /* ---- Top-level validation ---- */
 
+/* A parser's problem, as a result */
 static void
 report_apps(void *data, const char *path, int line, bool fatal,
 	const char *msg)
@@ -893,6 +894,14 @@ validate_apps_file(const char *path, struct config_result *result)
 	if (!wm_rules_check_file(path, report_apps, result))
 		config_result_add_warning(result, path, 0,
 			"cannot open apps file");
+}
+
+void
+validate_menu_file(const char *path, struct config_result *result)
+{
+	if (!wm_menu_check_file(path, report_apps, result))
+		config_result_add_warning(result, path, 0,
+			"cannot open menu file");
 }
 
 int
@@ -938,6 +947,16 @@ validate_config(const char *config_dir)
 	if (file_exists(path)) {
 		fprintf(stderr, "Checking %s ...\n", path);
 		validate_apps_file(path, &result);
+	}
+
+	/* Validate menu files */
+	const char *menus[] = { "menu", "windowmenu" };
+	for (int i = 0; i < 2; i++) {
+		snprintf(path, sizeof(path), "%s/%s", config_dir, menus[i]);
+		if (file_exists(path)) {
+			fprintf(stderr, "Checking %s ...\n", path);
+			validate_menu_file(path, &result);
+		}
 	}
 
 	/* Print results */

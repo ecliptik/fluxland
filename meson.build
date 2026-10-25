@@ -456,6 +456,7 @@ example_configs = [
   'data/init',
   'data/keys',
   'data/menu',
+  'data/windowmenu',
   'data/startup',
   'data/style',
   'data/fluxland-hc-dark.style',

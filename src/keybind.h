@@ -70,6 +70,7 @@ enum wm_action {
 	WM_ACTION_START_RESIZING,
 	WM_ACTION_ACTIVATE_TAB,
 	WM_ACTION_TAB,             /* Tab N */
+	WM_ACTION_SET_WALLPAPER,   /* SetWallpaper [-f|-c|-t|-a] file */
 	WM_ACTION_ROOT_MENU,
 	WM_ACTION_WINDOW_MENU,
 	WM_ACTION_WINDOW_LIST,

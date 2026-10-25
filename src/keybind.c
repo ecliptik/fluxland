@@ -143,6 +143,7 @@ static const struct action_map actions[] = {
 	{"SetDecor",           WM_ACTION_SET_DECOR},
 	{"SetEnv",             WM_ACTION_SET_ENV},
 	{"SetLayer",           WM_ACTION_SET_LAYER},
+	{"SetWallpaper",       WM_ACTION_SET_WALLPAPER},
 	{"SetWorkspaceName",   WM_ACTION_SET_WORKSPACE_NAME},
 	{"SetStyle",           WM_ACTION_SET_STYLE},
 	{"Shade",              WM_ACTION_SHADE},
@@ -539,7 +540,7 @@ keybind_get_mode(struct wl_list *keymodes, const char *name)
 int
 keybind_load(struct wl_list *keymodes, const char *path)
 {
-	FILE *f = fopen_nofollow(path, "r");
+	FILE *f = fopen_config(path, "r");
 	if (!f)
 		return -1;
 

@@ -217,6 +217,51 @@ test_blocked_env_case_insensitive(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* fopen_config(): dotfile-manager symlinks, but only to trusted files  */
+/* ------------------------------------------------------------------ */
+
+static void
+test_fopen_config_symlinks(void)
+{
+	setup();
+	FILE *f = fopen(TEST_FILE, "w");
+	assert(f);
+	fputs("[begin]\n", f);
+	fclose(f);
+	chmod(TEST_FILE, 0644);
+	unlink(TEST_LINK);
+	assert(symlink(TEST_FILE, TEST_LINK) == 0);
+
+	/* A link to the user's own file opens, for reading and writing */
+	f = fopen_config(TEST_LINK, "r");
+	assert(f);
+	fclose(f);
+	f = fopen_config(TEST_LINK, "a");
+	assert(f);
+	fclose(f);
+
+	/* Not if others may write the target */
+	chmod(TEST_FILE, 0666);
+	assert(!fopen_config(TEST_LINK, "r"));
+	assert(!fopen_config(TEST_LINK, "w"));
+	chmod(TEST_FILE, 0644);
+
+	/* Nor to something that isn't a regular file */
+	unlink(TEST_LINK);
+	assert(symlink("/dev/zero", TEST_LINK) == 0);
+	assert(!fopen_config(TEST_LINK, "r"));
+	assert(!fopen_config("/dev/zero", "r"));
+
+	/* A plain file opens as with fopen_nofollow */
+	f = fopen_config(TEST_FILE, "r");
+	assert(f);
+	fclose(f);
+	unlink(TEST_LINK);
+	unlink(TEST_FILE);
+	printf("  PASS: test_fopen_config_symlinks\n");
+}
+
+/* ------------------------------------------------------------------ */
 /* fopen_nofollow() tests                                             */
 /* ------------------------------------------------------------------ */
 
@@ -359,11 +404,12 @@ main(void)
 	test_fopen_nofollow_missing_file();
 	test_fopen_nofollow_symlink();
 	test_fopen_nofollow_write();
+	test_fopen_config_symlinks();
 
 	/* wm_spawn_command */
 	test_spawn_command_null();
 	test_spawn_command_basic();
 
-	printf("\nAll util tests passed (%d tests)\n", 18);
+	printf("\nAll util tests passed (%d tests)\n", 19);
 	return 0;
 }

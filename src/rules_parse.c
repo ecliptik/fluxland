@@ -302,7 +302,7 @@ wm_rules_finish(struct wm_rules *rules)
 bool
 wm_rules_load(struct wm_rules *rules, const char *path)
 {
-	FILE *f = path ? fopen_nofollow(path, "r") : NULL;
+	FILE *f = path ? fopen_config(path, "r") : NULL;
 	if (!f) {
 		wlr_log(WLR_INFO, "rules: no apps file at %s",
 			path ? path : "(none)");

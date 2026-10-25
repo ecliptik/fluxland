@@ -5,11 +5,14 @@
  *
  * menu_parse.c - Fluxbox menu file parser
  *
- * Parses the Fluxbox menu file format including:
- *   [begin], [end], [exec], [submenu], [separator], [nop],
- *   [include], [config], [workspaces], [reconfig], [restart],
- *   [exit], [style], [stylesdir], [stylesmenu], [wallpapers],
- *   [command], [encoding]/[endencoding], and window menu items.
+ * Reads menu files as Fluxbox's MenuCreator and FbMenuParser do. Each
+ * line is [tag] (label) {command} <icon>, any field but the tag left
+ * out. The file starts at [begin] (title); [end] closes it and each
+ * [submenu]. Fluxbox's tags are listed in parse_items(); any other tag
+ * is a command with the {command} as its arguments ("[MaximizeWindow]",
+ * "[SetStyle] (Bloe) {~/.fluxbox/styles/Bloe}"). [encoding] {charset}
+ * ... [endencoding] marks labels written in another character set; it
+ * carries into submenus and included files.
  */
 
 #define _GNU_SOURCE
@@ -20,9 +23,12 @@
 #include <string.h>
 #include <strings.h>
 #include <iconv.h>
+#include <stdarg.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
 
+#include "command.h"
 #include "config.h"
 #include "i18n.h"
 #include "menu.h"
@@ -38,9 +44,9 @@ strip_whitespace(char *str)
 	while (*str && isspace((unsigned char)*str)) {
 		str++;
 	}
-	char *end = str + strlen(str) - 1;
-	while (end > str && isspace((unsigned char)*end)) {
-		*end-- = '\0';
+	char *end = str + strlen(str);
+	while (end > str && isspace((unsigned char)end[-1])) {
+		*--end = '\0';
 	}
 	return str;
 }
@@ -67,108 +73,96 @@ expand_path(const char *path)
 }
 
 /*
- * Parse a parenthesized value: "(text)" -> "text"
- * Advances *pos past the closing paren.
- * Returns allocated string or NULL.
+ * A field between open and close (FbTk::StringUtil::getStringBetween):
+ * after blanks, from open to its close. A backslash before either
+ * bracket makes it literal and goes; other backslashes stay. Brackets
+ * nest when they balance ("(vim (as root))", "{MacroCmd {Raise}
+ * {Focus}}"); when they don't, the first unescaped close ends the
+ * field, as in Fluxbox. NULL (and *pos unchanged) if there is no field.
  */
 static char *
-parse_paren(const char **pos)
+parse_field(const char **pos, char open, char close)
 {
 	const char *p = *pos;
-	while (*p && isspace((unsigned char)*p)) {
+	while (*p == ' ' || *p == '\t') {
 		p++;
 	}
-	if (*p != '(') {
+	if (*p != open) {
 		return NULL;
 	}
-	p++;
-	const char *start = p;
+	const char *start = p + 1;
+	const char *end = NULL;
 	int depth = 1;
-	while (*p && depth > 0) {
-		if (*p == '(') {
+	for (const char *q = start; *q && !end; q++) {
+		if (*q == '\\' && (q[1] == open || q[1] == close)) {
+			q++;
+		} else if (*q == open) {
 			depth++;
-		} else if (*p == ')') {
-			depth--;
-		}
-		if (depth > 0) {
-			p++;
+		} else if (*q == close && --depth == 0) {
+			end = q;
 		}
 	}
-	char *result = strndup(start, p - start);
-	if (*p == ')') {
-		p++;
+	for (const char *q = start; *q && !end; q++) {
+		if (*q == '\\' && q[1] == close) {
+			q++;
+		} else if (*q == close) {
+			end = q;
+		}
 	}
-	*pos = p;
-	return result;
+	if (!end) {
+		return NULL;
+	}
+	char *out = malloc((size_t)(end - start) + 1);
+	if (!out) {
+		return NULL;
+	}
+	size_t n = 0;
+	for (const char *q = start; q < end; q++) {
+		if (*q == '\\' && (q[1] == open || q[1] == close)) {
+			q++;
+		}
+		out[n++] = *q;
+	}
+	out[n] = '\0';
+	*pos = end + 1;
+	return out;
 }
 
-/*
- * Parse a brace-enclosed value: "{text}" -> "text"
- * Advances *pos past the closing brace.
- */
-static char *
-parse_brace(const char **pos)
+/* One line: [tag] (label) {command} <icon> (FbMenuParser) */
+struct menu_line {
+	char *tag, *label, *cmd, *icon;
+};
+
+static bool
+menu_line_parse(const char *text, struct menu_line *ml)
 {
-	const char *p = *pos;
-	while (*p && isspace((unsigned char)*p)) {
-		p++;
+	memset(ml, 0, sizeof(*ml));
+	const char *pos = text;
+	ml->tag = parse_field(&pos, '[', ']');
+	if (!ml->tag) {
+		return false;
 	}
-	if (*p != '{') {
-		return NULL;
-	}
-	p++;
-	const char *start = p;
-	int depth = 1;
-	while (*p && depth > 0) {
-		if (*p == '{') {
-			depth++;
-		} else if (*p == '}') {
-			depth--;
-		}
-		if (depth > 0) {
-			p++;
-		}
-	}
-	char *result = strndup(start, p - start);
-	if (*p == '}') {
-		p++;
-	}
-	*pos = p;
-	return result;
+	ml->label = parse_field(&pos, '(', ')');
+	ml->cmd = parse_field(&pos, '{', '}');
+	ml->icon = parse_field(&pos, '<', '>');
+	return true;
 }
 
-/*
- * Parse an angle-bracket-enclosed value: "<text>" -> "text"
- */
-static char *
-parse_angle(const char **pos)
+static void
+menu_line_finish(struct menu_line *ml)
 {
-	const char *p = *pos;
-	while (*p && isspace((unsigned char)*p)) {
-		p++;
-	}
-	if (*p != '<') {
-		return NULL;
-	}
-	p++;
-	const char *start = p;
-	while (*p && *p != '>') {
-		p++;
-	}
-	char *result = strndup(start, p - start);
-	if (*p == '>') {
-		p++;
-	}
-	*pos = p;
-	return result;
+	free(ml->tag);
+	free(ml->label);
+	free(ml->cmd);
+	free(ml->icon);
+	memset(ml, 0, sizeof(*ml));
 }
 
 /* --- Encoding conversion --- */
 
 /*
- * If an [encoding] block is active, convert label from that encoding to UTF-8.
- * Takes ownership of label; returns converted string (caller must free).
- * If no conversion needed, returns label unchanged.
+ * A label written in encoding, as UTF-8. Takes ownership of label;
+ * returns it unchanged when there's nothing to convert.
  */
 static char *
 maybe_convert_label(char *label, const char *encoding)
@@ -253,43 +247,89 @@ menu_item_destroy(struct wm_menu_item *item)
 	free(item);
 }
 
-/* --- Stylesdir: scan directory for style files --- */
+/* --- Parser state --- */
 
+#define MENU_MAX_DEPTH 16      /* submenus and includes */
+#define MENU_MAX_INCLUDES 10   /* Fluxbox's include limit */
+#define MENU_MAX_ENCODINGS 8
+
+struct parse_ctx {
+	struct wm_server *server;
+	int depth;
+	int includes;
+	/* [encoding] blocks: a stack, carried into submenus and includes */
+	char *encodings[MENU_MAX_ENCODINGS];
+	int encoding_count;
+	/* What was read, so a change can be noticed */
+	char **sources;
+	int source_count;
+	/* Where we are, for messages; and a checker to tell (--check-config) */
+	const char *path;
+	int line;
+	void (*report)(void *data, const char *path, int line, bool fatal,
+		const char *msg);
+	void *report_data;
+};
+
+/* Log a problem, or tell the checker */
+__attribute__((format(printf, 3, 4)))
 static void
-add_stylesdir_entries(struct wm_menu *submenu, const char *raw_path)
+diag(struct parse_ctx *ctx, bool fatal, const char *fmt, ...)
 {
-	char *dir_path = expand_path(raw_path);
-	if (!dir_path) {
-		return;
-	}
-
-	DIR *dir = opendir(dir_path);
-	if (!dir) {
-		free(dir_path);
-		return;
-	}
-
-	struct dirent *entry;
-	while ((entry = readdir(dir)) != NULL) {
-		if (entry->d_name[0] == '.') {
-			continue;
-		}
-		struct wm_menu_item *item =
-			menu_item_create(WM_MENU_STYLE, entry->d_name);
-		if (item) {
-			if (asprintf(&item->command, "%s/%s", dir_path,
-				     entry->d_name) < 0) {
-				item->command = NULL;
-			}
-			wl_list_insert(submenu->items.prev, &item->link);
-		}
-	}
-
-	closedir(dir);
-	free(dir_path);
+	char msg[512];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(msg, sizeof(msg), fmt, ap);
+	va_end(ap);
+	if (ctx->report)
+		ctx->report(ctx->report_data, ctx->path ? ctx->path : "menu",
+			ctx->line, fatal, msg);
+	else
+		wlr_log(fatal ? WLR_ERROR : WLR_INFO, "menu: %s:%d: %s",
+			ctx->path ? ctx->path : "(text)", ctx->line, msg);
 }
 
-/* --- Directory scanning helpers --- */
+static const char *
+current_encoding(struct parse_ctx *ctx)
+{
+	return ctx->encoding_count > 0 ?
+		ctx->encodings[ctx->encoding_count - 1] : NULL;
+}
+
+static bool parse_items(struct wm_menu *menu, FILE *fp,
+	struct parse_ctx *ctx);
+
+/* Append an item; label "" or NULL takes the default label */
+static struct wm_menu_item *
+add_item(struct wm_menu *menu, enum wm_menu_item_type type,
+	const char *label, const char *dflt)
+{
+	struct wm_menu_item *item = menu_item_create(type,
+		label && *label ? label : dflt);
+	if (item) {
+		wl_list_insert(menu->items.prev, &item->link);
+	}
+	return item;
+}
+
+/* Append an item with a submenu */
+static struct wm_menu_item *
+add_submenu(struct wm_menu *menu, enum wm_menu_item_type type,
+	const char *label, const char *dflt, struct wm_menu *submenu)
+{
+	struct wm_menu_item *item = add_item(menu, type, label, dflt);
+	if (item) {
+		item->submenu = submenu;
+		if (submenu) {
+			submenu->parent = menu;
+		}
+	} else if (submenu) {
+		wm_menu_destroy(submenu);
+	}
+	return item;
+}
+
+/* --- Directory listings --- */
 
 static int
 strcmp_qsort(const void *a, const void *b)
@@ -297,561 +337,657 @@ strcmp_qsort(const void *a, const void *b)
 	return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
-static bool
-is_image_file(const char *name)
+/*
+ * The names in a directory, sorted (FbTk::Directory, sort): the caller
+ * frees each and the array.
+ */
+static char **
+sorted_entries(const char *dir_path, size_t *count)
 {
-	const char *ext = strrchr(name, '.');
-	if (!ext)
-		return false;
-	return strcasecmp(ext, ".png") == 0 ||
-	       strcasecmp(ext, ".jpg") == 0 ||
-	       strcasecmp(ext, ".jpeg") == 0 ||
-	       strcasecmp(ext, ".bmp") == 0 ||
-	       strcasecmp(ext, ".gif") == 0 ||
-	       strcasecmp(ext, ".webp") == 0;
+	*count = 0;
+	DIR *dir = opendir(dir_path);
+	if (!dir) {
+		return NULL;
+	}
+	char **names = NULL;
+	size_t cap = 0;
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry->d_name, ".") == 0 ||
+		    strcmp(entry->d_name, "..") == 0) {
+			continue;
+		}
+		if (*count >= cap) {
+			cap = cap ? cap * 2 : 32;
+			char **tmp = realloc(names, cap * sizeof(*names));
+			if (!tmp) {
+				break;
+			}
+			names = tmp;
+		}
+		names[*count] = strdup(entry->d_name);
+		if (names[*count]) {
+			(*count)++;
+		}
+	}
+	closedir(dir);
+	if (*count > 1) {
+		qsort(names, *count, sizeof(*names), strcmp_qsort);
+	}
+	return names;
 }
 
+static bool
+is_regular(const char *path)
+{
+	struct stat st;
+	return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+/* A file in a listing: not a dotfile or a backup~ (createStyleMenu) */
+static bool
+listable(const char *name)
+{
+	size_t len = strlen(name);
+	return name[0] != '.' && len > 0 && name[len - 1] != '~';
+}
+
+/*
+ * [stylesdir] (dir) / [stylesmenu] {dir}: the styles in a directory, in
+ * this menu (createStyleMenu): files, and directories with a theme.cfg
+ * or style.cfg.
+ */
 static void
-add_wallpaper_entries(struct wm_menu *submenu, const char *raw_path)
+add_style_entries(struct wm_menu *menu, const char *raw_path)
 {
 	char *dir_path = expand_path(raw_path);
 	if (!dir_path) {
-		struct wm_menu_item *item =
-			menu_item_create(WM_MENU_NOP, "(empty)");
-		if (item)
-			wl_list_insert(submenu->items.prev, &item->link);
 		return;
 	}
-
-	/* Reject directory paths containing single quotes to prevent
-	 * shell escape from the single-quoted swaybg command */
-	if (strchr(dir_path, '\'')) {
-		wlr_log(WLR_ERROR,
-			"wallpaper directory path contains single quote, "
-			"skipping: %s", dir_path);
-		struct wm_menu_item *item =
-			menu_item_create(WM_MENU_NOP, "(invalid path)");
-		if (item)
-			wl_list_insert(submenu->items.prev, &item->link);
-		free(dir_path);
-		return;
+	size_t count;
+	char **names = sorted_entries(dir_path, &count);
+	if (!names) {
+		wlr_log(WLR_INFO, "menu: no styles directory %s", dir_path);
 	}
-
-	DIR *dir = opendir(dir_path);
-	if (!dir) {
-		struct wm_menu_item *item =
-			menu_item_create(WM_MENU_NOP, "(empty)");
-		if (item)
-			wl_list_insert(submenu->items.prev, &item->link);
-		free(dir_path);
-		return;
-	}
-
-	/* Collect image filenames */
-	char **names = NULL;
-	size_t count = 0;
-	size_t cap = 0;
-	struct dirent *entry;
-
-	while ((entry = readdir(dir)) != NULL) {
-		if (entry->d_name[0] == '.')
-			continue;
-		if (!is_image_file(entry->d_name))
-			continue;
-		if (count >= cap) {
-			cap = cap ? cap * 2 : 32;
-			char **tmp = realloc(names, cap * sizeof(*names));
-			if (!tmp)
-				break;
-			names = tmp;
-		}
-		names[count] = strdup(entry->d_name);
-		if (names[count])
-			count++;
-	}
-	closedir(dir);
-
-	if (count == 0) {
-		struct wm_menu_item *item =
-			menu_item_create(WM_MENU_NOP, "(empty)");
-		if (item)
-			wl_list_insert(submenu->items.prev, &item->link);
-		free(names);
-		free(dir_path);
-		return;
-	}
-
-	qsort(names, count, sizeof(*names), strcmp_qsort);
-
 	for (size_t i = 0; i < count; i++) {
-		struct wm_menu_item *item =
-			menu_item_create(WM_MENU_EXEC, names[i]);
-		if (item) {
-			/* Shell-escape path components to prevent
-			 * command injection via malicious filenames */
-			if (asprintf(&item->command,
-				     "swaybg -i '%s/%s' -m fill",
-				     dir_path, names[i]) < 0)
-				item->command = NULL;
-			/* Reject filenames containing single quotes to
-			 * prevent shell escape from the quoting */
-			if (item->command && strchr(names[i], '\'')) {
-				free(item->command);
-				item->command = NULL;
-			}
-			wl_list_insert(submenu->items.prev, &item->link);
+		char *path = NULL, *cfg1 = NULL, *cfg2 = NULL;
+		if (asprintf(&path, "%s/%s", dir_path, names[i]) < 0) {
+			path = NULL;
 		}
+		if (path && (asprintf(&cfg1, "%s/theme.cfg", path) < 0 ||
+		    asprintf(&cfg2, "%s/style.cfg", path) < 0)) {
+			cfg1 = cfg2 = NULL;
+		}
+		bool style = path && ((listable(names[i]) && is_regular(path)) ||
+			(cfg1 && is_regular(cfg1)) || (cfg2 && is_regular(cfg2)));
+		if (style) {
+			struct wm_menu_item *item =
+				add_item(menu, WM_MENU_STYLE, names[i], NULL);
+			if (item) {
+				item->command = path;
+				path = NULL;
+			}
+		}
+		free(path);
+		free(cfg1);
+		free(cfg2);
 		free(names[i]);
 	}
 	free(names);
 	free(dir_path);
 }
 
+/* An X11 wallpaper setter, which can't work on Wayland */
+static bool
+is_x11_setter(const char *cmd)
+{
+	static const char *const setters[] = {
+		"fbsetbg", "feh", "Esetroot", "xsetbg", "wmsetbg", "hsetroot",
+		"nitrogen", "xwallpaper", "display", "xv", "habak", NULL,
+	};
+	size_t n = strcspn(cmd, " \t");
+	const char *slash = memrchr(cmd, '/', n);
+	const char *name = slash ? slash + 1 : cmd;
+	size_t len = (size_t)(cmd + n - name);
+	for (int i = 0; setters[i]; i++) {
+		if (strlen(setters[i]) == len &&
+		    strncmp(name, setters[i], len) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* path in single quotes for a shell */
+static char *
+shell_quote(const char *path)
+{
+	size_t len = 3;
+	for (const char *p = path; *p; p++) {
+		len += *p == '\'' ? 4 : 1;
+	}
+	char *out = malloc(len);
+	if (!out) {
+		return NULL;
+	}
+	char *o = out;
+	*o++ = '\'';
+	for (const char *p = path; *p; p++) {
+		if (*p == '\'') {
+			memcpy(o, "'\\''", 4);
+			o += 4;
+		} else {
+			*o++ = *p;
+		}
+	}
+	*o++ = '\'';
+	*o = '\0';
+	return out;
+}
+
+/*
+ * [wallpapers] (dir) {command}: the files of a directory, in this menu,
+ * each running "command file" (createRootCmdMenu). With no command, or
+ * an X11 setter such as Fluxbox's default fbsetbg, the file becomes the
+ * wallpaper (SetWallpaper).
+ */
 static void
-add_stylesmenu_entries(struct wm_menu *submenu, const char *raw_path)
+add_wallpaper_entries(struct wm_menu *menu, const char *raw_path,
+	const char *cmd)
 {
 	char *dir_path = expand_path(raw_path);
 	if (!dir_path) {
-		wlr_log(WLR_ERROR, "%s", "menu: failed to expand stylesmenu path");
 		return;
 	}
-
-	DIR *dir = opendir(dir_path);
-	if (!dir) {
-		wlr_log(WLR_ERROR, "menu: cannot open styles directory: %s",
-			dir_path);
-		free(dir_path);
-		return;
-	}
-
-	/* Collect entry names */
-	char **names = NULL;
-	size_t count = 0;
-	size_t cap = 0;
-	struct dirent *entry;
-
-	while ((entry = readdir(dir)) != NULL) {
-		if (entry->d_name[0] == '.')
-			continue;
-		if (count >= cap) {
-			cap = cap ? cap * 2 : 32;
-			char **tmp = realloc(names, cap * sizeof(*names));
-			if (!tmp)
-				break;
-			names = tmp;
+	bool internal = !cmd || !*cmd || is_x11_setter(cmd);
+	size_t count;
+	char **names = sorted_entries(dir_path, &count);
+	for (size_t i = 0; i < count; i++) {
+		char *path = NULL;
+		if (asprintf(&path, "%s/%s", dir_path, names[i]) < 0) {
+			path = NULL;
 		}
-		names[count] = strdup(entry->d_name);
-		if (names[count])
-			count++;
-	}
-	closedir(dir);
-
-	if (count > 0) {
-		qsort(names, count, sizeof(*names), strcmp_qsort);
-		for (size_t i = 0; i < count; i++) {
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_STYLE, names[i]);
-			if (item) {
-				if (asprintf(&item->command, "%s/%s",
-					     dir_path, names[i]) < 0)
-					item->command = NULL;
-				wl_list_insert(submenu->items.prev,
-					&item->link);
+		if (path && listable(names[i]) && is_regular(path)) {
+			char *line = NULL;
+			if (internal) {
+				if (asprintf(&line, "SetWallpaper %s", path) < 0)
+					line = NULL;
+			} else {
+				char *quoted = shell_quote(path);
+				if (quoted && asprintf(&line, "%s %s", cmd,
+				    quoted) < 0)
+					line = NULL;
+				free(quoted);
 			}
-			free(names[i]);
+			struct wm_menu_item *item = line ? add_item(menu,
+				internal ? WM_MENU_COMMAND : WM_MENU_EXEC,
+				names[i], NULL) : NULL;
+			if (item) {
+				item->command = line;
+			} else {
+				free(line);
+			}
 		}
+		free(path);
+		free(names[i]);
 	}
-
 	free(names);
 	free(dir_path);
 }
 
-/* --- Parser --- */
+/* --- What a menu was read from --- */
 
-/*
- * Recursively parse menu items from a file stream.
- * Stops at [end] or EOF.  Depth is limited to prevent stack overflow
- * from circular [include] or deeply nested submenus.
- */
-#define MENU_MAX_DEPTH 16
+static long long
+mtime_of(const char *path)
+{
+	struct stat st;
+	if (stat(path, &st) != 0)
+		return -1;
+	return (long long)st.st_mtim.tv_sec * 1000000000LL +
+		st.st_mtim.tv_nsec;
+}
 
 static void
-parse_menu_items_depth(struct wm_menu *menu, FILE *fp,
-	struct wm_server *server, int depth)
+add_source(struct parse_ctx *ctx, const char *path)
 {
-	if (depth > MENU_MAX_DEPTH) {
-		wlr_log(WLR_ERROR, "%s", "menu: max include/submenu depth exceeded");
+	if (ctx->source_count >= 256)
+		return;
+	char **list = realloc(ctx->sources,
+		sizeof(*list) * (size_t)(ctx->source_count + 1));
+	if (!list)
+		return;
+	ctx->sources = list;
+	list[ctx->source_count] = strdup(path);
+	if (list[ctx->source_count])
+		ctx->source_count++;
+}
+
+/* The newest change of the sources, -1 if one is gone */
+static long long
+sources_mtime(char **sources, int count)
+{
+	long long newest = 0;
+	for (int i = 0; i < count; i++) {
+		long long t = mtime_of(sources[i]);
+		if (t < 0)
+			return -1;
+		if (t > newest)
+			newest = t;
+	}
+	return newest;
+}
+
+bool
+wm_menu_sources_changed(const struct wm_menu *menu)
+{
+	if (!menu || menu->source_count == 0)
+		return false;
+	return sources_mtime(menu->sources, menu->source_count) !=
+		menu->sources_mtime;
+}
+
+/* --- Includes --- */
+
+static void
+include_file(struct wm_menu *menu, const char *path, struct parse_ctx *ctx)
+{
+	FILE *fp = fopen_config(path, "r");
+	if (!fp) {
+		diag(ctx, true, "cannot include %s", path);
 		return;
 	}
+	add_source(ctx, path);
+	/* An included file is a list of items; [end] stops it */
+	const char *outer_path = ctx->path;
+	int outer_line = ctx->line;
+	ctx->path = path;
+	ctx->line = 0;
+	parse_items(menu, fp, ctx);
+	ctx->path = outer_path;
+	ctx->line = outer_line;
+	fclose(fp);
+}
 
-	char line[1024];
-	char *encoding = NULL;
-
-	while (fgets(line, sizeof(line), fp)) {
-		/* Skip remainder of lines longer than buffer */
-		size_t len = strlen(line);
-		if (len > 0 && line[len - 1] != '\n' && !feof(fp)) {
-			int ch;
-			while ((ch = fgetc(fp)) != EOF && ch != '\n')
-				;
-			continue;
-		}
-
-		char *trimmed = strip_whitespace(line);
-		if (*trimmed == '\0' || *trimmed == '#') {
-			continue;
-		}
-
-		/* Extract tag: [tagname] */
-		if (*trimmed != '[') {
-			continue;
-		}
-		char *tag_start = trimmed + 1;
-		char *tag_end = strchr(tag_start, ']');
-		if (!tag_end) {
-			continue;
-		}
-		*tag_end = '\0';
-		char *tag = tag_start;
-		const char *rest = tag_end + 1;
-
-		if (strcasecmp(tag, "end") == 0) {
-			free(encoding);
-			return;
-		}
-
-		if (strcasecmp(tag, "begin") == 0) {
-			/* Already in a menu; update title */
-			char *title = parse_paren(&rest);
-			if (title) {
-				free(menu->title);
-				menu->title = title;
+/* [include] (file or directory): its items go into this menu */
+static void
+include_path(struct wm_menu *menu, const char *raw_path,
+	struct parse_ctx *ctx)
+{
+	if (ctx->includes >= MENU_MAX_INCLUDES) {
+		diag(ctx, true, "too many nested includes at %s", raw_path);
+		return;
+	}
+	char *path = expand_path(raw_path);
+	if (!path) {
+		return;
+	}
+	ctx->includes++;
+	struct stat st;
+	if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+		/* Every regular file of the directory, sorted */
+		add_source(ctx, path);
+		size_t count;
+		char **names = sorted_entries(path, &count);
+		for (size_t i = 0; i < count; i++) {
+			char *file = NULL;
+			if (listable(names[i]) &&
+			    asprintf(&file, "%s/%s", path, names[i]) >= 0 &&
+			    is_regular(file)) {
+				include_file(menu, file, ctx);
 			}
-			continue;
+			free(file);
+			free(names[i]);
 		}
+		free(names);
+	} else {
+		include_file(menu, path, ctx);
+	}
+	ctx->includes--;
+	free(path);
+}
 
-		if (strcasecmp(tag, "encoding") == 0) {
-			char *enc = parse_brace(&rest);
-			free(encoding);
-			encoding = enc;
-			continue;
-		}
+/* --- Window menu items --- */
 
-		if (strcasecmp(tag, "endencoding") == 0) {
-			free(encoding);
-			encoding = NULL;
-			continue;
-		}
-
-		if (strcasecmp(tag, "exec") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *command = parse_brace(&rest);
-			char *icon = parse_angle(&rest);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_EXEC, label);
-			if (item) {
-				item->command = command;
-				item->icon_path = icon;
-				wl_list_insert(menu->items.prev, &item->link);
-			} else {
-				free(command);
-				free(icon);
-			}
-			free(label);
-			continue;
-		}
-
-		if (strcasecmp(tag, "submenu") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *sub_title = parse_brace(&rest);
-			char *icon = parse_angle(&rest);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_SUBMENU, label);
-			if (item) {
-				item->icon_path = icon;
-				item->submenu = menu_create(server,
-					sub_title ? sub_title : label);
-				if (item->submenu) {
-					item->submenu->parent = menu;
-					parse_menu_items_depth(item->submenu,
-						fp, server, depth + 1);
-				}
-				wl_list_insert(menu->items.prev, &item->link);
-			} else {
-				free(icon);
-			}
-			free(label);
-			free(sub_title);
-			continue;
-		}
-
-		if (strcasecmp(tag, "separator") == 0) {
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_SEPARATOR, NULL);
-			if (item) {
-				wl_list_insert(menu->items.prev, &item->link);
-			}
-			continue;
-		}
-
-		if (strcasecmp(tag, "nop") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_NOP, label);
-			if (item) {
-				wl_list_insert(menu->items.prev, &item->link);
-			}
-			free(label);
-			continue;
-		}
-
-		if (strcasecmp(tag, "include") == 0) {
-			char *raw_path = parse_paren(&rest);
-			if (raw_path) {
-				char *path = expand_path(raw_path);
-				if (path) {
-					/* Validate include path to prevent traversal */
-					if (strstr(path, "..")) {
-						wlr_log(WLR_ERROR,
-							"menu: rejecting include path with '..': %s",
-							path);
-						free(path);
-						free(raw_path);
-						continue;
-					}
-					char *resolved = realpath(path, NULL);
-					if (!resolved) {
-						wlr_log(WLR_ERROR,
-							"menu: cannot resolve include path: %s",
-							path);
-						free(path);
-						free(raw_path);
-						continue;
-					}
-					/* Only allow includes under home, config, or system dirs */
-					const char *home = getenv("HOME");
-					bool allowed = false;
-					if (home && strncmp(resolved, home,
-							strlen(home)) == 0)
-						allowed = true;
-					if (server && server->config &&
-					    server->config->config_dir &&
-					    strncmp(resolved,
-						server->config->config_dir,
-						strlen(server->config->config_dir)) == 0)
-						allowed = true;
-					if (strncmp(resolved, "/usr/share/", 11) == 0)
-						allowed = true;
-					if (strncmp(resolved, "/usr/local/share/", 17) == 0)
-						allowed = true;
-					if (strncmp(resolved, "/etc/", 5) == 0)
-						allowed = true;
-					if (strncmp(resolved, "/tmp/", 5) == 0)
-						allowed = true;
-					if (!allowed) {
-						wlr_log(WLR_ERROR,
-							"menu: include path outside allowed directories: %s",
-							resolved);
-						free(resolved);
-						free(path);
-						free(raw_path);
-						continue;
-					}
-					FILE *inc_fp = fopen_nofollow(resolved, "r");
-					if (inc_fp) {
-						parse_menu_items_depth(menu,
-							inc_fp, server,
-							depth + 1);
-						fclose(inc_fp);
-					}
-					free(resolved);
-					free(path);
-				}
-				free(raw_path);
-			}
-			continue;
-		}
-
-		if (strcasecmp(tag, "stylesdir") == 0) {
-			char *dir = parse_paren(&rest);
-			if (!dir) {
-				dir = parse_brace(&rest);
-			}
-			if (dir) {
-				add_stylesdir_entries(menu, dir);
-				free(dir);
-			}
-			continue;
-		}
-
-		if (strcasecmp(tag, "wallpapers") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *dir = parse_brace(&rest);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_SUBMENU,
-					label ? label : _("Wallpapers"));
-			if (item) {
-				item->submenu = menu_create(server,
-					label ? label : _("Wallpapers"));
-				if (item->submenu) {
-					item->submenu->parent = menu;
-					add_wallpaper_entries(
-						item->submenu,
-						dir ? dir : "");
-				}
-				wl_list_insert(menu->items.prev, &item->link);
-			}
-			free(label);
-			free(dir);
-			continue;
-		}
-
-		if (strcasecmp(tag, "stylesmenu") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *dir = parse_brace(&rest);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_SUBMENU,
-					label ? label : _("Styles"));
-			if (item) {
-				item->submenu = menu_create(server,
-					label ? label : _("Styles"));
-				if (item->submenu) {
-					item->submenu->parent = menu;
-					if (dir)
-						add_stylesmenu_entries(
-							item->submenu, dir);
-				}
-				wl_list_insert(menu->items.prev, &item->link);
-			}
-			free(label);
-			free(dir);
-			continue;
-		}
-
-		if (strcasecmp(tag, "style") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *filename = parse_brace(&rest);
-			char *icon = parse_angle(&rest);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_STYLE, label);
-			if (item) {
-				item->command = filename;
-				item->icon_path = icon;
-				wl_list_insert(menu->items.prev, &item->link);
-			} else {
-				free(filename);
-				free(icon);
-			}
-			free(label);
-			continue;
-		}
-
-		/* Simple tag types with just a label */
-		struct {
-			const char *name;
-			enum wm_menu_item_type type;
-		} simple_tags[] = {
-			{"config",     WM_MENU_CONFIG},
-			{"workspaces", WM_MENU_WORKSPACES},
-			{"reconfig",   WM_MENU_RECONFIG},
-			{"exit",       WM_MENU_EXIT},
-			/* Window menu items */
-			{"shade",      WM_MENU_SHADE},
-			{"stick",      WM_MENU_STICK},
-			{"maximize",   WM_MENU_MAXIMIZE},
-			{"iconify",    WM_MENU_ICONIFY},
-			{"close",      WM_MENU_CLOSE},
-			{"kill",       WM_MENU_KILL},
-			{"raise",      WM_MENU_RAISE},
-			{"lower",      WM_MENU_LOWER},
-			{"sendto",     WM_MENU_SENDTO},
-			{"layer",      WM_MENU_LAYER},
-			{NULL, 0},
-		};
-
-		bool matched = false;
-		for (int i = 0; simple_tags[i].name; i++) {
-			if (strcasecmp(tag, simple_tags[i].name) == 0) {
-				char *label = parse_paren(&rest);
-				label = maybe_convert_label(label, encoding);
-				struct wm_menu_item *item = menu_item_create(
-					simple_tags[i].type,
-					label ? label : simple_tags[i].name);
-				if (item) {
-					/* Attach workspace submenu for
-					 * [workspaces] directive */
-					if (simple_tags[i].type ==
-					    WM_MENU_WORKSPACES && server) {
-						item->submenu =
-						    wm_menu_create_ws_switch_menu(
-							server);
-						if (item->submenu)
-							item->submenu->parent =
-								menu;
-					}
-					/* Attach config submenu for
-					 * [config] directive */
-					if (simple_tags[i].type ==
-					    WM_MENU_CONFIG && server) {
-						item->submenu =
-						    wm_menu_create_config_menu(
-							server);
-						if (item->submenu)
-							item->submenu->parent =
-								menu;
-					}
-					wl_list_insert(menu->items.prev,
-						&item->link);
-				}
-				free(label);
-				matched = true;
-				break;
-			}
-		}
-		if (matched) {
-			continue;
-		}
-
-		if (strcasecmp(tag, "restart") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *command = parse_brace(&rest);
-			struct wm_menu_item *item = menu_item_create(
-				WM_MENU_RESTART, label ? label : _("Restart"));
-			if (item) {
-				item->command = command;
-				wl_list_insert(menu->items.prev, &item->link);
-			} else {
-				free(command);
-			}
-			free(label);
-			continue;
-		}
-
-		if (strcasecmp(tag, "command") == 0) {
-			char *label = parse_paren(&rest);
-			label = maybe_convert_label(label, encoding);
-			char *command = parse_brace(&rest);
-			struct wm_menu_item *item =
-				menu_item_create(WM_MENU_COMMAND, label);
-			if (item) {
-				item->command = command;
-				wl_list_insert(menu->items.prev, &item->link);
-			} else {
-				free(command);
-			}
-			free(label);
-			continue;
+/* [layer]: Fluxbox's LayerMenu */
+static struct wm_menu *
+create_layer_menu(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, _("Layer"));
+	if (!menu) {
+		return NULL;
+	}
+	static const struct { const char *label, *layer; } layers[] = {
+		{ N_("Above Dock"), "AboveDock" }, { N_("Dock"), "Dock" },
+		{ N_("Top"), "Top" }, { N_("Normal"), "Normal" },
+		{ N_("Bottom"), "Bottom" }, { N_("Desktop"), "Desktop" },
+	};
+	for (size_t i = 0; i < sizeof(layers) / sizeof(layers[0]); i++) {
+		struct wm_menu_item *item = add_item(menu, WM_MENU_COMMAND,
+			_(layers[i].label), NULL);
+		if (item && asprintf(&item->command, "SetLayer %s",
+		    layers[i].layer) < 0) {
+			item->command = NULL;
 		}
 	}
+	return menu;
+}
 
-	free(encoding);
+/* [alpha]: the window's opacity (Fluxbox's AlphaMenu, as steps) */
+static struct wm_menu *
+create_alpha_menu(struct wm_server *server)
+{
+	struct wm_menu *menu = menu_create(server, _("Transparency"));
+	if (!menu) {
+		return NULL;
+	}
+	static const struct { const char *label; const char *alpha; } steps[] = {
+		{ N_("Opaque"), "255" }, { "90%", "230" }, { "75%", "191" },
+		{ "50%", "128" }, { N_("Use Defaults"), "" },
+	};
+	for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+		struct wm_menu_item *item = add_item(menu, WM_MENU_COMMAND,
+			_(steps[i].label), NULL);
+		if (item && asprintf(&item->command, "SetAlpha %s",
+		    steps[i].alpha) < 0) {
+			item->command = NULL;
+		}
+	}
+	return menu;
+}
+
+/* The window menu's tags (MenuCreator::createWindowMenuItem) */
+static bool
+window_menu_item(struct wm_menu *menu, const char *tag, const char *label,
+	struct parse_ctx *ctx)
+{
+	static const struct {
+		const char *tag;
+		enum wm_menu_item_type type;
+		const char *label;
+	} items[] = {
+		{ "shade",      WM_MENU_SHADE,    N_("Shade") },
+		{ "stick",      WM_MENU_STICK,    N_("Stick") },
+		{ "maximize",   WM_MENU_MAXIMIZE, N_("Maximize") },
+		{ "iconify",    WM_MENU_ICONIFY,  N_("Iconify") },
+		{ "close",      WM_MENU_CLOSE,    N_("Close") },
+		{ "kill",       WM_MENU_KILL,     N_("Kill") },
+		{ "killwindow", WM_MENU_KILL,     N_("Kill") },
+		{ "raise",      WM_MENU_RAISE,    N_("Raise") },
+		{ "lower",      WM_MENU_LOWER,    N_("Lower") },
+		{ "extramenus", WM_MENU_REMEMBER, N_("Remember...") },
+	};
+	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
+		if (strcasecmp(tag, items[i].tag) == 0) {
+			add_item(menu, items[i].type, label, _(items[i].label));
+			return true;
+		}
+	}
+	if (strcasecmp(tag, "sendto") == 0) {
+		/* Its workspaces are listed when the menu is shown */
+		add_submenu(menu, WM_MENU_SENDTO, label, _("Send To..."),
+			menu_create(ctx->server, _("Send To...")));
+	} else if (strcasecmp(tag, "layer") == 0) {
+		add_submenu(menu, WM_MENU_LAYER, label, _("Layer..."),
+			create_layer_menu(ctx->server));
+	} else if (strcasecmp(tag, "alpha") == 0) {
+		add_submenu(menu, WM_MENU_SUBMENU, label, _("Transparency"),
+			create_alpha_menu(ctx->server));
+	} else if (strcasecmp(tag, "settitledialog") == 0) {
+		/* No dialogs yet: leave it out rather than show a dead item */
+		diag(ctx, false, "[settitledialog] isn't supported yet");
+	} else {
+		return false;
+	}
+	return true;
+}
+
+/* --- Parser --- */
+
+/* Read a line (any length); false at the end */
+static bool
+read_line(FILE *fp, char **line, size_t *cap)
+{
+	ssize_t n = getline(line, cap, fp);
+	return n >= 0;
+}
+
+/* The item one line makes; returns false at [end] */
+static bool
+parse_line(struct wm_menu *menu, FILE *fp, struct menu_line *ml,
+	struct parse_ctx *ctx)
+{
+	const char *tag = ml->tag;
+	char *label = maybe_convert_label(ml->label ? strdup(ml->label) :
+		NULL, current_encoding(ctx));
+	const char *cmd = ml->cmd;
+	struct wm_server *server = ctx->server;
+	struct wm_menu_item *last = menu->items.prev != &menu->items ?
+		wl_container_of(menu->items.prev, last, link) : NULL;
+	bool more = true;
+
+	if (strcasecmp(tag, "end") == 0) {
+		more = false;
+	} else if (strcasecmp(tag, "begin") == 0) {
+		/* Only the file's first [begin] counts */
+	} else if (strcasecmp(tag, "encoding") == 0) {
+		if (cmd && ctx->encoding_count < MENU_MAX_ENCODINGS) {
+			ctx->encodings[ctx->encoding_count++] = strdup(cmd);
+		}
+	} else if (strcasecmp(tag, "endencoding") == 0) {
+		if (ctx->encoding_count > 0) {
+			free(ctx->encodings[--ctx->encoding_count]);
+		}
+	} else if (strcasecmp(tag, "exec") == 0) {
+		struct wm_menu_item *item =
+			add_item(menu, WM_MENU_EXEC, label, "");
+		if (item && cmd) {
+			item->command = strdup(cmd);
+		}
+	} else if (strcasecmp(tag, "macrocmd") == 0) {
+		struct wm_menu_item *item =
+			add_item(menu, WM_MENU_COMMAND, label, "");
+		if (item && cmd && asprintf(&item->command, "MacroCmd %s",
+		    cmd) < 0) {
+			item->command = NULL;
+		}
+	} else if (strcasecmp(tag, "command") == 0) {
+		/* fluxland: [command] (label) {any command} */
+		struct wm_menu_item *item =
+			add_item(menu, WM_MENU_COMMAND, label, "");
+		if (item && cmd) {
+			item->command = strdup(cmd);
+		}
+	} else if (strcasecmp(tag, "nop") == 0) {
+		add_item(menu, WM_MENU_NOP, label, "");
+	} else if (strcasecmp(tag, "separator") == 0) {
+		add_item(menu, WM_MENU_SEPARATOR, NULL, NULL);
+	} else if (strcasecmp(tag, "submenu") == 0) {
+		struct wm_menu *sub = menu_create(server,
+			cmd && *cmd ? cmd : label);
+		if (sub && ctx->depth < MENU_MAX_DEPTH) {
+			int start = ctx->line;
+			ctx->depth++;
+			if (!parse_items(sub, fp, ctx)) {
+				int at = ctx->line;
+				ctx->line = start;
+				diag(ctx, false, "[submenu] (%s) has no [end] "
+					"(the file ends at line %d)",
+					label ? label : "", at);
+				ctx->line = at;
+			}
+			ctx->depth--;
+		}
+		add_submenu(menu, WM_MENU_SUBMENU, label, "", sub);
+	} else if (strcasecmp(tag, "include") == 0) {
+		const char *path = ml->label ? ml->label : cmd;
+		if (path) {
+			include_path(menu, path, ctx);
+		}
+	} else if (strcasecmp(tag, "style") == 0) {
+		struct wm_menu_item *item =
+			add_item(menu, WM_MENU_STYLE, label, "");
+		if (item && cmd) {
+			item->command = strdup(cmd);
+		}
+	} else if (strcasecmp(tag, "stylesdir") == 0 ||
+		   strcasecmp(tag, "themesdir") == 0 ||
+		   strcasecmp(tag, "stylesmenu") == 0 ||
+		   strcasecmp(tag, "themesmenu") == 0) {
+		bool is_dir = tolower((unsigned char)tag[6]) == 'd';
+		const char *dir = is_dir ? (ml->label ? ml->label : cmd) :
+			(cmd ? cmd : ml->label);
+		if (dir) {
+			add_style_entries(menu, dir);
+			char *expanded = expand_path(dir);
+			if (expanded && mtime_of(expanded) >= 0)
+				add_source(ctx, expanded);
+			free(expanded);
+		}
+	} else if (strcasecmp(tag, "wallpapers") == 0 ||
+		   strcasecmp(tag, "wallpapermenu") == 0 ||
+		   strcasecmp(tag, "rootcommands") == 0) {
+		if (ml->label) {
+			add_wallpaper_entries(menu, ml->label, cmd);
+			char *expanded = expand_path(ml->label);
+			if (expanded && mtime_of(expanded) >= 0)
+				add_source(ctx, expanded);
+			free(expanded);
+		}
+	} else if (strcasecmp(tag, "workspaces") == 0) {
+		/* Its workspaces are listed when the menu is shown */
+		add_submenu(menu, WM_MENU_WORKSPACES, label, _("Workspaces"),
+			menu_create(server, label && *label ? label :
+				_("Workspaces")));
+	} else if (strcasecmp(tag, "icons") == 0) {
+		add_submenu(menu, WM_MENU_ICONS, label, _("Icons"),
+			menu_create(server, label && *label ? label :
+				_("Icons")));
+	} else if (strcasecmp(tag, "config") == 0) {
+		add_submenu(menu, WM_MENU_CONFIG, label, _("Configuration"),
+			server ? wm_menu_create_config_menu(server) : NULL);
+	} else if (strcasecmp(tag, "exit") == 0) {
+		add_item(menu, WM_MENU_EXIT, label, _("Exit"));
+	} else if (strcasecmp(tag, "reconfig") == 0 ||
+		   strcasecmp(tag, "reconfigure") == 0) {
+		add_item(menu, WM_MENU_RECONFIG, label, _("Reload Config"));
+	} else if (strcasecmp(tag, "restart") == 0) {
+		struct wm_menu_item *item =
+			add_item(menu, WM_MENU_RESTART, label, _("Restart"));
+		if (item && cmd) {
+			item->command = strdup(cmd);
+		}
+	} else if (!window_menu_item(menu, tag, label, ctx)) {
+		/*
+		 * Any other tag is a command, its {command} the arguments:
+		 * "[SetStyle] (Bloe) {path}" runs "SetStyle path".
+		 */
+		char *line = NULL;
+		if (asprintf(&line, "%s%s%s", tag, cmd ? " " : "",
+		    cmd ? cmd : "") >= 0) {
+			struct wm_command *parsed = wm_command_parse(line);
+			if (parsed) {
+				wm_command_destroy(parsed);
+				struct wm_menu_item *item = add_item(menu,
+					WM_MENU_COMMAND, label, tag);
+				if (item) {
+					item->command = line;
+					line = NULL;
+				}
+			} else {
+				diag(ctx, false, "unknown tag [%s]", tag);
+			}
+		}
+		free(line);
+	}
+
+	/* The <icon> is the icon of the item the line made */
+	struct wm_menu_item *made = menu->items.prev != &menu->items ?
+		wl_container_of(menu->items.prev, made, link) : NULL;
+	if (ml->icon && made && made != last && !made->icon_path) {
+		made->icon_path = expand_path(ml->icon);
+	}
+	free(label);
+	return more;
+}
+
+/* Items up to [end] or the end of the file; true if [end] ended them */
+static bool
+parse_items(struct wm_menu *menu, FILE *fp, struct parse_ctx *ctx)
+{
+	bool ended = false;
+	char *line = NULL;
+	size_t cap = 0;
+	while (read_line(fp, &line, &cap)) {
+		ctx->line++;
+		char *trimmed = strip_whitespace(line);
+		if (*trimmed != '[') {
+			continue; /* comments (#, !) and text that isn't a tag */
+		}
+		struct menu_line ml;
+		if (!menu_line_parse(trimmed, &ml)) {
+			diag(ctx, true, "no ']' after the tag");
+			continue;
+		}
+		bool more = parse_line(menu, fp, &ml, ctx);
+		menu_line_finish(&ml);
+		if (!more) {
+			ended = true;
+			break;
+		}
+	}
+	free(line);
+	return ended;
+}
+
+/*
+ * A menu from a stream: from its [begin] (title), or, in a file that has
+ * none, from the start (fluxland 1.x read menus without one).
+ */
+static struct wm_menu *
+menu_from_stream(struct wm_server *server, FILE *fp, struct parse_ctx *ctx_in)
+{
+	struct wm_menu *menu = menu_create(server, _("Menu"));
+	if (!menu) {
+		return NULL;
+	}
+	struct parse_ctx local = { .server = server };
+	struct parse_ctx *ctxp = ctx_in ? ctx_in : &local;
+	struct parse_ctx ctx_copy = *ctxp;
+	struct parse_ctx *c = &ctx_copy;
+
+	char *line = NULL;
+	size_t cap = 0;
+	bool begun = false;
+	while (!begun && read_line(fp, &line, &cap)) {
+		c->line++;
+		char *trimmed = strip_whitespace(line);
+		struct menu_line ml;
+		if (*trimmed == '[' && menu_line_parse(trimmed, &ml)) {
+			if (strcasecmp(ml.tag, "begin") == 0) {
+				begun = true;
+				if (ml.label && *ml.label) {
+					free(menu->title);
+					menu->title = strdup(ml.label);
+				}
+			}
+			menu_line_finish(&ml);
+		}
+	}
+	free(line);
+	if (!begun) {
+		/* Fluxbox wouldn't load it; fluxland 1.x read it all */
+		c->line = 0;
+		diag(c, false, "no [begin]: read from the start");
+		rewind(fp);
+	}
+	parse_items(menu, fp, c);
+	for (int i = 0; i < c->encoding_count; i++) {
+		free(c->encodings[i]);
+	}
+	menu->sources = c->sources;
+	menu->source_count = c->source_count;
+	menu->sources_mtime = sources_mtime(c->sources, c->source_count);
+	return menu;
 }
 
 /* --- Public: Load menu --- */
@@ -868,25 +1004,51 @@ wm_menu_load(struct wm_server *server, const char *path)
 		return NULL;
 	}
 
-	FILE *fp = fopen_nofollow(expanded, "r");
+	FILE *fp = fopen_config(expanded, "r");
 	if (!fp) {
 		wlr_log(WLR_ERROR, "failed to open menu file: %s", expanded);
 		free(expanded);
 		return NULL;
 	}
 
-	struct wm_menu *menu = menu_create(server, _("Menu"));
-	if (!menu) {
-		fclose(fp);
-		free(expanded);
-		return NULL;
-	}
-
-	parse_menu_items_depth(menu, fp, server, 0);
-
+	struct parse_ctx ctx = { .server = server, .path = expanded };
+	add_source(&ctx, expanded);
+	struct wm_menu *menu = menu_from_stream(server, fp, &ctx);
 	fclose(fp);
 	free(expanded);
-
 	wlr_log(WLR_INFO, "loaded menu from %s", path);
 	return menu;
+}
+
+struct wm_menu *
+wm_menu_load_string(struct wm_server *server, const char *text)
+{
+	FILE *fp = fmemopen((void *)text, strlen(text), "r");
+	if (!fp) {
+		return NULL;
+	}
+	struct wm_menu *menu = menu_from_stream(server, fp, NULL);
+	fclose(fp);
+	return menu;
+}
+
+bool
+wm_menu_check_file(const char *path,
+	void (*report)(void *data, const char *path, int line, bool fatal,
+		const char *msg),
+	void *data)
+{
+	char *expanded = expand_path(path);
+	FILE *fp = expanded ? fopen_config(expanded, "r") : NULL;
+	if (!fp) {
+		free(expanded);
+		return false;
+	}
+	struct parse_ctx ctx = { .path = expanded, .report = report,
+		.report_data = data };
+	struct wm_menu *menu = menu_from_stream(NULL, fp, &ctx);
+	wm_menu_destroy(menu);
+	fclose(fp);
+	free(expanded);
+	return true;
 }

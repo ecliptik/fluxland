@@ -1,0 +1,17 @@
+# fluxland window menu (Fluxbox's windowmenu): the menu of a window, from
+# its titlebar's right-click or the WindowMenu command. Put a copy in
+# ~/.config/fluxland/windowmenu to change it; see fluxland-menu(5).
+[begin]
+  [shade]
+  [stick]
+  [maximize]
+  [iconify]
+  [raise]
+  [lower]
+  [sendto]
+  [layer]
+  [alpha]
+  [extramenus]
+  [separator]
+  [close]
+[end]
