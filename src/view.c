@@ -34,6 +34,7 @@
 #include "toolbar.h"
 #include "util.h"
 #include "icon.h"
+#include "fbcompat.h"
 #include "view.h"
 #include "dialog.h"
 #include "view_focus.h"
@@ -386,6 +387,13 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 	    !view->no_decoration) {
 		view->decoration = wm_decoration_create(view,
 			view->server->style);
+		/* session.screen0.defaultDeco, which [Deco] overrides */
+		enum wm_decor_preset preset;
+		if (view->decoration && view->server->config &&
+		    wm_decor_parse(view->server->config->default_deco,
+			&preset) && preset != WM_DECOR_NORMAL)
+			wm_decoration_set_preset(view->decoration, preset,
+				view->server->style);
 		if (view->decoration)
 			offset_surface_tree(view);
 	}

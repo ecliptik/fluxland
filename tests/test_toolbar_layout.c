@@ -388,6 +388,7 @@ struct wm_config {
 	int iconbar_mode;
 	char *iconbar_mode_spec;
 	int toolbar_layer;
+	int toolbar_alpha;
 	int iconbar_alignment;
 	int iconbar_icon_width;
 	int iconbar_wheel_mode;
@@ -558,6 +559,19 @@ wlr_scene_buffer_create(struct wlr_scene_tree *parent, struct wlr_buffer *buf)
 	memset(&g_scene_buffers[idx], 0, sizeof(g_scene_buffers[idx]));
 	g_scene_buffer_create_count++;
 	return &g_scene_buffers[idx];
+}
+
+static void
+wlr_scene_buffer_set_opacity(struct wlr_scene_buffer *sbuf, float opacity)
+{
+	(void)sbuf; (void)opacity;
+}
+
+static void
+wlr_scene_node_for_each_buffer(struct wlr_scene_node *node,
+	void (*fn)(struct wlr_scene_buffer *, int, int, void *), void *data)
+{
+	(void)node; (void)fn; (void)data;
 }
 
 static void

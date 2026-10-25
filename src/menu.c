@@ -882,8 +882,13 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 	int bw = menu->border_width;
 
 	/* Border background rect */
+	/* menu.alpha (MenuTheme::setAlpha) */
+	float alpha = (server->config ? server->config->menu_alpha : 255) /
+		255.0f;
 	float border_color[4];
 	wm_color_to_float4(&style->menu_border_color, border_color);
+	for (int i = 0; i < 4; i++)
+		border_color[i] *= alpha;	/* premultiplied */
 	struct wlr_scene_rect *border_rect = wlr_scene_rect_create(
 		menu->scene_tree, menu->width, menu->height, border_color);
 	wlr_scene_node_set_position(&border_rect->node, 0, 0);
@@ -906,6 +911,8 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 	}
 	wlr_scene_node_set_position(&menu->items_buf->node,
 		bw, menu->items_y);
+	wlr_scene_buffer_set_opacity(menu->title_buf, alpha);
+	wlr_scene_buffer_set_opacity(menu->items_buf, alpha);
 
 	menu->visible = true;
 

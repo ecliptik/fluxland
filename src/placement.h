@@ -8,6 +8,8 @@
 #ifndef WM_PLACEMENT_H
 #define WM_PLACEMENT_H
 
+#include <stdint.h>
+
 struct wm_server;
 struct wm_view;
 
@@ -20,16 +22,21 @@ struct wm_view;
 void wm_placement_apply(struct wm_server *server, struct wm_view *view);
 
 /*
- * Snap a view to nearby edges during an interactive move.
- * Checks proximity to output usable area edges and to other
- * visible window edges on the same workspace. Modifies new_x
- * and new_y in place if snapping occurs.
- *
- * Uses server->config->edge_snap_threshold; does nothing if
- * the threshold is 0.
+ * Snap a window being moved to (*new_x, *new_y), its frame's top left,
+ * as Fluxbox's doSnapping: to the nearest edge within edgeSnapThreshold
+ * of the heads (usable areas and whole) and the other windows on the
+ * workspace.  Nothing when the threshold is 0.
  */
 void wm_snap_edges(struct wm_server *server, struct wm_view *view,
 	int *new_x, int *new_y);
+
+/*
+ * Snap the dragged corner of a resize (edges: WLR_EDGE_*) the same way,
+ * within edgeResizeSnapThreshold: x, y the frame's top left, w, h the
+ * client's size, all changed in place.
+ */
+void wm_snap_resize(struct wm_server *server, struct wm_view *view,
+	uint32_t edges, int *x, int *y, int *w, int *h);
 
 /*
  * Arrange all visible windows on the current workspace in a grid layout.

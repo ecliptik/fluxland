@@ -1502,6 +1502,9 @@ static void wm_slit_set_hovered(struct wm_slit *s, bool h)
 	{ (void)s; (void)h; }
 static void wm_snap_edges(struct wm_server *s, struct wm_view *v,
 	int *sx, int *sy) { (void)s; (void)v; (void)sx; (void)sy; }
+static void wm_snap_resize(struct wm_server *s, struct wm_view *v,
+	uint32_t edges, int *x, int *y, int *w, int *h)
+	{ (void)s; (void)v; (void)edges; (void)x; (void)y; (void)w; (void)h; }
 static void wm_focus_update_for_cursor(struct wm_server *s,
 	double cx, double cy) { (void)s; (void)cx; (void)cy; }
 static void wm_tab_group_activate(struct wm_tab_group *g,

@@ -1003,6 +1003,14 @@ render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 /* --- Full toolbar render --- */
 
 static void
+set_buffer_opacity(struct wlr_scene_buffer *buffer, int sx, int sy,
+	void *data)
+{
+	(void)sx; (void)sy;
+	wlr_scene_buffer_set_opacity(buffer, *(float *)data);
+}
+
+void
 toolbar_render(struct wm_toolbar *toolbar)
 {
 	if (!toolbar || !toolbar->visible) {
@@ -1103,6 +1111,11 @@ toolbar_render(struct wm_toolbar *toolbar)
 			&toolbar->focus_indicator->node, false);
 	}
 
+	/* toolbar.alpha (Toolbar::m_rc_alpha) */
+	float alpha = (server->config ? server->config->toolbar_alpha : 255) /
+		255.0f;
+	wlr_scene_node_for_each_buffer(&toolbar->scene_tree->node,
+		set_buffer_opacity, &alpha);
 }
 
 /* --- Auto-hide timer callback --- */

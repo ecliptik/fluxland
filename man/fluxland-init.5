@@ -191,7 +191,10 @@ Enable edge/corner snap zones for tiling (default: false).
 Pixel distance from screen edge to trigger snap zones (1\-100, default: 10).
 .TP
 .B session.screen0.edgeResizeSnapThreshold
-Pixel distance for edge resize snapping (default: 0, disabled).
+A corner dragged in a resize snaps to the edges of the heads and the
+other windows within this many pixels (default: 0, off).
+.B edgeSnapThreshold
+does the same for moves: the nearest edge the window is beside wins.
 .SH TOOLBAR SETTINGS
 .TP
 .B session.screen0.toolbar.visible

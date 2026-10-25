@@ -439,110 +439,123 @@ wm_placement_apply(struct wm_server *server, struct wm_view *view)
 }
 
 /*
- * Helper: try to snap a coordinate to a target edge.
- * Returns true and updates *coord if within threshold.
+ * FluxboxWindow.cc's snapToWindow: the nearest of the box's edges the
+ * window is next to, closer than the limits so far.  A resize doesn't
+ * snap its far edge to the far edge.
  */
-static bool
-try_snap(int *coord, int target, int threshold)
+static void
+snap_to_box(int *xlimit, int *ylimit, int left, int right, int top,
+	int bottom, const struct wlr_box *o, bool resize)
 {
-	int dist = abs(*coord - target);
-	if (dist < threshold) {
-		*coord = target;
-		return true;
+	int oleft = o->x, oright = o->x + o->width;
+	int otop = o->y, obottom = o->y + o->height;
+	if (top <= obottom && bottom >= otop) {
+		if (abs(left - oleft) < abs(*xlimit))
+			*xlimit = -(left - oleft);
+		if (abs(right - oleft) < abs(*xlimit))
+			*xlimit = -(right - oleft);
+		if (abs(left - oright) < abs(*xlimit))
+			*xlimit = -(left - oright);
+		if (!resize && abs(right - oright) < abs(*xlimit))
+			*xlimit = -(right - oright);
 	}
-	return false;
+	if (left <= oright && right >= oleft) {
+		if (abs(top - otop) < abs(*ylimit))
+			*ylimit = -(top - otop);
+		if (abs(bottom - otop) < abs(*ylimit))
+			*ylimit = -(bottom - otop);
+		if (abs(top - obottom) < abs(*ylimit))
+			*ylimit = -(top - obottom);
+		if (!resize && abs(bottom - obottom) < abs(*ylimit))
+			*ylimit = -(bottom - obottom);
+	}
+}
+
+/*
+ * FluxboxWindow::doSnapping: (x, y), the top left of a w x h frame (the
+ * dragged corner for a resize), to the nearest edge within the threshold
+ * of the heads (their usable areas, then whole) and the other windows on
+ * the workspace.
+ */
+static void
+do_snapping(struct wm_server *server, struct wm_view *view, int *x, int *y,
+	int w, int h, bool resize)
+{
+	if (!server->config)
+		return;
+	int threshold = resize ? server->config->edge_resize_snap_threshold :
+		server->config->edge_snap_threshold;
+	if (threshold <= 0)
+		return;
+	int dx = threshold + 1, dy = threshold + 1;
+	int left = *x, top = *y, right = *x + w, bottom = *y + h;
+
+	struct wm_output *out;
+	wl_list_for_each(out, &server->outputs, link)
+		snap_to_box(&dx, &dy, left, right, top, bottom,
+			&out->usable_area, resize);
+	wl_list_for_each(out, &server->outputs, link) {
+		struct wlr_box full;
+		wm_output_layout_box(out, &full);
+		snap_to_box(&dx, &dy, left, right, top, bottom, &full, resize);
+	}
+
+	struct wm_workspace *ws = wm_workspace_get_active(server);
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v == view || !v->mapped || !v->scene_tree->node.enabled)
+			continue;
+		if (v->workspace != ws && !v->sticky)
+			continue;
+		struct wlr_box fb;
+		wm_view_frame_box(v, &fb);
+		snap_to_box(&dx, &dy, left, right, top, bottom, &fb, resize);
+	}
+
+	if (dx <= threshold)
+		*x += dx;
+	if (dy <= threshold)
+		*y += dy;
 }
 
 void
 wm_snap_edges(struct wm_server *server, struct wm_view *view,
 	int *new_x, int *new_y)
 {
-	if (!server->config || server->config->edge_snap_threshold <= 0)
+	struct wlr_box fb;
+	wm_view_frame_box(view, &fb);
+	do_snapping(server, view, new_x, new_y, fb.width, fb.height, false);
+}
+
+void
+wm_snap_resize(struct wm_server *server, struct wm_view *view,
+	uint32_t edges, int *x, int *y, int *w, int *h)
+{
+	/* Only a corner snaps (FluxboxWindow::motionNotifyEvent) */
+	if (!(edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) ||
+	    !(edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)))
 		return;
-
-	int threshold = server->config->edge_snap_threshold;
-
-	int w, h;
-	view_dims(view, &w, &h);
-
-	struct wlr_box area;
-	if (!get_cursor_output_area(server, &area))
-		return;
-
-	/* Snap to output usable area edges */
-	bool snapped_x = false, snapped_y = false;
-
-	/* Left edge */
-	if (!snapped_x)
-		snapped_x = try_snap(new_x, area.x, threshold);
-	/* Right edge */
-	if (!snapped_x) {
-		int right_target = area.x + area.width - w;
-		snapped_x = try_snap(new_x, right_target, threshold);
-	}
-	/* Top edge */
-	if (!snapped_y)
-		snapped_y = try_snap(new_y, area.y, threshold);
-	/* Bottom edge */
-	if (!snapped_y) {
-		int bottom_target = area.y + area.height - h;
-		snapped_y = try_snap(new_y, bottom_target, threshold);
-	}
-
-	/* Snap to other visible window edges on the same workspace */
-	struct wm_view *v;
-	wl_list_for_each(v, &server->views, link) {
-		if (v == view)
-			continue;
-		if (v->workspace != view->workspace && !v->sticky)
-			continue;
-
-		struct wlr_box vbox;
-		wm_view_get_geometry(v, &vbox);
-
-		if (!snapped_x) {
-			/* Snap left edge of moving view to right edge of other */
-			snapped_x = try_snap(new_x, vbox.x + vbox.width,
-				threshold);
-		}
-		if (!snapped_x) {
-			/* Snap right edge of moving view to left edge of other */
-			int right_snap = vbox.x - w;
-			snapped_x = try_snap(new_x, right_snap, threshold);
-		}
-		if (!snapped_x) {
-			/* Snap left edge to left edge of other */
-			snapped_x = try_snap(new_x, vbox.x, threshold);
-		}
-		if (!snapped_x) {
-			/* Snap right edge to right edge of other */
-			int right_snap = vbox.x + vbox.width - w;
-			snapped_x = try_snap(new_x, right_snap, threshold);
-		}
-
-		if (!snapped_y) {
-			/* Snap top edge of moving view to bottom edge of other */
-			snapped_y = try_snap(new_y, vbox.y + vbox.height,
-				threshold);
-		}
-		if (!snapped_y) {
-			/* Snap bottom edge of moving view to top edge of other */
-			int bottom_snap = vbox.y - h;
-			snapped_y = try_snap(new_y, bottom_snap, threshold);
-		}
-		if (!snapped_y) {
-			/* Snap top edge to top edge of other */
-			snapped_y = try_snap(new_y, vbox.y, threshold);
-		}
-		if (!snapped_y) {
-			/* Snap bottom edge to bottom edge of other */
-			int bottom_snap = vbox.y + vbox.height - h;
-			snapped_y = try_snap(new_y, bottom_snap, threshold);
-		}
-
-		if (snapped_x && snapped_y)
-			break;
-	}
+	int t, b, l, r;
+	wm_view_frame_extents(view, &t, &b, &l, &r);
+	struct wlr_box cur;
+	wm_view_frame_box(view, &cur);
+	int fl = *x, ft = *y;
+	int fr = *x + *w + l + r, fb = *y + *h + t + b;
+	int tx = edges & WLR_EDGE_LEFT ? fl : fr;
+	int ty = edges & WLR_EDGE_TOP ? ft : fb;
+	do_snapping(server, view, &tx, &ty, cur.width, cur.height, true);
+	if (edges & WLR_EDGE_LEFT)
+		fl = tx;
+	else
+		fr = tx;
+	if (edges & WLR_EDGE_TOP)
+		ft = ty;
+	else
+		fb = ty;
+	*x = fl;
+	*y = ft;
+	*w = fr - fl - l - r;
+	*h = fb - ft - t - b;
 }
 
 /* --- Window arrangement actions --- */

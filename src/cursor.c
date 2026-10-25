@@ -213,6 +213,10 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 		new_h = (int)(server->grab_geobox.height - dy);
 	}
 
+	/* edgeResizeSnapThreshold */
+	wm_snap_resize(server, view, server->resize_edges, &new_x, &new_y,
+		&new_w, &new_h);
+
 	if (new_w < 1) new_w = 1;
 	if (new_h < 1) new_h = 1;
 

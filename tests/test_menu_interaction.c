@@ -372,6 +372,7 @@ enum wm_menu_search {
 };
 
 struct wm_config {
+	int menu_alpha;
 	int workspace_count;
 	char *menu_file;
 	char *titlebar_left;
@@ -564,6 +565,14 @@ static void wlr_scene_buffer_set_buffer(struct wlr_scene_buffer *sb,
 	struct wlr_buffer *buf)
 {
 	if (sb) sb->buffer = buf;
+}
+
+static float g_menu_opacity = -1;
+static void wlr_scene_buffer_set_opacity(struct wlr_scene_buffer *sb,
+	float opacity)
+{
+	(void)sb;
+	g_menu_opacity = opacity;
 }
 
 static void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int w, int h)
@@ -2306,11 +2315,20 @@ test_menu_show_hide_lifecycle(void)
 	setup_server();
 	struct wm_menu *menu = make_test_menu(3);
 
+	test_config.menu_alpha = 255;
 	wm_menu_show(menu, 50, 50);
 	assert(menu->visible == true);
 	assert(menu->x == 50);
 	assert(menu->y == 50);
 	assert(menu->selected_index == -1);
+	assert(g_menu_opacity == 1.0f);
+	wm_menu_hide(menu);
+
+	/* menu.alpha */
+	test_config.menu_alpha = 102;
+	wm_menu_show(menu, 50, 50);
+	assert(g_menu_opacity > 0.39f && g_menu_opacity < 0.41f);
+	test_config.menu_alpha = 255;
 
 	wm_menu_hide(menu);
 	assert(menu->visible == false);

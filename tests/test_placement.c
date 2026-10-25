@@ -147,6 +147,7 @@ struct wm_config {
 	bool row_right_to_left;
 	bool col_bottom_to_top;
 	int edge_snap_threshold;
+	int edge_resize_snap_threshold;
 };
 
 struct wm_output {
@@ -313,6 +314,21 @@ wm_view_frame_box(struct wm_view *view, struct wlr_box *box)
 	wm_view_get_geometry(view, box);
 }
 
+void
+wm_view_frame_extents(struct wm_view *view, int *top, int *bottom,
+	int *left, int *right)
+{
+	(void)view;
+	*top = *bottom = *left = *right = 0;
+}
+
+/* The output's whole box: its usable area here */
+void
+wm_output_layout_box(struct wm_output *output, struct wlr_box *box)
+{
+	*box = output->usable_area;
+}
+
 /* The parent's output: the layout box stub */
 bool
 get_view_output_area(struct wm_view *view, struct wlr_box *area)
@@ -433,6 +449,7 @@ static void
 add_view_to_server(int idx)
 {
 	init_view(idx);
+	test_views[idx].mapped = true;
 	wl_list_insert(&test_server.views, &test_views[idx].link);
 }
 
@@ -850,49 +867,62 @@ test_col_min_overlap_avoids_existing(void)
 }
 
 /*
- * Test: try_snap snaps coordinate within threshold
+ * Test: the nearest edge wins, not the first (doSnapping)
  */
 static void
-test_try_snap_within(void)
+test_snap_nearest_edge(void)
 {
 	setup();
-	int coord = 105;
-	bool snapped = try_snap(&coord, 100, 10);
+	add_view_to_server(0);
+	test_views[0].x = 500;
+	test_views[0].y = 200;
+	init_view(1);
+	test_views[1].workspace = &test_workspace;
 
-	assert(snapped);
-	assert(coord == 100);
-	printf("  PASS: test_try_snap_within\n");
+	/* Its left edge 8 from view 0's right (900) and its right edge
+	 * 1 from the screen's (1920): the screen's is nearer */
+	test_config.edge_snap_threshold = 10;
+	int new_x = 908 + 0, new_y = 250;
+	/* 400 wide: right edge at 1308; move the screen edge near */
+	test_output.usable_area = (struct wlr_box){ 0, 0, 1309, 1080 };
+	wm_snap_edges(&test_server, &test_views[1], &new_x, &new_y);
+	assert(new_x == 909);
+	printf("  PASS: test_snap_nearest_edge\n");
 }
 
 /*
- * Test: try_snap does not snap when outside threshold
+ * Test: a corner resize snaps the dragged corner within
+ * edgeResizeSnapThreshold; side resizes and 0 don't
  */
 static void
-test_try_snap_outside(void)
+test_snap_resize_corner(void)
 {
 	setup();
-	int coord = 115;
-	bool snapped = try_snap(&coord, 100, 10);
+	init_view(0);
+	test_views[0].x = 100;
+	test_views[0].y = 100;
+	test_config.edge_resize_snap_threshold = 10;
 
-	assert(!snapped);
-	assert(coord == 115); /* unchanged */
-	printf("  PASS: test_try_snap_outside\n");
-}
+	/* Bottom right corner 6 short of the screen's */
+	int x = 100, y = 100, w = 1814, h = 976;
+	wm_snap_resize(&test_server, &test_views[0],
+		WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM, &x, &y, &w, &h);
+	assert(x == 100 && y == 100);
+	assert(w == 1820 && h == 980);
 
-/*
- * Test: try_snap at exact boundary (distance == threshold is NOT a snap)
- */
-static void
-test_try_snap_boundary(void)
-{
-	setup();
-	int coord = 110;
-	bool snapped = try_snap(&coord, 100, 10);
+	/* A side alone doesn't snap */
+	w = 1814;
+	wm_snap_resize(&test_server, &test_views[0], WLR_EDGE_RIGHT,
+		&x, &y, &w, &h);
+	assert(w == 1814);
 
-	/* abs(110-100) = 10, 10 < 10 is false */
-	assert(!snapped);
-	assert(coord == 110);
-	printf("  PASS: test_try_snap_boundary\n");
+	/* Off */
+	test_config.edge_resize_snap_threshold = 0;
+	w = 1814; h = 976;
+	wm_snap_resize(&test_server, &test_views[0],
+		WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM, &x, &y, &w, &h);
+	assert(w == 1814 && h == 976);
+	printf("  PASS: test_snap_resize_corner\n");
 }
 
 /*
@@ -978,7 +1008,7 @@ test_snap_edges_to_window(void)
 	 * Right edge of view 0 = 500 + 400 = 900.
 	 * Moving view's x = 903 (within threshold 10). */
 	int new_x = 903;
-	int new_y = 600; /* far from any snap target on Y */
+	int new_y = 330; /* beside it: Fluxbox snaps only edges it's next to */
 
 	wm_snap_edges(&test_server, &test_views[1], &new_x, &new_y);
 
@@ -1328,7 +1358,7 @@ test_snap_edges_to_window_y(void)
 	/* Place new view so its top edge is near the bottom edge of view 0.
 	 * Bottom edge of view 0 = 100 + 300 = 400.
 	 * Moving view's y = 403 (within threshold 10). */
-	int new_x = 800; /* far from X snap targets */
+	int new_x = 250; /* below it (Fluxbox snaps edges it's next to) */
 	int new_y = 403;
 
 	wm_snap_edges(&test_server, &test_views[1], &new_x, &new_y);
@@ -1357,7 +1387,7 @@ test_snap_edges_right_to_left(void)
 	/* Right edge snap: vbox.x - w = 500 - 400 = 100.
 	 * Place at x=103 (within threshold) */
 	int new_x = 103;
-	int new_y = 600; /* far from Y snaps */
+	int new_y = 330; /* beside it, far from Y snaps */
 
 	wm_snap_edges(&test_server, &test_views[1], &new_x, &new_y);
 
@@ -1835,14 +1865,14 @@ test_snap_edges_xy_different_windows(void)
 {
 	setup();
 
-	/* Window 0 at (500, 0): right edge at 900 */
+	/* Window 0 at (500, 800): right edge at 900, beside it */
 	add_view_to_server(0);
 	test_views[0].x = 500;
-	test_views[0].y = 0;
+	test_views[0].y = 800;
 
-	/* Window 1 at (0, 600): bottom edge at 900 */
+	/* Window 1 at (1000, 600): bottom edge at 900, above it */
 	add_view_to_server(1);
-	test_views[1].x = 0;
+	test_views[1].x = 1000;
 	test_views[1].y = 600;
 
 	init_view(2);
@@ -1860,7 +1890,7 @@ test_snap_edges_xy_different_windows(void)
 }
 
 /*
- * Test: snap with very tight threshold (1px) -- exact boundary does not snap
+ * Test: snap with very tight threshold (1px): the boundary snaps
  */
 static void
 test_snap_edges_tight_threshold(void)
@@ -1869,14 +1899,19 @@ test_snap_edges_tight_threshold(void)
 	test_config.edge_snap_threshold = 1;
 	init_view(0);
 
-	/* Exactly 1 pixel away from left edge - should NOT snap (< not <=) */
+	/* As far as the threshold snaps (doSnapping starts beyond it) */
 	int new_x = 1;
 	int new_y = 500;
 
 	wm_snap_edges(&test_server, &test_views[0], &new_x, &new_y);
 
-	assert(new_x == 1);
+	assert(new_x == 0);
 	assert(new_y == 500);
+
+	/* One further doesn't */
+	new_x = 2;
+	wm_snap_edges(&test_server, &test_views[0], &new_x, &new_y);
+	assert(new_x == 2);
 	printf("  PASS: test_snap_edges_tight_threshold\n");
 }
 
@@ -1905,7 +1940,7 @@ test_snap_edges_closest_window_wins(void)
 	 * This should snap to 400 because the output edges are tested first
 	 * and won't match, then view 0's right edge matches first */
 	int new_x = 405;
-	int new_y = 600;
+	int new_y = 100;
 
 	wm_snap_edges(&test_server, &test_views[2], &new_x, &new_y);
 
@@ -2061,9 +2096,8 @@ main(void)
 	test_overlap_area_calculation();
 
 	/* try_snap */
-	test_try_snap_within();
-	test_try_snap_outside();
-	test_try_snap_boundary();
+	test_snap_nearest_edge();
+	test_snap_resize_corner();
 
 	/* Placement strategies */
 	test_transient_centered_on_parent();

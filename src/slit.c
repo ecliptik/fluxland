@@ -190,7 +190,8 @@ slit_apply_alpha(struct wm_slit *slit)
 	if (slit->bg_rect) {
 		float color[4];
 		memcpy(color, slit->bg_rect->color, sizeof(color));
-		color[3] *= alpha;
+		for (int i = 0; i < 4; i++)
+			color[i] *= alpha;	/* premultiplied */
 		wlr_scene_rect_set_color(slit->bg_rect, color);
 	}
 
@@ -198,7 +199,8 @@ slit_apply_alpha(struct wm_slit *slit)
 	if (slit->border_rect) {
 		float color[4];
 		memcpy(color, slit->border_rect->color, sizeof(color));
-		color[3] *= alpha;
+		for (int i = 0; i < 4; i++)
+			color[i] *= alpha;	/* premultiplied */
 		wlr_scene_rect_set_color(slit->border_rect, color);
 	}
 

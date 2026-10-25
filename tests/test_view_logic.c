@@ -50,6 +50,7 @@
 #define WM_ANIMATION_H
 #define WM_CONFIG_H
 #define WM_DECORATION_H
+#define WM_FBCOMPAT_H
 #define WM_FOREIGN_TOPLEVEL_H
 #define WM_IPC_H
 #define WM_OUTPUT_H
@@ -451,6 +452,7 @@ struct wm_config {
 	bool auto_tab_placement;
 	bool focus_new_windows;
 	bool focus_same_head;
+	char *default_deco;
 	int no_focus_while_typing_ms;
 	char *apps_file;
 };
@@ -1464,6 +1466,21 @@ extern const struct wm_view_impl wm_xdg_view_impl;
 #include "view_focus.c"
 #include "view_geometry.c"
 /* dialog.h */
+/* fbcompat.h: defaultDeco */
+enum wm_decor_preset { WM_DECOR_NORMAL, WM_DECOR_NONE };
+static bool
+wm_decor_parse(const char *str, enum wm_decor_preset *out)
+{
+	if (!str)
+		return false;
+	*out = strcmp(str, "NONE") == 0 ? WM_DECOR_NONE : WM_DECOR_NORMAL;
+	return true;
+}
+static int g_default_deco_count;
+static void
+wm_decoration_set_preset(struct wm_decoration *d, enum wm_decor_preset p,
+	struct wm_style *style)
+	{ (void)d; (void)p; (void)style; g_default_deco_count++; }
 static void wm_dialog_view_destroyed(struct wm_server *s, struct wm_view *v)
 	{ (void)s; (void)v; }
 
