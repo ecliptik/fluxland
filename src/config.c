@@ -148,6 +148,8 @@ parse_placement(const char *value)
 		return WM_PLACEMENT_ROW_MIN_OVERLAP;
 	if (strcasecmp(value, "ColMinOverlapPlacement") == 0)
 		return WM_PLACEMENT_COL_MIN_OVERLAP;
+	if (strcasecmp(value, "AutotabPlacement") == 0)
+		return WM_PLACEMENT_AUTOTAB;
 	return WM_PLACEMENT_ROW_SMART;
 }
 

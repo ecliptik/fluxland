@@ -1017,6 +1017,7 @@ static int keybind_load(struct wl_list *keymodes, const char *path)
 	return g_keybind_load_return;
 }
 
+static void mousebind_set_mode(const char *m) { (void)m; }
 static void mousebind_destroy_list(struct wl_list *mousebindings)
 {
 	(void)mousebindings;

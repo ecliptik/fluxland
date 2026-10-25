@@ -260,6 +260,43 @@ test_fluxbox_syntax(void)
 	printf("  PASS: test_fluxbox_syntax\n");
 }
 
+/* Test: mouse bindings of a key mode, found only in it (Fluxbox keeps
+ * each mode's bindings, mouse ones too) */
+static void
+test_key_mode_bindings(void)
+{
+	write_file(TEST_KEYS,
+		"OnWindow Mouse1 :Lower\n"
+		"move: OnWindow Mouse1 :Raise\n"
+		"Move: OnDesktop Mouse3 :Close\n"
+	);
+	struct wl_list bindings;
+	wl_list_init(&bindings);
+	mousebind_load(&bindings, TEST_KEYS, NULL);
+
+	struct wm_mousebind *b = mousebind_find(&bindings,
+		WM_MOUSE_CTX_WINDOW, WM_MOUSE_PRESS, BTN_LEFT, 0);
+	assert(b && b->action == WM_ACTION_LOWER);
+	assert(!mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP,
+		WM_MOUSE_PRESS, BTN_RIGHT, 0));
+
+	mousebind_set_mode("move");
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_WINDOW, WM_MOUSE_PRESS,
+		BTN_LEFT, 0);
+	assert(b && b->action == WM_ACTION_RAISE);
+	/* The mode's name in any case */
+	b = mousebind_find(&bindings, WM_MOUSE_CTX_DESKTOP, WM_MOUSE_PRESS,
+		BTN_RIGHT, 0);
+	assert(b && b->action == WM_ACTION_CLOSE);
+	mousebind_set_mode("default");
+
+	char why[128];
+	assert(wm_keys_check_line("move: OnWindow Mouse1 :Raise", why,
+		sizeof(why)));
+	mousebind_destroy_list(&bindings);
+	printf("  PASS: test_key_mode_bindings\n");
+}
+
 /* Test: Fluxbox's events (Keys.cc): FocusIn, ChangeWorkspace, MouseOver */
 static void
 test_fluxbox_events(void)
@@ -819,6 +856,7 @@ main(void)
 	test_destroy_empty();
 	test_window_actions();
 	test_fluxbox_events();
+	test_key_mode_bindings();
 
 	cleanup();
 	printf("All mousebind tests passed.\n");

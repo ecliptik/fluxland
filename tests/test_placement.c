@@ -130,7 +130,7 @@ struct wm_view;
 struct wm_workspace;
 struct wm_tab_group;
 struct wm_animation;
-struct wm_decoration;
+struct wm_decoration { bool shaded; };
 struct wm_config;
 
 enum wm_placement_policy {
@@ -140,6 +140,7 @@ enum wm_placement_policy {
 	WM_PLACEMENT_UNDER_MOUSE,
 	WM_PLACEMENT_ROW_MIN_OVERLAP,
 	WM_PLACEMENT_COL_MIN_OVERLAP,
+	WM_PLACEMENT_AUTOTAB,
 };
 
 struct wm_config {
@@ -164,6 +165,7 @@ struct wm_server {
 	struct wlr_cursor *cursor;
 	struct wm_config *config;
 	struct wm_workspace *current_workspace;
+	struct wm_view *focused_view;
 };
 
 struct wm_workspace {
@@ -187,9 +189,20 @@ struct wm_view {
 	struct wm_tab_group *tab_group;
 	struct wl_list tab_link;
 	struct wm_decoration *decoration;
-	bool mapped;
+	bool mapped, docked;
 	struct wm_view *parent; /* transient-for */
 };
+
+/* placement.h */
+enum wm_arrange_method {
+	WM_ARRANGE_GRID, WM_ARRANGE_VERTICAL, WM_ARRANGE_HORIZONTAL,
+	WM_ARRANGE_STACK_LEFT, WM_ARRANGE_STACK_RIGHT, WM_ARRANGE_STACK_TOP,
+	WM_ARRANGE_STACK_BOTTOM,
+};
+void wm_arrange_windows(struct wm_server *server,
+	enum wm_arrange_method method, const char *pattern);
+void wm_cascade_windows(struct wm_server *server, const char *pattern);
+void wm_unclutter(struct wm_server *server, const char *pattern);
 
 /* --- Stub tracking globals --- */
 
@@ -299,6 +312,7 @@ wm_workspace_get_active(struct wm_server *server)
 #define VIEW_STUB_SET_SIZE
 #define VIEW_STUB_SET_TILED
 #define VIEW_STUB_SET_FRAME_BOX
+#define VIEW_STUB_MOVE
 #include "view_backend_stubs.c"
 
 struct wm_view *
@@ -336,6 +350,31 @@ get_view_output_area(struct wm_view *view, struct wlr_box *area)
 	(void)view;
 	*area = g_layout_box;
 	return area->width > 0;
+}
+
+#include "../src/client_pattern.h"
+
+/* client_pattern.c: "(app=NAME)" matches the app_id */
+static char g_pattern_app[64];
+bool
+wm_window_list_parse(const char *args, struct wm_window_list_spec *spec)
+{
+	memset(spec, 0, sizeof(*spec));
+	const char *eq = args ? strstr(args, "app=") : NULL;
+	if (eq) {
+		snprintf(g_pattern_app, sizeof(g_pattern_app), "%.*s",
+			(int)strcspn(eq + 4, ")"), eq + 4);
+		spec->pattern = (struct wm_client_pattern *)g_pattern_app;
+	}
+	return true;
+}
+void wm_window_list_finish(struct wm_window_list_spec *spec) { (void)spec; }
+bool
+wm_client_pattern_match(struct wm_server *server,
+	const struct wm_client_pattern *pattern, struct wm_view *view)
+{
+	(void)server;
+	return view->app_id && strcmp(view->app_id, (const char *)pattern) == 0;
 }
 
 #include "../src/placement.c"
@@ -1621,15 +1660,16 @@ test_placement_apply_dispatch_col_min_overlap(void)
 /* --- New tests: arrangement functions --- */
 
 /*
- * Test: collect_visible_views skips fullscreen and minimized views
+ * Test: the windows ArrangeWindows takes: shown, of this workspace,
+ * matching the pattern, by when they came
  */
 static void
 test_collect_visible_views(void)
 {
 	setup();
 
-	/* Normal visible view */
 	add_view_to_server(0);
+	test_views[0].id = 2;
 
 	/* Fullscreen view — should be skipped */
 	add_view_to_server(1);
@@ -1644,11 +1684,20 @@ test_collect_visible_views(void)
 	add_view_to_server(3);
 	test_views[3].workspace = &other_ws;
 
-	struct wm_view *out[8];
-	int n = collect_visible_views(&test_server, out, 8);
+	/* Earlier than view 0 */
+	add_view_to_server(4);
+	test_views[4].id = 1;
+	test_views[4].app_id = "keep";
 
-	assert(n == 1);
-	assert(out[0] == &test_views[0]);
+	struct wm_view *out[8];
+	int n = collect_arrange_views(&test_server, NULL, out, 8);
+	assert(n == 2);
+	assert(out[0] == &test_views[4] && out[1] == &test_views[0]);
+
+	/* With a pattern */
+	n = collect_arrange_views(&test_server, "(app=keep)", out, 8);
+	assert(n == 1 && out[0] == &test_views[4]);
+	test_views[4].app_id = NULL;
 	printf("  PASS: test_collect_visible_views\n");
 }
 
@@ -1674,6 +1723,42 @@ test_arrange_grid(void)
 	assert(g_set_size_count == 4);
 	assert(g_set_position_count == 4);
 	printf("  PASS: test_arrange_grid\n");
+}
+
+/*
+ * Test: Fluxbox's grid: floor(sqrt(n)) columns, the rows to hold them,
+ * turned for Vertical (or a tall screen); the last gets the rest of its row
+ */
+static void
+test_arrange_fluxbox_grid(void)
+{
+	setup();
+	add_view_to_server(0);
+	add_view_to_server(1);
+	test_views[0].id = 1;
+	test_views[1].id = 2;
+	reset_globals();
+	wm_arrange_windows(&test_server, WM_ARRANGE_GRID, NULL);
+	/* 1 column, 2 rows of 1920 x 540 */
+	assert(test_toplevels[0].width == 1920 && test_toplevels[0].height == 540);
+	assert(test_toplevels[1].width == 1920 && test_toplevels[1].height == 540);
+	assert(test_views[0].y != test_views[1].y);
+
+	reset_globals();
+	wm_arrange_windows(&test_server, WM_ARRANGE_VERTICAL, NULL);
+	/* Turned: 2 columns of 960 x 1080 */
+	assert(test_toplevels[0].width == 960 && test_toplevels[0].height == 1080);
+	assert(test_toplevels[1].width == 960 && test_toplevels[1].height == 1080);
+	assert(test_views[0].x != test_views[1].x);
+
+	/* Stacked: the focused one big on its half */
+	test_server.focused_view = &test_views[1];
+	reset_globals();
+	wm_arrange_windows(&test_server, WM_ARRANGE_STACK_LEFT, NULL);
+	assert(test_views[1].x == 960 && test_toplevels[1].width == 960);
+	assert(test_views[0].x == 0 && test_toplevels[0].width == 960);
+	test_server.focused_view = NULL;
+	printf("  PASS: test_arrange_fluxbox_grid\n");
 }
 
 /*
@@ -1850,9 +1935,9 @@ test_arrange_stack_right_single(void)
 	reset_globals();
 	wm_arrange_windows_stack_right(&test_server);
 
-	/* Single view should fill entire area */
+	/* Alone, it is the main window: its half (ArrangeWindowsCmd) */
 	assert(g_set_size_count == 1);
-	assert(test_toplevels[0].width == 1920);
+	assert(test_toplevels[0].width == 960);
 	assert(test_toplevels[0].height == 1080);
 	printf("  PASS: test_arrange_stack_right_single\n");
 }
@@ -2163,6 +2248,7 @@ main(void)
 
 	/* Arrangement functions */
 	test_arrange_grid();
+	test_arrange_fluxbox_grid();
 	test_arrange_vert();
 	test_arrange_horiz();
 	test_arrange_cascade();

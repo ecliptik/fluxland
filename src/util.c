@@ -65,6 +65,12 @@ wm_spawn(void (*exec_fn)(void *), void *data)
 static void
 exec_shell(void *data)
 {
+	/* The user's shell, as Fluxbox's ExecuteCmd runs it */
+	const char *shell = getenv("SHELL");
+	if (!shell || shell[0] != '/')
+		shell = "/bin/sh";
+	execl(shell, shell, "-c", (const char *)data, (char *)NULL);
+	/* Not there: the plain one */
 	execl("/bin/sh", "/bin/sh", "-c", (const char *)data, (char *)NULL);
 }
 

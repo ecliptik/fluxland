@@ -108,8 +108,11 @@ unless given) go back to the default mode:
 Mod4 v :KeyMode move Escape
 move: h :MoveLeft 10
 move: l :MoveRight 10
+move: OnWindow Mouse1 :StartMoving
 .fi
 .RE
+.PP
+A mode has only its own bindings, mouse ones too.
 .SH MOUSE BINDINGS
 .RS 4
 .RI [ context " ...] [" modifier " ...] [" \fBDouble\fP "] " event " :" command
@@ -354,7 +357,21 @@ A dialog to type the workspace's name in.
 .TP
 .BR ShowDesktop ", " CloseAllWindows
 .TP
-.BR ArrangeWindows ", " ArrangeWindowsVertical ", " ArrangeWindowsHorizontal ", " ArrangeWindowsStackLeft ", " ArrangeWindowsStackRight ", " ArrangeWindowsStackTop ", " ArrangeWindowsStackBottom ", " CascadeWindows ", " Unclutter
+.BR ArrangeWindows ", " ArrangeWindowsVertical ", " ArrangeWindowsHorizontal " [\fIpattern\fP]"
+The shown windows of this workspace on the pointer's head (that match)
+in a grid over it, as near square as can be, each cell taking the
+window nearest it; shaded ones go down the sides.
+Vertical lays them side by side, Horizontal one above another.
+.TP
+.BR ArrangeWindowsStackLeft ", " ArrangeWindowsStackRight ", " ArrangeWindowsStackTop ", " ArrangeWindowsStackBottom " [\fIpattern\fP]"
+The focused window big on one half, the others in a grid on the half
+named.
+.TP
+.BR Unclutter " [\fIpattern\fP]"
+Those windows placed again where they overlap least.
+.TP
+.BR CascadeWindows " [\fIpattern\fP]"
+One after another, a step down and right each.
 .SS Tabs
 .TP
 .BI Tab " N"
@@ -376,7 +393,10 @@ focused of them.
 .SS Commands
 .TP
 .BI Exec " command\fR (" ExecCommand ", " Execute )
-Run a shell command.
+Run a command with
+.B $SHELL
+(or
+.BR /bin/sh ).
 .TP
 .BI MacroCmd " {command} {command} ..."
 .TP
@@ -394,6 +414,8 @@ For each window (that meets the condition).
 .BI KeyMode " mode \fR[\fIend keys\fP]"
 .TP
 .BI BindKey " binding"
+Add a binding (a key mode's or a mouse one too) and write it at the
+end of the keys file, so it stays.
 .TP
 .BI SetEnv " name value\fR, " Export " name=value"
 .TP

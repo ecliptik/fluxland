@@ -321,6 +321,35 @@ is_mouse_line(const char *line)
 	return found;
 }
 
+/*
+ * A key mode line's mode ("move: OnWindow Mouse1 :..."): its name in
+ * *mode (to free) and the binding after it; the line itself otherwise
+ */
+static const char *
+mode_prefix(const char *line, char **mode)
+{
+	*mode = NULL;
+	const char *q = line;
+	while (*q && !isspace((unsigned char)*q) && *q != ':')
+		q++;
+	if (*q != ':' || q == line || !strchr(q + 1, ':'))
+		return line;
+	*mode = strndup(line, (size_t)(q - line));
+	q++;
+	while (isspace((unsigned char)*q))
+		q++;
+	return q;
+}
+
+static char active_mode[64] = "default";
+
+void
+mousebind_set_mode(const char *mode)
+{
+	snprintf(active_mode, sizeof(active_mode), "%s",
+		mode && *mode ? mode : "default");
+}
+
 int
 mousebind_load(struct wl_list *bindings, const char *path,
 	const uint32_t *button_map)
@@ -345,13 +374,23 @@ mousebind_load(struct wl_list *bindings, const char *path,
 		if (*p == '\0' || *p == '#' || *p == '!')
 			continue;
 
-		if (!is_mouse_line(p))
+		/* "mode: binding": a key mode's */
+		char *mode = NULL;
+		const char *rest = mode_prefix(p, &mode);
+
+		if (!is_mouse_line(rest)) {
+			free(mode);
 			continue;
+		}
 
 		struct wm_mousebind *bind =
-			parse_mousebind_line(p, button_map);
-		if (bind)
+			parse_mousebind_line(rest, button_map);
+		if (bind) {
+			bind->mode = mode;
 			wl_list_insert(bindings->prev, &bind->link);
+		} else {
+			free(mode);
+		}
 	}
 
 	fclose(f);
@@ -415,11 +454,7 @@ wm_keys_check_line(const char *line, char *why, size_t len)
 	wm_command_destroy(cmd);
 
 	if (is_mouse_line(rest)) {
-		if (in_mode) {
-			snprintf(why, len, "mouse bindings in a key mode "
-				"aren't supported yet");
-			return false;
-		}
+		(void)in_mode;
 		struct wm_mousebind *bind = parse_mousebind_line(rest, NULL);
 		if (!bind) {
 			snprintf(why, len, "not a mouse binding fluxland "
@@ -428,6 +463,7 @@ wm_keys_check_line(const char *line, char *why, size_t len)
 		}
 		wm_command_destroy(bind->command);
 		free(bind->argument);
+		free(bind->mode);
 		free(bind);
 		return true;
 	}
@@ -454,6 +490,9 @@ mousebind_find(struct wl_list *bindings, uint32_t context,
 {
 	struct wm_mousebind *bind;
 	wl_list_for_each(bind, bindings, link) {
+		if (strcasecmp(bind->mode ? bind->mode : "default",
+		    active_mode) != 0)
+			continue;
 		if ((bind_context(bind) & context) &&
 		    bind->event == event &&
 		    bind->button == button &&
@@ -479,6 +518,7 @@ mousebind_destroy_list(struct wl_list *bindings)
 		wl_list_remove(&bind->link);
 		wm_command_destroy(bind->command);
 		free(bind->argument);
+		free(bind->mode);
 		free(bind);
 	}
 }

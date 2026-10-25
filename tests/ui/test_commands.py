@@ -171,3 +171,89 @@ def test_mark_and_goto_marked_window(comp, cipc):
     keys.key("1")
     time.sleep(SETTLE)
     assert cipc.get_window_by_app_id("markA")["focused"]
+
+
+def test_arrange_windows_with_a_pattern(cipc):
+    a = open_window(cipc, "arrA")
+    b = open_window(cipc, "arrB")
+    c = open_window(cipc, "notArr")
+    before = cipc.get_window_by_app_id("notArr")["frame"]
+    cipc.command("ArrangeWindowsVertical (class=arr.*)")
+    time.sleep(SETTLE * 2)
+    usable = cipc.get_outputs()[0]["usable"]
+    fa = cipc.get_window_by_app_id("arrA")["frame"]
+    fb = cipc.get_window_by_app_id("arrB")["frame"]
+    # Side by side, the whole height; the other left alone
+    assert fa["height"] == usable["height"] == fb["height"]
+    assert fa["x"] != fb["x"]
+    assert cipc.get_window_by_app_id("notArr")["frame"] == before
+
+
+def test_unclutter_with_a_pattern(cipc):
+    open_window(cipc, "unclA")
+    open_window(cipc, "unclB")
+    for app in ("unclA", "unclB"):
+        w = cipc.get_window_by_app_id(app)
+        cipc.command("ResizeTo 300 200", window=w["id"])
+        cipc.command("MoveTo 100 100", window=w["id"])
+    time.sleep(SETTLE)
+    cipc.command("Unclutter (class=uncl.*)")
+    time.sleep(SETTLE)
+    fa = cipc.get_window_by_app_id("unclA")["frame"]
+    fb = cipc.get_window_by_app_id("unclB")["frame"]
+    # Apart now: they don't overlap
+    assert (fa["x"] + fa["width"] <= fb["x"] or
+            fb["x"] + fb["width"] <= fa["x"] or
+            fa["y"] + fa["height"] <= fb["y"] or
+            fb["y"] + fb["height"] <= fa["y"])
+
+
+def test_bind_key_writes_the_keys_file(comp, cipc):
+    cipc.command("BindKey Mod4 F9 :SetWorkspaceName Bound")
+    with open(os.path.join(comp.config_dir, "keys")) as f:
+        assert f.read().endswith("Mod4 F9 :SetWorkspaceName Bound\n")
+    reply = cipc._send({"command": "command",
+                        "action": "BindKey not a binding"})
+    assert reply["success"] is False
+    if shutil.which("wtype"):
+        InputDriver(env=comp.client_env).key("F9", ["super"])
+        time.sleep(SETTLE)
+        names = [ws["name"] for ws in cipc.get_workspaces()]
+        assert "Bound" in names
+        cipc.command("SetWorkspaceName One")
+
+
+@pytest.mark.skipif(not shutil.which("wlrctl"), reason="wlrctl is needed")
+def test_mouse_bindings_of_a_key_mode(comp, cipc):
+    cipc.command("BindKey clicks: OnDesktop Mouse3 :SetWorkspaceName Clicked")
+    pointer = InputDriver(env=comp.client_env)
+    out = cipc.get_outputs()[0]
+    spot = (out["x"] + 40, out["y"] + 40)
+    # Not in the default mode
+    cipc.command("SetWorkspaceName One")
+    pointer.click(*spot, button=3)
+    time.sleep(SETTLE)
+    cipc.command("HideMenus")
+    assert cipc.get_workspaces()[0]["name"] == "One"
+    cipc.command("KeyMode clicks")
+    pointer.click(*spot, button=3)
+    time.sleep(SETTLE)
+    assert cipc.get_workspaces()[0]["name"] == "Clicked"
+    cipc.command("KeyMode default")
+    cipc.command("SetWorkspaceName One")
+
+
+def test_autotab_placement():
+    mgr = CompositorManager()
+    mgr.start(config_set="default", headless=True, init_extra=[
+        "session.screen0.windowPlacement: AutotabPlacement"])
+    try:
+        ipc = FluxlandIPC(socket_path=mgr.socket_path)
+        open_window(ipc, "autoA")
+        open_window(ipc, "autoB")
+        a = ipc.get_window_by_app_id("autoA")
+        b = ipc.get_window_by_app_id("autoB")
+        assert a["tab_group"] != 0 and a["tab_group"] == b["tab_group"]
+        ipc.close()
+    finally:
+        mgr.stop()

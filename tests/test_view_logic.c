@@ -476,6 +476,7 @@ struct wm_config {
 	bool auto_tab_placement;
 	bool focus_new_windows;
 	bool focus_same_head;
+	int placement_policy;
 	bool tabs_max_over;
 	char *default_deco;
 	int no_focus_while_typing_ms;
@@ -651,6 +652,7 @@ enum wm_deiconify_dest {
 	WM_DEICONIFY_ORIGIN_QUIET,
 };
 
+#define WM_PLACEMENT_AUTOTAB 6
 struct wm_view_prop {
 	char *name, *value;
 	struct wm_view_prop *next;

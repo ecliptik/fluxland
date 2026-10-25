@@ -341,6 +341,8 @@ cmd_get_config(struct wm_server *server)
 			placement_str = "row_min_overlap";
 		else if (cfg->placement_policy == WM_PLACEMENT_COL_MIN_OVERLAP)
 			placement_str = "col_min_overlap";
+		else if (cfg->placement_policy == WM_PLACEMENT_AUTOTAB)
+			placement_str = "autotab";
 
 		strbuf_appendf(&sb,
 			"\"workspace_count\":%d,"

@@ -367,7 +367,7 @@ drop_tab(struct wm_server *server)
 	if (server->wireframe_active)
 		wireframe_hide(server);
 	if (!dragged || !moved) {
-		wlr_log(WLR_DEBUG, "tab drop: nothing dragged");
+		wlr_log(WLR_DEBUG, "%s", "tab drop: nothing dragged");
 		return;
 	}
 

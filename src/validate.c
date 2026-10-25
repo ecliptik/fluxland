@@ -173,7 +173,7 @@ static const char *valid_focus_models[] = {
 static const char *valid_placements[] = {
 	"RowSmartPlacement", "ColSmartPlacement", "CascadePlacement",
 	"UnderMousePlacement", "RowMinOverlapPlacement",
-	"ColMinOverlapPlacement", NULL
+	"ColMinOverlapPlacement", "AutotabPlacement", NULL
 };
 
 /* Valid toolbar placement values */
@@ -187,7 +187,7 @@ static const char *unsupported_toolbar_placements[] = {
 	"RightTop", "RightCenter", "RightBottom", NULL
 };
 static const char *unsupported_placements[] = {
-	"AutotabPlacement", NULL
+	NULL
 };
 
 /* Valid slit placement values */

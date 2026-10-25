@@ -491,6 +491,9 @@ void wm_server_run(struct wm_server *server);
 /* Reload all configuration (style, menus, rules, keys, XKB, toolbar) */
 void wm_server_reconfigure(struct wm_server *server);
 
+/* Read the keys file again; the key mode stays when keep_mode */
+void wm_server_reload_keys(struct wm_server *server, bool keep_mode);
+
 /* Load and apply a style chosen by the user (SetStyle, a menu's [style]) */
 void wm_server_set_style(struct wm_server *server, const char *path);
 

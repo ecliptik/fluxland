@@ -165,6 +165,43 @@ wm_server_set_style(struct wm_server *server, const char *path)
 		"{\"event\":\"style_changed\"}");
 }
 
+
+/*
+ * Read the keys file again: its key modes, key and mouse bindings.  The
+ * key mode goes back to the default one, unless keep_mode (BindKey).
+ */
+void
+wm_server_reload_keys(struct wm_server *server, bool keep_mode)
+{
+	char *mode = keep_mode && server->current_keymode ?
+		strdup(server->current_keymode) : NULL;
+	keybind_destroy_all(&server->keymodes);
+	wl_list_init(&server->keymodes);
+	keybind_destroy_list(&server->keybindings);
+	wl_list_init(&server->keybindings);
+	if (server->config && server->config->keys_file)
+		keybind_load(&server->keymodes, server->config->keys_file);
+
+	/* Reset chain and keymode */
+	server->chain_state.in_chain = false;
+	server->chain_state.current_level = NULL;
+	if (server->chain_state.timeout) {
+		wl_event_source_remove(server->chain_state.timeout);
+		server->chain_state.timeout = NULL;
+	}
+	free(server->current_keymode);
+	server->current_keymode = mode ? mode : strdup("default");
+	mousebind_set_mode(server->current_keymode);
+
+	/* Mouse bindings (same keys file) */
+	mousebind_destroy_list(&server->mousebindings);
+	wl_list_init(&server->mousebindings);
+	if (server->config && server->config->keys_file)
+		mousebind_load(&server->mousebindings,
+			server->config->keys_file,
+			server->config->mouse_button_map);
+}
+
 void
 wm_server_reconfigure(struct wm_server *server)
 {
@@ -206,37 +243,8 @@ wm_server_reconfigure(struct wm_server *server)
 			&server->config->apps_file_mtime);
 
 	/* 2. Reload keymodes and keybindings (if keys file changed) */
-	if (keys_changed) {
-		keybind_destroy_all(&server->keymodes);
-		wl_list_init(&server->keymodes);
-		keybind_destroy_list(&server->keybindings);
-		wl_list_init(&server->keybindings);
-		if (server->config && server->config->keys_file) {
-			keybind_load(&server->keymodes,
-				server->config->keys_file);
-		}
-
-		/* Reset chain and keymode */
-		server->chain_state.in_chain = false;
-		server->chain_state.current_level = NULL;
-		if (server->chain_state.timeout) {
-			wl_event_source_remove(server->chain_state.timeout);
-			server->chain_state.timeout = NULL;
-		}
-		free(server->current_keymode);
-		server->current_keymode = strdup("default");
-		if (!server->current_keymode)
-			return;
-
-		/* 3. Reload mouse bindings (same keys file) */
-		mousebind_destroy_list(&server->mousebindings);
-		wl_list_init(&server->mousebindings);
-		if (server->config && server->config->keys_file) {
-			mousebind_load(&server->mousebindings,
-				server->config->keys_file,
-				server->config->mouse_button_map);
-		}
-	}
+	if (keys_changed)
+		wm_server_reload_keys(server, false);
 
 	/* 4. Reload style (if style file changed) */
 	if (style_changed) {

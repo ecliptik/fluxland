@@ -33,6 +33,7 @@ enum wm_placement_policy {
 	WM_PLACEMENT_UNDER_MOUSE,
 	WM_PLACEMENT_ROW_MIN_OVERLAP,
 	WM_PLACEMENT_COL_MIN_OVERLAP,
+	WM_PLACEMENT_AUTOTAB,       /* AutotabPlacement: into the focused window */
 };
 
 enum wm_toolbar_placement {

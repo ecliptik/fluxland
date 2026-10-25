@@ -457,6 +457,17 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 			wm_tab_group_add(tg, view);
 	}
 
+	/* AutotabPlacement: a tab of the focused window (BScreen::createWindow) */
+	struct wm_view *focused = view->server->focused_view;
+	if (!view->tab_group && view->server->config &&
+	    view->server->config->placement_policy == WM_PLACEMENT_AUTOTAB &&
+	    focused && focused != view && focused->mapped) {
+		struct wm_tab_group *tg = focused->tab_group ?
+			focused->tab_group : wm_tab_group_create(focused);
+		if (tg)
+			wm_tab_group_add(tg, view);
+	}
+
 	/* Auto-tab placement: group new windows with matching app_id */
 	if (!view->tab_group && view->app_id && *view->app_id &&
 	    view->server->config &&

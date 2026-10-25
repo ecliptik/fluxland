@@ -77,6 +77,7 @@ struct wm_mousebind {
 	enum wm_action action;   /* top-level action of `command` */
 	char *argument;          /* raw argument of the top-level command */
 	struct wm_command *command;
+	char *mode;              /* its key mode ("mode: ..."), NULL: default */
 
 	struct wl_list link;
 };
@@ -132,5 +133,9 @@ bool wm_keys_check_line(const char *line, char *why, size_t len);
 
 /* Destroy all mouse bindings in the list */
 void mousebind_destroy_list(struct wl_list *bindings);
+
+/* The key mode whose mouse bindings mousebind_find finds (Fluxbox keeps
+ * each mode's own); "default" to begin with */
+void mousebind_set_mode(const char *mode);
 
 #endif /* WM_MOUSEBIND_H */

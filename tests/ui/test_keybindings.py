@@ -55,10 +55,10 @@ class TestKeybindingOperations:
         result = ipc.command("BindKey Mod4 w :Close")
         assert result.get("success") is True
 
-    def test_bind_key_no_args_succeeds(self, ipc):
-        """BindKey with no arguments returns success (no-op)."""
-        result = ipc.command("BindKey")
-        assert result.get("success") is True
+    def test_bind_key_no_args_fails(self, ipc):
+        """BindKey with no binding is no command (BindKeyCmd::parse)."""
+        result = ipc._send({"command": "command", "action": "BindKey"})
+        assert result.get("success") is False
 
     def test_bind_key_action_only(self, ipc):
         """BindKey with Mod4 Return bound to Exec foot succeeds."""

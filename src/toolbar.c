@@ -1787,6 +1787,8 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 
 		case WM_TOOL_CLOCK:
 		case WM_TOOL_SYSTRAY:
+		case WM_TOOL_SPACER:
+		case WM_TOOL_BUTTON:
 			/* No click action */
 			return true;
 		}

@@ -9,6 +9,7 @@
  */
 
 #define _GNU_SOURCE
+#include <fcntl.h>
 #include <ctype.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -37,6 +38,7 @@
 #include "output.h"
 #include "decoration.h"
 #include "keybind.h"
+#include "mousebind.h"
 #include "fbcompat.h"
 #include "menu.h"
 #include "placement.h"
@@ -571,6 +573,7 @@ handle_key_mode(struct wm_server *server, const char *argument)
 
 	free(server->current_keymode);
 	server->current_keymode = strdup(mode_name);
+	mousebind_set_mode(mode_name);
 	wm_chain_reset(server);
 	wlr_log(WLR_INFO, "keymode switched to: %s", mode_name);
 	return true;
@@ -811,20 +814,50 @@ handle_set_env(const char *argument)
 	return true;
 }
 
+/*
+ * BindKey line: a binding (a key mode's too, or a mouse one) added and
+ * written at the end of the keys file, so it stays (BindKeyCmd)
+ */
 static bool
 handle_bind_key(struct wm_server *server, const char *argument)
 {
-	if (!argument)
-		return true;
-	/* Argument is a keybinding line like "Mod4 t :Exec xterm" */
-	struct wl_list *bindings = wm_get_active_bindings(server);
-	if (!bindings)
-		return true;
-	if (keybind_add_from_string(bindings, argument))
-		wlr_log(WLR_INFO, "BindKey: added binding for: %s", argument);
-	else
-		wlr_log(WLR_ERROR, "BindKey: failed to parse: %s",
-			argument);
+	char why[128];
+	if (!argument || !*argument ||
+	    !wm_keys_check_line(argument, why, sizeof(why))) {
+		wlr_log(WLR_ERROR, "BindKey: %s: %s",
+			argument ? argument : "", argument ? why : "nothing");
+		return false;
+	}
+	const char *path = server->config ? server->config->keys_file : NULL;
+	int fd = path ? open(path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW |
+		O_CLOEXEC, 0644) : -1;
+	if (fd < 0) {
+		wlr_log(WLR_ERROR, "%s", "BindKey: cannot write the keys file");
+		return false;
+	}
+	/* On a line of its own */
+	struct stat st;
+	bool newline = false;
+	if (fstat(fd, &st) == 0 && st.st_size > 0) {
+		int rfd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+		char last = '\n';
+		if (rfd >= 0) {
+			if (pread(rfd, &last, 1, st.st_size - 1) != 1)
+				last = '\n';
+			close(rfd);
+		}
+		newline = last != '\n';
+	}
+	bool ok = (!newline || write(fd, "\n", 1) == 1) &&
+		write(fd, argument, strlen(argument)) ==
+			(ssize_t)strlen(argument) &&
+		write(fd, "\n", 1) == 1;
+	close(fd);
+	if (!ok)
+		return false;
+	wm_server_reload_keys(server, true);
+	config_file_changed(path, &server->config->keys_file_mtime);
+	wlr_log(WLR_INFO, "BindKey: added %s", argument);
 	return true;
 }
 
@@ -946,32 +979,6 @@ handle_client_pattern_test(struct wm_server *server, const char *argument)
 	return true;
 }
 
-static bool
-handle_unclutter(struct wm_server *server)
-{
-	struct wm_workspace *ws = wm_workspace_get_active(server);
-	/* Get usable area from first output */
-	struct wlr_box area = {0, 0, 800, 600};
-	struct wm_output *output;
-	wl_list_for_each(output, &server->outputs, link) {
-		area = output->usable_area;
-		break;
-	}
-	int offset = 0;
-	struct wm_view *v;
-	wl_list_for_each(v, &server->views, link) {
-		if (v->workspace != ws && !v->sticky)
-			continue;
-		if (!v->scene_tree->node.enabled)
-			continue;
-		v->x = area.x + offset;
-		v->y = area.y + offset;
-		wlr_scene_node_set_position(
-			&v->scene_tree->node, v->x, v->y);
-		offset += 30;
-	}
-	return true;
-}
 
 /* --- Main action dispatcher --- */
 
@@ -1183,8 +1190,8 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		while (*p == ' ' || *p == '\t')
 			p++;
 		if (config_set_resource(server->config, key, p) != 0) {
-			wlr_log(WLR_ERROR, "SetResourceValue: cannot write "
-				"the init");
+			wlr_log(WLR_ERROR, "%s", "SetResourceValue: cannot "
+				"write the init");
 			return false;
 		}
 		wm_server_reconfigure(server);
@@ -1455,28 +1462,28 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 
 	/* Arrange actions */
 	case WM_ACTION_ARRANGE_WINDOWS:
-		wm_arrange_windows_grid(server);
+		wm_arrange_windows(server, WM_ARRANGE_GRID, argument);
 		return true;
 	case WM_ACTION_ARRANGE_VERT:
-		wm_arrange_windows_vert(server);
+		wm_arrange_windows(server, WM_ARRANGE_VERTICAL, argument);
 		return true;
 	case WM_ACTION_ARRANGE_HORIZ:
-		wm_arrange_windows_horiz(server);
+		wm_arrange_windows(server, WM_ARRANGE_HORIZONTAL, argument);
 		return true;
 	case WM_ACTION_CASCADE_WINDOWS:
-		wm_arrange_windows_cascade(server);
+		wm_cascade_windows(server, argument);
 		return true;
 	case WM_ACTION_ARRANGE_STACK_LEFT:
-		wm_arrange_windows_stack_left(server);
+		wm_arrange_windows(server, WM_ARRANGE_STACK_LEFT, argument);
 		return true;
 	case WM_ACTION_ARRANGE_STACK_RIGHT:
-		wm_arrange_windows_stack_right(server);
+		wm_arrange_windows(server, WM_ARRANGE_STACK_RIGHT, argument);
 		return true;
 	case WM_ACTION_ARRANGE_STACK_TOP:
-		wm_arrange_windows_stack_top(server);
+		wm_arrange_windows(server, WM_ARRANGE_STACK_TOP, argument);
 		return true;
 	case WM_ACTION_ARRANGE_STACK_BOTTOM:
-		wm_arrange_windows_stack_bottom(server);
+		wm_arrange_windows(server, WM_ARRANGE_STACK_BOTTOM, argument);
 		return true;
 
 	/* Workspace send/take */
@@ -1587,7 +1594,8 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_PREV_GROUP:
 		return handle_cycle_window(server, argument, true, true);
 	case WM_ACTION_UNCLUTTER:
-		return handle_unclutter(server);
+		wm_unclutter(server, argument);
+		return true;
 
 	case WM_ACTION_NOP:
 		return true;

@@ -38,6 +38,7 @@
 #define WM_DECORATION_H
 #define WM_IDLE_H
 #define WM_KEYBIND_H
+#define WM_MOUSEBIND_H
 #define WM_DIALOG_H
 #define WM_MENU_H
 #define WM_PLACEMENT_H
@@ -903,6 +904,8 @@ enum wm_wallpaper_mode {
 };
 
 struct wm_config {
+	char *keys_file;
+	time_t keys_file_mtime;
 	char *style_file;
 	char *apps_file;
 	char *config_dir;
@@ -1277,14 +1280,30 @@ void wm_workspace_remove_last(struct wm_server *s) { (void)s; stub_ws_remove_las
 static struct wm_workspace *stub_active_workspace;
 struct wm_workspace *wm_workspace_get_active(struct wm_server *s) { (void)s; return stub_active_workspace; }
 
-void wm_arrange_windows_grid(struct wm_server *s) { (void)s; stub_arrange_grid_count++; }
-void wm_arrange_windows_vert(struct wm_server *s) { (void)s; stub_arrange_vert_count++; }
-void wm_arrange_windows_horiz(struct wm_server *s) { (void)s; stub_arrange_horiz_count++; }
-void wm_arrange_windows_cascade(struct wm_server *s) { (void)s; stub_arrange_cascade_count++; }
-void wm_arrange_windows_stack_left(struct wm_server *s) { (void)s; stub_arrange_stack_left_count++; }
-void wm_arrange_windows_stack_right(struct wm_server *s) { (void)s; stub_arrange_stack_right_count++; }
-void wm_arrange_windows_stack_top(struct wm_server *s) { (void)s; stub_arrange_stack_top_count++; }
-void wm_arrange_windows_stack_bottom(struct wm_server *s) { (void)s; stub_arrange_stack_bottom_count++; }
+enum wm_arrange_method {
+	WM_ARRANGE_GRID, WM_ARRANGE_VERTICAL, WM_ARRANGE_HORIZONTAL,
+	WM_ARRANGE_STACK_LEFT, WM_ARRANGE_STACK_RIGHT, WM_ARRANGE_STACK_TOP,
+	WM_ARRANGE_STACK_BOTTOM,
+};
+static char stub_arrange_pattern[128];
+void
+wm_arrange_windows(struct wm_server *s, enum wm_arrange_method m,
+	const char *pattern)
+{
+	(void)s;
+	snprintf(stub_arrange_pattern, sizeof(stub_arrange_pattern), "%s",
+		pattern ? pattern : "");
+	int *counts[] = { &stub_arrange_grid_count, &stub_arrange_vert_count,
+		&stub_arrange_horiz_count, &stub_arrange_stack_left_count,
+		&stub_arrange_stack_right_count, &stub_arrange_stack_top_count,
+		&stub_arrange_stack_bottom_count };
+	(*counts[m])++;
+}
+void wm_cascade_windows(struct wm_server *s, const char *pattern)
+	{ (void)s; (void)pattern; stub_arrange_cascade_count++; }
+static int stub_unclutter_count;
+void wm_unclutter(struct wm_server *s, const char *pattern)
+	{ (void)s; (void)pattern; stub_unclutter_count++; }
 
 void wm_menu_show_root(struct wm_server *s, int x, int y) { (void)s; (void)x; (void)y; stub_menu_show_root_count++; }
 void wm_menu_show_window(struct wm_server *s, int x, int y) { (void)s; (void)x; (void)y; stub_menu_show_window_count++; }
@@ -1322,6 +1341,21 @@ void wm_slit_toggle_above(struct wm_slit *s) { (void)s; stub_slit_toggle_above_c
 void wm_slit_toggle_hidden(struct wm_slit *s) { (void)s; stub_slit_toggle_hidden_count++; }
 
 void wm_server_reconfigure(struct wm_server *s) { (void)s; stub_reconfigure_count++; }
+static int stub_reload_keys_count;
+void wm_server_reload_keys(struct wm_server *s, bool keep)
+	{ (void)s; (void)keep; stub_reload_keys_count++; }
+bool config_file_changed(const char *p, time_t *m)
+	{ (void)p; (void)m; return false; }
+/* mousebind.h */
+static char stub_mouse_mode[64];
+void mousebind_set_mode(const char *m)
+	{ snprintf(stub_mouse_mode, sizeof(stub_mouse_mode), "%s", m); }
+bool
+wm_keys_check_line(const char *line, char *why, size_t len)
+{
+	snprintf(why, len, "bad");
+	return strchr(line, ':') != NULL;
+}
 int wm_rules_remember_window(struct wm_view *v, const char *p) { (void)v; (void)p; stub_remember_window_count++; return 0; }
 
 void wm_tab_group_next(struct wm_tab_group *g) { (void)g; stub_tab_group_next_count++; }
@@ -3547,21 +3581,37 @@ test_action_reload_style(void)
 	printf("  PASS: test_action_reload_style\n");
 }
 
-/* Test BindKey action */
+/* Test BindKey: the line goes at the end of the keys file, which is read
+ * again (BindKeyCmd) */
 static void
 test_action_bind_key(void)
 {
 	setup();
-	/* Need a keymode for get_active_bindings to return non-NULL */
-	struct wm_keymode mode = {0};
-	mode.name = "default";
-	wl_list_init(&mode.bindings);
-	wl_list_insert(&test_server.keymodes, &mode.link);
+	const char *path = "/tmp/fluxland-test/wm-test-bindkey-keys";
+	mkdir("/tmp/fluxland-test", 0700);
+	FILE *f = fopen(path, "w");
+	assert(f);
+	fputs("Mod4 a :Close", f);	/* no newline at the end */
+	fclose(f);
+	test_config.keys_file = (char *)path;
+	stub_reload_keys_count = 0;
 
-	wm_execute_action(&test_server, WM_ACTION_BIND_KEY, "Mod4 t :Exec xterm");
-	assert(stub_keybind_add_count == 1);
+	assert(wm_execute_action(&test_server, WM_ACTION_BIND_KEY,
+		"Mod4 t :Exec xterm"));
+	assert(stub_reload_keys_count == 1);
+	char buf[256] = "";
+	f = fopen(path, "r");
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	buf[n] = '\0';
+	fclose(f);
+	assert(strcmp(buf, "Mod4 a :Close\nMod4 t :Exec xterm\n") == 0);
 
-	wl_list_remove(&mode.link);
+	/* Not a binding: not written */
+	assert(!wm_execute_action(&test_server, WM_ACTION_BIND_KEY,
+		"no command here"));
+	assert(stub_reload_keys_count == 1);
+	unlink(path);
+	test_config.keys_file = NULL;
 	printf("  PASS: test_action_bind_key\n");
 }
 
@@ -3570,7 +3620,7 @@ static void
 test_action_bind_key_null(void)
 {
 	setup();
-	wm_execute_action(&test_server, WM_ACTION_BIND_KEY, NULL);
+	assert(!wm_execute_action(&test_server, WM_ACTION_BIND_KEY, NULL));
 	assert(stub_keybind_add_count == 0);
 	printf("  PASS: test_action_bind_key_null\n");
 }
@@ -3928,31 +3978,15 @@ test_action_set_alpha_forms(void)
 	printf("  PASS: test_action_set_alpha_forms\n");
 }
 
-/* Test Unclutter cascades views within usable area */
+/* Test Unclutter: placement.c's, with its pattern */
 static void
 test_action_unclutter(void)
 {
-	setup_with_view();
-	test_workspace.index = 0;
-	stub_active_workspace = &test_workspace;
-	test_view.workspace = &test_workspace;
-	test_view.sticky = false;
-	test_scene_tree.node.enabled = true;
-	wl_list_insert(&test_server.views, &test_view.link);
-
-	/* Add an output with usable area */
-	struct wm_output test_output;
-	memset(&test_output, 0, sizeof(test_output));
-	test_output.usable_area = (struct wlr_box){10, 20, 800, 600};
-	wl_list_insert(&test_server.outputs, &test_output.link);
-
-	wm_execute_action(&test_server, WM_ACTION_UNCLUTTER, NULL);
-	assert(test_view.x == 10); /* area.x + offset(0) */
-	assert(test_view.y == 20); /* area.y + offset(0) */
-	assert(stub_set_pos_called >= 1);
-
-	wl_list_remove(&test_view.link);
-	wl_list_remove(&test_output.link);
+	setup();
+	stub_unclutter_count = 0;
+	assert(wm_execute_action(&test_server, WM_ACTION_UNCLUTTER,
+		"(class=foot)"));
+	assert(stub_unclutter_count == 1);
 	printf("  PASS: test_action_unclutter\n");
 }
 
