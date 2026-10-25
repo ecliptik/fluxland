@@ -151,6 +151,14 @@ static const struct action_map actions[] = {
 	{"SetTitleDialog",     WM_ACTION_SET_TITLE_DIALOG},
 	{"SetResourceValue",   WM_ACTION_SET_RESOURCE_VALUE},
 	{"SetResourceValueDialog", WM_ACTION_SET_RESOURCE_VALUE_DIALOG},
+	{"MarkWindow",         WM_ACTION_MARK_WINDOW},
+	{"GotoMarkedWindow",   WM_ACTION_GOTO_MARKED_WINDOW},
+	{"SetFocusProtection", WM_ACTION_SET_FOCUS_PROTECTION},
+	{"Attach",             WM_ACTION_ATTACH},
+	{"RelabelButton",      WM_ACTION_RELABEL_BUTTON},
+	{"SaveRC",             WM_ACTION_SAVE_RC},
+	{"SetXProp",           WM_ACTION_SET_XPROP},
+	{"ClientPatternTest",  WM_ACTION_CLIENT_PATTERN_TEST},
 	{"SetStyle",           WM_ACTION_SET_STYLE},
 	{"Shade",              WM_ACTION_SHADE},
 	{"ShadeOff",           WM_ACTION_SHADE_OFF},
@@ -256,9 +264,10 @@ parse_key_segment(char **tokens, int token_count, int *pos,
 	if (i >= token_count)
 		return false;
 
-	/* A keysym name, or else a number: a keycode ("Mod4 176 :...") */
-	xkb_keysym_t sym = xkb_keysym_from_name(tokens[i],
-		XKB_KEYSYM_CASE_INSENSITIVE);
+	/* A keysym name, or else a number: a keycode ("Mod4 176 :...");
+	 * Arg stands for any key */
+	xkb_keysym_t sym = strcasecmp(tokens[i], "Arg") == 0 ? WM_KEYSYM_ARG :
+		xkb_keysym_from_name(tokens[i], XKB_KEYSYM_CASE_INSENSITIVE);
 	int keycode;
 	if (sym == XKB_KEY_NoSymbol && safe_atoi(tokens[i], &keycode) &&
 	    keycode > 0 && keycode < 65536)
@@ -439,7 +448,8 @@ parse_keybind_line(const char *line, struct wl_list *bindings)
 		seg_count++;
 	}
 
-	if (seg_count == 0) {
+	/* Arg can't start a chain (Keys.cc) */
+	if (seg_count == 0 || segments[0].keysym == WM_KEYSYM_ARG) {
 		wm_condition_destroy(guard_cond);
 		free(key_part);
 		return false;

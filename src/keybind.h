@@ -124,6 +124,14 @@ enum wm_action {
 	WM_ACTION_SET_TITLE_DIALOG,
 	WM_ACTION_SET_RESOURCE_VALUE,
 	WM_ACTION_SET_RESOURCE_VALUE_DIALOG,
+	WM_ACTION_MARK_WINDOW,
+	WM_ACTION_GOTO_MARKED_WINDOW,
+	WM_ACTION_SET_FOCUS_PROTECTION,
+	WM_ACTION_ATTACH,
+	WM_ACTION_RELABEL_BUTTON,
+	WM_ACTION_SAVE_RC,
+	WM_ACTION_SET_XPROP,
+	WM_ACTION_CLIENT_PATTERN_TEST,
 	WM_ACTION_REMEMBER,
 	WM_ACTION_TOGGLE_SLIT_ABOVE,
 	WM_ACTION_TOGGLE_SLIT_HIDDEN,
@@ -200,6 +208,9 @@ struct wm_chain_state {
  * evdev + 8), stored in place of a keysym above the keysym range.
  */
 #define WM_KEYSYM_KEYCODE(kc)  (0x80000000u | (uint32_t)(kc))
+/* Arg in a chain: whatever key comes there (Fluxbox's placeholder, for
+ * MarkWindow and GotoMarkedWindow) */
+#define WM_KEYSYM_ARG          0x7ffffffeu
 
 /* Lock modifiers (CapsLock, NumLock) never take part in a binding */
 #define WM_MODIFIERS_IGNORED   (WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)

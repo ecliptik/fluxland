@@ -37,6 +37,7 @@
 #include "output.h"
 #include "decoration.h"
 #include "keybind.h"
+#include "fbcompat.h"
 #include "menu.h"
 #include "placement.h"
 #include "rules.h"
@@ -128,18 +129,20 @@ handle_cycle_window(struct wm_server *server, const char *argument,
 static bool
 handle_deiconify(struct wm_server *server, const char *argument)
 {
-	if (argument) {
-		if (strcasecmp(argument, "All") == 0)
-			wm_view_deiconify_all(server);
-		else if (strcasecmp(argument, "AllWorkspace") == 0)
-			wm_view_deiconify_all_workspace(server);
-		else if (strcasecmp(argument, "LastWorkspace") == 0)
-			wm_view_deiconify_last(server);
-		else
-			wm_view_deiconify_last(server);
-	} else {
-		wm_view_deiconify_last(server);
-	}
+	/* DeiconifyCmd::parse: mode, then destination */
+	char mode[32] = "lastworkspace", dest[32] = "current";
+	if (argument)
+		sscanf(argument, "%31s %31s", mode, dest);
+	bool all = strcasecmp(mode, "All") == 0 ||
+		strcasecmp(mode, "AllWorkspace") == 0;
+	bool any_ws = strcasecmp(mode, "All") == 0 ||
+		strcasecmp(mode, "Last") == 0;
+	enum wm_deiconify_dest d = WM_DEICONIFY_CURRENT;
+	if (strcasecmp(dest, "Origin") == 0)
+		d = WM_DEICONIFY_ORIGIN;
+	else if (strcasecmp(dest, "OriginQuiet") == 0)
+		d = WM_DEICONIFY_ORIGIN_QUIET;
+	wm_view_deiconify(server, all, any_ws, d);
 	return true;
 }
 
@@ -856,6 +859,93 @@ handle_focus(struct wm_server *server, struct wm_view *view,
 	return true;
 }
 
+/* Attach [pattern]: the matching windows tabbed into the most recently
+ * focused of them (AttachCmd) */
+static bool
+handle_attach(struct wm_server *server, const char *argument)
+{
+	struct wm_window_list_spec spec;
+	if (!wm_window_list_parse(argument, &spec)) {
+		wlr_log(WLR_ERROR, "bad window pattern: %s", argument);
+		return false;
+	}
+	struct wm_view *first = NULL;
+	for (;;) {
+		/* The next in focus order not yet in first's tabs */
+		struct wm_view *v, *next = NULL;
+		wl_list_for_each(v, &server->views, link) {
+			if (!v->mapped || v->docked || v == first ||
+			    (first && first->tab_group &&
+			     v->tab_group == first->tab_group))
+				continue;
+			if (spec.pattern && !wm_client_pattern_match(server,
+			    spec.pattern, v))
+				continue;
+			if (!next || v->focus_seq > next->focus_seq)
+				next = v;
+		}
+		if (!next)
+			break;
+		if (!first) {
+			first = next;
+			continue;
+		}
+		if (!first->tab_group)
+			wm_tab_group_create(first);
+		if (!first->tab_group)
+			break;
+		wm_tab_group_add(first->tab_group, next);
+	}
+	wm_window_list_finish(&spec);
+	return true;
+}
+
+/* ClientPatternTest pattern: the matching windows, "0xID\ttitle" a line,
+ * "0" for none, "-1\tcolumn" for a bad pattern, as the IPC reply's result
+ * (Fluxbox's _FLUXBOX_ACTION_RESULT) */
+static bool
+handle_client_pattern_test(struct wm_server *server, const char *argument)
+{
+	struct wm_window_list_spec spec;
+	free(server->action_result);
+	server->action_result = NULL;
+	if (!wm_window_list_parse(argument, &spec)) {
+		server->action_result = strdup("-1\t0\n");
+		return true;
+	}
+	size_t cap = 256, len = 0;
+	char *out = malloc(cap);
+	if (!out) {
+		wm_window_list_finish(&spec);
+		return false;
+	}
+	out[0] = '\0';
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (!v->mapped || v->docked)
+			continue;
+		if (spec.pattern && !wm_client_pattern_match(server,
+		    spec.pattern, v))
+			continue;
+		const char *title = v->title ? v->title : "";
+		size_t need = len + strlen(title) + 16;
+		if (need > cap) {
+			cap = need * 2;
+			char *grown = realloc(out, cap);
+			if (!grown)
+				break;
+			out = grown;
+		}
+		len += (size_t)snprintf(out + len, cap - len, "0x%x\t%s\n",
+			v->id, title);
+	}
+	if (len == 0)
+		snprintf(out, cap, "0\n");
+	server->action_result = out;
+	wm_window_list_finish(&spec);
+	return true;
+}
+
 static bool
 handle_unclutter(struct wm_server *server)
 {
@@ -1100,6 +1190,79 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		wm_server_reconfigure(server);
 		return true;
 	}
+	case WM_ACTION_MARK_WINDOW: {
+		/* The window to the key an Arg took (MarkWindowCmd) */
+		if (!view || !server->arg_key)
+			return false;
+		int free_slot = -1;
+		for (int i = 0; i < 64; i++) {
+			if (server->marks[i].view && server->marks[i].key ==
+			    server->arg_key) {
+				server->marks[i].view = view;
+				return true;
+			}
+			if (!server->marks[i].view && free_slot < 0)
+				free_slot = i;
+		}
+		if (free_slot < 0)
+			return false;
+		server->marks[free_slot].key = server->arg_key;
+		server->marks[free_slot].view = view;
+		return true;
+	}
+	case WM_ACTION_GOTO_MARKED_WINDOW:
+		/* GotoMarkedWindowCmd: deiconified, raised and focused */
+		for (int i = 0; i < 64; i++) {
+			if (server->marks[i].view &&
+			    server->marks[i].key == server->arg_key) {
+				wm_view_present(server->marks[i].view);
+				return true;
+			}
+		}
+		return false;
+	case WM_ACTION_SET_FOCUS_PROTECTION: {
+		/* Replaces it, as [FocusProtection] does; none is no command */
+		int prot = 0;
+		if (!view || !argument ||
+		    !argument[strspn(argument, ", ")] ||
+		    !wm_focus_protection_parse(argument, &prot))
+			return false;
+		view->focus_protection = prot;
+		return true;
+	}
+	case WM_ACTION_ATTACH:
+		return handle_attach(server, argument);
+	case WM_ACTION_RELABEL_BUTTON: {
+		/* RelabelButton button.NAME label */
+		if (!argument)
+			return false;
+		char name[128];
+		size_t n = strcspn(argument, " \t");
+		if (n == 0 || n >= sizeof(name))
+			return false;
+		snprintf(name, sizeof(name), "%.*s", (int)n, argument);
+		const char *label = argument + n;
+		label += strspn(label, " \t");
+		return wm_toolbar_relabel_button(server->toolbar, name, label);
+	}
+	case WM_ACTION_SAVE_RC:
+		/* fluxland saves a setting when it changes */
+		return true;
+	case WM_ACTION_SET_XPROP: {
+		/* SetXProp NAME=VALUE */
+		const char *eq = argument ? strchr(argument, '=') : NULL;
+		if (!view || !eq || eq == argument)
+			return false;
+		char name[128];
+		size_t n = (size_t)(eq - argument);
+		if (n >= sizeof(name))
+			return false;
+		snprintf(name, sizeof(name), "%.*s", (int)n, argument);
+		wm_view_set_xprop(view, name, eq + 1);
+		return true;
+	}
+	case WM_ACTION_CLIENT_PATTERN_TEST:
+		return handle_client_pattern_test(server, argument);
 	case WM_ACTION_SET_RESOURCE_VALUE_DIALOG:
 		wm_dialog_open(server, _("Type resource name and the value"),
 			"SetResourceValue ", NULL, NULL);

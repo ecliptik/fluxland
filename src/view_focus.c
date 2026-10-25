@@ -855,64 +855,75 @@ wm_view_request_activate(struct wm_view *view, bool allowed)
 	return true;
 }
 
+/*
+ * DeiconifyCmd: the icons newest first; with Last only the first that
+ * qualifies.  Current brings it to the current workspace, Origin goes to
+ * its own, OriginQuiet leaves it there.
+ */
+void
+wm_view_deiconify(struct wm_server *server, bool all, bool any_workspace,
+	enum wm_deiconify_dest dest)
+{
+	struct wm_workspace *ws = wm_workspace_get_active(server);
+	struct wm_view *icons[256];
+	int n = 0;
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (!view->mapped || view->docked ||
+		    view->scene_tree->node.enabled)
+			continue;
+		if (!any_workspace && view->workspace != ws && !view->sticky)
+			continue;
+		/* Newest first; the same age keeps stacking order */
+		int at = n < 256 ? n : 255;
+		while (at > 0 && icons[at - 1]->iconify_seq <
+		       view->iconify_seq) {
+			if (at < 256)
+				icons[at] = icons[at - 1];
+			at--;
+		}
+		if (at < 256)
+			icons[at] = view;
+		if (n < 256)
+			n++;
+	}
+	for (int k = 0; k < n && (all || k == 0); k++) {
+		struct wm_view *next = icons[k];
+		if (dest == WM_DEICONIFY_CURRENT && !next->sticky &&
+		    next->workspace != ws)
+			wm_view_move_to_workspace(next, ws);
+		if (dest == WM_DEICONIFY_ORIGIN && next->workspace &&
+		    next->workspace != ws && !next->sticky)
+			wm_workspace_switch(server, next->workspace->index);
+		wlr_scene_node_set_enabled(&next->scene_tree->node, true);
+		wm_foreign_toplevel_set_minimized(next, false);
+		wm_view_set_minimized_state(next, false);
+		/* Shown here: focused and raised */
+		struct wm_workspace *now = wm_workspace_get_active(server);
+		if (next->sticky || next->workspace == now) {
+			wm_view_raise(next);
+			wm_focus_view(next, wm_view_surface(next));
+		}
+	}
+	wm_toolbar_update_iconbar(server->toolbar);
+}
+
 void
 wm_view_deiconify_last(struct wm_server *server)
 {
-	struct wm_workspace *ws = wm_workspace_get_active(server);
-
-	/*
-	 * Walk the view list to find the most recently minimized view on
-	 * the current workspace. Views at the front of the list were most
-	 * recently focused/created, so the first iconified one we find
-	 * is the most recently minimized.
-	 */
-	struct wm_view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace != ws && !view->sticky) {
-			continue;
-		}
-		if (view->mapped && !view->docked &&
-		    !view->scene_tree->node.enabled) {
-			deiconify_view(view);
-			return;
-		}
-	}
+	wm_view_deiconify(server, false, false, WM_DEICONIFY_CURRENT);
 }
 
 void
 wm_view_deiconify_all(struct wm_server *server)
 {
-	struct wm_view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->mapped && !view->docked &&
-		    !view->scene_tree->node.enabled) {
-			wlr_scene_node_set_enabled(
-				&view->scene_tree->node, true);
-			wm_foreign_toplevel_set_minimized(view, false);
-			wm_view_set_minimized_state(view, false);
-		}
-	}
-	wm_toolbar_update_iconbar(server->toolbar);
+	wm_view_deiconify(server, true, true, WM_DEICONIFY_CURRENT);
 }
 
 void
 wm_view_deiconify_all_workspace(struct wm_server *server)
 {
-	struct wm_workspace *ws = wm_workspace_get_active(server);
-	struct wm_view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace != ws && !view->sticky) {
-			continue;
-		}
-		if (view->mapped && !view->docked &&
-		    !view->scene_tree->node.enabled) {
-			wlr_scene_node_set_enabled(
-				&view->scene_tree->node, true);
-			wm_foreign_toplevel_set_minimized(view, false);
-			wm_view_set_minimized_state(view, false);
-		}
-	}
-	wm_toolbar_update_iconbar(server->toolbar);
+	wm_view_deiconify(server, true, false, WM_DEICONIFY_CURRENT);
 }
 
 /* --- Directional focus --- */

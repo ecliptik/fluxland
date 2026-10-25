@@ -79,6 +79,19 @@ Mod4 x Mod4 t :Exec foot
 .RE
 .PP
 Escape, or a key the chain doesn't continue with, ends it.
+.B Arg
+in a chain (not first) stands for whichever key comes there, for
+.BR MarkWindow " and " GotoMarkedWindow :
+.PP
+.RS 4
+.nf
+Mod4 m Arg :MarkWindow
+Mod4 g Arg :GotoMarkedWindow
+.fi
+.RE
+.PP
+Mod4 m, then 1, marks the focused window as 1; Mod4 g, then 1, goes
+back to it.
 .SS Key modes
 A line that starts with a mode name and a colon belongs to that key
 mode; the others are the
@@ -202,6 +215,9 @@ Where the window is (workspaces count from 0 here).
 .B yes
 or
 .BR no .
+.TP
+.BI @ name
+A window's text property (see SetXProp).
 .PP
 Window lists (NextWindow, GoToWindow...) also take
 .BR {static} ,
@@ -240,8 +256,20 @@ or
 .BR \- ;
 one value for both; none goes back to the init file's.
 .TP
-.BR Deiconify " [\fImode\fP]"
-.BR LastWorkspace " (the default), " All ", " AllWorkspace .
+.BR Deiconify " [\fImode\fP [\fIdestination\fP]]"
+The most recently iconified window of this workspace
+.RB ( LastWorkspace ,
+the default), of any
+.RB ( Last ),
+or all of them
+.RB ( AllWorkspace ", " All ).
+To the current workspace
+.RB ( Current ,
+the default), or its own:
+.B OriginQuiet
+leaves it there,
+.B Origin
+goes there too.
 .SS Moving and resizing
 .TP
 .BR StartMoving ", " StartResizing " [\fIcorner\fP], " StartTabbing
@@ -286,6 +314,21 @@ The Nth window of the list (from the end when negative).
 Focus the window, or the first matching the pattern.
 .TP
 .BR FocusLeft ", " FocusRight ", " FocusUp ", " FocusDown
+.TP
+.BR MarkWindow ", " GotoMarkedWindow
+See
+.B Arg
+under Chains.
+.TP
+.BI SetFocusProtection " protection"
+The window's
+.B [FocusProtection]
+(see
+.BR fluxland-apps (5)):
+.BR Gain ", " Refuse ", " Lock ", " Deny
+or
+.BR None ,
+separated by commas.
 .SS Workspaces
 .TP
 .BI Workspace " N"
@@ -321,6 +364,10 @@ The Nth tab (from the end when negative).
 .TP
 .BR ActivateTab " [\fIN\fP]"
 The tab under the pointer (or tab N).
+.TP
+.BR Attach " [\fIpattern\fP]"
+Tab the windows matching the pattern together, into the most recently
+focused of them.
 .SS Menus
 .TP
 .BR RootMenu ", " WorkspaceMenu ", " WindowMenu ", " ClientMenu ", " WindowList ", " HideMenus
@@ -366,6 +413,26 @@ Set a resource of the init file (saved there) and read the
 configuration again, as
 .B SetResourceValue session.screen0.toolbar.visible false
 does.
+.TP
+.BI SetXProp " name=value"
+Give the window a text property, which
+.BI (@ name = value )
+patterns match (an X window's own X property).
+.TP
+.BI ClientPatternTest " pattern"
+The windows matching the pattern, as the IPC reply's
+.B result
+.RB ( "fluxland-ctl action ClientPatternTest (class=foot)" ):
+.BI 0x id
+and the title, a line each;
+.B 0
+for none.
+.TP
+.BI RelabelButton " button.NAME label"
+A toolbar button's label, until the configuration is read again.
+.TP
+.B SaveRC
+Nothing to do: fluxland saves a setting when it changes.
 .TP
 .BR Reconfigure " (" Reconfig ", " Restart )
 Read the configuration again.

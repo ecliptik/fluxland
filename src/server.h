@@ -260,6 +260,12 @@ struct wm_server {
 	struct wl_list keymodes;    /* wm_keymode.link */
 	char *current_keymode;      /* active keymode name ("default") */
 	struct wm_chain_state chain_state; /* multi-key chain state */
+	uint32_t arg_key;	/* the key an Arg in a chain matched */
+	char *action_result;	/* ClientPatternTest's, for the IPC reply */
+	struct wm_window_mark {
+		uint32_t key;
+		struct wm_view *view;
+	} marks[64];		/* MarkWindow: windows by key */
 
 	/* Mouse bindings */
 	struct wl_list mousebindings; /* wm_mousebind.link */

@@ -416,6 +416,7 @@ struct wm_atspi_bridge { int dummy; };
 /* --- The wm_server struct (normally from server.h) --- */
 
 struct wm_server {
+	char *action_result;
 	struct wl_display *wl_display;
 	struct wl_event_loop *wl_event_loop;
 

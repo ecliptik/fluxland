@@ -639,8 +639,22 @@ struct wm_view_impl {
 	pid_t (*pid)(struct wm_view *view);
 	struct wm_view *(*parent)(struct wm_view *view);
 	void (*set_minimized)(struct wm_view *view, bool minimized);
+	bool (*get_xprop)(struct wm_view *view, const char *name, char *buf,
+		size_t len);
+	void (*set_xprop)(struct wm_view *view, const char *name,
+		const char *value);
 };
 
+enum wm_deiconify_dest {
+	WM_DEICONIFY_CURRENT,
+	WM_DEICONIFY_ORIGIN,
+	WM_DEICONIFY_ORIGIN_QUIET,
+};
+
+struct wm_view_prop {
+	char *name, *value;
+	struct wm_view_prop *next;
+};
 struct wm_view {
 	struct wl_list link;
 	struct wm_server *server;
@@ -688,6 +702,8 @@ struct wm_view {
 	struct wm_animation *animation;
 	int focus_protection;
 	int64_t last_key_ms;
+	uint64_t iconify_seq;
+	struct wm_view_prop *props;
 	bool ignore_size_hints;
 	bool docked;
 	bool focus_hidden;
@@ -810,6 +826,8 @@ struct wm_server {
 	struct wl_list keymodes;
 	char *current_keymode;
 	struct wm_chain_state chain_state;
+	uint32_t arg_key;
+	struct { uint32_t key; struct wm_view *view; } marks[64];
 	struct wl_list mousebindings;
 	struct wm_mouse_state mouse_state;
 	struct wm_rules rules;

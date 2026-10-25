@@ -398,10 +398,30 @@ cmd_command(struct wm_server *server, const char *action_str,
 		return make_error(_("action blocked by --ipc-no-exec"));
 	}
 
+	free(server->action_result);
+	server->action_result = NULL;
 	bool ok = wm_command_execute(server, cmd, target);
 	wm_command_destroy(cmd);
 	if (!ok) {
 		return make_error(_("action failed"));
+	}
+	/* A command's result (ClientPatternTest), as fluxbox-remote reads
+	 * _FLUXBOX_ACTION_RESULT */
+	if (server->action_result) {
+		char *quoted = wm_ipc_json_quote(server->action_result);
+		free(server->action_result);
+		server->action_result = NULL;
+		if (quoted) {
+			size_t n = strlen(quoted) + 40;
+			char *reply = malloc(n);
+			if (reply)
+				snprintf(reply, n,
+					"{\"success\":true,\"result\":%s}",
+					quoted);
+			free(quoted);
+			if (reply)
+				return reply;
+		}
 	}
 	return make_ok();
 }

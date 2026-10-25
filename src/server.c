@@ -678,6 +678,8 @@ wm_server_destroy(struct wm_server *server)
 	server->slit = NULL;
 	wm_wallpaper_destroy(server->wallpaper);
 	wm_tooltip_finish(server);
+	free(server->action_result);
+	server->action_result = NULL;
 	wm_toolbar_destroy(server->toolbar);
 	server->toolbar = NULL;
 	wm_ipc_destroy(&server->ipc);

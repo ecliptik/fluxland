@@ -133,6 +133,15 @@ find_binding(struct wm_server *server, struct wl_list *list,
 	return NULL;
 }
 
+/* X's IsModifierKey */
+static bool
+is_modifier_key(xkb_keysym_t sym)
+{
+	return (sym >= XKB_KEY_Shift_L && sym <= XKB_KEY_Hyper_R) ||
+		(sym >= XKB_KEY_ISO_Lock && sym <= XKB_KEY_ISO_Level5_Lock) ||
+		sym == XKB_KEY_Mode_switch || sym == XKB_KEY_Num_Lock;
+}
+
 /*
  * A key press, as the keysyms it can stand for (cands): the one the
  * keyboard state gives, the key's unshifted one (bindings name keys,
@@ -202,6 +211,20 @@ handle_compositor_keybinding(struct wm_server *server,
 
 	struct wm_keybind *bind = find_binding(server, search_list,
 		modifiers, cands, ncands);
+	/* Nothing else here: an Arg takes the key, modifiers apart
+	 * (Keys.cc's placeholder) */
+	if (!bind && cs->in_chain && ncands > 0 &&
+	    !is_modifier_key(cands[0])) {
+		struct wm_keybind *b;
+		wl_list_for_each(b, search_list, link) {
+			if (b->keysym == WM_KEYSYM_ARG &&
+			    wm_keybind_check_condition(server, b)) {
+				bind = b;
+				server->arg_key = cands[0];
+				break;
+			}
+		}
+	}
 	if (!bind) {
 		/* No match — if we were in a chain, abort it */
 		if (cs->in_chain) {

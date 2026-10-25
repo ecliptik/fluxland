@@ -76,15 +76,17 @@ class InputDriver:
         self._require_wtype()
         cmd = ["wtype"]
 
-        if modifiers:
-            for mod in modifiers:
-                cmd.extend(["-M", mod])
+        # wtype's names: logo for super
+        names = {"super": "logo", "mod4": "logo", "mod1": "alt",
+                 "control": "ctrl"}
+        mods = [names.get(m.lower(), m) for m in (modifiers or [])]
+        for mod in mods:
+            cmd.extend(["-M", mod])
 
         cmd.extend(["-k", key])
 
-        if modifiers:
-            for mod in reversed(modifiers):
-                cmd.extend(["-m", mod])
+        for mod in reversed(mods):
+            cmd.extend(["-m", mod])
 
         subprocess.run(cmd, check=True, capture_output=True, env=self.env)
 

@@ -64,6 +64,7 @@ struct wm_toolbar_tool {
 	int frame_x, frame_y, frame_width, frame_height, border;
 	int spacer_size;	/* a spacer's width; 0 shares what is left */
 	char *label;		/* a button's, and its commands: one for each */
+	char *button_name;	/* button.NAME's NAME (RelabelButton) */
 	char *commands;		/* mouse button, separated by ':' */
 	/* Per-tool hit boxes (workspace buttons within workspace_name, etc.) */
 	struct wlr_box *hit_boxes;
@@ -190,6 +191,10 @@ const char *wm_toolbar_tooltip_at(struct wm_toolbar *toolbar, double lx,
 
 /* The pointer moved onto (or off) the toolbar: toolbar.autoRaise */
 void wm_toolbar_set_hovered(struct wm_toolbar *toolbar, bool hovered);
+
+/* RelabelButton button.NAME label: false when there is no such button */
+bool wm_toolbar_relabel_button(struct wm_toolbar *toolbar, const char *name,
+	const char *label);
 
 /* A button.NAME tool's command for a mouse button (BTN_LEFT...) */
 void wm_toolbar_run_button(struct wm_toolbar *toolbar,

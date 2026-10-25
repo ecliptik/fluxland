@@ -124,6 +124,7 @@ parse_tool(struct wm_toolbar *toolbar, const char *name,
 			    !*b->label)
 				continue;
 			tool->type = WM_TOOL_BUTTON;
+			tool->button_name = strdup(b->name);
 			tool->label = strdup(b->label);
 			tool->commands = strdup(b->commands ? b->commands : "");
 			return true;
@@ -164,6 +165,7 @@ parse_toolbar_tools(struct wm_toolbar *toolbar, const char *tools_str)
 		for (int i = 0; i < count; i++) {
 			free(tools[i].label);
 			free(tools[i].commands);
+			free(tools[i].button_name);
 		}
 		return;
 	}
@@ -1309,6 +1311,7 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 		free(toolbar->tools[i].hit_boxes);
 		free(toolbar->tools[i].label);
 		free(toolbar->tools[i].commands);
+		free(toolbar->tools[i].button_name);
 	}
 	free(toolbar->tools);
 
@@ -1622,6 +1625,29 @@ wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly)
 		return false;
 	double x = lx - toolbar->x, y = ly - toolbar->y;
 	return x >= 0 && x < toolbar->width && y >= 0 && y < toolbar->height;
+}
+
+bool
+wm_toolbar_relabel_button(struct wm_toolbar *toolbar, const char *name,
+	const char *label)
+{
+	/* RelabelButtonCmd: "button.NAME" */
+	if (!toolbar || !name || strncasecmp(name, "button.", 7) != 0)
+		return false;
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		if (tool->type != WM_TOOL_BUTTON || !tool->button_name ||
+		    strcasecmp(tool->button_name, name + 7) != 0)
+			continue;
+		char *copy = strdup(label ? label : "");
+		if (!copy)
+			return false;
+		free(tool->label);
+		tool->label = copy;
+		wm_toolbar_relayout(toolbar);
+		return true;
+	}
+	return false;
 }
 
 const char *

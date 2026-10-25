@@ -235,6 +235,7 @@ struct wlr_scene_buffer {
 #define WLR_MODIFIER_MOD2  (1 << 5)
 #define WM_MODIFIERS_IGNORED   (WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)
 #define WM_KEYSYM_KEYCODE(kc)  (0x80000000u | (uint32_t)(kc))
+#define WM_KEYSYM_ARG          0x7ffffffeu
 
 #define WLR_EDGE_TOP    (1 << 0)
 #define WLR_EDGE_BOTTOM (1 << 1)
@@ -272,9 +273,16 @@ enum xkb_state_component {
 #define XKB_KEY_XF86Switch_VT_1  0x1008FE01
 #define XKB_KEY_XF86Switch_VT_12 0x1008FE0C
 #define XKB_KEY_Escape 0xff1b
+#define XKB_KEY_Shift_L 0xffe1
+#define XKB_KEY_Hyper_R 0xffee
+#define XKB_KEY_ISO_Lock 0xfe01
+#define XKB_KEY_ISO_Level5_Lock 0xfe13
+#define XKB_KEY_Mode_switch 0xff7e
+#define XKB_KEY_Num_Lock 0xff7f
 #define XKB_KEY_e      0x0065
 #define XKB_KEY_E      0x0045
 #define XKB_KEY_a      0x0061
+#define XKB_KEY_b      0x0062
 #define XKB_KEY_t      0x0074
 
 /* --- wlr_log stub --- */
@@ -738,6 +746,14 @@ enum wm_action {
 	WM_ACTION_SET_TITLE_DIALOG,
 	WM_ACTION_SET_RESOURCE_VALUE,
 	WM_ACTION_SET_RESOURCE_VALUE_DIALOG,
+	WM_ACTION_MARK_WINDOW,
+	WM_ACTION_GOTO_MARKED_WINDOW,
+	WM_ACTION_SET_FOCUS_PROTECTION,
+	WM_ACTION_ATTACH,
+	WM_ACTION_RELABEL_BUTTON,
+	WM_ACTION_SAVE_RC,
+	WM_ACTION_SET_XPROP,
+	WM_ACTION_CLIENT_PATTERN_TEST,
 	WM_ACTION_REMEMBER,
 	WM_ACTION_TOGGLE_SLIT_ABOVE,
 	WM_ACTION_TOGGLE_SLIT_HIDDEN,
@@ -946,6 +962,8 @@ struct wm_view {
 	int unfocus_alpha;
 	void *animation;
 	int focus_protection;
+	bool mapped, docked;
+	uint64_t focus_seq;
 	bool ignore_size_hints;
 	void *foreign_toplevel_handle;
 	struct wm_decoration *decoration;
@@ -1026,6 +1044,9 @@ struct wm_server {
 	struct wl_list keymodes;
 	char *current_keymode;
 	struct wm_chain_state chain_state;
+	uint32_t arg_key;
+	char *action_result;
+	struct { uint32_t key; struct wm_view *view; } marks[64];
 	struct wm_mouse_state mouse_state;
 	struct wm_rules rules;
 	struct wm_ipc_server ipc;
@@ -1165,6 +1186,16 @@ static char stub_title[128];
 static int stub_note_key_count;
 void wm_view_note_key(struct wm_view *v, uint32_t sym)
 	{ (void)v; (void)sym; stub_note_key_count++; }
+static struct wm_view *stub_presented;
+void wm_view_present(struct wm_view *v) { stub_presented = v; }
+static char stub_xprop[128];
+void wm_view_set_xprop(struct wm_view *v, const char *n, const char *val)
+	{ (void)v; snprintf(stub_xprop, sizeof(stub_xprop), "%s=%s", n, val); }
+static char stub_relabel[128];
+bool wm_toolbar_relabel_button(struct wm_toolbar *t, const char *n,
+	const char *l)
+	{ (void)t; snprintf(stub_relabel, sizeof(stub_relabel), "%s|%s", n, l);
+	  return true; }
 void wm_view_set_title(struct wm_view *v, const char *t)
 {
 	if (v->title_override)
@@ -1203,6 +1234,21 @@ void wm_focus_cycle(struct wm_server *s, const struct wm_window_list_spec *spec,
 		stub_cycle_prev_count++;
 	else
 		stub_cycle_next_count++;
+}
+enum wm_deiconify_dest {
+	WM_DEICONIFY_CURRENT,
+	WM_DEICONIFY_ORIGIN,
+	WM_DEICONIFY_ORIGIN_QUIET,
+};
+static int stub_deiconify_all_arg = -1, stub_deiconify_any_ws = -1;
+static int stub_deiconify_dest = -1;
+void wm_view_deiconify(struct wm_server *s, bool all, bool any_ws,
+	enum wm_deiconify_dest dest)
+{
+	(void)s;
+	stub_deiconify_all_arg = all;
+	stub_deiconify_any_ws = any_ws;
+	stub_deiconify_dest = dest;
 }
 void wm_view_deiconify_last(struct wm_server *s) { (void)s; stub_deiconify_last_count++; }
 void wm_view_deiconify_all(struct wm_server *s) { (void)s; stub_deiconify_all_count++; }
@@ -1396,6 +1442,18 @@ wm_condition_evaluate(struct wm_server *server, struct wm_condition *cond,
 	(void)server; (void)cond; (void)view;
 	return stub_condition_result;
 }
+bool
+wm_client_pattern_match(struct wm_server *server,
+	const struct wm_client_pattern *pattern, struct wm_view *view)
+{
+	(void)server; (void)pattern; (void)view;
+	return true;
+}
+static int stub_tab_group_add_count;
+struct wm_tab_group *wm_tab_group_create(struct wm_view *v)
+	{ (void)v; return NULL; }
+void wm_tab_group_add(struct wm_tab_group *g, struct wm_view *v)
+	{ (void)g; (void)v; stub_tab_group_add_count++; }
 bool
 wm_window_list_parse(const char *args, struct wm_window_list_spec *spec)
 {
@@ -2469,17 +2527,26 @@ static void
 test_action_deiconify(void)
 {
 	setup();
+	/* DeiconifyCmd::parse: mode, then destination */
 	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, NULL);
-	assert(stub_deiconify_last_count == 1);
+	assert(stub_deiconify_all_arg == 0 && stub_deiconify_any_ws == 0);
+	assert(stub_deiconify_dest == WM_DEICONIFY_CURRENT);
 
 	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, "All");
-	assert(stub_deiconify_all_count == 1);
+	assert(stub_deiconify_all_arg == 1 && stub_deiconify_any_ws == 1);
 
 	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, "AllWorkspace");
-	assert(stub_deiconify_all_ws_count == 1);
+	assert(stub_deiconify_all_arg == 1 && stub_deiconify_any_ws == 0);
 
-	wm_execute_action(&test_server, WM_ACTION_DEICONIFY, "LastWorkspace");
-	assert(stub_deiconify_last_count == 2);
+	wm_execute_action(&test_server, WM_ACTION_DEICONIFY,
+		"last originquiet");
+	assert(stub_deiconify_all_arg == 0 && stub_deiconify_any_ws == 1);
+	assert(stub_deiconify_dest == WM_DEICONIFY_ORIGIN_QUIET);
+
+	wm_execute_action(&test_server, WM_ACTION_DEICONIFY,
+		"LastWorkspace Origin");
+	assert(stub_deiconify_any_ws == 0);
+	assert(stub_deiconify_dest == WM_DEICONIFY_ORIGIN);
 	printf("  PASS: test_action_deiconify\n");
 }
 
@@ -2772,6 +2839,51 @@ test_compositor_no_match(void)
 
 	wl_list_remove(&mode.link);
 	printf("  PASS: test_compositor_no_match\n");
+}
+
+/* Arg in a chain takes any key (not a modifier): MarkWindow marks the
+ * window under it, GotoMarkedWindow goes back to it (Keys.cc) */
+static void
+test_compositor_arg_marks(void)
+{
+	setup_with_view();
+	struct wl_list level;
+	wl_list_init(&level);
+	struct wm_keybind arg = {0};
+	arg.keysym = WM_KEYSYM_ARG;
+	arg.action = WM_ACTION_MARK_WINDOW;
+	wl_list_init(&arg.children);
+	wl_list_insert(&level, &arg.link);
+	stub_keybind_find_result = NULL;
+
+	/* A modifier doesn't take it: the chain ends as before */
+	test_server.chain_state.in_chain = true;
+	test_server.chain_state.current_level = &level;
+	assert(!hck(&test_server, 0, XKB_KEY_Shift_L));
+
+	test_server.chain_state.in_chain = true;
+	test_server.chain_state.current_level = &level;
+	assert(hck(&test_server, 0, XKB_KEY_a));
+	assert(test_server.arg_key == XKB_KEY_a);
+	assert(test_server.marks[0].view == &test_view);
+	assert(test_server.chain_state.in_chain == false);
+
+	arg.action = WM_ACTION_GOTO_MARKED_WINDOW;
+	stub_presented = NULL;
+	test_server.chain_state.in_chain = true;
+	test_server.chain_state.current_level = &level;
+	assert(hck(&test_server, 0, XKB_KEY_a));
+	assert(stub_presented == &test_view);
+	/* Another key has no window */
+	stub_presented = NULL;
+	test_server.chain_state.in_chain = true;
+	test_server.chain_state.current_level = &level;
+	hck(&test_server, 0, XKB_KEY_b);
+	assert(stub_presented == NULL);
+
+	memset(test_server.marks, 0, sizeof(test_server.marks));
+	test_server.arg_key = 0;
+	printf("  PASS: test_compositor_arg_marks\n");
 }
 
 /* Test no match while in chain resets chain */
@@ -4439,6 +4551,7 @@ main(void)
 	test_compositor_leaf_node();
 	test_compositor_no_match();
 	test_compositor_no_match_in_chain();
+	test_compositor_arg_marks();
 
 	printf("\n  Group G: handle_key()\n");
 	test_handle_key_session_locked_vt_switch();

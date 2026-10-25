@@ -53,6 +53,7 @@ enum wm_pattern_prop {
 	WM_PROP_SCREEN,
 	WM_PROP_FOCUSED,     /* fluxland extension: yes/no */
 	WM_PROP_OUTPUT,      /* fluxland extension: output name */
+	WM_PROP_XPROP,       /* @NAME: a window's text property */
 };
 
 enum wm_pattern_value {
@@ -66,6 +67,7 @@ struct wm_pattern_term {
 	enum wm_pattern_value kind;
 	bool negate;
 	char *regex_str;     /* as written, for diagnostics */
+	char *xprop;         /* WM_PROP_XPROP: the property's name */
 	regex_t regex;       /* compiled anchored ERE (kind == REGEX) */
 };
 

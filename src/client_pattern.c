@@ -220,7 +220,16 @@ parse_term(char *content, struct wm_pattern_term *term)
 		value = trim(value);
 	}
 
-	if (!wm_pattern_prop_from_name(propstr, &term->prop)) {
+	term->xprop = NULL;
+	if (propstr[0] == '@' && propstr[1]) {
+		/* @NAME: an X property (ClientPattern's XPROP) */
+		term->prop = WM_PROP_XPROP;
+		term->xprop = strdup(propstr + 1);
+		if (!term->xprop)
+			return false;
+		if (!value)
+			value = "[current]";
+	} else if (!wm_pattern_prop_from_name(propstr, &term->prop)) {
 		/* Not a property: the whole term is a regex on the name */
 		term->prop = WM_PROP_NAME;
 		term->negate = false;
@@ -230,8 +239,11 @@ parse_term(char *content, struct wm_pattern_term *term)
 	}
 
 	term->regex_str = strdup(value);
-	if (!term->regex_str)
+	if (!term->regex_str) {
+		free(term->xprop);
+		term->xprop = NULL;
 		return false;
+	}
 
 	if (strcasecmp(value, "[current]") == 0) {
 		term->kind = WM_PATTERN_CURRENT;
@@ -247,6 +259,8 @@ parse_term(char *content, struct wm_pattern_term *term)
 		wlr_log(WLR_ERROR, "invalid pattern regex: %s", value);
 		free(term->regex_str);
 		term->regex_str = NULL;
+		free(term->xprop);
+		term->xprop = NULL;
 		return false;
 	}
 	return true;
@@ -336,6 +350,7 @@ wm_client_pattern_destroy(struct wm_client_pattern *pattern)
 		if (t->kind == WM_PATTERN_REGEX && t->regex_str)
 			regfree(&t->regex);
 		free(t->regex_str);
+		free(t->xprop);
 	}
 	free(pattern->terms);
 	free(pattern);
@@ -555,8 +570,41 @@ wm_client_pattern_property(struct wm_server *server, struct wm_view *view,
 		snprintf(buf, len, "%s",
 			yes_no(view == server->focused_view));
 		break;
+	case WM_PROP_XPROP:
+		/* Needs the term's name: term_value */
+		break;
 	}
 	return buf;
+}
+
+/* A window's text property, as @NAME reads it: X11's own, or what
+ * SetXProp set ("" when none) */
+static const char *
+view_xprop(struct wm_view *view, const char *name, char *buf, size_t len)
+{
+	buf[0] = '\0';
+	if (view->impl && view->impl->get_xprop &&
+	    view->impl->get_xprop(view, name, buf, len))
+		return buf;
+	for (struct wm_view_prop *p = view->props; p; p = p->next) {
+		if (strcmp(p->name, name) == 0) {
+			snprintf(buf, len, "%s", p->value);
+			break;
+		}
+	}
+	return buf;
+}
+
+/* A term's property of a view */
+static const char *
+term_value(struct wm_server *server, const struct wm_pattern_term *t,
+	struct wm_view *view, char *buf, size_t len)
+{
+	if (t->prop == WM_PROP_XPROP) {
+		buf[0] = '\0';
+		return view ? view_xprop(view, t->xprop, buf, len) : buf;
+	}
+	return wm_client_pattern_property(server, view, t->prop, buf, len);
 }
 
 static bool
@@ -577,9 +625,9 @@ term_matches(struct wm_server *server, const struct wm_pattern_term *t,
 		struct wm_view *focused = server->focused_view;
 		if (!focused)
 			return false;
-		wm_client_pattern_property(server, view, t->prop,
+		term_value(server, t, view,
 			buf, sizeof(buf));
-		wm_client_pattern_property(server, focused, t->prop,
+		term_value(server, t, focused,
 			other, sizeof(other));
 		return t->negate ^ (strcmp(buf, other) == 0);
 	}
@@ -588,14 +636,14 @@ term_matches(struct wm_server *server, const struct wm_pattern_term *t,
 		struct wlr_output *at = wlr_output_layout_output_at(
 			server->output_layout, server->cursor->x,
 			server->cursor->y);
-		wm_client_pattern_property(server, view, t->prop,
+		term_value(server, t, view,
 			buf, sizeof(buf));
 		snprintf(other, sizeof(other), "%d",
 			at ? output_index(server, at) : 0);
 		return t->negate ^ (strcmp(buf, other) == 0);
 	}
 
-	wm_client_pattern_property(server, view, t->prop, buf, sizeof(buf));
+	term_value(server, t, view, buf, sizeof(buf));
 	bool hit = regexec(&t->regex, buf, 0, NULL, 0) == 0;
 	if (!hit && t->prop == WM_PROP_LAYER && view) {
 		const char *alias = layer_alias(view->layer);

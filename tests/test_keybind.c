@@ -1750,6 +1750,25 @@ test_destroy_list(void)
 	printf("  PASS: test_destroy_list\n");
 }
 
+/* Arg: a placeholder in a chain, never first (Keys.cc) */
+static void
+test_arg_placeholder(void)
+{
+	struct wl_list bindings;
+	wl_list_init(&bindings);
+	assert(keybind_add_from_string(&bindings, "Mod4 m Arg :MarkWindow"));
+	struct wm_keybind *first = keybind_find(&bindings, WLR_MODIFIER_LOGO,
+		XKB_KEY_m);
+	assert(first && !wl_list_empty(&first->children));
+	struct wm_keybind *arg = wl_container_of(first->children.next, arg,
+		link);
+	assert(arg->keysym == WM_KEYSYM_ARG);
+	assert(arg->action == WM_ACTION_MARK_WINDOW);
+	assert(!keybind_add_from_string(&bindings, "Arg :GotoMarkedWindow"));
+	keybind_destroy_list(&bindings);
+	printf("  PASS: arg_placeholder\n");
+}
+
 int
 main(void)
 {
@@ -1797,6 +1816,7 @@ main(void)
 	test_condition_destroy_null();
 	test_destroy_list();
 	test_fluxbox_key_names();
+	test_arg_placeholder();
 
 	cleanup();
 	printf("All keybind tests passed.\n");

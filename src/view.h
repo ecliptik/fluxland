@@ -55,6 +55,17 @@ struct wm_view_impl {
 	struct wm_view *(*parent)(struct wm_view *view);
 	/* Optional: tell the client it was (un)minimized */
 	void (*set_minimized)(struct wm_view *view, bool minimized);
+	/* Optional: a text property of the window (X11's, SetXProp) */
+	bool (*get_xprop)(struct wm_view *view, const char *name, char *buf,
+		size_t len);
+	void (*set_xprop)(struct wm_view *view, const char *name,
+		const char *value);
+};
+
+/* SetXProp's properties of a window without X ones */
+struct wm_view_prop {
+	char *name, *value;
+	struct wm_view_prop *next;
 };
 
 struct wm_view {
@@ -160,6 +171,8 @@ struct wm_view {
 
 	/* Focus order: higher = more recently focused (see focus cycling) */
 	uint64_t focus_seq;
+	uint64_t iconify_seq;	/* when it was iconified (Deiconify Last) */
+	struct wm_view_prop *props;	/* SetXProp, for @NAME patterns */
 
 	/* Foreign toplevel handle (for external taskbars) */
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
@@ -307,6 +320,23 @@ void wm_focus_cycle_end(struct wm_server *server);
  * current workspace. Focuses and raises the restored view.
  */
 void wm_view_deiconify_last(struct wm_server *server);
+
+/* SetXProp NAME=VALUE: X11's property, or one kept for @NAME patterns */
+void wm_view_set_xprop(struct wm_view *view, const char *name,
+	const char *value);
+
+void wm_view_free_props(struct wm_view *view);
+
+/* Deiconify [all|allworkspace|last|lastworkspace] [current|origin|
+ * originquiet]: the most recently iconified window (or all) of the
+ * current workspace (or any), to the current workspace or its own */
+enum wm_deiconify_dest {
+	WM_DEICONIFY_CURRENT,
+	WM_DEICONIFY_ORIGIN,
+	WM_DEICONIFY_ORIGIN_QUIET,
+};
+void wm_view_deiconify(struct wm_server *server, bool all,
+	bool any_workspace, enum wm_deiconify_dest dest);
 
 /*
  * Restore all minimized views across all workspaces.

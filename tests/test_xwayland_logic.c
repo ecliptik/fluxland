@@ -222,6 +222,53 @@ xcb_intern_atom_reply(xcb_connection_t *c, xcb_intern_atom_cookie_t k,
 	return NULL;
 }
 
+/* X properties (SetXProp, @NAME patterns): one kept here */
+#define XCB_GET_PROPERTY_TYPE_ANY 0
+#define XCB_PROP_MODE_REPLACE 0
+typedef struct { unsigned int sequence; } xcb_get_property_cookie_t;
+typedef struct { xcb_atom_t type; uint8_t format; char value[64];
+	int len; } xcb_get_property_reply_t;
+static char g_xprop_value[64];
+static int g_xprop_len = -1;
+static xcb_get_property_cookie_t
+xcb_get_property(xcb_connection_t *c, uint8_t d, xcb_window_t w, xcb_atom_t p,
+	xcb_atom_t t, uint32_t o, uint32_t l)
+{
+	(void)c; (void)d; (void)w; (void)p; (void)t; (void)o; (void)l;
+	xcb_get_property_cookie_t k = {0};
+	return k;
+}
+static xcb_get_property_reply_t *
+xcb_get_property_reply(xcb_connection_t *c, xcb_get_property_cookie_t k,
+	void *e)
+{
+	(void)c; (void)k; (void)e;
+	xcb_get_property_reply_t *r = calloc(1, sizeof(*r));
+	if (r && g_xprop_len >= 0) {
+		r->type = 1;
+		r->format = 8;
+		r->len = g_xprop_len;
+		memcpy(r->value, g_xprop_value, sizeof(r->value));
+	}
+	return r;
+}
+static int xcb_get_property_value_length(const xcb_get_property_reply_t *r)
+	{ return r->len; }
+static void *xcb_get_property_value(const xcb_get_property_reply_t *r)
+	{ return (void *)r->value; }
+static void
+xcb_change_property(xcb_connection_t *c, uint8_t m, xcb_window_t w,
+	xcb_atom_t p, xcb_atom_t t, uint8_t f, uint32_t len, const void *data)
+{
+	(void)c; (void)m; (void)w; (void)p; (void)t; (void)f;
+	if (len >= sizeof(g_xprop_value))
+		len = sizeof(g_xprop_value) - 1;
+	memcpy(g_xprop_value, data, len);
+	g_xprop_value[len] = '\0';
+	g_xprop_len = (int)len;
+}
+static int xcb_flush(xcb_connection_t *c) { (void)c; return 0; }
+
 /* --- XWayland --- */
 
 enum wlr_xwayland_surface_decorations {
@@ -523,6 +570,10 @@ struct wm_view_impl {
 	pid_t (*pid)(struct wm_view *view);
 	struct wm_view *(*parent)(struct wm_view *view);
 	void (*set_minimized)(struct wm_view *view, bool minimized);
+	bool (*get_xprop)(struct wm_view *view, const char *name, char *buf,
+		size_t len);
+	void (*set_xprop)(struct wm_view *view, const char *name,
+		const char *value);
 };
 
 struct wm_decoration { int dummy; };

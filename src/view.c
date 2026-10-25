@@ -169,6 +169,50 @@ wm_view_set_minimized_state(struct wm_view *view, bool minimized)
 }
 
 void
+wm_view_set_xprop(struct wm_view *view, const char *name, const char *value)
+{
+	if (impl_of(view)->set_xprop) {
+		impl_of(view)->set_xprop(view, name, value);
+		return;
+	}
+	for (struct wm_view_prop *p = view->props; p; p = p->next) {
+		if (strcmp(p->name, name) == 0) {
+			char *v = strdup(value);
+			if (v) {
+				free(p->value);
+				p->value = v;
+			}
+			return;
+		}
+	}
+	struct wm_view_prop *p = calloc(1, sizeof(*p));
+	if (!p)
+		return;
+	p->name = strdup(name);
+	p->value = strdup(value);
+	if (!p->name || !p->value) {
+		free(p->name);
+		free(p->value);
+		free(p);
+		return;
+	}
+	p->next = view->props;
+	view->props = p;
+}
+
+void
+wm_view_free_props(struct wm_view *view)
+{
+	while (view->props) {
+		struct wm_view_prop *p = view->props;
+		view->props = p->next;
+		free(p->name);
+		free(p->value);
+		free(p);
+	}
+}
+
+void
 wm_view_close(struct wm_view *view)
 {
 	impl_of(view)->close(view);
@@ -529,6 +573,10 @@ wm_view_unmap_common(struct wm_view *view)
 	wm_dialog_view_destroyed(view->server, view);
 	wm_tooltip_view_destroyed(view->server, view);
 	wm_view_set_urgent(view, false);
+	for (int i = 0; i < 64; i++) {
+		if (view->server->marks[i].view == view)
+			view->server->marks[i].view = NULL;
+	}
 	/* The pointer's window for MouseOut, the pressed one for the
 	 * release: gone */
 	struct wm_mouse_state *ms = &view->server->mouse_state;
@@ -655,6 +703,7 @@ wm_view_destroy_common(struct wm_view *view)
 	free(view->instance);
 	free(view->role);
 	view->title = view->app_id = view->instance = view->role = NULL;
+	wm_view_free_props(view);
 
 	/* The frame tree (the client's surface tree goes with it) */
 	wlr_scene_node_destroy(&view->scene_tree->node);
@@ -685,6 +734,7 @@ wm_view_minimize(struct wm_view *view)
 	wm_foreign_toplevel_set_minimized(view, true);
 	if (impl_of(view)->set_minimized)
 		impl_of(view)->set_minimized(view, true);
+	view->iconify_seq = ++view->server->focus_seq_counter;
 
 	if (view == view->server->focused_view)
 		wm_focus_fallback(view->server, view);

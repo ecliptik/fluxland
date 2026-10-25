@@ -339,6 +339,53 @@ xw_set_minimized(struct wm_view *view, bool minimized)
 	wlr_xwayland_surface_set_minimized(view->xsurface, minimized);
 }
 
+/* A text property of the X window (@NAME patterns, SetXProp) */
+static bool
+xw_get_xprop(struct wm_view *view, const char *name, char *buf, size_t len)
+{
+	xcb_connection_t *conn = view->server->xwayland ?
+		wlr_xwayland_get_xwm_connection(view->server->xwayland) : NULL;
+	if (!conn)
+		return false;
+	xcb_atom_t atom = resolve_atom(conn, name);
+	if (atom == XCB_ATOM_NONE)
+		return false;
+	xcb_get_property_cookie_t cookie = xcb_get_property(conn, 0,
+		view->xsurface->window_id, atom, XCB_GET_PROPERTY_TYPE_ANY, 0,
+		(uint32_t)(len / 4));
+	xcb_get_property_reply_t *reply =
+		xcb_get_property_reply(conn, cookie, NULL);
+	if (!reply)
+		return false;
+	bool found = reply->type != XCB_ATOM_NONE && reply->format == 8;
+	if (found) {
+		int n = xcb_get_property_value_length(reply);
+		if ((size_t)n >= len)
+			n = (int)len - 1;
+		memcpy(buf, xcb_get_property_value(reply), (size_t)n);
+		buf[n] = '\0';
+	}
+	free(reply);
+	return found;
+}
+
+static void
+xw_set_xprop(struct wm_view *view, const char *name, const char *value)
+{
+	xcb_connection_t *conn = view->server->xwayland ?
+		wlr_xwayland_get_xwm_connection(view->server->xwayland) : NULL;
+	if (!conn)
+		return;
+	xcb_atom_t atom = resolve_atom(conn, name);
+	xcb_atom_t utf8 = resolve_atom(conn, "UTF8_STRING");
+	if (atom == XCB_ATOM_NONE || utf8 == XCB_ATOM_NONE)
+		return;
+	xcb_change_property(conn, XCB_PROP_MODE_REPLACE,
+		view->xsurface->window_id, atom, utf8, 8,
+		(uint32_t)strlen(value), value);
+	xcb_flush(conn);
+}
+
 static const struct wm_view_impl xwayland_view_impl = {
 	.surface = xw_surface,
 	.content_geometry = xw_content_geometry,
@@ -353,6 +400,8 @@ static const struct wm_view_impl xwayland_view_impl = {
 	.pid = xw_pid,
 	.parent = xw_parent,
 	.set_minimized = xw_set_minimized,
+	.get_xprop = xw_get_xprop,
+	.set_xprop = xw_set_xprop,
 };
 
 /* ------------------------------------------------------------------ */
