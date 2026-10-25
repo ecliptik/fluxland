@@ -82,6 +82,8 @@ if git.found()
   endif
 endif
 add_project_arguments('-DFLUXLAND_VERSION=@0@'.format(version), language: 'c')
+add_project_arguments('-DFLUXLAND_DATADIR="@0@"'.format(
+  get_option('prefix') / get_option('datadir') / 'fluxland'), language: 'c')
 
 # --- Gettext / i18n ---
 
@@ -242,6 +244,7 @@ endif
 
 wm_sources = files(
   'src/main.c',
+  'src/import.c',
   'src/animation.c',
   'src/atspi_bridge.c',
   'src/autostart.c',

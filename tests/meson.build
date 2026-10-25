@@ -737,6 +737,15 @@ test_render = executable(
 )
 test('render', test_render)
 
+# --- test_import: fluxland --import-fluxbox ---
+test_import = executable(
+  'test_import',
+  files('test_import.c', '../src/import.c'),
+  include_directories: test_inc,
+  install: false,
+)
+test('import', test_import)
+
 # --- test_rcparser: RC config file parser tests ---
 test_rcparser = executable(
   'test_rcparser',

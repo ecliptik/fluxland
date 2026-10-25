@@ -1,4 +1,4 @@
-.TH FLUXLAND 1 "2026-03-03" "fluxland 1.1.0" "General Commands Manual"
+.TH FLUXLAND 1 "2026-10-25" "fluxland 1.1.0" "General Commands Manual"
 .SH NAME
 fluxland \- a Fluxbox-inspired Wayland compositor
 .SH SYNOPSIS
@@ -11,6 +11,9 @@ fluxland \- a Fluxbox-inspired Wayland compositor
 .RB [ \-l ]
 .RB [ \-\-ipc\-no\-exec ]
 .RB [ \-h ]
+.br
+.B fluxland \-\-import\-fluxbox\fR[\fB=\fIdirectory\fR]
+.RB [ \-\-force ]
 .SH DESCRIPTION
 .B fluxland
 is a Wayland compositor built on wlroots that provides a traditional
@@ -34,6 +37,34 @@ after the compositor starts and the Wayland socket is available.
 This is in addition to the
 .I startup
 script in the configuration directory.
+.TP
+.BR \-\-import\-fluxbox \fR[\fB=\fIdirectory\fR]
+Make fluxland's configuration directory
+.RI ( $XDG_CONFIG_HOME/fluxland ,
+or
+.IR ~/.config/fluxland )
+from a Fluxbox one
+.RI ( ~/.fluxbox
+unless given), check it, and exit.
+The init, keys, apps, menu, windowmenu, overlay and slitlist files and
+the styles, backgrounds and pixmaps directories are copied with their
+paths into the Fluxbox directory pointed at the new one; a Fluxbox
+style the system no longer has is pointed at fluxland's copy of it.
+The startup script loses its
+.B exec fluxbox
+(fluxland runs the script once it has started), and the programs in it
+that only work on an X display (xsetroot, fbsetbg, xmodmap, xcompmgr,
+idesk...) are commented out, each with the reason.
+fbsetbg's last wallpaper becomes fluxland's.
+Every change is printed.
+Until then fluxland reads
+.I ~/.fluxbox
+as it is when it has no directory of its own.
+.TP
+.B \-\-force
+With
+.BR \-\-import\-fluxbox :
+replace the files that are already there (otherwise they are kept).
 .TP
 .BR \-c ", " \-\-check\-config
 Validate all configuration files (init, keys, style) and exit.

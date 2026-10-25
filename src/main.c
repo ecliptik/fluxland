@@ -15,6 +15,7 @@
 
 #include "autostart.h"
 #include "config.h"
+#include "import.h"
 #include "i18n.h"
 #include "keybind.h"
 #include "server.h"
@@ -30,10 +31,15 @@ static const char usage[] = N_(
 	"  -v, --version        Show version and exit\n"
 	"  -l, --list-commands  List available commands and exit\n"
 	"  --ipc-no-exec        Disable Exec/BindKey/SetStyle via IPC\n"
+	"  --import-fluxbox[=DIR]  Make ~/.config/fluxland from a Fluxbox\n"
+	"                       configuration (~/.fluxbox) and exit\n"
+	"  --force              With --import-fluxbox: replace files\n"
 	"  -h, --help           Show this help\n");
 
 enum {
 	OPT_IPC_NO_EXEC = 256,
+	OPT_IMPORT_FLUXBOX,
+	OPT_FORCE,
 };
 
 static const struct option long_options[] = {
@@ -43,6 +49,8 @@ static const struct option long_options[] = {
 	{"version",      no_argument,       NULL, 'v'},
 	{"list-commands", no_argument,      NULL, 'l'},
 	{"ipc-no-exec",  no_argument,       NULL, OPT_IPC_NO_EXEC},
+	{"import-fluxbox", optional_argument, NULL, OPT_IMPORT_FLUXBOX},
+	{"force",        no_argument,       NULL, OPT_FORCE},
 	{"help",         no_argument,       NULL, 'h'},
 	{0, 0, 0, 0},
 };
@@ -59,6 +67,8 @@ main(int argc, char *argv[])
 	char *startup_cmd = NULL;
 	bool check_config = false;
 	bool ipc_no_exec = false;
+	bool import = false, force = false;
+	const char *import_from = NULL;
 	enum wlr_log_importance verbosity = WLR_ERROR;
 
 	int c;
@@ -78,6 +88,13 @@ main(int argc, char *argv[])
 		case OPT_IPC_NO_EXEC:
 			ipc_no_exec = true;
 			break;
+		case OPT_IMPORT_FLUXBOX:
+			import = true;
+			import_from = optarg;
+			break;
+		case OPT_FORCE:
+			force = true;
+			break;
 		case 'v':
 			printf("fluxland %s (wlroots %s)\n", FLUXLAND_VERSION,
 				WLR_VERSION_STR);
@@ -90,6 +107,21 @@ main(int argc, char *argv[])
 			printf("%s", _(usage));
 			return 0;
 		}
+	}
+
+	if (import) {
+		int ret = wm_import_fluxbox(import_from, NULL, force, stdout);
+		if (ret != 0)
+			return ret;
+		/* What fluxland makes of it now */
+		struct wm_config *cfg = config_create();
+		if (cfg && cfg->config_dir) {
+			printf("\n");
+			fflush(stdout);
+			ret = validate_config(cfg->config_dir);
+		}
+		config_destroy(cfg);
+		return ret;
 	}
 
 	if (check_config) {
