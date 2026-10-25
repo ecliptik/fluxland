@@ -314,6 +314,14 @@ struct wm_style {
 	enum wm_justify menu_bullet_position;
 	int menu_item_height;
 	int menu_title_height;
+	int menu_bevel_width;
+	struct wm_font menu_hilite_font;
+	enum wm_justify menu_frame_justify;
+	enum wm_justify menu_hilite_justify;
+	struct wm_color menu_disable_text_color;
+	char *menu_submenu_pixmap, *menu_hilite_submenu_pixmap;
+	char *menu_selected_pixmap, *menu_hilite_selected_pixmap;
+	char *menu_unselected_pixmap, *menu_hilite_unselected_pixmap;
 	struct wm_texture slit_texture;
 	struct wm_color slit_border_color;
 	int slit_border_width;
@@ -782,6 +790,27 @@ wm_render_text(const char *text, const struct wm_font *font,
 	(void)justify; (void)scale;
 	if (out_w) *out_w = 50;
 	if (out_h) *out_h = 12;
+	return NULL;
+}
+
+static int
+wm_font_height(const struct wm_font *font, float scale)
+{
+	(void)font; (void)scale;
+	return 12;
+}
+
+static cairo_surface_t *
+wm_load_image(const char *path)
+{
+	(void)path;
+	return NULL;
+}
+
+static cairo_surface_t *
+wm_load_pixmap(const char *path, int width, int height)
+{
+	(void)path; (void)width; (void)height;
 	return NULL;
 }
 
@@ -1328,10 +1357,12 @@ test_menu_compute_layout(void)
 	assert(menu->item_count == 5);
 	assert(menu->item_height == 20);
 	assert(menu->title_height == 20);
-	assert(menu->width >= MENU_MIN_WIDTH);
-	assert(menu->height > 0);
-	/* height = 2*border + title + 5*item_height */
-	assert(menu->height == 2 * 1 + 20 + 5 * 20);
+	/* As wide as the widest item: room for the bullet on both
+	 * sides of "Item 0" (7 a character here), and the border */
+	assert(menu->width == 2 * 20 + 6 * 7 + 2 * 1);
+	/* border, title, its border line, the items, border */
+	assert(menu->height == 1 + 20 + 1 + 5 * 20 + 1);
+	assert(menu->items_y == 1 + 20 + 1);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: menu_compute_layout\n");
@@ -1346,8 +1377,9 @@ test_menu_compute_layout_with_separator(void)
 	menu_compute_layout(menu, &test_style);
 
 	assert(menu->item_count == 3);
-	/* height = 2*border + title + 2*item_h + separator_h */
-	int expected = 2 * 1 + 20 + 2 * 20 + MENU_SEPARATOR_HEIGHT;
+	/* A separator is an item high in Fluxbox */
+	int expected = 1 + 20 + 1 + 3 * 20 + 1;
+	assert(menu->separator_height == 20);
 	assert(menu->height == expected);
 
 	wm_menu_destroy(menu);
@@ -1366,7 +1398,7 @@ test_menu_item_at_first(void)
 	int bw = menu->border_width;
 	/* First item starts at y = menu->y + bw + title_height */
 	double lx = 100 + bw + 5; /* middle x */
-	double ly = 100 + bw + menu->title_height + 5; /* first item */
+	double ly = 100 + menu->items_y + 5; /* first item */
 	int idx = menu_item_at(menu, lx, ly);
 	assert(idx == 0);
 
@@ -1384,7 +1416,7 @@ test_menu_item_at_last(void)
 	int bw = menu->border_width;
 	/* Last item at y offset = title_height + 2*item_height + 5 */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height +
+	double ly = 100 + menu->items_y +
 		2 * menu->item_height + 5;
 	int idx = menu_item_at(menu, lx, ly);
 	assert(idx == 2);
@@ -2070,7 +2102,7 @@ test_button_activates_item(void)
 	int bw = menu->border_width;
 	/* Click on first item */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + 5;
+	double ly = 100 + menu->items_y + 5;
 
 	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
 	assert(consumed == true);
@@ -2134,7 +2166,7 @@ test_button_toggle_submenu(void)
 	int bw = menu->border_width;
 	/* Click on submenu item (index 1) */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+	double ly = 100 + menu->items_y + menu->item_height + 5;
 
 	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
 	assert(consumed == true);
@@ -2189,14 +2221,14 @@ test_motion_updates_selection(void)
 	int bw = menu->border_width;
 	/* Move over second item */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+	double ly = 100 + menu->items_y + menu->item_height + 5;
 
 	bool consumed = wm_menu_handle_motion_for(menu, lx, ly);
 	assert(consumed == true);
 	assert(menu->selected_index == 1);
 
 	/* Move to third item */
-	ly = 100 + bw + menu->title_height + 2 * menu->item_height + 5;
+	ly = 100 + menu->items_y + 2 * menu->item_height + 5;
 	consumed = wm_menu_handle_motion_for(menu, lx, ly);
 	assert(consumed == true);
 	assert(menu->selected_index == 2);
@@ -2665,7 +2697,7 @@ test_handle_motion_dispatches(void)
 
 	int bw = root->border_width;
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + root->title_height + 5;
+	double ly = 100 + root->items_y + 5;
 
 	bool consumed = wm_menu_handle_motion(&test_server, lx, ly);
 	assert(consumed == true);
@@ -2722,9 +2754,10 @@ test_submenu_position_basic(void)
 	int sub_x, sub_y;
 	submenu_position(menu, 0, &sub_x, &sub_y);
 
-	/* Without output clamping, submenu goes to the right */
-	assert(sub_x == 100 + menu->width);
-	assert(sub_y == 100 + menu->border_width + menu->title_height);
+	/* Over the parent's right border, its first item level with
+	 * the parent's first */
+	assert(sub_x == 100 + menu->width - menu->border_width);
+	assert(sub_y == 100);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: submenu_position_basic\n");
@@ -3082,8 +3115,8 @@ test_menu_layout_max_width(void)
 	wl_list_insert(menu->items.prev, &item->link);
 
 	menu_compute_layout(menu, &test_style);
-	/* Width should be capped at MENU_MAX_WIDTH */
-	assert(menu->width <= MENU_MAX_WIDTH);
+	/* As wide as the label, as in Fluxbox */
+	assert(menu->width == 2 * 20 + 255 * 7 + 2 * 1);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: menu_layout_max_width\n");
@@ -4108,7 +4141,7 @@ test_handle_button_dispatches_to_window_list(void)
 	/* Click on first item */
 	int bw = wl_menu->border_width;
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + wl_menu->title_height + 5;
+	double ly = 100 + wl_menu->items_y + 5;
 
 	bool consumed = wm_menu_handle_button(&test_server, lx, ly, 0x110, true);
 	assert(consumed == true);
@@ -4152,7 +4185,7 @@ test_handle_motion_dispatches_to_window_list(void)
 
 	int bw = wl_menu->border_width;
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + wl_menu->title_height + 5;
+	double ly = 100 + wl_menu->items_y + 5;
 
 	bool consumed = wm_menu_handle_motion(&test_server, lx, ly);
 	assert(consumed == true);
@@ -4173,7 +4206,7 @@ test_handle_motion_dispatches_to_window_menu(void)
 
 	int bw = win_menu->border_width;
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + win_menu->title_height + 5;
+	double ly = 100 + win_menu->items_y + 5;
 
 	bool consumed = wm_menu_handle_motion(&test_server, lx, ly);
 	assert(consumed == true);
@@ -4497,7 +4530,7 @@ test_motion_submenu_with_delay(void)
 	int bw = menu->border_width;
 	/* Move over submenu item (index 1) */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+	double ly = 100 + menu->items_y + menu->item_height + 5;
 
 	bool consumed = wm_menu_handle_motion_for(menu, lx, ly);
 	assert(consumed == true);
@@ -4529,7 +4562,7 @@ test_motion_submenu_immediate(void)
 	int bw = menu->border_width;
 	/* Move over submenu item (index 1) */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+	double ly = 100 + menu->items_y + menu->item_height + 5;
 
 	bool consumed = wm_menu_handle_motion_for(menu, lx, ly);
 	assert(consumed == true);
@@ -4557,14 +4590,14 @@ test_motion_closes_old_submenu(void)
 	int bw = menu->border_width;
 	/* First move over submenu item (index 1) to open it */
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + menu->item_height + 5;
+	double ly = 100 + menu->items_y + menu->item_height + 5;
 	wm_menu_handle_motion_for(menu, lx, ly);
 
 	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
 	assert(sub_item->submenu->visible == true);
 
 	/* Now move to first item (index 0) - should close submenu */
-	ly = 100 + bw + menu->title_height + 5;
+	ly = 100 + menu->items_y + 5;
 	wm_menu_handle_motion_for(menu, lx, ly);
 
 	assert(menu->selected_index == 0);
@@ -4801,8 +4834,8 @@ test_menu_layout_submenu_arrow_width(void)
 
 	menu_compute_layout(menu, &test_style);
 	assert(menu->item_count == 3);
-	/* Width should be at least MENU_MIN_WIDTH */
-	assert(menu->width >= MENU_MIN_WIDTH);
+	/* The widest label, the bullet's room on both sides */
+	assert(menu->width == 2 * 20 + 10 * 7 + 2 * 1);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: menu_layout_submenu_arrow_width\n");
@@ -4827,8 +4860,8 @@ test_menu_layout_icon_column(void)
 
 	menu_compute_layout(menu, &test_style);
 	assert(menu->item_count == 2);
-	/* Width includes icon column for all items since one has an icon */
-	assert(menu->width >= MENU_MIN_WIDTH);
+	/* An icon adds an item's height */
+	assert(menu->width == 2 * 20 + 9 * 7 + 20 + 2 * 1);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: menu_layout_icon_column\n");
@@ -5019,7 +5052,7 @@ test_button_click_nop_stays_open(void)
 
 	int bw = menu->border_width;
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + 5;
+	double ly = 100 + menu->items_y + 5;
 
 	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
 	assert(consumed == true);
@@ -5043,7 +5076,7 @@ test_button_click_separator_stays_open(void)
 
 	int bw = menu->border_width;
 	double lx = 100 + bw + 5;
-	double ly = 100 + bw + menu->title_height + 2;
+	double ly = 100 + menu->items_y + 2;
 
 	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
 	assert(consumed == true);
@@ -5666,7 +5699,7 @@ test_motion_with_delay(void)
 
 	/* Move to the submenu item (index 1) */
 	/* The item is at y = menu->y + border + title_height + item_height */
-	int item_y = menu->y + menu->border_width + menu->title_height +
+	int item_y = menu->y + menu->items_y +
 		menu->item_height;
 	bool handled = wm_menu_handle_motion_for(menu,
 		menu->x + 10, item_y + 5);
@@ -5713,7 +5746,7 @@ test_button_window_list_priority(void)
 
 	/* Click in menu area - window_list_menu takes priority */
 	bool handled = wm_menu_handle_button(&test_server,
-		wl->x + 10, wl->y + wl->border_width + wl->title_height + 5,
+		wl->x + 10, wl->y + wl->items_y + 5,
 		0x110, true);
 	assert(handled == true);
 
@@ -5738,7 +5771,7 @@ test_motion_window_list_priority(void)
 	test_server.window_list_menu = wl;
 
 	bool handled = wm_menu_handle_motion(&test_server,
-		wl->x + 10, wl->y + wl->border_width + wl->title_height + 5);
+		wl->x + 10, wl->y + wl->items_y + 5);
 	assert(handled == true);
 
 	test_server.root_menu = NULL;
@@ -5780,7 +5813,7 @@ test_motion_window_menu_priority(void)
 	test_server.window_menu = win;
 
 	bool handled = wm_menu_handle_motion(&test_server,
-		win->x + 10, win->y + win->border_width + win->title_height + 5);
+		win->x + 10, win->y + win->items_y + 5);
 	assert(handled == true);
 
 	test_server.root_menu = NULL;
@@ -5804,7 +5837,7 @@ test_button_window_menu_priority(void)
 	test_server.window_menu = win;
 
 	bool handled = wm_menu_handle_button(&test_server,
-		win->x + 10, win->y + win->border_width + win->title_height + 5,
+		win->x + 10, win->y + win->items_y + 5,
 		0x110, true);
 	assert(handled == true);
 
@@ -5928,7 +5961,7 @@ test_button_release_inside_menu(void)
 
 	/* Release (not press) inside menu */
 	bool handled = wm_menu_handle_button_for(menu,
-		menu->x + 10, menu->y + menu->border_width + menu->title_height + 5,
+		menu->x + 10, menu->y + menu->items_y + 5,
 		0x110, false);
 	/* Release inside menu should return true (found menu) */
 	assert(handled == true);

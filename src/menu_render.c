@@ -48,451 +48,332 @@ wm_color_to_float4(const struct wm_color *c, float out[4])
 
 /* --- Layout computation --- */
 
+static bool
+item_has_submenu(const struct wm_menu_item *item)
+{
+	return item->type == WM_MENU_SUBMENU || item->type == WM_MENU_SENDTO ||
+		item->type == WM_MENU_LAYER || item->type == WM_MENU_WORKSPACES ||
+		item->type == WM_MENU_CONFIG;
+}
+
+/*
+ * As Fluxbox's MenuTheme and Menu::updateMenu: items as high as the
+ * frame and hilite fonts and a bevel above and below (menu.itemHeight
+ * at least), the title likewise; as wide as the widest label with room
+ * for the bullet and a bevel on each side (and the icon); a border
+ * line between the title and the items; separators an item high.
+ */
 void
 menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 {
-	const struct wm_font *title_font = &style->menu_title_font;
-	const struct wm_font *frame_font = &style->menu_frame_font;
+	int bevel = style->menu_bevel_width;
+	int pad = 2 * bevel;
+	int fh = wm_font_height(&style->menu_frame_font, 1.0f);
+	int hh = wm_font_height(&style->menu_hilite_font, 1.0f);
+	int ih = fh > hh ? fh : hh;
+	ih += pad;
+	if (ih < style->menu_item_height)
+		ih = style->menu_item_height;
+	if (ih < pad + 1)
+		ih = pad + 1;
+	int th = wm_font_height(&style->menu_title_font, 1.0f) + pad;
+	if (th < style->menu_title_height)
+		th = style->menu_title_height;
+	if (th < pad + 1)
+		th = pad + 1;
+	menu->item_height = ih;
+	menu->separator_height = ih;
+	menu->title_height = th;
+	int bw = menu->border_width = style->menu_border_width;
 
-	int title_h;
-	if (style->menu_title_height > 0) {
-		title_h = style->menu_title_height;
-	} else {
-		title_h = title_font->size > 0 ? title_font->size : 12;
-		title_h += 2 * MENU_TITLE_PADDING;
-	}
-	menu->title_height = title_h;
-
-	int item_h;
-	if (style->menu_item_height > 0) {
-		item_h = style->menu_item_height;
-	} else {
-		item_h = frame_font->size > 0 ? frame_font->size : 12;
-		item_h += 2 * MENU_ITEM_PADDING;
-	}
-	menu->item_height = item_h;
-
-	menu->border_width = style->menu_border_width > 0 ?
-		style->menu_border_width : 1;
-
-	/* Compute width using Pango text measurements */
-	int min_inner_w = MENU_MIN_WIDTH + 2 * MENU_ITEM_PADDING;
+	int item_w = 1;
+	if (menu->title)
+		item_w = wm_measure_text_width(menu->title,
+			&style->menu_title_font, 1.0f) + pad;
 	int count = 0;
-
-	/* Pre-scan: determine icon column width if any item has an icon */
-	int icon_col_w = 0;
 	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
-		if (item->icon_path) {
-			int icon_size = item_h - 2 * MENU_ITEM_PADDING;
-			if (icon_size < 1) icon_size = 1;
-			icon_col_w = icon_size + MENU_ITEM_PADDING;
-			break;
-		}
-	}
-
-	/* Account for the title text width */
-	if (menu->title) {
-		int title_w = wm_measure_text_width(menu->title,
-			title_font, 1.0f);
-		int needed = title_w + 2 * MENU_TITLE_PADDING;
-		if (needed > min_inner_w) {
-			min_inner_w = needed;
-		}
-	}
-
-	wl_list_for_each(item, &menu->items, link) {
 		count++;
-		if (item->label) {
-			int text_w = wm_measure_text_width(item->label,
-				frame_font, 1.0f);
-			/* Add space for submenu arrow */
-			if (item->type == WM_MENU_SUBMENU ||
-			    item->type == WM_MENU_SENDTO ||
-			    item->type == WM_MENU_LAYER ||
-			    item->type == WM_MENU_WORKSPACES ||
-			    item->type == WM_MENU_CONFIG) {
-				text_w += MENU_ARROW_SIZE + 4;
-			}
-			int needed = text_w + 2 * MENU_ITEM_PADDING +
-				icon_col_w;
-			if (needed > min_inner_w) {
-				min_inner_w = needed;
-			}
-		}
+		if (!item->label)
+			continue;
+		int tw = wm_measure_text_width(item->label,
+			&style->menu_frame_font, 1.0f);
+		int hw = wm_measure_text_width(item->label,
+			&style->menu_hilite_font, 1.0f);
+		int w = 2 * (bevel + ih) + (tw > hw ? tw : hw);
+		if (item->icon_path)
+			w += ih;
+		if (w > item_w)
+			item_w = w;
 	}
 	menu->item_count = count;
-
-	int bw = menu->border_width;
-	menu->width = min_inner_w + 2 * bw;
-	if (menu->width > MENU_MAX_WIDTH) {
-		menu->width = MENU_MAX_WIDTH;
-	}
-
-	/* Total height: border + title + border + items + border */
-	int items_height = 0;
-	wl_list_for_each(item, &menu->items, link) {
-		if (item->type == WM_MENU_SEPARATOR) {
-			items_height += MENU_SEPARATOR_HEIGHT;
-		} else {
-			items_height += item_h;
-		}
-	}
-
-	menu->height = 2 * bw + title_h + items_height;
+	menu->width = item_w + 2 * bw;
+	menu->items_y = bw + th + bw;
+	menu->height = menu->items_y + count * ih + bw;
+	if (count == 0)
+		menu->height = menu->items_y + 1 + bw;
 }
 
 /* --- Title rendering --- */
 
+/* Menu::redrawTitle: the title texture and its text, a bevel in */
 cairo_surface_t *
 render_menu_title(struct wm_menu *menu, struct wm_style *style)
 {
-	int bw = menu->border_width;
-	int inner_w = menu->width - 2 * bw;
+	int w = menu->width - 2 * menu->border_width;
 	int th = menu->title_height;
-
-	if (inner_w <= 0 || th <= 0) {
+	if (w <= 0 || th <= 0)
+		return NULL;
+	cairo_surface_t *surface =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, th);
+	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surface);
 		return NULL;
 	}
-
-	/* Render title background texture */
-	cairo_surface_t *bg = wm_render_texture(&style->menu_title,
-		inner_w, th, 1.0f);
-	if (!bg) {
-		bg = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-			inner_w, th);
-		if (cairo_surface_status(bg) != CAIRO_STATUS_SUCCESS) {
-			cairo_surface_destroy(bg);
-			return NULL;
-		}
-		cairo_t *cr = cairo_create(bg);
-		cairo_set_source_rgba(cr, 0.2, 0.2, 0.3, 1.0);
+	cairo_t *cr = cairo_create(surface);
+	cairo_surface_t *bg = wm_render_texture(&style->menu_title, w, th,
+		1.0f);
+	if (bg) {
+		cairo_set_source_surface(cr, bg, 0, 0);
 		cairo_paint(cr);
-		cairo_destroy(cr);
+		cairo_surface_destroy(bg);
 	}
-
-	/* Render title text */
 	if (menu->title && *menu->title) {
+		int bevel = style->menu_bevel_width;
 		int tw, tth;
-		int max_text_w = inner_w - 2 * MENU_TITLE_PADDING;
 		cairo_surface_t *text = wm_render_text(menu->title,
-			&style->menu_title_font,
-			&style->menu_title_text_color,
-			max_text_w,
-			&tw, &tth, style->menu_title_justify, 1.0f);
+			&style->menu_title_font, &style->menu_title_text_color,
+			w - 2 * bevel, &tw, &tth, style->menu_title_justify,
+			1.0f);
 		if (text) {
-			cairo_t *cr = cairo_create(bg);
-			int tx = MENU_TITLE_PADDING;
+			int tx = bevel;
+			if (style->menu_title_justify == WM_JUSTIFY_CENTER)
+				tx = (w - tw) / 2;
+			else if (style->menu_title_justify == WM_JUSTIFY_RIGHT)
+				tx = w - tw - bevel;
 			int ty = (th - tth) / 2;
-			if (style->menu_title_justify == WM_JUSTIFY_CENTER) {
-				tx = (inner_w - tw) / 2;
-			} else if (style->menu_title_justify ==
-				   WM_JUSTIFY_RIGHT) {
-				tx = inner_w - tw - MENU_TITLE_PADDING;
-			}
-			if (ty < 0) {
-				ty = 0;
-			}
-			cairo_set_source_surface(cr, text, tx, ty);
+			cairo_set_source_surface(cr, text, tx, ty < 0 ? 0 : ty);
 			cairo_paint(cr);
-			cairo_destroy(cr);
 			cairo_surface_destroy(text);
 		}
 	}
-
-	return bg;
+	cairo_destroy(cr);
+	return surface;
 }
 
 /* --- Items rendering --- */
 
+static void
+set_color(cairo_t *cr, const struct wm_color *c)
+{
+	cairo_set_source_rgba(cr, c->r / 255.0, c->g / 255.0, c->b / 255.0,
+		1.0);
+}
+
+/* A style picture for a bullet or toggle, centred in an item's square */
+static bool
+draw_item_pixmap(cairo_t *cr, const char *path, int x, int y, int size)
+{
+	if (!path)
+		return false;
+	cairo_surface_t *img = wm_load_image(path);
+	if (!img)
+		return false;
+	int w = cairo_image_surface_get_width(img);
+	int h = cairo_image_surface_get_height(img);
+	if (w > size || h > size) {
+		cairo_surface_destroy(img);
+		img = wm_load_pixmap(path, size, size);
+		if (!img)
+			return false;
+		w = h = size;
+	}
+	cairo_set_source_surface(cr, img, x + (w < size ? (size - w) / 2 : 0),
+		y + (h < size ? (size - h) / 2 : 0));
+	cairo_paint(cr);
+	cairo_surface_destroy(img);
+	return true;
+}
+
+/*
+ * MenuItem::draw's submenu bullet in an item-high square at sel_x:
+ * the style's picture, or a 33% triangle, a square outline or a small
+ * diamond in the text colour.
+ */
+static void
+draw_bullet(cairo_t *cr, struct wm_style *style, bool hilite, int sel_x,
+	int y, int ih, const struct wm_color *color)
+{
+	const char *pic = hilite && style->menu_hilite_submenu_pixmap ?
+		style->menu_hilite_submenu_pixmap : style->menu_submenu_pixmap;
+	if (draw_item_pixmap(cr, pic, sel_x, y, ih))
+		return;
+	const char *bullet = style->menu_bullet ? style->menu_bullet : "empty";
+	int half = ih / 2, quarter = ih / 4;
+	set_color(cr, color);
+	if (strcmp(bullet, "square") == 0) {
+		cairo_set_line_width(cr, 1.0);
+		cairo_rectangle(cr, sel_x + quarter + 0.5, y + quarter + 0.5,
+			half, half);
+		cairo_stroke(cr);
+	} else if (strcmp(bullet, "triangle") == 0) {
+		/* drawTriangle at scale 300: a third of the square */
+		int ax = ih * 100 / 300, ay = ih * 100 / 300;
+		ax -= ax % 2;
+		ay -= ay % 2;
+		double cx = sel_x + ih / 2, cy = y + ih / 2;
+		if (style->menu_bullet_position == WM_JUSTIFY_RIGHT) {
+			cairo_move_to(cr, cx + ax / 2, cy);
+			cairo_line_to(cr, cx - ax / 2, cy + ay / 2);
+			cairo_line_to(cr, cx - ax / 2, cy - ay / 2);
+		} else {
+			cairo_move_to(cr, cx - ax / 2, cy);
+			cairo_line_to(cr, cx + ax / 2, cy - ay / 2);
+			cairo_line_to(cr, cx + ax / 2, cy + ay / 2);
+		}
+		cairo_close_path(cr);
+		cairo_fill(cr);
+	} else if (strcmp(bullet, "diamond") == 0) {
+		double cx = sel_x + half, cy = y + half;
+		cairo_move_to(cr, cx - 3, cy);
+		cairo_line_to(cr, cx, cy - 3);
+		cairo_line_to(cr, cx + 3, cy);
+		cairo_line_to(cr, cx, cy + 3);
+		cairo_close_path(cr);
+		cairo_fill(cr);
+	}
+}
+
 cairo_surface_t *
 render_menu_items(struct wm_menu *menu, struct wm_style *style)
 {
-	int bw = menu->border_width;
-	int inner_w = menu->width - 2 * bw;
-	int item_h = menu->item_height;
+	int w = menu->width - 2 * menu->border_width;
+	int ih = menu->item_height;
+	int total_h = menu->item_count * ih;
+	if (w <= 0 || total_h <= 0)
+		return NULL;
+	cairo_surface_t *surface =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, total_h);
+	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surface);
+		return NULL;
+	}
+	cairo_t *cr = cairo_create(surface);
+	cairo_surface_t *bg = wm_render_texture(&style->menu_frame, w, total_h,
+		1.0f);
+	if (bg) {
+		cairo_set_source_surface(cr, bg, 0, 0);
+		cairo_paint(cr);
+		cairo_surface_destroy(bg);
+	}
 
-	/* Compute total items height */
-	int total_h = 0;
+	int bevel = style->menu_bevel_width;
+	bool right = style->menu_bullet_position == WM_JUSTIFY_RIGHT;
+	int y = 0, index = 0;
 	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
 		if (item->type == WM_MENU_SEPARATOR) {
-			total_h += MENU_SEPARATOR_HEIGHT;
-		} else {
-			total_h += item_h;
-		}
-	}
-
-	if (inner_w <= 0 || total_h <= 0) {
-		return NULL;
-	}
-
-	/* Render frame background */
-	cairo_surface_t *surface = wm_render_texture(&style->menu_frame,
-		inner_w, total_h, 1.0f);
-	if (!surface) {
-		surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-			inner_w, total_h);
-		if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-			cairo_surface_destroy(surface);
-			return NULL;
-		}
-		cairo_t *cr = cairo_create(surface);
-		cairo_set_source_rgba(cr, 0.15, 0.15, 0.15, 1.0);
-		cairo_paint(cr);
-		cairo_destroy(cr);
-	}
-
-	cairo_t *cr = cairo_create(surface);
-	int y = 0;
-	int index = 0;
-
-	/* Pre-scan: determine icon column width if any item has an icon */
-	int icon_col_w = 0;
-	wl_list_for_each(item, &menu->items, link) {
-		if (item->icon_path) {
-			int icon_size = item_h - 2 * MENU_ITEM_PADDING;
-			if (icon_size < 1) icon_size = 1;
-			icon_col_w = icon_size + MENU_ITEM_PADDING;
-			break;
-		}
-	}
-
-	wl_list_for_each(item, &menu->items, link) {
-		if (item->type == WM_MENU_SEPARATOR) {
-			/* Draw separator line */
-			cairo_set_source_rgba(cr,
-				style->menu_border_color.r / 255.0,
-				style->menu_border_color.g / 255.0,
-				style->menu_border_color.b / 255.0,
-				0.6);
-			cairo_set_line_width(cr, 1.0);
-			int sep_y = y + MENU_SEPARATOR_HEIGHT / 2;
-			cairo_move_to(cr, 4, sep_y + 0.5);
-			cairo_line_to(cr, inner_w - 4, sep_y + 0.5);
-			cairo_stroke(cr);
-			y += MENU_SEPARATOR_HEIGHT;
+			/* MenuSeparator::draw: a line in the text colour */
+			set_color(cr, &style->menu_frame_text_color);
+			cairo_rectangle(cr, bevel + ih + 1, y + ih / 2,
+				w - 2 * (bevel + ih) - 1, 1);
+			cairo_fill(cr);
+			y += ih;
 			index++;
 			continue;
 		}
 
-		bool is_selected = (index == menu->selected_index);
-
-		/* Draw highlight background for selected item */
-		if (is_selected) {
-			cairo_surface_t *hilite = wm_render_texture(
-				&style->menu_hilite, inner_w, item_h, 1.0f);
-			if (hilite) {
-				cairo_set_source_surface(cr, hilite, 0, y);
+		bool hilite = index == menu->selected_index;
+		bool disabled = item->type == WM_MENU_NOP;
+		if (hilite) {
+			/* ParentRelative leaves the frame showing */
+			cairo_surface_t *hs = wm_render_texture(
+				&style->menu_hilite, w, ih, 1.0f);
+			if (hs) {
+				cairo_set_source_surface(cr, hs, 0, y);
 				cairo_paint(cr);
-				cairo_surface_destroy(hilite);
-			} else {
-				cairo_set_source_rgba(cr, 0.3, 0.3, 0.5, 1.0);
-				cairo_rectangle(cr, 0, y, inner_w, item_h);
-				cairo_fill(cr);
+				cairo_surface_destroy(hs);
 			}
 		}
-
-		/* Draw label text */
-		const struct wm_color *text_color = is_selected ?
-			&style->menu_hilite_text_color :
+		const struct wm_color *color = hilite ?
+			&style->menu_hilite_text_color : disabled ?
+			&style->menu_disable_text_color :
 			&style->menu_frame_text_color;
+		const struct wm_font *font = hilite ?
+			&style->menu_hilite_font : &style->menu_frame_font;
+		enum wm_justify justify = hilite ? style->menu_hilite_justify :
+			style->menu_frame_justify;
 
-		bool is_disabled = (item->type == WM_MENU_NOP);
-		struct wm_color disabled_color;
-		if (is_disabled) {
-			/* Grey out disabled items */
-			disabled_color = *text_color;
-			disabled_color.r = (disabled_color.r + 128) / 2;
-			disabled_color.g = (disabled_color.g + 128) / 2;
-			disabled_color.b = (disabled_color.b + 128) / 2;
-			text_color = &disabled_color;
-		}
-
-		/* Draw icon if present and icon column is active */
-		if (icon_col_w > 0 && item->icon_path) {
-			int icon_size = item_h - 2 * MENU_ITEM_PADDING;
-			if (icon_size > 0) {
-				cairo_surface_t *icon =
-					cairo_image_surface_create_from_png(
-						item->icon_path);
-				if (icon && cairo_surface_status(icon) ==
-				    CAIRO_STATUS_SUCCESS) {
-					int iw = cairo_image_surface_get_width(
-						icon);
-					int ih = cairo_image_surface_get_height(
-						icon);
-					double ix = MENU_ITEM_PADDING;
-					double iy = y + MENU_ITEM_PADDING;
-					cairo_save(cr);
-					cairo_translate(cr, ix, iy);
-					cairo_scale(cr,
-						(double)icon_size / iw,
-						(double)icon_size / ih);
-					cairo_set_source_surface(cr, icon,
-						0, 0);
-					cairo_paint(cr);
-					cairo_restore(cr);
-				}
-				if (icon)
-					cairo_surface_destroy(icon);
+		/* The icon, a bevel in */
+		int icon_w = 0;
+		if (item->icon_path && ih - 2 * bevel > 0) {
+			cairo_surface_t *icon = wm_load_pixmap(item->icon_path,
+				ih - 2 * bevel, ih - 2 * bevel);
+			if (icon) {
+				cairo_set_source_surface(cr, icon, bevel,
+					y + bevel);
+				cairo_paint(cr);
+				cairo_surface_destroy(icon);
+				icon_w = ih;
 			}
 		}
 
-		/* Draw checked state dot (Fluxbox-style indicator) */
-		if (item->checked) {
-			double dot_size = 6.0;
-			double dot_x = MENU_ITEM_PADDING + icon_col_w;
-			double dot_y = y + (item_h - dot_size) / 2.0;
-			cairo_set_source_rgba(cr,
-				text_color->r / 255.0,
-				text_color->g / 255.0,
-				text_color->b / 255.0,
-				text_color->a / 255.0);
-			/* Filled diamond (Fluxbox-style bullet) */
-			double cx = dot_x + dot_size / 2.0;
-			double cy = dot_y + dot_size / 2.0;
-			double r = dot_size / 2.0;
-			cairo_move_to(cr, cx, dot_y);
-			cairo_line_to(cr, cx + r, cy);
-			cairo_line_to(cr, cx, dot_y + dot_size);
-			cairo_line_to(cr, cx - r, cy);
-			cairo_close_path(cr);
-			cairo_fill(cr);
-		}
-
-		if (item->label) {
+		if (item->label && *item->label) {
+			/* RTL labels go to the right */
+			if (find_base_dir(item->label) == PANGO_DIRECTION_RTL &&
+			    justify == WM_JUSTIFY_LEFT)
+				justify = WM_JUSTIFY_RIGHT;
 			int tw, th;
-			int check_pad = item->checked ? 12 : 0;
-			int max_w = inner_w - 2 * MENU_ITEM_PADDING -
-				icon_col_w - check_pad;
-			bool has_arrow = (item->type == WM_MENU_SUBMENU ||
-				item->type == WM_MENU_SENDTO ||
-				item->type == WM_MENU_LAYER ||
-				item->type == WM_MENU_WORKSPACES ||
-				item->type == WM_MENU_CONFIG);
-			if (has_arrow) {
-				max_w -= MENU_ARROW_SIZE + 4;
-			}
-			/* Detect RTL text for menu item alignment */
-			bool item_rtl = (find_base_dir(
-				item->label) == PANGO_DIRECTION_RTL);
-			enum wm_justify item_just = item_rtl
-				? WM_JUSTIFY_RIGHT : WM_JUSTIFY_LEFT;
 			cairo_surface_t *text = wm_render_text(item->label,
-				&style->menu_frame_font, text_color,
-				max_w, &tw, &th, item_just, 1.0f);
+				font, color, w - 2 * (bevel + ih) - icon_w,
+				&tw, &th, justify, 1.0f);
 			if (text) {
 				int tx;
-				if (item_rtl) {
-					tx = inner_w - MENU_ITEM_PADDING -
-						tw;
-					if (has_arrow)
-						tx -= MENU_ARROW_SIZE + 4;
-				} else {
-					tx = MENU_ITEM_PADDING + icon_col_w +
-						check_pad;
-				}
-				int ty = y + (item_h - th) / 2;
-				if (ty < y) {
-					ty = y;
-				}
-				cairo_set_source_surface(cr, text, tx, ty);
+				if (justify == WM_JUSTIFY_RIGHT)
+					tx = w - (ih + bevel + tw);
+				else if (justify == WM_JUSTIFY_CENTER)
+					tx = (w + 1 - tw) / 2;
+				else
+					tx = bevel + ih + 1 + icon_w;
+				int ty = y + (ih - th) / 2;
+				cairo_set_source_surface(cr, text, tx,
+					ty < y ? y : ty);
 				cairo_paint(cr);
 				cairo_surface_destroy(text);
 			}
 		}
 
-		/* Draw submenu bullet indicator */
-		bool has_submenu = (item->type == WM_MENU_SUBMENU ||
-			item->type == WM_MENU_SENDTO ||
-			item->type == WM_MENU_LAYER ||
-			item->type == WM_MENU_WORKSPACES ||
-			item->type == WM_MENU_CONFIG);
-		if (has_submenu) {
-			const char *bullet = style->menu_bullet;
-			if (!bullet)
-				bullet = "triangle";
-
-			/* Skip drawing if "empty" */
-			if (strcasecmp(bullet, "empty") != 0) {
-				/* For RTL labels, mirror the arrow side */
-				bool lbl_rtl = item->label &&
-					(find_base_dir(item->label)
-						== PANGO_DIRECTION_RTL);
-				bool style_left =
-					(style->menu_bullet_position ==
-					 WM_JUSTIFY_LEFT);
-				bool on_left = lbl_rtl
-					? !style_left : style_left;
-				double ax;
-				if (on_left) {
-					ax = MENU_ITEM_PADDING;
-				} else {
-					ax = inner_w - MENU_ITEM_PADDING -
-						MENU_ARROW_SIZE;
-				}
-				double ay = y +
-					(item_h - MENU_ARROW_SIZE) / 2.0;
-
-				cairo_set_source_rgba(cr,
-					text_color->r / 255.0,
-					text_color->g / 255.0,
-					text_color->b / 255.0,
-					text_color->a / 255.0);
-
-				if (strcasecmp(bullet, "square") == 0) {
-					cairo_rectangle(cr, ax, ay,
-						MENU_ARROW_SIZE,
-						MENU_ARROW_SIZE);
-					cairo_fill(cr);
-				} else if (strcasecmp(bullet,
-					   "diamond") == 0) {
-					double cx = ax +
-						MENU_ARROW_SIZE / 2.0;
-					double cy = ay +
-						MENU_ARROW_SIZE / 2.0;
-					double r = MENU_ARROW_SIZE / 2.0;
-					cairo_move_to(cr, cx, ay);
-					cairo_line_to(cr, cx + r, cy);
-					cairo_line_to(cr, cx, ay +
-						MENU_ARROW_SIZE);
-					cairo_line_to(cr, cx - r, cy);
-					cairo_close_path(cr);
-					cairo_fill(cr);
-				} else {
-					/* Default: triangle */
-					if (on_left) {
-						/* Point left */
-						cairo_move_to(cr,
-							ax + MENU_ARROW_SIZE,
-							ay);
-						cairo_line_to(cr, ax,
-							ay +
-							MENU_ARROW_SIZE / 2.0);
-						cairo_line_to(cr,
-							ax + MENU_ARROW_SIZE,
-							ay + MENU_ARROW_SIZE);
-					} else {
-						/* Point right */
-						cairo_move_to(cr, ax, ay);
-						cairo_line_to(cr,
-							ax + MENU_ARROW_SIZE,
-							ay +
-							MENU_ARROW_SIZE / 2.0);
-						cairo_line_to(cr, ax,
-							ay + MENU_ARROW_SIZE);
-					}
-					cairo_close_path(cr);
-					cairo_fill(cr);
-				}
+		/* Toggles and bullets in the item-high square on the
+		 * bullet's side */
+		int sel_x = right ? w - ih - bevel : 0;
+		if (item->checked) {
+			const char *pic = hilite &&
+				style->menu_hilite_selected_pixmap ?
+				style->menu_hilite_selected_pixmap :
+				style->menu_selected_pixmap;
+			if (!draw_item_pixmap(cr, pic, sel_x, y, ih)) {
+				/* A square of the hilite texture's colour */
+				uint32_t c = style->menu_hilite.color;
+				struct wm_color hc = { (c >> 16) & 0xFF,
+					(c >> 8) & 0xFF, c & 0xFF, 255 };
+				set_color(cr, &hc);
+				cairo_rectangle(cr, sel_x + ih / 4, y + ih / 4,
+					ih / 2, ih / 2);
+				cairo_fill(cr);
 			}
+		} else if (item->toggle) {
+			const char *pic = hilite &&
+				style->menu_hilite_unselected_pixmap ?
+				style->menu_hilite_unselected_pixmap :
+				style->menu_unselected_pixmap;
+			draw_item_pixmap(cr, pic, sel_x, y, ih);
 		}
+		if (item_has_submenu(item))
+			draw_bullet(cr, style, hilite, sel_x, y, ih, color);
 
-		y += item_h;
+		y += ih;
 		index++;
 	}
-
 	cairo_destroy(cr);
 	return surface;
 }

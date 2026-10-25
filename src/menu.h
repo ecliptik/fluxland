@@ -70,6 +70,7 @@ struct wm_menu_item {
 	struct wm_menu *submenu;	/* for submenu type */
 	void *data;		/* opaque data (e.g. view ptr for window list) */
 	bool checked;		/* Fluxbox-style state dot indicator */
+	bool toggle;		/* on or off: menu.unselected.pixmap when off */
 	struct wl_list link;	/* wm_menu.items */
 };
 
@@ -99,6 +100,8 @@ struct wm_menu {
 	int item_height;
 	int item_count;
 	int border_width;
+	int items_y;		/* the items, under the title's border line */
+	int separator_height;	/* an item's, as in Fluxbox */
 
 	/* The files and directories it was read from, and the newest of
 	 * their times when it was: it is read again when one changes */

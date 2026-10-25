@@ -109,6 +109,11 @@ menu.hilite.textColor:              #f0e6d3
 
 menu.borderColor:                   #081a30
 menu.borderWidth:                   1
+! Fluxbox draws no bullet unless menu.bullet says, on the left
+menu.bullet:                        triangle
+menu.bullet.position:               right
+menu.bevelWidth:                    3
+menu.frame.disableColor:            #d4c8b0
 
 # -------------------------------------------------------------------
 # Toolbar

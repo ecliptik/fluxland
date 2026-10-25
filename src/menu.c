@@ -376,6 +376,7 @@ wm_menu_create_config_menu(struct wm_server *server)
 			WM_MENU_COMMAND, _(toggles[i].label));
 		if (item) {
 			item->command = strdup(toggles[i].cmd);
+			item->toggle = true;
 			item->checked = checked[i];
 			wl_list_insert(menu->items.prev, &item->link);
 		}
@@ -604,7 +605,7 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 		wlr_buffer_drop(items_buf);
 	}
 	wlr_scene_node_set_position(&menu->items_buf->node,
-		bw, bw + menu->title_height);
+		bw, menu->items_y);
 
 	menu->visible = true;
 
@@ -733,7 +734,7 @@ menu_item_at(struct wm_menu *menu, double lx, double ly)
 
 	int bw = menu->border_width;
 	double rx = lx - menu->x - bw;
-	double ry = ly - menu->y - bw - menu->title_height;
+	double ry = ly - menu->y - menu->items_y;
 
 	if (rx < 0 || rx >= menu->width - 2 * bw) {
 		return -1;
@@ -747,7 +748,7 @@ menu_item_at(struct wm_menu *menu, double lx, double ly)
 	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
 		int ih = (item->type == WM_MENU_SEPARATOR) ?
-			MENU_SEPARATOR_HEIGHT : menu->item_height;
+			menu->separator_height : menu->item_height;
 		if (ry >= y && ry < y + ih) {
 			return index;
 		}
@@ -1082,10 +1083,12 @@ static void
 submenu_position(struct wm_menu *parent, int item_y_offset,
 	int *out_x, int *out_y)
 {
+	/* Menu::drawSubmenu: over the parent's right border, its first
+	 * item level with the parent's (its title above, as the parent's) */
 	struct wm_server *server = parent->server;
-	int sub_x = parent->x + parent->width;
-	int sub_y = parent->y + parent->border_width +
-		parent->title_height + item_y_offset;
+	int bw = parent->border_width;
+	int sub_x = parent->x + parent->width - bw;
+	int sub_y = parent->y + item_y_offset;
 
 	/* Get output bounds at the parent menu position */
 	struct wlr_output *wlr_output = wlr_output_layout_output_at(
@@ -1099,7 +1102,7 @@ submenu_position(struct wm_menu *parent, int item_y_offset,
 				int out_left = wm_out->usable_area.x;
 				/* Flip to left side if overflowing right */
 				if (sub_x + parent->width > out_right) {
-					sub_x = parent->x - parent->width;
+					sub_x = parent->x - parent->width + bw;
 					if (sub_x < out_left) {
 						sub_x = out_left;
 					}
@@ -1333,7 +1336,7 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 					break;
 				}
 				if (it->type == WM_MENU_SEPARATOR) {
-					y_off += MENU_SEPARATOR_HEIGHT;
+					y_off += menu->separator_height;
 				} else {
 					y_off += menu->item_height;
 				}
@@ -1505,7 +1508,7 @@ wm_menu_handle_motion_for(struct wm_menu *root_menu, double lx, double ly)
 					break;
 				}
 				if (it->type == WM_MENU_SEPARATOR) {
-					y_off += MENU_SEPARATOR_HEIGHT;
+					y_off += hit_menu->separator_height;
 				} else {
 					y_off += hit_menu->item_height;
 				}
@@ -1611,7 +1614,7 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 					break;
 				}
 				if (it->type == WM_MENU_SEPARATOR) {
-					y_off += MENU_SEPARATOR_HEIGHT;
+					y_off += hit_menu->separator_height;
 				} else {
 					y_off += hit_menu->item_height;
 				}
@@ -1737,13 +1740,16 @@ wm_menu_show_window(struct wm_server *server, int x, int y)
 		wl_list_for_each(item, &server->window_menu->items, link) {
 			switch (item->type) {
 			case WM_MENU_SHADE:
+				item->toggle = true;
 				item->checked = view->decoration &&
 					view->decoration->shaded;
 				break;
 			case WM_MENU_STICK:
+				item->toggle = true;
 				item->checked = view->sticky;
 				break;
 			case WM_MENU_MAXIMIZE:
+				item->toggle = true;
 				item->checked = view->maximized;
 				break;
 			case WM_MENU_ICONIFY:

@@ -40,6 +40,12 @@ int wm_measure_text_width(const char *text, const struct wm_font *f,
 	float s)
 	{ (void)f; (void)s;
 	  return text ? (int)(strlen(text) * 7) : 0; }
+int wm_font_height(const struct wm_font *f, float s)
+	{ (void)f; (void)s; return 12; }
+cairo_surface_t *wm_load_image(const char *path)
+	{ (void)path; return NULL; }
+cairo_surface_t *wm_load_pixmap(const char *path, int w, int h)
+	{ (void)path; (void)w; (void)h; return NULL; }
 int style_load(struct wm_style *s, const char *p)
 	{ (void)s; (void)p; return 0; }
 void wm_view_set_sticky(struct wm_view *v, bool s)

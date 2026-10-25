@@ -218,6 +218,18 @@ struct wm_style {
 	int menu_item_height;
 	int menu_title_height;
 
+	/* The rest of Fluxbox's MenuTheme */
+	int menu_bevel_width;
+	struct wm_font menu_hilite_font;	/* menu.frame.font unless set */
+	enum wm_justify menu_frame_justify;
+	enum wm_justify menu_hilite_justify;
+	struct wm_color menu_disable_text_color;	/* menu.frame.disableColor */
+	/* menu.submenu.pixmap, menu.selected.pixmap, menu.unselected.pixmap
+	 * and their menu.hilite.* forms; NULL when not set */
+	char *menu_submenu_pixmap, *menu_hilite_submenu_pixmap;
+	char *menu_selected_pixmap, *menu_hilite_selected_pixmap;
+	char *menu_unselected_pixmap, *menu_hilite_unselected_pixmap;
+
 	/* Slit */
 	struct wm_texture slit_texture;
 	struct wm_color slit_border_color;

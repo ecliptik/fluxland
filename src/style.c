@@ -962,6 +962,85 @@ load_window(struct wm_style *s, struct rc_database *db, const char *sd)
 }
 
 /*
+ * Menus as Fluxbox's FbTk::MenuTheme reads them: borders and bevel to
+ * the top-level keys (as style_get does), the hilite font and justify
+ * to the frame's, no bullet unless menu.bullet says, on the left
+ * unless menu.bullet.position does.
+ */
+static void
+load_menu(struct wm_style *s, struct rc_database *db, const char *sd)
+{
+	const struct wm_color white = make_color(255, 255, 255);
+	load_texture_chain(db, KEYS("menu.title"), &s->menu_title, sd);
+	load_texture_chain(db, KEYS("menu.frame"), &s->menu_frame, sd);
+	load_texture_chain(db, KEYS("menu.hilite"), &s->menu_hilite, sd);
+	s->menu_title_text_color = color_chain(db,
+		KEYS("menu.title.textColor"), white);
+	s->menu_frame_text_color = color_chain(db,
+		KEYS("menu.frame.textColor"), white);
+	s->menu_hilite_text_color = color_chain(db,
+		KEYS("menu.hilite.textColor"), white);
+	s->menu_disable_text_color = color_chain(db,
+		KEYS("menu.frame.disableColor"), white);
+	font_chain(db, KEYS("menu.title.font"), &s->menu_title_font);
+	font_chain(db, KEYS("menu.frame.font"), &s->menu_frame_font);
+	font_finish(&s->menu_hilite_font);
+	s->menu_hilite_font = s->menu_frame_font;
+	s->menu_hilite_font.family = s->menu_frame_font.family ?
+		strdup(s->menu_frame_font.family) : NULL;
+	font_chain(db, KEYS("menu.hilite.font"), &s->menu_hilite_font);
+	const char *k = first_key(db, KEYS("menu.title.justify"));
+	s->menu_title_justify = k ? parse_justify(style_get(db, k)) :
+		WM_JUSTIFY_LEFT;
+	k = first_key(db, KEYS("menu.frame.justify"));
+	s->menu_frame_justify = k ? parse_justify(style_get(db, k)) :
+		WM_JUSTIFY_LEFT;
+	k = first_key(db, KEYS("menu.hilite.justify", "menu.frame.justify"));
+	s->menu_hilite_justify = k ? parse_justify(style_get(db, k)) :
+		WM_JUSTIFY_LEFT;
+
+	s->menu_border_width = int_chain(db, KEYS("menu.borderWidth"), 0);
+	if (s->menu_border_width < 0)
+		s->menu_border_width = 0;
+	if (s->menu_border_width > 20)
+		s->menu_border_width = 20;
+	s->menu_border_color = color_chain(db, KEYS("menu.borderColor"),
+		make_color(0, 0, 0));
+	s->menu_bevel_width = int_chain(db, KEYS("menu.bevelWidth"), 0);
+	if (s->menu_bevel_width < 0)
+		s->menu_bevel_width = 0;
+	if (s->menu_bevel_width > 20)
+		s->menu_bevel_width = 20;
+	s->menu_item_height = int_chain(db, KEYS("menu.itemHeight"), 0);
+	s->menu_title_height = int_chain(db, KEYS("menu.titleHeight"), 0);
+
+	/* ThemeItem<BulletType>: a word found anywhere, else none */
+	const char *bullet = style_get(db, "menu.bullet");
+	free(s->menu_bullet);
+	s->menu_bullet = strdup(!bullet ? "empty" :
+		strcasestr(bullet, "empty") ? "empty" :
+		strcasestr(bullet, "square") ? "square" :
+		strcasestr(bullet, "triangle") ? "triangle" :
+		strcasestr(bullet, "diamond") ? "diamond" : "empty");
+	k = first_key(db, KEYS("menu.bullet.position"));
+	s->menu_bullet_position = k && parse_justify(style_get(db, k)) ==
+		WM_JUSTIFY_RIGHT ? WM_JUSTIFY_RIGHT : WM_JUSTIFY_LEFT;
+
+	char **pixmaps[] = { &s->menu_submenu_pixmap,
+		&s->menu_hilite_submenu_pixmap, &s->menu_selected_pixmap,
+		&s->menu_hilite_selected_pixmap, &s->menu_unselected_pixmap,
+		&s->menu_hilite_unselected_pixmap };
+	static const char *const keys[] = { "menu.submenu.pixmap",
+		"menu.hilite.submenu.pixmap", "menu.selected.pixmap",
+		"menu.hilite.selected.pixmap", "menu.unselected.pixmap",
+		"menu.hilite.unselected.pixmap" };
+	for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+		safe_free(pixmaps[i]);
+		*pixmaps[i] = load_pixmap_path(db, keys[i], sd);
+	}
+}
+
+/*
  * The toolbar and its tools, with the fallbacks of Fluxbox's
  * ToolbarTheme, ToolTheme, WorkspaceNameTheme, ButtonTheme and
  * IconbarTheme.  fluxland 1.x's toolbar.font and toolbar.textColor
@@ -1284,6 +1363,7 @@ style_create(void)
 	s->window_label_unfocus_font = default_font();
 	s->menu_title_font = default_font();
 	s->menu_frame_font = default_font();
+	s->menu_hilite_font = default_font();
 	s->toolbar_font = default_font();
 	s->window_font = default_font();
 
@@ -1309,34 +1389,7 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 		&s->window_focus_border_color);
 
 	/* --- Menu --- */
-	load_texture(db, "menu.title", &s->menu_title, sd);
-	load_color(db, "menu.title.textColor", &s->menu_title_text_color);
-	load_font(db, "menu.title.font", &s->menu_title_font);
-	s->menu_title_justify = parse_justify(style_get(db, "menu.title.justify"));
-	load_texture(db, "menu.frame", &s->menu_frame, sd);
-	load_color(db, "menu.frame.textColor", &s->menu_frame_text_color);
-	load_font(db, "menu.frame.font", &s->menu_frame_font);
-	load_texture(db, "menu.hilite", &s->menu_hilite, sd);
-	load_color(db, "menu.hilite.textColor", &s->menu_hilite_text_color);
-	load_color(db, "menu.borderColor", &s->menu_border_color);
-	s->menu_border_width = style_get_int(db, "menu.borderWidth",
-		s->menu_border_width);
-
-	/* Menu bullet style */
-	const char *bullet = style_get(db, "menu.bullet");
-	if (bullet) {
-		free(s->menu_bullet);
-		s->menu_bullet = strdup(bullet);
-	}
-	const char *bullet_pos = style_get(db, "menu.bullet.position");
-	if (bullet_pos)
-		s->menu_bullet_position = parse_justify(bullet_pos);
-
-	/* Menu item/title heights */
-	s->menu_item_height = style_get_int(db, "menu.itemHeight",
-		s->menu_item_height);
-	s->menu_title_height = style_get_int(db, "menu.titleHeight",
-		s->menu_title_height);
+	load_menu(s, db, sd);
 
 	/* --- Slit --- */
 	load_texture(db, "slit", &s->slit_texture, sd);
@@ -1514,6 +1567,13 @@ style_clear(struct wm_style *s)
 	font_finish(&s->window_label_unfocus_font);
 	font_finish(&s->menu_title_font);
 	font_finish(&s->menu_frame_font);
+	font_finish(&s->menu_hilite_font);
+	free(s->menu_submenu_pixmap);
+	free(s->menu_hilite_submenu_pixmap);
+	free(s->menu_selected_pixmap);
+	free(s->menu_hilite_selected_pixmap);
+	free(s->menu_unselected_pixmap);
+	free(s->menu_hilite_unselected_pixmap);
 	font_finish(&s->toolbar_font);
 	font_finish(&s->window_font);
 

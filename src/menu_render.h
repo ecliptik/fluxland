@@ -20,15 +20,6 @@
 #include "pixel_buffer.h"
 #include "style.h"
 
-/* --- Layout constants --- */
-
-#define MENU_MIN_WIDTH     120
-#define MENU_MAX_WIDTH     300
-#define MENU_ITEM_PADDING  4
-#define MENU_TITLE_PADDING 6
-#define MENU_SEPARATOR_HEIGHT 7
-#define MENU_ARROW_SIZE    8
-
 /*
  * Convert a wm_color to a float[4] array (RGBA, 0.0-1.0).
  */
