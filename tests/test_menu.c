@@ -70,6 +70,10 @@ void wm_focus_view(struct wm_view *v, struct wlr_surface *s)
 	{ (void)v; (void)s; }
 int wm_rules_remember_window(struct wm_view *v, const char *p)
 	{ (void)v; (void)p; return 0; }
+bool wm_rules_is_remembered(struct wm_view *v, const char *p,
+	enum wm_remember_attr a) { (void)v; (void)p; (void)a; return false; }
+int wm_rules_toggle_remembered(struct wm_view *v, const char *p,
+	enum wm_remember_attr a) { (void)v; (void)p; (void)a; return 0; }
 #include "ipc.h"
 void wm_ipc_broadcast_event(struct wm_ipc_server *ipc,
 	enum wm_ipc_event event, const char *payload)

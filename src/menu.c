@@ -201,6 +201,42 @@ fill_icons_menu(struct wm_menu *menu, struct wm_server *server)
 	}
 }
 
+static struct wm_view *menu_target(struct wm_menu *menu);
+
+/* Remember...: a toggle for each attribute of the window's apps entry
+ * (Remember.cc's createRememberMenu) */
+static void
+fill_remember_menu(struct wm_menu *menu)
+{
+	static const char *const labels[WM_REM_COUNT] = {
+		N_("Workspace"), N_("Jump to workspace"), N_("Head"),
+		N_("Dimensions"), N_("Position"), N_("Sticky"),
+		N_("Decorations"), N_("Shaded"), N_("Minimized"),
+		N_("Maximized"), N_("Fullscreen"), N_("Transparency"),
+		N_("Layer"), N_("Save on close"),
+	};
+	clear_items(menu);
+	struct wm_server *server = menu->server;
+	struct wm_view *target = menu_target(menu);
+	const char *apps = server->config ? server->config->apps_file : NULL;
+	bool workspace = target && apps &&
+		wm_rules_is_remembered(target, apps, WM_REM_WORKSPACE);
+	for (int a = 0; a < WM_REM_COUNT; a++) {
+		/* Jump goes with a remembered workspace only */
+		bool enabled = target && apps &&
+			(a != WM_REM_JUMP || workspace);
+		struct wm_menu_item *item = menu_item_create(enabled ?
+			WM_MENU_REMEMBER : WM_MENU_NOP, _(labels[a]));
+		if (!item)
+			continue;
+		item->data = (void *)(intptr_t)a;
+		item->toggle = true;
+		item->checked = enabled &&
+			wm_rules_is_remembered(target, apps, a);
+		wl_list_insert(menu->items.prev, &item->link);
+	}
+}
+
 /* Bring a menu's lists up to date before it is shown */
 static void
 refresh_lists(struct wm_menu *menu, int depth)
@@ -220,6 +256,9 @@ refresh_lists(struct wm_menu *menu, int depth)
 			break;
 		case WM_MENU_ICONS:
 			fill_icons_menu(item->submenu, menu->server);
+			break;
+		case WM_MENU_REMEMBER:
+			fill_remember_menu(item->submenu);
 			break;
 		default:
 			refresh_lists(item->submenu, depth + 1);
@@ -1294,6 +1333,7 @@ item_closes_menu(struct wm_menu *menu, struct wm_menu_item *item)
 	case WM_MENU_STICK:
 	case WM_MENU_ICONIFY:
 	case WM_MENU_MAXIMIZE:
+	case WM_MENU_REMEMBER:
 		return false;
 	case WM_MENU_COMMAND:
 		return !(item->command &&
@@ -1453,9 +1493,13 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 	}
 
 	case WM_MENU_REMEMBER:
+		/* One attribute remembered or forgotten (RememberMenuItem);
+		 * the toggles shown again: Jump may come or go */
 		if (target && server->config && server->config->apps_file) {
-			wm_rules_remember_window(target,
-				server->config->apps_file);
+			wm_rules_toggle_remembered(target,
+				server->config->apps_file,
+				(enum wm_remember_attr)(intptr_t)item->data);
+			fill_remember_menu(menu);
 		}
 		break;
 

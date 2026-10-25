@@ -719,7 +719,6 @@ window_menu_item(struct wm_menu *menu, const char *tag, const char *label,
 		{ "killwindow", WM_MENU_KILL,     N_("Kill") },
 		{ "raise",      WM_MENU_RAISE,    N_("Raise") },
 		{ "lower",      WM_MENU_LOWER,    N_("Lower") },
-		{ "extramenus", WM_MENU_REMEMBER, N_("Remember...") },
 	};
 	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
 		if (strcasecmp(tag, items[i].tag) == 0) {
@@ -727,7 +726,11 @@ window_menu_item(struct wm_menu *menu, const char *tag, const char *label,
 			return true;
 		}
 	}
-	if (strcasecmp(tag, "sendto") == 0) {
+	if (strcasecmp(tag, "extramenus") == 0) {
+		/* Remember...: its toggles are listed when it is shown */
+		add_submenu(menu, WM_MENU_REMEMBER, label, _("Remember..."),
+			menu_create(ctx->server, _("Remember...")));
+	} else if (strcasecmp(tag, "sendto") == 0) {
 		/* Its workspaces are listed when the menu is shown */
 		add_submenu(menu, WM_MENU_SENDTO, label, _("Send To..."),
 			menu_create(ctx->server, _("Send To...")));

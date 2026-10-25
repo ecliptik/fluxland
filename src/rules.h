@@ -117,4 +117,32 @@ bool wm_rules_should_dock(struct wm_rules *rules, struct wm_view *view);
 /* Write the window's current state as an [app] entry (Remember) */
 int wm_rules_remember_window(struct wm_view *view, const char *apps_path);
 
+/* Fluxbox's Remember menu, one attribute at a time (Remember.cc) */
+enum wm_remember_attr {
+	WM_REM_WORKSPACE,
+	WM_REM_JUMP,
+	WM_REM_HEAD,
+	WM_REM_DIMENSIONS,
+	WM_REM_POSITION,
+	WM_REM_STICKY,
+	WM_REM_DECO,
+	WM_REM_SHADED,
+	WM_REM_MINIMIZED,
+	WM_REM_MAXIMIZED,
+	WM_REM_FULLSCREEN,
+	WM_REM_ALPHA,
+	WM_REM_LAYER,
+	WM_REM_CLOSE,
+	WM_REM_COUNT,
+};
+
+/* Does the window's entry in the apps file have the attribute? */
+bool wm_rules_is_remembered(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr);
+
+/* Remember the attribute as it is now, or forget it when remembered;
+ * written to the apps file (an entry left empty goes). 0, or -1. */
+int wm_rules_toggle_remembered(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr);
+
 #endif /* WM_RULES_H */

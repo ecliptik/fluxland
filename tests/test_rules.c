@@ -771,6 +771,39 @@ TEST(test_remember_replaces_fluxland_1x_entry)
 	assert(strstr(text, "[app] (name=foot) (class=foot)"));
 }
 
+TEST(test_remember_one_attribute)
+{
+	load("# mine\n[app] (class=other)\n  [Sticky] {yes}\n[end]\n");
+	struct wm_view v;
+	new_view(&v, "foot", NULL, "");
+	v.workspace = &g_ws[2];
+	assert(!wm_rules_is_remembered(&v, APPS, WM_REM_WORKSPACE));
+
+	/* Remembered: a new entry with just that */
+	assert(wm_rules_toggle_remembered(&v, APPS, WM_REM_WORKSPACE) == 0);
+	assert(wm_rules_is_remembered(&v, APPS, WM_REM_WORKSPACE));
+	assert(!wm_rules_is_remembered(&v, APPS, WM_REM_LAYER));
+	char *text = read_apps();
+	assert(strstr(text, "# mine") && strstr(text, "[app] (class=other)"));
+	assert(strstr(text, "[app] (name=foot) (class=foot)\n"
+		"  [Workspace]\t{2}\n[end]"));
+
+	/* Another one joins it */
+	v.sticky = true;
+	assert(wm_rules_toggle_remembered(&v, APPS, WM_REM_STICKY) == 0);
+	text = read_apps();
+	assert(strstr(text, "  [Workspace]\t{2}\n  [Sticky]\t{yes}\n[end]"));
+
+	/* Forgotten one at a time; the entry goes with the last */
+	assert(wm_rules_toggle_remembered(&v, APPS, WM_REM_WORKSPACE) == 0);
+	assert(!wm_rules_is_remembered(&v, APPS, WM_REM_WORKSPACE));
+	assert(wm_rules_is_remembered(&v, APPS, WM_REM_STICKY));
+	assert(wm_rules_toggle_remembered(&v, APPS, WM_REM_STICKY) == 0);
+	text = read_apps();
+	assert(!strstr(text, "(name=foot)"));
+	assert(strstr(text, "[app] (class=other)"));
+}
+
 TEST(test_close_saves_state)
 {
 	load("[app] (class=mpv)\n  [Close] {yes}\n[end]\n");
@@ -794,6 +827,7 @@ main(void)
 	wm_rules_init(&rules);
 
 	run_test_bare_word_is_name();
+	run_test_remember_one_attribute();
 	run_test_name_class_role_and_negation();
 	run_test_first_match_wins_and_transient();
 	run_test_match_limit();

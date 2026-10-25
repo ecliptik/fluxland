@@ -951,6 +951,20 @@ static void wm_rules_remember_window(struct wm_view *view, const char *path)
 	(void)view; (void)path;
 }
 
+/* rules.h: Remember... one attribute at a time */
+enum wm_remember_attr { WM_REM_WORKSPACE, WM_REM_JUMP, WM_REM_COUNT = 14 };
+static unsigned g_remembered;	/* a bit for each */
+static int g_toggled_attr = -1;
+static bool
+wm_rules_is_remembered(struct wm_view *v, const char *p,
+	enum wm_remember_attr a)
+	{ (void)v; (void)p; return g_remembered & (1u << a); }
+static int
+wm_rules_toggle_remembered(struct wm_view *v, const char *p,
+	enum wm_remember_attr a)
+	{ (void)v; (void)p; g_remembered ^= 1u << a; g_toggled_attr = a;
+	  return 0; }
+
 /* --- Stub util.h functions --- */
 
 #include <errno.h>
@@ -2141,12 +2155,20 @@ test_execute_remember(void)
 	test_server.focused_view = &view;
 	test_config.apps_file = strdup("/tmp/test_apps");
 
-	struct wm_menu *menu = menu_create(&test_server, "Test");
-	struct wm_menu_item *item = menu_item_create(WM_MENU_REMEMBER, "Remember");
-	wl_list_insert(menu->items.prev, &item->link);
-
+	/* Remember...: a toggle for each attribute, Jump only with the
+	 * workspace remembered */
+	struct wm_menu *menu = menu_create(&test_server, "Remember...");
+	g_remembered = 0;
+	fill_remember_menu(menu);
+	assert(menu_get_item(menu, WM_REM_WORKSPACE)->type ==
+		WM_MENU_REMEMBER);
+	assert(menu_get_item(menu, WM_REM_JUMP)->type == WM_MENU_NOP);
+	struct wm_menu_item *item = menu_get_item(menu, WM_REM_WORKSPACE);
 	execute_menu_item(menu, item);
-	/* Should call wm_rules_remember_window stub */
+	assert(g_toggled_attr == WM_REM_WORKSPACE);
+	/* Shown again: checked, and Jump can be had */
+	assert(menu_get_item(menu, WM_REM_WORKSPACE)->checked);
+	assert(menu_get_item(menu, WM_REM_JUMP)->type == WM_MENU_REMEMBER);
 
 	test_server.focused_view = NULL;
 	free(test_config.apps_file);

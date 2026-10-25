@@ -388,6 +388,222 @@ remember_block(struct wm_view *view, const char *header)
 	return buf;
 }
 
+/* The apps keyword of each remembered attribute */
+static const char *const remember_keys[WM_REM_COUNT] = {
+	"Workspace", "Jump", "Head", "Dimensions", "Position", "Sticky",
+	"Deco", "Shaded", "Minimized", "Maximized", "Fullscreen", "Alpha",
+	"Layer", "Close",
+};
+
+/* The attribute's line as it is now (Remember::rememberAttrib) */
+static void
+remember_line(struct wm_view *view, enum wm_remember_attr attr, FILE *mem)
+{
+	struct wm_output *out = wm_output_for_view(view);
+	struct wlr_box frame, area = out ? out->usable_area : (struct wlr_box){0};
+	wm_view_frame_box(view, &frame);
+	static const char *const deco[] = {
+		[WM_DECOR_NORMAL] = "NORMAL", [WM_DECOR_NONE] = "NONE",
+		[WM_DECOR_BORDER] = "BORDER", [WM_DECOR_TAB] = "TAB",
+		[WM_DECOR_TINY] = "TINY", [WM_DECOR_TOOL] = "TOOL",
+	};
+	switch (attr) {
+	case WM_REM_WORKSPACE:
+		fprintf(mem, "  [Workspace]\t{%d}\n",
+			view->workspace ? view->workspace->index : 0);
+		break;
+	case WM_REM_JUMP:
+		fprintf(mem, "  [Jump]\t{yes}\n");
+		break;
+	case WM_REM_HEAD:
+		fprintf(mem, "  [Head]\t{%d}\n",
+			out ? wm_output_head_number(out) : 0);
+		break;
+	case WM_REM_DIMENSIONS:
+		fprintf(mem, "  [Dimensions]\t{%d %d}\n", frame.width,
+			frame.height);
+		break;
+	case WM_REM_POSITION:
+		fprintf(mem, "  [Position]\t(UPPERLEFT)\t{%d %d}\n",
+			frame.x - area.x, frame.y - area.y);
+		break;
+	case WM_REM_STICKY:
+		fprintf(mem, "  [Sticky]\t{%s}\n", view->sticky ? "yes" : "no");
+		break;
+	case WM_REM_DECO:
+		fprintf(mem, "  [Deco]\t{%s}\n", view->decoration ?
+			deco[view->decoration->preset] : "NONE");
+		break;
+	case WM_REM_SHADED:
+		fprintf(mem, "  [Shaded]\t{%s}\n", view->decoration &&
+			view->decoration->shaded ? "yes" : "no");
+		break;
+	case WM_REM_MINIMIZED:
+		fprintf(mem, "  [Minimized]\t{%s}\n",
+			view->scene_tree && !view->scene_tree->node.enabled ?
+			"yes" : "no");
+		break;
+	case WM_REM_MAXIMIZED:
+		fprintf(mem, "  [Maximized]\t{%s}\n", view->maximized ? "yes" :
+			view->maximized_horiz ? "horz" :
+			view->maximized_vert ? "vert" : "no");
+		break;
+	case WM_REM_FULLSCREEN:
+		fprintf(mem, "  [Fullscreen]\t{%s}\n",
+			view->fullscreen ? "yes" : "no");
+		break;
+	case WM_REM_ALPHA:
+		fprintf(mem, "  [Alpha]\t{%d %d}\n", view->focus_alpha,
+			view->unfocus_alpha);
+		break;
+	case WM_REM_LAYER:
+		fprintf(mem, "  [Layer]\t{%d}\n",
+			wm_layer_fluxbox_number(view->layer));
+		break;
+	case WM_REM_CLOSE:
+		fprintf(mem, "  [Close]\t{yes}\n");
+		break;
+	case WM_REM_COUNT:
+		break;
+	}
+}
+
+/* An entry line's attribute ("  [Workspace] {1}"), or -1 */
+static int
+line_attr(const char *line)
+{
+	while (*line == ' ' || *line == '\t')
+		line++;
+	if (*line != '[')
+		return -1;
+	for (int a = 0; a < WM_REM_COUNT; a++) {
+		size_t n = strlen(remember_keys[a]);
+		if (strncasecmp(line + 1, remember_keys[a], n) == 0 &&
+		    line[1 + n] == ']')
+			return a;
+	}
+	return -1;
+}
+
+/*
+ * The apps file with the window's entry changed: the attribute toggled
+ * (toggle), or just looked for. Returns whether the entry had it; the
+ * new file in *content when toggling.
+ */
+static bool
+edit_entry(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr, bool toggle, char **content, size_t *len)
+{
+	char *header = remember_header(view);
+	char legacy[512];
+	snprintf(legacy, sizeof(legacy), "[app] (class=%s)",
+		view->app_id ? view->app_id : "unknown");
+	FILE *out = toggle ? open_memstream(content, len) : NULL;
+	bool had = false, in_entry = false, found = false;
+	/* The entry's lines, held until its end */
+	char *entry = NULL;
+	size_t entry_len = 0;
+	FILE *ent = NULL;
+	int kept = 0;
+	FILE *in = header ? fopen_config(apps_path, "r") : NULL;
+	char *line = NULL;
+	size_t cap = 0;
+	while (in && getline(&line, &cap, in) >= 0) {
+		char copy[1024];
+		snprintf(copy, sizeof(copy), "%s", line);
+		char *s = strip(copy);
+		if (!in_entry && !found && (strcmp(s, header) == 0 ||
+		    strcmp(s, legacy) == 0)) {
+			in_entry = found = true;
+			ent = out ? open_memstream(&entry, &entry_len) : NULL;
+			if (ent)
+				fputs(line, ent);
+			continue;
+		}
+		if (in_entry) {
+			if (strncasecmp(s, "[end]", 5) == 0) {
+				in_entry = false;
+				if (ent) {
+					if (!had)
+						remember_line(view, attr, ent);
+					fputs(line, ent);
+					fclose(ent);
+					ent = NULL;
+					/* Empty now: it goes */
+					if (kept > 0 || !had)
+						fputs(entry, out);
+					free(entry);
+					entry = NULL;
+				}
+				continue;
+			}
+			if (line_attr(s) == (int)attr) {
+				had = true;
+				continue;	/* forgotten */
+			}
+			if (line_attr(s) >= 0)
+				kept++;
+			if (ent)
+				fputs(line, ent);
+			continue;
+		}
+		if (out)
+			fputs(line, out);
+	}
+	free(line);
+	if (in)
+		fclose(in);
+	if (ent) {
+		/* No [end]: as it was */
+		fclose(ent);
+		fputs(entry, out);
+		free(entry);
+	}
+	if (out) {
+		if (!found) {
+			/* A new entry with just this */
+			fprintf(out, "%s\n", header);
+			remember_line(view, attr, out);
+			fprintf(out, "[end]\n");
+		}
+		fclose(out);
+	}
+	free(header);
+	return had;
+}
+
+bool
+wm_rules_is_remembered(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr)
+{
+	if (!view || !apps_path || attr >= WM_REM_COUNT)
+		return false;
+	return edit_entry(view, apps_path, attr, false, NULL, NULL);
+}
+
+int
+wm_rules_toggle_remembered(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr)
+{
+	if (!view || !apps_path || attr >= WM_REM_COUNT)
+		return -1;
+	char *content = NULL;
+	size_t len = 0;
+	edit_entry(view, apps_path, attr, true, &content, &len);
+	if (!content)
+		return -1;
+	int ret = -1;
+	FILE *wf = fopen_config(apps_path, "w");
+	if (wf) {
+		if (fwrite(content, 1, len, wf) == len)
+			ret = 0;
+		if (fclose(wf) != 0)
+			ret = -1;
+	}
+	free(content);
+	return ret;
+}
+
 int
 wm_rules_remember_window(struct wm_view *view, const char *apps_path)
 {
