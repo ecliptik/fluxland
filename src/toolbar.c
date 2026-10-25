@@ -748,7 +748,9 @@ collect_iconbar_entries(struct wm_toolbar *toolbar)
 
 		struct wm_iconbar_entry *entry = &toolbar->ib_entries[count];
 		entry->view = view;
-		entry->focused = (view == server->focused_view);
+		/* A window wanting attention flashes focused */
+		entry->focused = view == server->focused_view ||
+			view->attention_state;
 		entry->iconified = !view->scene_tree->node.enabled;
 		entry->icon = view->icon;
 		count++;
@@ -898,8 +900,12 @@ render_iconbar(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 		}
 		char title[256];
 		entry_title(toolbar, entry, title, sizeof(title));
+		/* iconbar.iconTextPadding, half each side */
+		int pad = cfg ? cfg->iconbar_icon_text_padding : 10;
 		draw_text(cr, title, &ts->font, &ts->text_color, ts->justify,
-			ex + icon_w + 5, cy, w - icon_w - 10, ch);
+			ex + icon_w + pad / 2, cy, w - icon_w - pad, ch);
+		entry->truncated = wm_measure_text_width(title, &ts->font,
+			1.0f) > w - icon_w - pad;
 
 		toolbar->ib_boxes[i] = (struct wlr_box){ ex, 0, w, tool->height };
 		next_x += w + bw;
@@ -1616,6 +1622,32 @@ wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly)
 		return false;
 	double x = lx - toolbar->x, y = ly - toolbar->y;
 	return x >= 0 && x < toolbar->width && y >= 0 && y < toolbar->height;
+}
+
+const char *
+wm_toolbar_tooltip_at(struct wm_toolbar *toolbar, double lx, double ly,
+	struct wm_view **view)
+{
+	if (!wm_toolbar_contains(toolbar, lx, ly))
+		return NULL;
+	double x = lx - toolbar->x;
+	for (int i = 0; i < toolbar->tool_count; i++) {
+		struct wm_toolbar_tool *tool = &toolbar->tools[i];
+		if (tool->type != WM_TOOL_ICONBAR || x < tool->x ||
+		    x >= tool->x + tool->width)
+			continue;
+		for (int j = 0; j < toolbar->ib_count; j++) {
+			struct wlr_box *box = &toolbar->ib_boxes[j];
+			struct wm_iconbar_entry *e = &toolbar->ib_entries[j];
+			if (x - tool->x >= box->x &&
+			    x - tool->x < box->x + box->width) {
+				*view = e->view;
+				return e->truncated && e->view ?
+					e->view->title : NULL;
+			}
+		}
+	}
+	return NULL;
 }
 
 bool

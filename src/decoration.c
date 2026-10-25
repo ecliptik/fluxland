@@ -1173,10 +1173,11 @@ wm_decoration_region_at(struct wm_decoration *decoration, double x, double y)
 	frame_geometry(decoration, decoration->server ?
 		decoration->server->style : NULL, &g);
 
-	/* The external tabs drag the window, as its titlebar does */
+	/* The tabs (FbWinFrame::getContext's tab container): OnTab, and
+	 * OnTitlebar too, so outside they drag the window as it does */
 	if (g.ext_tabs && x >= g.tx && x < g.tx + g.tw &&
 	    y >= g.ty && y < g.ty + g.tth)
-		return WM_DECOR_REGION_TITLEBAR;
+		return WM_DECOR_REGION_LABEL;
 
 	double fx = x - g.fx, fy = y - g.fy;
 	if (fx < 0 || fy < 0 || fx >= g.fw || fy >= g.fh)
@@ -1194,9 +1195,16 @@ wm_decoration_region_at(struct wm_decoration *decoration, double x, double y)
 	if (fx >= g.fw - bw)
 		return WM_DECOR_REGION_BORDER_RIGHT;
 
-	/* The titlebar, with its border line under it */
-	if (g.titlebar && y < g.content_y)
+	/* The titlebar, with its border line under it; its label holds
+	 * the tabs */
+	if (g.titlebar && y < g.content_y) {
+		double lx = x - g.title_x - g.label_x;
+		double ly = y - g.title_y - g.bevel;
+		if (!g.ext_tabs && lx >= 0 && lx < g.label_w && ly >= 0 &&
+		    ly < g.button_size)
+			return WM_DECOR_REGION_LABEL;
 		return WM_DECOR_REGION_TITLEBAR;
+	}
 
 	/* The handle row and the border line over it */
 	if (g.handle && y >= g.handle_y - bw) {
@@ -1232,6 +1240,36 @@ wm_decoration_tab_size(struct wm_decoration *decoration, int *w, int *h)
 		return false;
 	}
 	return *w > 0 && *h > 0;
+}
+
+const char *
+wm_decoration_tooltip_at(struct wm_decoration *decoration, double x,
+	double y, struct wm_view **view)
+{
+	if (!decoration || !decoration->view || !decoration->server)
+		return NULL;
+	struct wm_style *style = decoration->server->style;
+	struct wm_view *views[64];
+	int n = tab_views(decoration, views, 64);
+	int idx = wm_decoration_tab_at(decoration, x, y);
+	struct wm_view *v = NULL;
+	if (idx >= 0 && idx < n)
+		v = views[idx];
+	else if (wm_decoration_region_at(decoration, x, y) ==
+		 WM_DECOR_REGION_LABEL)
+		v = decoration->view;
+	int w, h;
+	if (!v || !style || !wm_decoration_tab_size(decoration, &w, &h))
+		return NULL;
+	*view = v;
+	struct frame_geom g;
+	frame_geometry(decoration, style, &g);
+	int room = (g.ext_tabs && g.tabs_vertical ? h : w) - 4;
+	bool f = decoration->focused && tab_is_current(decoration, v);
+	const char *title = v->title ? v->title : "";
+	return wm_measure_text_width(title, f ?
+		&style->window_label_focus_font :
+		&style->window_label_unfocus_font, 1.0f) > room ? title : NULL;
 }
 
 int

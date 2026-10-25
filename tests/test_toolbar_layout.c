@@ -391,6 +391,7 @@ struct wm_config {
 	int toolbar_alpha;
 	int iconbar_alignment;
 	int iconbar_icon_width;
+	int iconbar_icon_text_padding;
 	int iconbar_wheel_mode;
 	char *iconbar_iconified_pattern;
 	int toolbar_on_head;
@@ -436,6 +437,7 @@ struct wm_view {
 	bool docked;
 	bool icon_hidden;
 	bool urgent;
+	bool attention_state;
 	uint64_t focus_seq;
 	struct wm_decoration *decoration;
 	struct _cairo_surface *icon;

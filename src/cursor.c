@@ -58,6 +58,7 @@
 #include "util.h"
 #include "view.h"
 #include "view_geometry.h"
+#include "tooltip.h"
 #include "workspace.h"
 
 /*
@@ -549,6 +550,7 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
 	update_pointer_crossing(server, view);
+	wm_tooltip_update(server);
 	/* A MouseOver command may have closed or moved it */
 	if (view && server->mouse_state.over_view != view)
 		view = view_at(server, server->cursor->x, server->cursor->y,

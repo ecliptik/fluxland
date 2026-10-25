@@ -152,6 +152,8 @@ struct wm_view {
 
 	/* Demands attention (denied activation, X11 urgency hint) */
 	bool urgent;
+	bool attention_state;   /* flashing focused while urgent */
+	struct wl_event_source *attention_timer;
 
 	/* Surface is mapped (minimized views stay mapped) */
 	bool mapped;

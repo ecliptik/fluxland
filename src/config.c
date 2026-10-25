@@ -500,6 +500,7 @@ config_create(void)
 	config->focus_new_windows = true;
 	config->focus_same_head = false;
 	config->no_focus_while_typing_ms = 0;
+	config->demands_attention_ms = 500;
 	config->ignore_border = false;
 	config->tabs_attach_titlebar = false;
 	config->opaque_move = true;
@@ -527,6 +528,8 @@ config_create(void)
 	config->iconbar_mode_spec = iconbar_mode_spec(NULL);
 	config->iconbar_alignment = 1; /* relative */
 	config->iconbar_icon_width = 0; /* auto */
+	config->iconbar_icon_text_padding = 10;
+	config->tooltip_delay_ms = 500;
 	config->iconbar_use_pixmap = true;
 	config->iconbar_wheel_mode = 0; /* screen (workspace change) */
 	config->auto_tab_placement = false;
@@ -668,6 +671,8 @@ apply_focus_config(struct wm_config *config, struct rc_database *db)
 		rc_get_bool(db, "session.screen0.focusSameHead", false);
 	config->no_focus_while_typing_ms = rc_get_int(db,
 		"session.screen0.noFocusWhileTypingDelay", 0);
+	config->demands_attention_ms = rc_get_int(db,
+		"session.screen0.demandsAttentionTimeout", 500);
 	config->ignore_border =
 		rc_get_bool(db, "session.ignoreBorder", false);
 	const char *area = rc_get_string(db, "session.tabsAttachArea");
@@ -900,6 +905,12 @@ apply_iconbar_config(struct wm_config *config, struct rc_database *db)
 	}
 	config->iconbar_icon_width =
 		rc_get_int(db, "session.screen0.iconbar.iconWidth", 0);
+	config->iconbar_icon_text_padding = rc_get_int(db,
+		"session.screen0.iconbar.iconTextPadding", 10);
+	if (config->iconbar_icon_text_padding < 0)
+		config->iconbar_icon_text_padding = 0;
+	config->tooltip_delay_ms =
+		rc_get_int(db, "session.screen0.tooltipDelay", 500);
 	if (config->iconbar_icon_width < 0)
 		config->iconbar_icon_width = 0;
 	config->iconbar_use_pixmap =

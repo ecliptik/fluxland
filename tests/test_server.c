@@ -51,6 +51,7 @@
 #define WLR_TYPES_WLR_XDG_SHELL_H
 
 /* fluxland */
+#define WM_TOOLTIP_H
 #define WM_SERVER_H
 #define WM_CONFIG_H
 #define WM_DECORATION_H
@@ -1143,6 +1144,7 @@ static void wm_toolbar_relayout(struct wm_toolbar *toolbar)
 	g_toolbar_relayout_count++;
 }
 
+static void wm_tooltip_finish(struct wm_server *s) { (void)s; }
 static void wm_toolbar_destroy(struct wm_toolbar *toolbar)
 {
 	(void)toolbar;

@@ -76,6 +76,7 @@ struct wm_iconbar_entry {
 	bool focused;
 	bool iconified; /* minimized / scene node disabled */
 	void *icon;     /* view->icon when collected (cache key) */
+	bool truncated; /* its title didn't fit: a tooltip shows it */
 };
 
 struct wm_toolbar {
@@ -181,6 +182,11 @@ void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
 /* Handle button click on toolbar; returns true if consumed */
 /* Is (lx, ly) on the shown toolbar? */
 bool wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly);
+
+/* The title of the iconbar button at (lx, ly) when it is cut short, for
+ * a tooltip (IconButton::showTooltip); its window in *view */
+const char *wm_toolbar_tooltip_at(struct wm_toolbar *toolbar, double lx,
+	double ly, struct wm_view **view);
 
 /* The pointer moved onto (or off) the toolbar: toolbar.autoRaise */
 void wm_toolbar_set_hovered(struct wm_toolbar *toolbar, bool hovered);

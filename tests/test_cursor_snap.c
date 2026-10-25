@@ -7,6 +7,7 @@
  * needing wlroots/wayland libraries at link time.
  */
 
+#define WM_TOOLTIP_H
 #define WM_DIALOG_H
 #define _POSIX_C_SOURCE 200809L
 
@@ -1498,6 +1499,7 @@ static bool wm_toolbar_contains(struct wm_toolbar *tb, double x, double y)
 	{ (void)tb; (void)x; (void)y; return false; }
 static void wm_toolbar_set_hovered(struct wm_toolbar *tb, bool h)
 	{ (void)tb; (void)h; }
+static void wm_tooltip_update(struct wm_server *s) { (void)s; }
 static void wm_slit_set_hovered(struct wm_slit *s, bool h)
 	{ (void)s; (void)h; }
 static void wm_snap_edges(struct wm_server *s, struct wm_view *v,

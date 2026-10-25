@@ -51,6 +51,7 @@
 #define WM_CONFIG_H
 #define WM_DECORATION_H
 #define WM_FBCOMPAT_H
+#define WM_TOOLTIP_H
 #define WM_FOREIGN_TOPLEVEL_H
 #define WM_IPC_H
 #define WM_OUTPUT_H
@@ -163,11 +164,34 @@ wl_signal_add(struct wl_signal *signal, struct wl_listener *listener)
 	wl_list_insert(signal->listener_list.prev, &listener->link);
 }
 
+static int g_timer_ms = -1;
 static inline int
 wl_event_source_timer_update(struct wl_event_source *source, int ms_delay)
 {
 	(void)source;
-	(void)ms_delay;
+	g_timer_ms = ms_delay;
+	return 0;
+}
+
+/* Attention flashing: one fake timer, fired by the tests */
+static int (*g_timer_fn)(void *);
+static void *g_timer_data;
+static int g_timer_removed;
+static struct wl_event_source *
+wl_event_loop_add_timer(struct wl_event_loop *loop, int (*fn)(void *),
+	void *data)
+{
+	(void)loop;
+	g_timer_fn = fn;
+	g_timer_data = data;
+	return (struct wl_event_source *)&g_timer_fn;
+}
+static inline int
+wl_event_source_remove(struct wl_event_source *source)
+{
+	(void)source;
+	g_timer_removed++;
+	g_timer_fn = NULL;
 	return 0;
 }
 
@@ -454,6 +478,7 @@ struct wm_config {
 	bool focus_same_head;
 	char *default_deco;
 	int no_focus_while_typing_ms;
+	int demands_attention_ms;
 	char *apps_file;
 };
 
@@ -667,6 +692,8 @@ struct wm_view {
 	bool focus_hidden;
 	bool icon_hidden;
 	bool urgent;
+	bool attention_state;
+	struct wl_event_source *attention_timer;
 	bool mapped;
 	uint64_t focus_seq;
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
@@ -1481,6 +1508,8 @@ static void
 wm_decoration_set_preset(struct wm_decoration *d, enum wm_decor_preset p,
 	struct wm_style *style)
 	{ (void)d; (void)p; (void)style; g_default_deco_count++; }
+static void wm_tooltip_view_destroyed(struct wm_server *s, struct wm_view *v)
+	{ (void)s; (void)v; }
 static void wm_dialog_view_destroyed(struct wm_server *s, struct wm_view *v)
 	{ (void)s; (void)v; }
 
@@ -5080,6 +5109,51 @@ test_activate_presents_window(void)
 	printf("  PASS: activate_presents_window\n");
 }
 
+/* demandsAttentionTimeout: a window wanting attention flashes focused until
+ * it has the focus (AttentionNoticeHandler) */
+static void
+test_attention_flashes(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_view(1, &test_workspace);
+	test_server.focused_view = &test_views[0];
+	test_config.demands_attention_ms = 500;
+	g_timer_fn = NULL;
+	g_timer_removed = 0;
+
+	wm_view_set_urgent(&test_views[1], true);
+	assert(g_timer_fn && g_timer_data == &test_views[1]);
+	assert(g_timer_ms == 500);
+	g_timer_fn(g_timer_data);
+	assert(test_views[1].attention_state);
+	g_timer_fn(g_timer_data);
+	assert(!test_views[1].attention_state);
+	g_timer_fn(g_timer_data);
+	assert(test_views[1].attention_state);
+
+	/* Focused: it stops, drawn as it is */
+	test_server.focus_user_initiated = true;
+	wm_focus_view(&test_views[1], NULL);
+	assert(!test_views[1].urgent && !test_views[1].attention_state);
+	assert(g_timer_removed == 1 && !test_views[1].attention_timer);
+
+	/* 0 turns it off; the focused window never flashes */
+	test_config.demands_attention_ms = 0;
+	g_timer_fn = NULL;
+	wm_view_set_urgent(&test_views[0], true);
+	assert(!g_timer_fn);
+	wm_view_set_urgent(&test_views[0], false);
+	test_config.demands_attention_ms = 500;
+	wm_view_set_urgent(&test_views[1], true);
+	assert(!g_timer_fn);
+	wm_view_set_urgent(&test_views[1], false);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+	printf("  PASS: attention_flashes\n");
+}
+
 static void
 test_activate_refused_marks_urgent(void)
 {
@@ -5531,6 +5605,7 @@ main(void)
 	/* xdg backend */
 	test_activate_presents_window();
 	test_activate_refused_marks_urgent();
+	test_attention_flashes();
 	test_modal_dialog_keeps_focus();
 	test_popup_without_parent_is_left_to_layer_shell();
 	test_popup_nests_and_unconstrains();

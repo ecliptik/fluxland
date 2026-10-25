@@ -35,6 +35,7 @@
 #include "util.h"
 #include "icon.h"
 #include "fbcompat.h"
+#include "tooltip.h"
 #include "view.h"
 #include "dialog.h"
 #include "view_focus.h"
@@ -526,6 +527,8 @@ wm_view_unmap_common(struct wm_view *view)
 {
 	view->mapped = false;
 	wm_dialog_view_destroyed(view->server, view);
+	wm_tooltip_view_destroyed(view->server, view);
+	wm_view_set_urgent(view, false);
 	/* The pointer's window for MouseOut, the pressed one for the
 	 * release: gone */
 	struct wm_mouse_state *ms = &view->server->mouse_state;

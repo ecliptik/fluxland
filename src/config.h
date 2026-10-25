@@ -182,6 +182,7 @@ struct wm_config {
 	bool focus_new_windows;
 	bool focus_same_head;            /* focus reverts on the pointer's head */
 	int no_focus_while_typing_ms;    /* noFocusWhileTypingDelay */
+	int demands_attention_ms;        /* demandsAttentionTimeout: flashes */
 	bool ignore_border;              /* session.ignoreBorder */
 	bool tabs_attach_titlebar;       /* session.tabsAttachArea: Titlebar */
 
@@ -230,6 +231,8 @@ struct wm_config {
 	/* Iconbar enhancements */
 	int iconbar_alignment;              /* 0=left, 1=relative (default), 2=right, 3=center */
 	int iconbar_icon_width;             /* entry width unless relative (0 = 128) */
+	int iconbar_icon_text_padding;      /* iconTextPadding: around the title */
+	int tooltip_delay_ms;               /* tooltipDelay: -1 none, 0 at once */
 	bool iconbar_use_pixmap;            /* show app icon pixmaps (default true) */
 	int iconbar_wheel_mode;             /* 0 = screen (ws change), 1 = off */
 	char *iconbar_iconified_pattern;    /* e.g. "(%s)" for iconified windows */

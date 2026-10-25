@@ -246,6 +246,7 @@ wm_sources = files(
   'src/main.c',
   'src/import.c',
   'src/dialog.c',
+  'src/tooltip.c',
   'src/animation.c',
   'src/atspi_bridge.c',
   'src/autostart.c',

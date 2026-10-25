@@ -53,6 +53,7 @@
 #include "drm_syncobj.h"
 #include "text_input.h"
 #include "toolbar.h"
+#include "tooltip.h"
 #include "transient_seat.h"
 #include "view.h"
 #include "viewporter.h"
@@ -676,6 +677,7 @@ wm_server_destroy(struct wm_server *server)
 	wm_slit_destroy(server->slit);
 	server->slit = NULL;
 	wm_wallpaper_destroy(server->wallpaper);
+	wm_tooltip_finish(server);
 	wm_toolbar_destroy(server->toolbar);
 	server->toolbar = NULL;
 	wm_ipc_destroy(&server->ipc);

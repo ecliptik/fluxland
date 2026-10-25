@@ -86,11 +86,8 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 	struct wm_view *was_focused = server->focused_view;
 
 	/* It has the user's attention now */
-	if (view->urgent) {
-		view->urgent = false;
-		wm_toolbar_update_iconbar(server->toolbar);
-		wm_ext_workspace_schedule(server);
-	}
+	if (view->urgent)
+		wm_view_set_urgent(view, false);
 
 	/* Deactivate the previously focused toplevel */
 	if (prev_surface) {
@@ -671,14 +668,55 @@ wm_focus_cycle(struct wm_server *server,
 		wm_focus_cycle_end(server);
 }
 
+/* demandsAttentionTimeout: its frame and iconbar button flash focused
+ * (AttentionNoticeHandler's ToggleFrameFocusCmd) */
+static int
+attention_flash(void *data)
+{
+	struct wm_view *view = data;
+	struct wm_server *server = view->server;
+	view->attention_state = !view->attention_state;
+	if (view->decoration)
+		wm_decoration_set_focused(view->decoration,
+			view->attention_state || view == server->focused_view,
+			server->style);
+	wm_toolbar_update_iconbar(server->toolbar);
+	int ms = server->config ? server->config->demands_attention_ms : 0;
+	if (ms > 0)
+		wl_event_source_timer_update(view->attention_timer, ms);
+	return 0;
+}
+
 void
 wm_view_set_urgent(struct wm_view *view, bool urgent)
 {
 	if (view->urgent == urgent)
 		return;
+	struct wm_server *server = view->server;
 	view->urgent = urgent;
-	wm_toolbar_update_iconbar(view->server->toolbar);
-	wm_ext_workspace_schedule(view->server);
+
+	int ms = server->config ? server->config->demands_attention_ms : 0;
+	if (urgent && ms > 0 && view != server->focused_view) {
+		if (!view->attention_timer)
+			view->attention_timer = wl_event_loop_add_timer(
+				server->wl_event_loop, attention_flash, view);
+		if (view->attention_timer)
+			wl_event_source_timer_update(view->attention_timer, ms);
+	} else if (!urgent) {
+		if (view->attention_timer) {
+			wl_event_source_remove(view->attention_timer);
+			view->attention_timer = NULL;
+		}
+		if (view->attention_state) {
+			view->attention_state = false;
+			if (view->decoration)
+				wm_decoration_set_focused(view->decoration,
+					view == server->focused_view,
+					server->style);
+		}
+	}
+	wm_toolbar_update_iconbar(server->toolbar);
+	wm_ext_workspace_schedule(server);
 }
 
 void

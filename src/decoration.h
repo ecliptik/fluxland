@@ -187,6 +187,11 @@ int wm_decoration_tab_at(struct wm_decoration *decoration,
  * StartTabbing drags it; false when it has none */
 bool wm_decoration_tab_size(struct wm_decoration *decoration, int *w, int *h);
 
+/* The title of the tab (or label) at (x, y) when it is cut short, for a
+ * tooltip; its window in *view */
+const char *wm_decoration_tooltip_at(struct wm_decoration *decoration,
+	double x, double y, struct wm_view **view);
+
 /* Draw a button pressed (window.button.pressed), or none (NULL) */
 void wm_decoration_set_pressed(struct wm_decoration *decoration,
 	struct wm_decor_button *button, struct wm_style *style);

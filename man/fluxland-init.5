@@ -86,6 +86,16 @@ With MouseFocus, raise the window the pointer focuses (default: true).
 When the focused window goes away (or another workspace is shown), the
 focus goes to a window on the head the pointer is on (default: false).
 .TP
+.B session.screen0.demandsAttentionTimeout
+A window that wants attention (one refused the focus, or urgent) flashes
+as focused in its frame and the iconbar every this many milliseconds
+until it has the focus (default: 500; 0, it doesn't flash).
+.TP
+.B session.screen0.tooltipDelay
+After this many milliseconds over an iconbar entry or a tab whose title
+is cut short, the whole title shows over the pointer (default: 500; 0
+at once, \-1 never).
+.TP
 .B session.screen0.noFocusWhileTypingDelay
 A new window doesn't take the focus from the window you typed in less
 than this many milliseconds ago (Return doesn't count); it shows that
@@ -346,6 +356,10 @@ from fluxland 1.x, centers them).
 .TP
 .B session.screen0.iconbar.iconWidth
 Width of an iconbar entry when not Relative (default: 128).
+.TP
+.B session.screen0.iconbar.iconTextPadding
+Pixels around the title in an iconbar entry, half each side (default:
+10).
 .TP
 .B session.screen0.iconbar.usePixmap
 Use pixmap textures for iconbar entries (default: true).

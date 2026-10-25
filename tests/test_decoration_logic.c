@@ -592,6 +592,15 @@ wm_render_text(const char *text, const struct wm_font *font,
 	return &g_stub_surface;
 }
 
+/* Six pixels a character */
+static int
+wm_measure_text_width(const char *text, const struct wm_font *font,
+	float scale)
+{
+	(void)font; (void)scale;
+	return text ? 6 * (int)strlen(text) : 0;
+}
+
 static cairo_surface_t *
 wm_render_button_glyph(enum wm_button_type type, bool toggled,
 	const struct wm_color *color, int w, int h)
@@ -1003,12 +1012,36 @@ test_region_at_titlebar(void)
 	setup();
 	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
 
-	/* Titlebar is at y=[border_width, border_width+titlebar_height) = [1, 21) */
+	/* Titlebar is at y=[border_width, border_width+titlebar_height) = [1, 21);
+	 * its middle is the label, which holds the tabs (OnTab) */
 	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 10);
-	assert(region == WM_DECOR_REGION_TITLEBAR);
+	assert(region == WM_DECOR_REGION_LABEL);
 
 	free_test_decoration(deco);
 	printf("  PASS: region_at_titlebar\n");
+}
+
+/* A tooltip for the label's title only when it doesn't fit (six pixels a
+ * character in these stubs) */
+static void
+test_tooltip_at_label(void)
+{
+	setup();
+	struct wm_decoration *deco = make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+	struct wm_view *v = NULL;
+	test_view.title = "Short";
+	assert(wm_decoration_tooltip_at(deco, 400, 10, &v) == NULL);
+	assert(v == &test_view);
+	static char long_title[400];
+	memset(long_title, 'x', sizeof(long_title) - 1);
+	test_view.title = long_title;
+	v = NULL;
+	assert(wm_decoration_tooltip_at(deco, 400, 10, &v) == long_title);
+	/* Not off the label */
+	assert(wm_decoration_tooltip_at(deco, 400, 300, &v) == NULL);
+	test_view.title = NULL;
+	free_test_decoration(deco);
+	printf("  PASS: tooltip_at_label\n");
 }
 
 static void
@@ -1522,7 +1555,7 @@ test_tab_at_external_horizontal(void)
 	assert(wm_decoration_tab_at(deco, 100, 10) == 1);
 	assert(wm_decoration_tab_at(deco, 200, 10) == -1);
 	assert(wm_decoration_region_at(deco, 30, 10) ==
-		WM_DECOR_REGION_TITLEBAR);
+		WM_DECOR_REGION_LABEL);
 
 	test_view.tab_group = NULL;
 	free_test_decoration(deco);
@@ -2075,7 +2108,7 @@ test_region_at_tool_has_titlebar(void)
 
 	/* TOOL has titlebar but no handle */
 	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 10);
-	assert(region == WM_DECOR_REGION_TITLEBAR);
+	assert(region == WM_DECOR_REGION_LABEL);
 
 	/* outer_h for TOOL: bw(1) + th(20) + ch(600) + bw(1) = 622 */
 	/* y=623 is outside */
@@ -2098,7 +2131,7 @@ test_region_at_external_tab_bar(void)
 
 	/* The one tab is centred over the frame: x 368..433, y 0..21 */
 	assert(wm_decoration_region_at(deco, 400, 10) ==
-		WM_DECOR_REGION_TITLEBAR);
+		WM_DECOR_REGION_LABEL);
 	assert(wm_decoration_region_at(deco, 100, 10) ==
 		WM_DECOR_REGION_NONE);
 
@@ -2245,7 +2278,7 @@ test_region_at_zero_border(void)
 
 	/* With bw=0, there are no border regions; y=0 is titlebar */
 	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 0);
-	assert(region == WM_DECOR_REGION_TITLEBAR);
+	assert(region == WM_DECOR_REGION_LABEL);
 
 	/* Client area */
 	region = wm_decoration_region_at(deco, 400, 300);
@@ -3496,7 +3529,7 @@ test_region_at_tab_preset(void)
 
 	/* TAB has titlebar but no handle */
 	enum wm_decor_region region = wm_decoration_region_at(deco, 400, 10);
-	assert(region == WM_DECOR_REGION_TITLEBAR);
+	assert(region == WM_DECOR_REGION_LABEL);
 
 	/* Client area */
 	region = wm_decoration_region_at(deco, 400, 300);
@@ -3681,6 +3714,7 @@ main(void)
 
 	/* region_at */
 	test_region_at_titlebar();
+	test_tooltip_at_label();
 	test_region_at_border_top();
 	test_region_at_border_bottom();
 	test_region_at_border_left();

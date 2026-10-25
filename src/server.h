@@ -450,6 +450,7 @@ struct wm_server {
 	struct wm_menu *client_menu;
 	struct wm_menu *custom_menu;
 	struct wm_dialog *dialog;	/* CommandDialog... while open */
+	struct wm_tooltip *tooltip;	/* tooltipDelay's window */
 
 #ifdef WM_HAS_XWAYLAND
 	/* XWayland bridge */
