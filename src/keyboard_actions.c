@@ -1076,6 +1076,7 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 			(int)server->cursor->x, (int)server->cursor->y);
 		return true;
 	case WM_ACTION_WINDOW_MENU:
+		server->menu_view = view;
 		wm_menu_show_window(server,
 			(int)server->cursor->x, (int)server->cursor->y);
 		return true;

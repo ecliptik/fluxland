@@ -274,11 +274,17 @@ class CompositorManager:
         # Apps launched by tests outlive the compositor (double fork)
         self._kill_session_clients()
 
-        # FLUXLAND_TEST_KEEP_LOG=<path>: keep the log for debugging
+        # FLUXLAND_TEST_KEEP_LOG=<path>: keep the log for debugging; a
+        # test module's own compositor and the session's don't overwrite
+        # each other (the next is <path>.1, ...)
         keep = os.environ.get("FLUXLAND_TEST_KEEP_LOG")
         log = getattr(self, "_log_path", None)
         if keep and log and os.path.exists(log):
-            shutil.copyfile(log, keep)
+            target, n = keep, 0
+            while os.path.exists(target):
+                n += 1
+                target = f"{keep}.{n}"
+            shutil.copyfile(log, target)
 
         # Clean up temp directory
         if self._tmp_dir and os.path.exists(self._tmp_dir):
