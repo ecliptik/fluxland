@@ -261,11 +261,13 @@ Border width in pixels (default: 1).
 Bevel width in pixels (default: 1).
 .TP
 .B window.roundCorners
-Rounded corners bitmask as a string containing any of:
+The corners Fluxbox rounds, any of
 .BR TopLeft ,
 .BR TopRight ,
 .BR BottomLeft ,
-.BR BottomRight .
+.BR BottomRight :
+cut off as Fluxbox's shape cuts them (the top ones only with a
+titlebar, the bottom ones only with a handle).
 .SS Menu
 .TP
 .B menu.title
@@ -302,6 +304,10 @@ Menu border color.
 .B menu.borderWidth
 Menu border width (default: 1).
 .SS Toolbar
+.TP
+.B menu.roundCorners
+The menu's corners to round, as
+.BR window.roundCorners .
 .TP
 .B toolbar
 Toolbar background texture.

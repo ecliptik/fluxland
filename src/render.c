@@ -1109,3 +1109,46 @@ wm_render_rounded_rect_path(cairo_t *cr, double x, double y,
 
 	cairo_close_path(cr);
 }
+
+void
+wm_cut_corners(cairo_surface_t *surface, int x, int y, int frame_w,
+	int frame_h, uint8_t corners)
+{
+	/* Shape.cc's bits: a pixel stays where its bit is set */
+	static const unsigned char masks[4][8] = {
+		{ 0xc0, 0xf8, 0xfc, 0xfe, 0xfe, 0xfe, 0xff, 0xff },
+		{ 0x03, 0x1f, 0x3f, 0x7f, 0x7f, 0x7f, 0xff, 0xff },
+		{ 0xff, 0xff, 0xfe, 0xfe, 0xfe, 0xfc, 0xf8, 0xc0 },
+		{ 0xff, 0xff, 0x7f, 0x7f, 0x7f, 0x3f, 0x1f, 0x03 },
+	};
+	static const uint8_t which[4] = { WM_CORNER_TOP_LEFT,
+		WM_CORNER_TOP_RIGHT, WM_CORNER_BOTTOM_LEFT,
+		WM_CORNER_BOTTOM_RIGHT };
+	if (!surface || !corners ||
+	    cairo_image_surface_get_format(surface) != CAIRO_FORMAT_ARGB32)
+		return;
+	cairo_surface_flush(surface);
+	unsigned char *data = cairo_image_surface_get_data(surface);
+	int sw = cairo_image_surface_get_width(surface);
+	int sh = cairo_image_surface_get_height(surface);
+	int stride = cairo_image_surface_get_stride(surface);
+	if (!data)
+		return;
+	for (int c = 0; c < 4; c++) {
+		if (!(corners & which[c]))
+			continue;
+		int ox = (c & 1) ? frame_w - 8 : 0;
+		int oy = (c & 2) ? frame_h - 8 : 0;
+		for (int row = 0; row < 8; row++) {
+			for (int col = 0; col < 8; col++) {
+				if (masks[c][row] & (1 << col))
+					continue;
+				int px = ox + col - x, py = oy + row - y;
+				if (px < 0 || py < 0 || px >= sw || py >= sh)
+					continue;
+				memset(data + py * stride + px * 4, 0, 4);
+			}
+		}
+	}
+	cairo_surface_mark_dirty(surface);
+}

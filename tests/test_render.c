@@ -632,6 +632,36 @@ test_load_image(void)
 	printf("  PASS: test_load_image\n");
 }
 
+/* Fluxbox's 8x8 corner masks, cut where a surface lies in its frame */
+static void
+test_cut_corners(void)
+{
+	cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+		20, 10);
+	cairo_t *cr = cairo_create(s);
+	cairo_set_source_rgb(cr, 1, 1, 1);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+	/* The surface at (0, 0) of a 20 x 30 frame: its top corners */
+	wm_cut_corners(s, 0, 0, 20, 30, WM_CORNER_TOP_LEFT |
+		WM_CORNER_TOP_RIGHT | WM_CORNER_BOTTOM_LEFT);
+	cairo_surface_flush(s);
+	unsigned char *d = cairo_image_surface_get_data(s);
+	int st = cairo_image_surface_get_stride(s);
+#define A(x, y) (d[(y) * st + (x) * 4 + 3])
+	/* Row 0 keeps only x 6 and 7 at the left (0xc0) */
+	assert(A(0, 0) == 0 && A(5, 0) == 0 && A(6, 0) == 255);
+	/* Row 1 keeps 3..7 (0xf8); row 6 keeps all */
+	assert(A(2, 1) == 0 && A(3, 1) == 255 && A(0, 6) == 255);
+	/* The right corner mirrors it */
+	assert(A(19, 0) == 0 && A(13, 0) == 255 && A(14, 0) == 0);
+	/* Bottom left is past this surface: nothing cut lower down */
+	assert(A(0, 9) == 255);
+#undef A
+	cairo_surface_destroy(s);
+	printf("  PASS: cut_corners\n");
+}
+
 int
 main(void)
 {
@@ -682,6 +712,7 @@ main(void)
 
 	/* RTL detection */
 	test_find_base_dir();
+	test_cut_corners();
 
 	printf("\nAll render tests passed (%d tests)\n", 27);
 	return 0;

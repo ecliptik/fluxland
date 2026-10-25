@@ -1000,6 +1000,8 @@ load_menu(struct wm_style *s, struct rc_database *db, const char *sd)
 		WM_JUSTIFY_LEFT;
 
 	s->menu_border_width = int_chain(db, KEYS("menu.borderWidth"), 0);
+	s->menu_round_corners = parse_round_corners(
+		style_get(db, "menu.roundCorners"));
 	if (s->menu_border_width < 0)
 		s->menu_border_width = 0;
 	if (s->menu_border_width > 20)

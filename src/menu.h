@@ -103,6 +103,9 @@ struct wm_menu {
 	int border_width;
 	int items_y;		/* the items, under the title's border line */
 	int separator_height;	/* an item's, as in Fluxbox */
+	/* Columns (Menu::updateMenu): more when it would be higher than
+	 * the screen, min_columns at least; items go down each in turn */
+	int columns, rows, item_w, min_columns;
 
 	/* The files and directories it was read from, and the newest of
 	 * their times when it was: it is read again when one changes */

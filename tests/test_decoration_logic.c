@@ -607,6 +607,9 @@ wm_measure_text_width(const char *text, const struct wm_font *font,
 	return text ? 6 * (int)strlen(text) : 0;
 }
 
+static void wm_cut_corners(cairo_surface_t *s, int x, int y, int w, int h,
+	uint8_t c) { (void)s; (void)x; (void)y; (void)w; (void)h; (void)c; }
+
 static cairo_surface_t *
 wm_render_button_glyph(enum wm_button_type type, bool toggled,
 	const struct wm_color *color, int w, int h)
@@ -3082,35 +3085,26 @@ test_render_label_right_justify(void)
 	printf("  PASS: render_label_right_justify\n");
 }
 
-/* --- render_rounded_border_frame direct tests --- */
+/* --- render_border_frame direct tests --- */
 
 static void
 test_render_rounded_border_frame_basic(void)
 {
 	struct wm_color color = {128, 128, 128, 255};
-
-	struct wlr_buffer *buf = render_rounded_border_frame(
-		100, 100, 2, 8.0,
-		WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT, &color);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-	printf("  PASS: render_rounded_border_frame_basic\n");
+	cairo_surface_t *surf = render_border_frame(100, 100, 2, &color);
+	assert(surf != NULL);
+	printf("  PASS: render_border_frame_basic\n");
 }
 
 static void
 test_render_rounded_border_frame_invalid(void)
 {
 	struct wm_color color = {128, 128, 128, 255};
-
-	/* Zero width */
-	assert(render_rounded_border_frame(0, 100, 2, 8.0, 0xF, &color) == NULL);
-	/* Zero height */
-	assert(render_rounded_border_frame(100, 0, 2, 8.0, 0xF, &color) == NULL);
-	/* Zero border width */
-	assert(render_rounded_border_frame(100, 100, 0, 8.0, 0xF, &color) == NULL);
-	/* Negative width */
-	assert(render_rounded_border_frame(-1, 100, 2, 8.0, 0xF, &color) == NULL);
-	printf("  PASS: render_rounded_border_frame_invalid\n");
+	assert(render_border_frame(0, 100, 2, &color) == NULL);
+	assert(render_border_frame(100, 0, 2, &color) == NULL);
+	assert(render_border_frame(100, 100, 0, &color) == NULL);
+	assert(render_border_frame(-1, 100, 2, &color) == NULL);
+	printf("  PASS: render_border_frame_invalid\n");
 }
 
 /* --- set_shaded with scene tree children --- */
@@ -3465,39 +3459,6 @@ test_render_label_left_justify(void)
 	test_view.tab_group = NULL;
 	free_test_decoration(deco);
 	printf("  PASS: render_label_left_justify\n");
-}
-
-/* --- additional coverage: render_rounded_border_frame all corners --- */
-
-static void
-test_render_rounded_border_frame_all_corners(void)
-{
-	struct wm_color color = {128, 128, 128, 255};
-
-	struct wlr_buffer *buf = render_rounded_border_frame(
-		200, 200, 3, 12.0,
-		WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT |
-		WM_CORNER_BOTTOM_LEFT | WM_CORNER_BOTTOM_RIGHT,
-		&color);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-	printf("  PASS: render_rounded_border_frame_all_corners\n");
-}
-
-/* --- additional coverage: render_rounded_border_frame bottom only --- */
-
-static void
-test_render_rounded_border_frame_bottom_only(void)
-{
-	struct wm_color color = {200, 200, 200, 255};
-
-	struct wlr_buffer *buf = render_rounded_border_frame(
-		150, 150, 2, 6.0,
-		WM_CORNER_BOTTOM_LEFT | WM_CORNER_BOTTOM_RIGHT,
-		&color);
-	assert(buf != NULL);
-	wlr_buffer_drop(buf);
-	printf("  PASS: render_rounded_border_frame_bottom_only\n");
 }
 
 /* --- additional coverage: decoration with large bevel width --- */
@@ -3897,8 +3858,6 @@ main(void)
 	/* additional coverage: render functions */
 	test_render_button_all_types();
 	test_render_label_left_justify();
-	test_render_rounded_border_frame_all_corners();
-	test_render_rounded_border_frame_bottom_only();
 	test_render_button_zero_size();
 
 	/* additional coverage: layout and presets */

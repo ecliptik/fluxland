@@ -348,6 +348,37 @@ button_toggled(struct wm_decoration *deco, enum wm_button_type type)
  * (nothing for ParentRelative, so the titlebar shows) with the picture
  * drawn in picColor.
  */
+/*
+ * window.roundCorners as FbWinFrame's shape cuts them: the parts drawn
+ * next sit at (x, y) in the frame, and lose the corner pixels there
+ */
+static void
+cut_at(struct wm_decoration *deco, const struct wm_style *style,
+	const struct frame_geom *g, int x, int y)
+{
+	/* Top ones with a titlebar, bottom ones with a handle
+	 * (FbWinFrame::getShape) */
+	uint8_t corners = style ? style->window_round_corners : 0;
+	if (!g->titlebar)
+		corners &= ~(WM_CORNER_TOP_LEFT | WM_CORNER_TOP_RIGHT);
+	if (!g->handle)
+		corners &= ~(WM_CORNER_BOTTOM_LEFT | WM_CORNER_BOTTOM_RIGHT);
+	deco->cut_corners = corners;
+	deco->cut_x = x - g->fx;
+	deco->cut_y = y - g->fy;
+	deco->cut_fw = g->fw;
+	deco->cut_fh = g->fh;
+}
+
+static struct wlr_buffer *
+deco_buffer(struct wm_decoration *deco, cairo_surface_t *surface)
+{
+	if (surface && deco->cut_corners)
+		wm_cut_corners(surface, deco->cut_x, deco->cut_y,
+			deco->cut_fw, deco->cut_fh, deco->cut_corners);
+	return wlr_buffer_from_cairo(surface);
+}
+
 static struct wlr_buffer *
 render_button(struct wm_decoration *deco, const struct wm_style *style,
 	struct wm_decor_button *btn, int size)
@@ -364,7 +395,7 @@ render_button(struct wm_decoration *deco, const struct wm_style *style,
 	if (path) {
 		cairo_surface_t *img = wm_load_pixmap(path, size, size);
 		if (img)
-			return wlr_buffer_from_cairo(img);
+			return deco_buffer(deco, img);
 	}
 
 	const struct wm_texture *tex = btn->pressed ?
@@ -394,7 +425,7 @@ render_button(struct wm_decoration *deco, const struct wm_style *style,
 		cairo_surface_destroy(glyph);
 	}
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return deco_buffer(deco, surface);
 }
 
 /* Text in a box, justified, two pixels in from the sides */
@@ -564,7 +595,7 @@ render_label(struct wm_decoration *deco, const struct wm_style *style,
 			false);
 	}
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return deco_buffer(deco, surface);
 }
 
 /*
@@ -655,7 +686,7 @@ render_handle(struct wm_decoration *deco, const struct wm_style *style,
 		paint_texture(cr, grip, w - gw, 0, gw, h);
 	}
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return deco_buffer(deco, surface);
 }
 
 /* --- Dimensions from style --- */
@@ -837,51 +868,31 @@ wm_decoration_destroy(struct wm_decoration *decoration)
 	free(decoration);
 }
 
-/* --- Rounded border frame rendering --- */
+/* --- Border frame (round corners) --- */
 
-/*
- * Render a border frame with rounded corners as a Cairo surface.
- * Returns a wlr_buffer that can be used in a scene buffer node.
- */
-static struct wlr_buffer *
-render_rounded_border_frame(int outer_w, int outer_h, int border_width,
-	double radius, uint8_t corners, const struct wm_color *color)
+/* The border as one surface, to be cut at the corners */
+static cairo_surface_t *
+render_border_frame(int outer_w, int outer_h, int border_width,
+	const struct wm_color *color)
 {
-	if (outer_w <= 0 || outer_h <= 0 || border_width <= 0) {
+	if (outer_w <= 0 || outer_h <= 0 || border_width <= 0)
 		return NULL;
-	}
-
 	cairo_surface_t *surface = cairo_image_surface_create(
 		CAIRO_FORMAT_ARGB32, outer_w, outer_h);
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
-
 	cairo_t *cr = cairo_create(surface);
-
-	double r = color->r / 255.0;
-	double g = color->g / 255.0;
-	double b = color->b / 255.0;
-	double a = color->a / 255.0;
-	cairo_set_source_rgba(cr, r, g, b, a);
-
-	/* Outer rounded rect */
-	wm_render_rounded_rect_path(cr, 0, 0,
-		outer_w, outer_h, radius, corners);
-
-	/* Inner rect (punch out the inside) */
+	cairo_set_source_rgba(cr, color->r / 255.0, color->g / 255.0,
+		color->b / 255.0, color->a / 255.0);
 	int bw = border_width;
-	cairo_new_sub_path(cr);
-	cairo_rectangle(cr, bw, bw,
-		outer_w - 2 * bw, outer_h - 2 * bw);
-
-	/* Fill using even-odd rule so the inner rect is cut out */
+	cairo_rectangle(cr, 0, 0, outer_w, outer_h);
+	cairo_rectangle(cr, bw, bw, outer_w - 2 * bw, outer_h - 2 * bw);
 	cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
 	cairo_fill(cr);
-
 	cairo_destroy(cr);
-	return wlr_buffer_from_cairo(surface);
+	return surface;
 }
 
 /* --- Layout and render --- */
@@ -929,14 +940,13 @@ render_borders(struct wm_decoration *deco, struct wm_style *style,
 	wm_color_to_float4(color, c);
 	int bw = g->bw;
 
-	uint8_t corners = style->window_round_corners;
-	bool rounded = corners != 0 && deco->border_frame && bw > 0;
+	/* Round corners: the border drawn whole and cut as the rest */
+	cut_at(deco, style, g, g->fx, g->fy);
+	bool rounded = deco->cut_corners != 0 && deco->border_frame && bw > 0;
 	if (rounded) {
-		double radius = style->window_bevel_width * 2.0;
-		if (radius < 4.0)
-			radius = 4.0;
-		set_buffer(deco->border_frame, render_rounded_border_frame(
-			g->fw, g->fh, bw, radius, corners, color), g->fx, g->fy);
+		set_buffer(deco->border_frame, deco_buffer(deco,
+			render_border_frame(g->fw, g->fh, bw, color)),
+			g->fx, g->fy);
 	} else if (deco->border_frame) {
 		wlr_scene_node_set_enabled(&deco->border_frame->node, false);
 	}
@@ -973,7 +983,8 @@ render_titlebar(struct wm_decoration *deco, struct wm_style *style,
 		wlr_scene_node_set_position(&deco->titlebar_tree->node,
 			g->title_x, g->title_y);
 
-	set_buffer(deco->title_bg, wlr_buffer_from_cairo(wm_render_texture(
+	cut_at(deco, style, g, g->title_x, g->title_y);
+	set_buffer(deco->title_bg, deco_buffer(deco, wm_render_texture(
 		deco->focused ? &style->window_title_focus :
 		&style->window_title_unfocus, g->cw, g->th, 1.0f)), 0, 0);
 
@@ -986,6 +997,8 @@ render_titlebar(struct wm_decoration *deco, struct wm_style *style,
 		int x = side ? g->label_x + g->label_w + g->bevel : g->bevel;
 		for (int i = 0; i < count; i++, x += bs + g->bevel) {
 			struct wm_decor_button *btn = &buttons[i];
+			cut_at(deco, style, g, g->title_x + x,
+				g->title_y + g->bevel);
 			struct wlr_buffer *buf = render_button(deco, style,
 				btn, bs);
 			if (!btn->node)
@@ -997,6 +1010,7 @@ render_titlebar(struct wm_decoration *deco, struct wm_style *style,
 		}
 	}
 
+	cut_at(deco, style, g, g->title_x + g->label_x, g->title_y + g->bevel);
 	set_buffer(deco->label_buf, render_label(deco, style, g), g->label_x,
 		g->bevel);
 }
@@ -1013,6 +1027,7 @@ render_decoration_handle(struct wm_decoration *deco, struct wm_style *style,
 		wlr_scene_node_set_enabled(&deco->handle_buf->node, false);
 		return;
 	}
+	cut_at(deco, style, g, g->handle_x, g->handle_y);
 	set_buffer(deco->handle_buf, render_handle(deco, style, g),
 		g->handle_x, g->handle_y);
 }

@@ -482,15 +482,23 @@ add_config_item(struct wm_menu *menu, const char *label, const char *cmd,
 }
 
 /* A submenu of "config:KEY N" choices, the current one checked */
-static void
+static struct wm_menu *
 add_choice_submenu(struct wm_server *server, struct wm_menu *menu,
 	const char *title, const char *key, const char *const *labels,
 	const int *values, int count, int current)
 {
 	struct wm_menu *sub = menu_create(server, title);
 	if (!sub)
-		return;
+		return NULL;
 	for (int i = 0; i < count; i++) {
+		/* A blank cell (Fluxbox's "" items in its placement grids) */
+		if (!labels[i]) {
+			struct wm_menu_item *blank =
+				menu_item_create(WM_MENU_NOP, "");
+			if (blank)
+				wl_list_insert(sub->items.prev, &blank->link);
+			continue;
+		}
 		char cmd[64];
 		snprintf(cmd, sizeof(cmd), "config:%s %d", key, values[i]);
 		add_config_item(sub, _(labels[i]), cmd, true,
@@ -499,11 +507,12 @@ add_choice_submenu(struct wm_server *server, struct wm_menu *menu,
 	struct wm_menu_item *item = menu_item_create(WM_MENU_SUBMENU, title);
 	if (!item) {
 		wm_menu_destroy(sub);
-		return;
+		return NULL;
 	}
 	item->submenu = sub;
 	sub->parent = menu;
 	wl_list_insert(menu->items.prev, &item->link);
+	return sub;
 }
 
 static int
@@ -546,21 +555,24 @@ create_toolbar_menu(struct wm_server *server)
 	static const int layer_values[] = { 6, 4, 2 };
 	add_choice_submenu(server, menu, _("Layer..."), "toolbar_layer",
 		layers, layer_values, 3, cfg->toolbar_layer);
-	/* Toolbar::setupMenus' order */
+	/* Toolbar::setupMenus: shaped as the screen, 3 wide and 5 down */
 	static const char *const places[] = { N_("Top Left"), N_("Left Top"),
 		N_("Left Center"), N_("Left Bottom"), N_("Bottom Left"),
-		N_("Top Center"), N_("Bottom Center"), N_("Top Right"),
-		N_("Right Top"), N_("Right Center"), N_("Right Bottom"),
-		N_("Bottom Right") };
+		N_("Top Center"), NULL, NULL, NULL, N_("Bottom Center"),
+		N_("Top Right"), N_("Right Top"), N_("Right Center"),
+		N_("Right Bottom"), N_("Bottom Right") };
 	static const int place_values[] = { WM_TOOLBAR_TOP_LEFT,
 		WM_TOOLBAR_LEFT_TOP, WM_TOOLBAR_LEFT_CENTER,
 		WM_TOOLBAR_LEFT_BOTTOM, WM_TOOLBAR_BOTTOM_LEFT,
-		WM_TOOLBAR_TOP_CENTER, WM_TOOLBAR_BOTTOM_CENTER,
+		WM_TOOLBAR_TOP_CENTER, 0, 0, 0, WM_TOOLBAR_BOTTOM_CENTER,
 		WM_TOOLBAR_TOP_RIGHT, WM_TOOLBAR_RIGHT_TOP,
 		WM_TOOLBAR_RIGHT_CENTER, WM_TOOLBAR_RIGHT_BOTTOM,
 		WM_TOOLBAR_BOTTOM_RIGHT };
-	add_choice_submenu(server, menu, _("Placement"), "toolbar_placement",
-		places, place_values, 12, (int)cfg->toolbar_placement);
+	struct wm_menu *placement = add_choice_submenu(server, menu,
+		_("Placement"), "toolbar_placement", places, place_values, 15,
+		(int)cfg->toolbar_placement);
+	if (placement)
+		placement->min_columns = 3;
 
 	struct wm_menu_item *sep = menu_item_create(WM_MENU_SEPARATOR, NULL);
 	if (sep)
@@ -604,15 +616,19 @@ create_slit_menu(struct wm_server *server)
 	struct wm_menu *menu = menu_create(server, _("Slit"));
 	if (!menu)
 		return NULL;
-	static const char *const places[] = { N_("Top Left"), N_("Top Center"),
+	/* Slit::setupMenu: 3 wide and 5 down, shaped as the screen */
+	static const char *const places[] = { N_("Top Left"), N_("Left Top"),
+		N_("Left Center"), N_("Left Bottom"), N_("Bottom Left"),
+		N_("Top Center"), NULL, NULL, NULL, N_("Bottom Center"),
 		N_("Top Right"), N_("Right Top"), N_("Right Center"),
-		N_("Right Bottom"), N_("Bottom Left"), N_("Bottom Center"),
-		N_("Bottom Right"), N_("Left Top"), N_("Left Center"),
-		N_("Left Bottom") };
-	static const int place_values[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-		11 };
-	add_choice_submenu(server, menu, _("Placement"), "slit_placement",
-		places, place_values, 12, cfg->slit_placement);
+		N_("Right Bottom"), N_("Bottom Right") };
+	static const int place_values[] = { 0, 9, 10, 11, 6, 1, 0, 0, 0, 7, 2,
+		3, 4, 5, 8 };
+	struct wm_menu *placement = add_choice_submenu(server, menu,
+		_("Placement"), "slit_placement", places, place_values, 15,
+		cfg->slit_placement);
+	if (placement)
+		placement->min_columns = 3;
 	static const char *const layers[] = { N_("Above Dock"), N_("Dock"),
 		N_("Bottom") };
 	static const int layer_values[] = { 6, 4, 2 };
@@ -908,12 +924,36 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 	wm_color_to_float4(&style->menu_border_color, border_color);
 	for (int i = 0; i < 4; i++)
 		border_color[i] *= alpha;	/* premultiplied */
-	struct wlr_scene_rect *border_rect = wlr_scene_rect_create(
-		menu->scene_tree, menu->width, menu->height, border_color);
-	wlr_scene_node_set_position(&border_rect->node, 0, 0);
+	/* menu.roundCorners (Menu's FbTk::Shape): every part cut at the
+	 * menu's corners, the border drawn as a buffer to be cut */
+	uint8_t corners = style->menu_round_corners;
+	if (corners) {
+		cairo_surface_t *bs = cairo_image_surface_create(
+			CAIRO_FORMAT_ARGB32, menu->width, menu->height);
+		cairo_t *bcr = cairo_create(bs);
+		const struct wm_color *bc = &style->menu_border_color;
+		cairo_set_source_rgb(bcr, bc->r / 255.0, bc->g / 255.0,
+			bc->b / 255.0);
+		cairo_paint(bcr);
+		cairo_destroy(bcr);
+		wm_cut_corners(bs, 0, 0, menu->width, menu->height, corners);
+		struct wlr_buffer *bb = wlr_buffer_from_cairo(bs);
+		struct wlr_scene_buffer *border =
+			wlr_scene_buffer_create(menu->scene_tree, bb);
+		if (border)
+			wlr_scene_buffer_set_opacity(border, alpha);
+		if (bb)
+			wlr_buffer_drop(bb);
+	} else {
+		struct wlr_scene_rect *border_rect = wlr_scene_rect_create(
+			menu->scene_tree, menu->width, menu->height,
+			border_color);
+		wlr_scene_node_set_position(&border_rect->node, 0, 0);
+	}
 
 	/* Title bar */
 	cairo_surface_t *title_surf = render_menu_title(menu, style);
+	wm_cut_corners(title_surf, bw, bw, menu->width, menu->height, corners);
 	struct wlr_buffer *title_buf = wlr_buffer_from_cairo(title_surf);
 	menu->title_buf = wlr_scene_buffer_create(menu->scene_tree, title_buf);
 	if (title_buf) {
@@ -923,6 +963,8 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 
 	/* Items area */
 	cairo_surface_t *items_surf = render_menu_items(menu, style);
+	wm_cut_corners(items_surf, bw, menu->items_y, menu->width,
+		menu->height, corners);
 	struct wlr_buffer *items_buf = wlr_buffer_from_cairo(items_surf);
 	menu->items_buf = wlr_scene_buffer_create(menu->scene_tree, items_buf);
 	if (items_buf) {
@@ -1069,20 +1111,16 @@ menu_item_at(struct wm_menu *menu, double lx, double ly)
 		return -1;
 	}
 
-	int y = 0;
-	int index = 0;
-	struct wm_menu_item *item;
-	wl_list_for_each(item, &menu->items, link) {
-		int ih = (item->type == WM_MENU_SEPARATOR) ?
-			menu->separator_height : menu->item_height;
-		if (ry >= y && ry < y + ih) {
-			return index;
-		}
-		y += ih;
-		index++;
-	}
-
-	return -1;
+	/* Its column, then its row (Menu::buttonPressEvent) */
+	int ih = menu->item_height > 0 ? menu->item_height : 1;
+	int rows = menu->rows > 0 ? menu->rows : menu->item_count;
+	int item_w = menu->item_w > 0 ? menu->item_w : menu->width - 2 * bw;
+	int column = (int)(rx / item_w);
+	int row = (int)(ry / ih);
+	if (row >= rows)
+		return -1;
+	int index = column * rows + row;
+	return index < menu->item_count ? index : -1;
 }
 
 /*
@@ -1384,15 +1422,20 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
  * go off the right edge of the output.
  */
 static void
-submenu_position(struct wm_menu *parent, int item_y_offset,
-	int *out_x, int *out_y)
+submenu_position(struct wm_menu *parent, int index, int *out_x, int *out_y)
 {
-	/* Menu::drawSubmenu: over the parent's right border, its first
-	 * item level with the parent's (its title above, as the parent's) */
+	/* Menu::drawSubmenu: over the right border of the item's column,
+	 * its first item level with the item (its title above, as the
+	 * parent's) */
 	struct wm_server *server = parent->server;
 	int bw = parent->border_width;
-	int sub_x = parent->x + parent->width - bw;
-	int sub_y = parent->y + item_y_offset;
+	int rows = parent->rows > 0 ? parent->rows : parent->item_count;
+	int column = rows > 0 ? index / rows : 0;
+	int row = rows > 0 ? index % rows : index;
+	int item_w = parent->item_w > 0 ? parent->item_w :
+		parent->width - 2 * bw;
+	int sub_x = parent->x + item_w * (column + 1) + bw;
+	int sub_y = parent->y + row * parent->item_height;
 
 	/* Get output bounds at the parent menu position */
 	struct wlr_output *wlr_output = wlr_output_layout_output_at(
@@ -1631,23 +1674,9 @@ wm_menu_handle_key_for(struct wm_menu *root_menu, xkb_keysym_t sym)
 		struct wm_menu_item *item = menu_get_item(menu,
 			menu->selected_index);
 		if (item && item->submenu) {
-			/* Offset to the selected item */
-			int y_off = 0;
-			int idx = 0;
-			struct wm_menu_item *it;
-			wl_list_for_each(it, &menu->items, link) {
-				if (idx >= menu->selected_index) {
-					break;
-				}
-				if (it->type == WM_MENU_SEPARATOR) {
-					y_off += menu->separator_height;
-				} else {
-					y_off += menu->item_height;
-				}
-				idx++;
-			}
 			int sub_x, sub_y;
-			submenu_position(menu, y_off, &sub_x, &sub_y);
+			submenu_position(menu, menu->selected_index, &sub_x,
+				&sub_y);
 			wm_menu_show(item->submenu, sub_x, sub_y);
 			/* Select first non-separator in submenu */
 			int first = 0;
@@ -1804,23 +1833,8 @@ wm_menu_handle_motion_for(struct wm_menu *root_menu, double lx, double ly)
 		/* Auto-open submenu on hover (with optional delay) */
 		struct wm_menu_item *item = menu_get_item(hit_menu, idx);
 		if (item && item->submenu) {
-			int y_off = 0;
-			int i = 0;
-			struct wm_menu_item *it;
-			wl_list_for_each(it, &hit_menu->items, link) {
-				if (i >= idx) {
-					break;
-				}
-				if (it->type == WM_MENU_SEPARATOR) {
-					y_off += hit_menu->separator_height;
-				} else {
-					y_off += hit_menu->item_height;
-				}
-				i++;
-			}
 			int sub_x, sub_y;
-			submenu_position(hit_menu, y_off,
-				&sub_x, &sub_y);
+			submenu_position(hit_menu, idx, &sub_x, &sub_y);
 
 			int delay = 0;
 			if (hit_menu->server && hit_menu->server->config)
@@ -1910,23 +1924,8 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 			hit_menu->selected_index = idx;
 			menu_update_render(hit_menu);
 
-			int y_off = 0;
-			int i = 0;
-			struct wm_menu_item *it;
-			wl_list_for_each(it, &hit_menu->items, link) {
-				if (i >= idx) {
-					break;
-				}
-				if (it->type == WM_MENU_SEPARATOR) {
-					y_off += hit_menu->separator_height;
-				} else {
-					y_off += hit_menu->item_height;
-				}
-				i++;
-			}
 			int sub_x, sub_y;
-			submenu_position(hit_menu, y_off,
-				&sub_x, &sub_y);
+			submenu_position(hit_menu, idx, &sub_x, &sub_y);
 			wm_menu_show(item->submenu, sub_x, sub_y);
 		}
 		return true;

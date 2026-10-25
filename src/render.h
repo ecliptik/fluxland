@@ -124,6 +124,14 @@ void wm_render_cleanup(void);
  * The corners bitmask uses WM_CORNER_* flags from style.h to select
  * which corners are rounded. A radius of 0 produces a normal rectangle.
  */
+/*
+ * Fluxbox's round corners (FbTk::Shape's 8x8 masks): cut out of a
+ * surface drawn at (x, y) in a frame_w x frame_h frame the corner pixels
+ * that frame loses, for the corners set (WM_CORNER_*)
+ */
+void wm_cut_corners(cairo_surface_t *surface, int x, int y, int frame_w,
+	int frame_h, uint8_t corners);
+
 void wm_render_rounded_rect_path(cairo_t *cr, double x, double y,
 	double width, double height, double radius, uint8_t corners);
 

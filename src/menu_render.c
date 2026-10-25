@@ -12,6 +12,8 @@
 
 #define _GNU_SOURCE
 #include <cairo.h>
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <drm_fourcc.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -63,6 +65,22 @@ item_has_submenu(const struct wm_menu_item *item)
  * for the bullet and a bevel on each side (and the icon); a border
  * line between the title and the items; separators an item high.
  */
+/* The height of the screen the menu is shown on (where the pointer is) */
+static int
+menu_screen_height(struct wm_menu *menu)
+{
+	struct wm_server *server = menu->server;
+	if (!server || !server->output_layout || !server->cursor)
+		return 0;
+	struct wlr_output *o = wlr_output_layout_output_at(
+		server->output_layout, server->cursor->x, server->cursor->y);
+	if (!o)
+		return 0;
+	struct wlr_box box;
+	wlr_output_layout_get_box(server->output_layout, o, &box);
+	return box.height;
+}
+
 void
 menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 {
@@ -107,9 +125,23 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 			item_w = w;
 	}
 	menu->item_count = count;
-	menu->width = item_w + 2 * bw;
+
+	/* As many columns as keep it on the screen (Menu::updateMenu) */
+	int screen_h = menu_screen_height(menu);
+	int cols = 1;
+	while (count > 0 && screen_h > 0 &&
+	       ih * (count + 1) / cols + th + bw > screen_h && cols < count)
+		cols++;
+	if (cols < menu->min_columns)
+		cols = menu->min_columns;
+	int rows = count > 0 ? (count + cols - 1) / cols : 0;
+	menu->columns = cols;
+	menu->rows = rows;
+	menu->item_w = item_w;
+
+	menu->width = item_w * cols + 2 * bw;
 	menu->items_y = bw + th + bw;
-	menu->height = menu->items_y + count * ih + bw;
+	menu->height = menu->items_y + rows * ih + bw;
 	if (count == 0)
 		menu->height = menu->items_y + 1 + bw;
 }
@@ -247,20 +279,23 @@ draw_bullet(cairo_t *cr, struct wm_style *style, bool hilite, int sel_x,
 cairo_surface_t *
 render_menu_items(struct wm_menu *menu, struct wm_style *style)
 {
-	int w = menu->width - 2 * menu->border_width;
+	int frame_w = menu->width - 2 * menu->border_width;
 	int ih = menu->item_height;
-	int total_h = menu->item_count * ih;
-	if (w <= 0 || total_h <= 0)
+	int rows = menu->rows > 0 ? menu->rows : menu->item_count;
+	int total_h = rows * ih;
+	/* Each item as wide as a column */
+	int w = menu->item_w > 0 ? menu->item_w : frame_w;
+	if (frame_w <= 0 || total_h <= 0)
 		return NULL;
 	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, total_h);
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, frame_w, total_h);
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
 		cairo_surface_destroy(surface);
 		return NULL;
 	}
 	cairo_t *cr = cairo_create(surface);
-	cairo_surface_t *bg = wm_render_texture(&style->menu_frame, w, total_h,
-		1.0f);
+	cairo_surface_t *bg = wm_render_texture(&style->menu_frame, frame_w,
+		total_h, 1.0f);
 	if (bg) {
 		cairo_set_source_surface(cr, bg, 0, 0);
 		cairo_paint(cr);
@@ -269,16 +304,20 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 
 	int bevel = style->menu_bevel_width;
 	bool right = style->menu_bullet_position == WM_JUSTIFY_RIGHT;
-	int y = 0, index = 0;
+	int index = 0;
 	struct wm_menu_item *item;
 	wl_list_for_each(item, &menu->items, link) {
+		/* Down a column, then the next (Menu::drawItem) */
+		int y = (index % rows) * ih;
+		cairo_save(cr);
+		cairo_translate(cr, (index / rows) * w, 0);
 		if (item->type == WM_MENU_SEPARATOR) {
 			/* MenuSeparator::draw: a line in the text colour */
 			set_color(cr, &style->menu_frame_text_color);
 			cairo_rectangle(cr, bevel + ih + 1, y + ih / 2,
 				w - 2 * (bevel + ih) - 1, 1);
 			cairo_fill(cr);
-			y += ih;
+			cairo_restore(cr);
 			index++;
 			continue;
 		}
@@ -387,7 +426,7 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 		if (item_has_submenu(item))
 			draw_bullet(cr, style, hilite, sel_x, y, ih, color);
 
-		y += ih;
+		cairo_restore(cr);
 		index++;
 	}
 	cairo_destroy(cr);
@@ -414,6 +453,8 @@ menu_update_render(struct wm_menu *menu)
 	struct wm_style *style = menu->server->style;
 
 	cairo_surface_t *items_surf = render_menu_items(menu, style);
+	wm_cut_corners(items_surf, menu->border_width, menu->items_y,
+		menu->width, menu->height, style->menu_round_corners);
 	struct wlr_buffer *items_buf = wlr_buffer_from_cairo(items_surf);
 	if (menu->items_buf) {
 		wlr_scene_buffer_set_buffer(menu->items_buf, items_buf);

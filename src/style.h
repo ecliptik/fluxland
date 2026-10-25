@@ -209,6 +209,7 @@ struct wm_style {
 	/* Menu borders */
 	struct wm_color menu_border_color;
 	int menu_border_width;
+	uint8_t menu_round_corners;	/* menu.roundCorners: WM_CORNER_* */
 
 	/* Menu bullet (submenu indicator) */
 	char *menu_bullet;		/* "triangle", "square", "diamond", "empty" */

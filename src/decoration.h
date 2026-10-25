@@ -65,6 +65,10 @@ struct wm_decor_button {
 /* --- Window decoration --- */
 
 struct wm_decoration {
+	/* window.roundCorners for the part drawn next: its place in the
+	 * frame, the frame's size and the corners (decoration.c cut_at) */
+	int cut_x, cut_y, cut_fw, cut_fh;
+	uint8_t cut_corners;
 	struct wm_view *view;
 	struct wm_server *server;
 

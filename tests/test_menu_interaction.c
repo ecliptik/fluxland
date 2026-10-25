@@ -311,6 +311,7 @@ struct wm_style {
 	struct wm_color menu_hilite_text_color;
 	struct wm_color menu_border_color;
 	int menu_border_width;
+	uint8_t menu_round_corners;
 	char *menu_bullet;
 	enum wm_justify menu_bullet_position;
 	int menu_item_height;
@@ -485,6 +486,7 @@ struct wm_server {
 	struct wl_event_loop *wl_event_loop;
 	struct wlr_scene *scene;
 	struct wlr_output_layout *output_layout;
+	struct wlr_cursor *cursor;
 	struct wl_list outputs;
 	struct wl_list views;
 	struct wl_list workspaces;
@@ -780,6 +782,10 @@ static cairo_t g_stub_cairo;
 
 static cairo_t *cairo_create(cairo_surface_t *s) { (void)s; return &g_stub_cairo; }
 static void cairo_destroy(cairo_t *cr) { (void)cr; }
+static void cairo_set_source_rgb(cairo_t *cr, double r, double g, double b)
+	{ (void)cr; (void)r; (void)g; (void)b; }
+static void wm_cut_corners(cairo_surface_t *s, int x, int y, int w, int h,
+	uint8_t c) { (void)s; (void)x; (void)y; (void)w; (void)h; (void)c; }
 static void cairo_set_source_rgba(cairo_t *cr, double r, double g, double b, double a)
 {
 	(void)cr; (void)r; (void)g; (void)b; (void)a;
