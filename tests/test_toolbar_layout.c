@@ -36,6 +36,8 @@
 #define WM_FOCUS_NAV_H
 #define WM_VIEW_FOCUS_H
 #define WM_SYSTRAY_H
+#define WM_MENU_H
+#define WM_COMMAND_H
 #define DRM_FOURCC_H
 
 /* Prevent cairo.h from being included */
@@ -377,6 +379,10 @@ struct wm_config {
 	int toolbar_width_percent;
 	int toolbar_height;
 	char *toolbar_tools;
+	struct wm_toolbar_button_cfg {
+		char *name, *label, *commands;
+	} *toolbar_buttons;
+	int toolbar_button_count;
 	char *clock_format;
 	int iconbar_mode;
 	char *iconbar_mode_spec;
@@ -461,6 +467,7 @@ struct wm_server {
 	struct wm_config *config;
 	struct wm_style *style;
 	struct wm_view *focused_view;
+	struct wm_view *menu_view;
 	struct wlr_cursor *cursor;
 	struct wlr_scene_tree *layer_top;
 	struct wlr_scene_tree *layer_overlay;
@@ -471,6 +478,26 @@ struct wm_server {
 	struct wm_systray *systray;
 #endif
 };
+
+/* menu.h and command.h */
+static int g_toolbar_menu_count, g_window_menu_count, g_command_count;
+static char g_last_command[128];
+static void wm_menu_show_toolbar_menu(struct wm_server *s, int x, int y)
+	{ (void)s; (void)x; (void)y; g_toolbar_menu_count++; }
+static void wm_menu_show_window(struct wm_server *s, int x, int y)
+	{ (void)s; (void)x; (void)y; g_window_menu_count++; }
+struct wm_command { int dummy; };
+static struct wm_command g_command;
+static struct wm_command *
+wm_command_parse(const char *str)
+{
+	snprintf(g_last_command, sizeof(g_last_command), "%s", str);
+	return &g_command;
+}
+static bool
+wm_command_execute(struct wm_server *s, struct wm_command *c, struct wm_view *v)
+	{ (void)s; (void)c; (void)v; g_command_count++; return true; }
+static void wm_command_destroy(struct wm_command *c) { (void)c; }
 
 #ifdef WM_HAS_SYSTRAY
 static int wm_systray_get_width(struct wm_systray *systray) {
@@ -738,6 +765,14 @@ wm_view_raise(struct wm_view *view)
 	g_view_raise_count++;
 }
 
+static int g_minimize_count;
+static void
+wm_view_minimize(struct wm_view *view)
+{
+	(void)view;
+	g_minimize_count++;
+}
+
 static void
 deiconify_view(struct wm_view *view)
 {
@@ -837,6 +872,10 @@ reset_globals(void)
 	g_measure_text_width_count = 0;
 	g_ws_switch_next_count = 0;
 	g_ws_switch_prev_count = 0;
+	g_command_count = 0;
+	g_toolbar_menu_count = 0;
+	g_window_menu_count = 0;
+	g_minimize_count = 0;
 	g_focus_next_count = 0;
 	g_focus_prev_count = 0;
 	g_focus_view_count = 0;
@@ -2340,6 +2379,79 @@ test_button_press_release(void)
 	printf("  PASS: button_press_release\n");
 }
 
+/* --- spacer and button.NAME tools, and the toolbar's clicks --- */
+
+static void
+test_spacer_and_button_tools(void)
+{
+	reset_globals();
+	setup_test_server();
+	struct wm_toolbar_button_cfg buttons[] = {
+		{ "term", "Term", "Exec foot:Exec xterm" },
+	};
+	test_config.toolbar_buttons = buttons;
+	test_config.toolbar_button_count = 1;
+	test_config.toolbar_tools =
+		"button.term, spacer_10, iconbar, spacer, workspacename, "
+		"button.missing, spacer_x";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar);
+	/* A button with no label and a bad spacer are left out */
+	assert(toolbar->tool_count == 5);
+	assert(toolbar->tools[0].type == WM_TOOL_BUTTON);
+	assert(strcmp(toolbar->tools[0].label, "Term") == 0);
+	assert(toolbar->tools[1].type == WM_TOOL_SPACER &&
+		toolbar->tools[1].spacer_size == 10);
+	assert(toolbar->tools[3].type == WM_TOOL_SPACER &&
+		toolbar->tools[3].spacer_size == 0);
+
+	toolbar->x = 0;
+	toolbar->y = 1000;
+	toolbar->width = 600;
+	compute_tool_layout(toolbar, 600);
+	/* The button as wide as its label and 2; the plain spacer and the
+	 * iconbar share what is left */
+	assert(toolbar->tools[0].width == 4 * 8 + 2);
+	assert(toolbar->tools[1].width == 10);
+	assert(toolbar->tools[2].width == toolbar->tools[3].width);
+
+	/* Its commands, one for each mouse button (1 left, 2 middle,
+	 * 3 right), run on release */
+	assert(wm_toolbar_handle_button(toolbar, 5, 1005, 274));
+	assert(wm_toolbar_handle_release(toolbar, 5, 1005, 274));
+	assert(g_command_count == 1);
+	assert(strcmp(g_last_command, "Exec xterm") == 0);
+	assert(g_toolbar_menu_count == 0);
+	wm_toolbar_handle_button(toolbar, 5, 1005, 273);
+	wm_toolbar_handle_release(toolbar, 5, 1005, 273);
+	assert(g_command_count == 1);	/* it has no third */
+
+	/* The workspace name: previous on the left, next on the right */
+	int wx = toolbar->tools[4].x + 2;
+	wm_toolbar_handle_button(toolbar, wx, 1005, 272);
+	assert(g_ws_switch_prev_count == 1);
+	wm_toolbar_handle_button(toolbar, wx, 1005, 273);
+	assert(g_ws_switch_next_count == 1);
+
+	/* The middle button opens the toolbar menu */
+	wm_toolbar_handle_button(toolbar, wx, 1005, 274);
+	assert(g_toolbar_menu_count == 1);
+
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&ws.link);
+	test_config.toolbar_buttons = NULL;
+	test_config.toolbar_button_count = 0;
+	printf("  PASS: spacer_and_button_tools\n");
+}
+
 /* --- compute_tool_layout: bevel and borders, as Fluxbox --- */
 
 static void
@@ -3156,6 +3268,7 @@ main(void)
 	test_compute_tool_layout_custom_clock_fmt();
 	test_compute_tool_layout_bevel_borders();
 	test_button_press_release();
+	test_spacer_and_button_tools();
 	test_buffer_from_cairo_null();
 	test_pixel_buffer_write_rejected();
 	test_render_clock_cache();

@@ -34,6 +34,7 @@
 #include "rules.h"
 #include "server.h"
 #include "style.h"
+#include "slit.h"
 #include "toolbar.h"
 #include "util.h"
 #include "view.h"
@@ -262,6 +263,39 @@ handle_config_command(struct wm_server *server, const char *cmd)
 		cfg->full_maximization = !cfg->full_maximization;
 	} else if (strcmp(key, "tab_placement") == 0) {
 		cfg->tab_placement = value;
+	} else if (strcmp(key, "toolbar_visible") == 0) {
+		cfg->toolbar_visible = !cfg->toolbar_visible;
+	} else if (strcmp(key, "toolbar_auto_hide") == 0) {
+		cfg->toolbar_auto_hide = !cfg->toolbar_auto_hide;
+	} else if (strcmp(key, "toolbar_max_over") == 0) {
+		cfg->toolbar_max_over = !cfg->toolbar_max_over;
+	} else if (strcmp(key, "toolbar_placement") == 0) {
+		cfg->toolbar_placement = value;
+	} else if (strcmp(key, "toolbar_layer") == 0) {
+		cfg->toolbar_layer = value;
+	} else if (strcmp(key, "iconbar_mode") == 0) {
+		static const char *const modes[] = { "none",
+			"{static groups} (minimized=yes)",
+			"{static groups} (minimized=no)",
+			"{static groups} (minimized=yes) (workspace)",
+			"{static groups} (minimized=no) (workspace)",
+			"{static groups} (workspace)", "{static groups}" };
+		if (value < 0 || value >= (int)(sizeof(modes) / sizeof(*modes)))
+			return;
+		free(cfg->iconbar_mode_spec);
+		cfg->iconbar_mode_spec = strdup(modes[value]);
+	} else if (strcmp(key, "iconbar_alignment") == 0) {
+		cfg->iconbar_alignment = value;
+	} else if (strcmp(key, "iconbar_use_pixmap") == 0) {
+		cfg->iconbar_use_pixmap = !cfg->iconbar_use_pixmap;
+	} else if (strcmp(key, "slit_auto_hide") == 0) {
+		cfg->slit_auto_hide = !cfg->slit_auto_hide;
+	} else if (strcmp(key, "slit_max_over") == 0) {
+		cfg->slit_max_over = !cfg->slit_max_over;
+	} else if (strcmp(key, "slit_placement") == 0) {
+		cfg->slit_placement = value;
+	} else if (strcmp(key, "slit_layer") == 0) {
+		cfg->slit_layer = value;
 	} else {
 		wlr_log(WLR_ERROR, "config menu: unknown key '%s'", key);
 		return;
@@ -274,6 +308,8 @@ handle_config_command(struct wm_server *server, const char *cmd)
 	server->focus_policy = cfg->focus_policy;
 	if (server->toolbar)
 		wm_toolbar_relayout(server->toolbar);
+	if (server->slit && strncmp(key, "slit_", 5) == 0)
+		wm_slit_relayout(server->slit);
 }
 
 static struct wm_menu *
@@ -333,6 +369,172 @@ create_tab_placement_submenu(struct wm_server *server)
 	}
 
 	return menu;
+}
+
+/* --- The toolbar's and the slit's menus (Fluxbox's) --- */
+
+static void
+add_config_item(struct wm_menu *menu, const char *label, const char *cmd,
+	bool toggle, bool checked)
+{
+	struct wm_menu_item *item = menu_item_create(WM_MENU_COMMAND, label);
+	if (!item)
+		return;
+	item->command = strdup(cmd);
+	item->toggle = toggle;
+	item->checked = checked;
+	wl_list_insert(menu->items.prev, &item->link);
+}
+
+/* A submenu of "config:KEY N" choices, the current one checked */
+static void
+add_choice_submenu(struct wm_server *server, struct wm_menu *menu,
+	const char *title, const char *key, const char *const *labels,
+	const int *values, int count, int current)
+{
+	struct wm_menu *sub = menu_create(server, title);
+	if (!sub)
+		return;
+	for (int i = 0; i < count; i++) {
+		char cmd[64];
+		snprintf(cmd, sizeof(cmd), "config:%s %d", key, values[i]);
+		add_config_item(sub, _(labels[i]), cmd, true,
+			values[i] == current);
+	}
+	struct wm_menu_item *item = menu_item_create(WM_MENU_SUBMENU, title);
+	if (!item) {
+		wm_menu_destroy(sub);
+		return;
+	}
+	item->submenu = sub;
+	sub->parent = menu;
+	wl_list_insert(menu->items.prev, &item->link);
+}
+
+static int
+iconbar_mode_index(const char *spec)
+{
+	static const char *const modes[] = { "none",
+		"{static groups} (minimized=yes)",
+		"{static groups} (minimized=no)",
+		"{static groups} (minimized=yes) (workspace)",
+		"{static groups} (minimized=no) (workspace)",
+		"{static groups} (workspace)", "{static groups}" };
+	for (int i = 0; spec && i < 7; i++) {
+		if (strcmp(spec, modes[i]) == 0)
+			return i;
+	}
+	return -1;
+}
+
+/*
+ * Fluxbox's toolbar menu (Toolbar::setupMenus and IconbarTool's items):
+ * a middle click on the toolbar.
+ */
+static struct wm_menu *
+create_toolbar_menu(struct wm_server *server)
+{
+	struct wm_config *cfg = server ? server->config : NULL;
+	if (!cfg)
+		return NULL;
+	struct wm_menu *menu = menu_create(server, _("Toolbar"));
+	if (!menu)
+		return NULL;
+	add_config_item(menu, _("Visible"), "config:toolbar_visible 0", true,
+		cfg->toolbar_visible);
+	add_config_item(menu, _("Auto hide"), "config:toolbar_auto_hide 0",
+		true, cfg->toolbar_auto_hide);
+	add_config_item(menu, _("Maximize Over"), "config:toolbar_max_over 0",
+		true, cfg->toolbar_max_over);
+	static const char *const layers[] = { N_("Above Dock"), N_("Dock"),
+		N_("Bottom") };
+	static const int layer_values[] = { 6, 4, 2 };
+	add_choice_submenu(server, menu, _("Layer..."), "toolbar_layer",
+		layers, layer_values, 3, cfg->toolbar_layer);
+	static const char *const places[] = { N_("Top Left"), N_("Top Center"),
+		N_("Top Right"), N_("Bottom Left"), N_("Bottom Center"),
+		N_("Bottom Right") };
+	static const int place_values[] = { WM_TOOLBAR_TOP_LEFT,
+		WM_TOOLBAR_TOP_CENTER, WM_TOOLBAR_TOP_RIGHT,
+		WM_TOOLBAR_BOTTOM_LEFT, WM_TOOLBAR_BOTTOM_CENTER,
+		WM_TOOLBAR_BOTTOM_RIGHT };
+	add_choice_submenu(server, menu, _("Placement"), "toolbar_placement",
+		places, place_values, 6, (int)cfg->toolbar_placement);
+
+	struct wm_menu_item *sep = menu_item_create(WM_MENU_SEPARATOR, NULL);
+	if (sep)
+		wl_list_insert(menu->items.prev, &sep->link);
+	static const char *const modes[] = { N_("None"), N_("Icons"),
+		N_("NoIcons"), N_("WorkspaceIcons"), N_("WorkspaceNoIcons"),
+		N_("Workspace"), N_("All Windows") };
+	static const int mode_values[] = { 0, 1, 2, 3, 4, 5, 6 };
+	add_choice_submenu(server, menu, _("Iconbar Mode"), "iconbar_mode",
+		modes, mode_values, 7, iconbar_mode_index(cfg->iconbar_mode_spec));
+	static const char *const aligns[] = { N_("Left"), N_("Relative"),
+		N_("Right") };
+	static const int align_values[] = { 0, 1, 2 };
+	add_choice_submenu(server, menu, _("Alignment"), "iconbar_alignment",
+		aligns, align_values, 3, cfg->iconbar_alignment);
+	add_config_item(menu, _("Show Pictures"), "config:iconbar_use_pixmap 0",
+		true, cfg->iconbar_use_pixmap);
+	return menu;
+}
+
+void
+wm_menu_show_toolbar_menu(struct wm_server *server, int x, int y)
+{
+	if (!server)
+		return;
+	wm_menu_hide_all(server);
+	struct wm_menu *menu = create_toolbar_menu(server);
+	if (!menu)
+		return;
+	server->custom_menu = menu;
+	wm_menu_show(menu, x, y);
+}
+
+/* Fluxbox's slit menu (Slit::setupMenu): a right click on the slit */
+static struct wm_menu *
+create_slit_menu(struct wm_server *server)
+{
+	struct wm_config *cfg = server ? server->config : NULL;
+	if (!cfg)
+		return NULL;
+	struct wm_menu *menu = menu_create(server, _("Slit"));
+	if (!menu)
+		return NULL;
+	static const char *const places[] = { N_("Top Left"), N_("Top Center"),
+		N_("Top Right"), N_("Right Top"), N_("Right Center"),
+		N_("Right Bottom"), N_("Bottom Left"), N_("Bottom Center"),
+		N_("Bottom Right"), N_("Left Top"), N_("Left Center"),
+		N_("Left Bottom") };
+	static const int place_values[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+		11 };
+	add_choice_submenu(server, menu, _("Placement"), "slit_placement",
+		places, place_values, 12, cfg->slit_placement);
+	static const char *const layers[] = { N_("Above Dock"), N_("Dock"),
+		N_("Bottom") };
+	static const int layer_values[] = { 6, 4, 2 };
+	add_choice_submenu(server, menu, _("Layer..."), "slit_layer", layers,
+		layer_values, 3, cfg->slit_layer);
+	add_config_item(menu, _("Auto hide"), "config:slit_auto_hide 0", true,
+		cfg->slit_auto_hide);
+	add_config_item(menu, _("Maximize Over"), "config:slit_max_over 0",
+		true, cfg->slit_max_over);
+	return menu;
+}
+
+void
+wm_menu_show_slit_menu(struct wm_server *server, int x, int y)
+{
+	if (!server)
+		return;
+	wm_menu_hide_all(server);
+	struct wm_menu *menu = create_slit_menu(server);
+	if (!menu)
+		return;
+	server->custom_menu = menu;
+	wm_menu_show(menu, x, y);
 }
 
 struct wm_menu *
@@ -396,6 +598,21 @@ wm_menu_create_config_menu(struct wm_server *server)
 		if (tab_item->submenu)
 			tab_item->submenu->parent = menu;
 		wl_list_insert(menu->items.prev, &tab_item->link);
+	}
+
+	/* The toolbar's and the slit's menus (Screen::addConfigMenu) */
+	struct wm_menu *(*const create[])(struct wm_server *) = {
+		create_toolbar_menu, create_slit_menu };
+	const char *const titles[] = { N_("Toolbar"), N_("Slit") };
+	for (int i = 0; i < 2; i++) {
+		struct wm_menu_item *item = menu_item_create(WM_MENU_SUBMENU,
+			_(titles[i]));
+		if (!item)
+			continue;
+		item->submenu = create[i](server);
+		if (item->submenu)
+			item->submenu->parent = menu;
+		wl_list_insert(menu->items.prev, &item->link);
 	}
 
 	return menu;
@@ -924,32 +1141,10 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 		break;
 
 	case WM_MENU_STYLE:
-		if (item->command && server->style) {
+		if (item->command) {
 			wlr_log(WLR_INFO, "menu: load style %s",
 				item->command);
-			/* Update config path so reconfigure preserves
-			 * the choice */
-			if (server->config) {
-				free(server->config->style_file);
-				server->config->style_file =
-					strdup(item->command);
-			}
-			style_load(server->style, item->command);
-			/* Refresh toolbar */
-			if (server->toolbar)
-				wm_toolbar_relayout(server->toolbar);
-			/* Update all existing window decorations */
-			struct wm_view *v;
-			wl_list_for_each(v, &server->views, link) {
-				if (v->decoration)
-					wm_decoration_update(
-						v->decoration,
-						server->style);
-			}
-			/* Broadcast style_changed event */
-			wm_ipc_broadcast_event(&server->ipc,
-				WM_IPC_EVENT_STYLE_CHANGED,
-				"{\"event\":\"style_changed\"}");
+			wm_server_set_style(server, item->command);
 		}
 		break;
 

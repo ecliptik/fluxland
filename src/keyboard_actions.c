@@ -611,22 +611,8 @@ handle_set_style(struct wm_server *server, const char *argument)
 			free(resolved);
 			return false;
 		}
-		free(server->config->style_file);
-		server->config->style_file = resolved;
-		if (server->style && server->config->style_file)
-			style_load(server->style,
-				server->config->style_file);
-		if (server->toolbar)
-			wm_toolbar_relayout(server->toolbar);
-		if (server->style) {
-			struct wm_view *v;
-			wl_list_for_each(v, &server->views, link) {
-				if (v->decoration)
-					wm_decoration_update(
-						v->decoration,
-						server->style);
-			}
-		}
+		wm_server_set_style(server, resolved);
+		free(resolved);
 	}
 	return true;
 }
@@ -650,7 +636,7 @@ handle_set_wallpaper(struct wm_server *server, const char *argument)
 		case 'f': mode = WM_WALLPAPER_STRETCH; break;
 		case 'c': mode = WM_WALLPAPER_CENTER; break;
 		case 't': mode = WM_WALLPAPER_TILE; break;
-		case 'a': mode = WM_WALLPAPER_FILL; break;
+		case 'a': mode = WM_WALLPAPER_FIT; break;
 		default: break;
 		}
 		p += 2;
@@ -671,6 +657,8 @@ handle_set_wallpaper(struct wm_server *server, const char *argument)
 	free(config->wallpaper);
 	config->wallpaper = strdup(path);
 	config->wallpaper_mode = mode;
+	config->wallpaper_from_last = true;
+	server->style_background = false;	/* the user's choice wins */
 	if (server->wallpaper)
 		wm_wallpaper_reload(server->wallpaper);
 	else
@@ -682,6 +670,7 @@ handle_set_wallpaper(struct wm_server *server, const char *argument)
 			[WM_WALLPAPER_CENTER] = "Center",
 			[WM_WALLPAPER_TILE] = "Tile",
 			[WM_WALLPAPER_FILL] = "Fill",
+			[WM_WALLPAPER_FIT] = "Fit",
 		};
 		char last[4096];
 		snprintf(last, sizeof(last), "%s/lastwallpaper",

@@ -236,6 +236,11 @@ void wm_menu_show_root(struct wm_server *server, int x, int y);
  */
 void wm_menu_show_window(struct wm_server *server, int x, int y);
 
+/* Fluxbox's toolbar menu (a middle click on the toolbar) and slit menu
+ * (a right click on the slit) */
+void wm_menu_show_toolbar_menu(struct wm_server *server, int x, int y);
+void wm_menu_show_slit_menu(struct wm_server *server, int x, int y);
+
 /*
  * Show the window list menu at the given position.
  * Creates a dynamic menu listing all views grouped by workspace.

@@ -617,6 +617,7 @@ struct wm_server {
 	struct wm_toolbar *toolbar;
 	struct wm_slit *slit;
 	struct wm_wallpaper *wallpaper;
+	bool style_background;
 
 	struct wm_menu *root_menu;
 	struct wm_menu *window_menu;

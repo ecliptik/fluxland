@@ -36,6 +36,8 @@
 #define WM_STYLE_H
 #define WM_CONFIG_H
 #define WM_OUTPUT_H
+#define WM_PIXEL_BUFFER_H
+#define WM_RENDER_H
 
 /* --- Stub wayland types --- */
 
@@ -238,7 +240,24 @@ struct wm_style {
 	struct wm_texture slit_texture;
 	struct wm_color slit_border_color;
 	int slit_border_width;
+	int slit_bevel_width;
 };
+
+/* render.h and pixel_buffer.h: the slit texture isn't drawn here */
+typedef struct _cairo_surface cairo_surface_t;
+struct wlr_buffer;
+static cairo_surface_t *
+wm_render_texture(const struct wm_texture *t, int w, int h, float s)
+{
+	(void)t; (void)w; (void)h; (void)s;
+	return NULL;
+}
+static struct wlr_buffer *
+wlr_buffer_from_cairo(cairo_surface_t *surface)
+{
+	(void)surface;
+	return NULL;
+}
 
 struct wm_config {
 	bool slit_auto_hide;
@@ -400,6 +419,20 @@ wlr_scene_buffer_set_opacity(struct wlr_scene_buffer *buffer, float opacity)
 {
 	(void)buffer; (void)opacity;
 }
+
+static struct wlr_scene_buffer g_slit_bg_buf;
+static struct wlr_scene_buffer *
+wlr_scene_buffer_create(struct wlr_scene_tree *parent, struct wlr_buffer *b)
+{
+	(void)parent; (void)b;
+	return &g_slit_bg_buf;
+}
+static void
+wlr_scene_buffer_set_buffer(struct wlr_scene_buffer *sb, struct wlr_buffer *b)
+{
+	(void)sb; (void)b;
+}
+static void wlr_buffer_drop(struct wlr_buffer *b) { (void)b; }
 
 static struct wlr_scene_tree *
 wlr_scene_subsurface_tree_create(struct wlr_scene_tree *parent,
@@ -719,12 +752,20 @@ test_slit_layout_vertical(void)
 
 	slit_layout_clients(&slit);
 
-	/* Vertical: width = max(64,48) + 2*padding(2) = 68 */
-	assert(slit.width == 64 + 2 * WM_SLIT_PADDING);
+	/* No style, no bevel: as wide as the widest, as high as both */
+	assert(slit.width == 64);
+	assert(slit.height == 64 + 48);
 
-	/* Height = padding + 64 + padding + 48 + padding = 2 + 64 + 2 + 48 + 2 = 118 */
-	int expected_h = WM_SLIT_PADDING + 64 + WM_SLIT_PADDING + 48 + WM_SLIT_PADDING;
-	assert(slit.height == expected_h);
+	/* Slit::reconfigure with a bevel of 2: each dockapp and a bevel,
+	 * two more along; the widest and a bevel across */
+	test_style.slit_bevel_width = 2;
+	test_server.style = &test_style;
+	slit.server = &test_server;
+	slit_layout_clients(&slit);
+	assert(slit.width == 64 + 2);
+	assert(slit.height == (64 + 2) + (48 + 2) + 2 * 2);
+	slit.server = NULL;
+	test_style.slit_bevel_width = 0;
 
 	printf("  PASS: slit_layout_vertical\n");
 }
@@ -748,12 +789,8 @@ test_slit_layout_horizontal(void)
 
 	slit_layout_clients(&slit);
 
-	/* Horizontal: height = max(64,32) + 2*padding(2) = 68 */
-	assert(slit.height == 64 + 2 * WM_SLIT_PADDING);
-
-	/* Width = padding + 64 + padding + 48 + padding */
-	int expected_w = WM_SLIT_PADDING + 64 + WM_SLIT_PADDING + 48 + WM_SLIT_PADDING;
-	assert(slit.width == expected_w);
+	assert(slit.height == 64);
+	assert(slit.width == 64 + 48);
 
 	printf("  PASS: slit_layout_horizontal\n");
 }
@@ -778,9 +815,8 @@ test_slit_layout_unmapped_skipped(void)
 	slit_layout_clients(&slit);
 
 	/* Unmapped client should not affect layout */
-	assert(slit.width == 64 + 2 * WM_SLIT_PADDING);
-	int expected_h = WM_SLIT_PADDING + 64 + WM_SLIT_PADDING;
-	assert(slit.height == expected_h);
+	assert(slit.width == 64);
+	assert(slit.height == 64);
 
 	printf("  PASS: slit_layout_unmapped_skipped\n");
 }
@@ -795,9 +831,9 @@ test_slit_layout_empty(void)
 
 	slit_layout_clients(&slit);
 
-	/* Empty slit should use minimum size */
-	assert(slit.width >= WM_SLIT_MIN_SIZE);
-	assert(slit.height >= WM_SLIT_MIN_SIZE);
+	/* Empty: 1 x 1, as Fluxbox's (and hidden) */
+	assert(slit.width == 1);
+	assert(slit.height == 1);
 
 	printf("  PASS: slit_layout_empty\n");
 }
@@ -818,8 +854,8 @@ test_slit_layout_min_size(void)
 
 	slit_layout_clients(&slit);
 
-	assert(slit.width >= WM_SLIT_MIN_SIZE);
-	assert(slit.height >= WM_SLIT_MIN_SIZE);
+	/* Nothing mapped: 1 x 1, as Fluxbox's */
+	assert(slit.width == 1 && slit.height == 1);
 
 	printf("  PASS: slit_layout_min_size\n");
 }
@@ -1800,8 +1836,8 @@ test_slit_layout_horizontal_min_size(void)
 
 	/* No mapped clients => min size applied */
 	slit_layout_clients(&slit);
-	assert(slit.width >= WM_SLIT_MIN_SIZE);
-	assert(slit.height >= WM_SLIT_MIN_SIZE);
+	/* Nothing mapped: 1 x 1, as Fluxbox's */
+	assert(slit.width == 1 && slit.height == 1);
 	printf("  PASS: slit_layout_horizontal_min_size\n");
 }
 

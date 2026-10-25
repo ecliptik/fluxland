@@ -52,6 +52,7 @@
 #define WM_I18N_H
 #define WM_UTIL_H
 #define WM_TABGROUP_H
+#define WM_SLIT_H
 
 /* Constants from drm_fourcc.h */
 #define DRM_FORMAT_ARGB8888 0x34325241
@@ -391,6 +392,24 @@ struct wm_config {
 	bool workspace_warping;
 	bool full_maximization;
 	char *style_file;
+	bool toolbar_visible;
+	bool toolbar_auto_hide;
+	bool toolbar_max_over;
+	int toolbar_placement;
+	int toolbar_layer;
+	char *iconbar_mode_spec;
+	int iconbar_alignment;
+	bool iconbar_use_pixmap;
+	bool slit_auto_hide;
+	bool slit_max_over;
+	int slit_placement;
+	int slit_layer;
+};
+
+enum wm_toolbar_placement {
+	WM_TOOLBAR_TOP_LEFT, WM_TOOLBAR_TOP_CENTER, WM_TOOLBAR_TOP_RIGHT,
+	WM_TOOLBAR_BOTTOM_LEFT, WM_TOOLBAR_BOTTOM_CENTER,
+	WM_TOOLBAR_BOTTOM_RIGHT,
 };
 
 /* --- Stub server types --- */
@@ -475,6 +494,7 @@ struct wm_server {
 	struct wl_listener new_xdg_decoration;
 	int focus_policy;
 	struct wm_toolbar *toolbar;
+	struct wm_slit *slit;
 };
 
 /* --- Render stubs --- */
@@ -846,6 +866,17 @@ static void wm_ipc_broadcast_event(struct wm_ipc *ipc, int type,
 	(void)ipc; (void)type; (void)msg;
 }
 
+static void style_load(struct wm_style *style, const char *path);
+/* server.c: the menu's styles load through it */
+static void
+wm_server_set_style(struct wm_server *server, const char *path)
+{
+	if (server->config) {
+		free(server->config->style_file);
+		server->config->style_file = strdup(path);
+	}
+	style_load(server->style, path);
+}
 static void style_load(struct wm_style *style, const char *path)
 {
 	(void)style; (void)path;
@@ -1007,6 +1038,10 @@ static bool wm_command_execute(struct wm_server *s, struct wm_command *cmd,
 }
 
 struct wm_toolbar;
+struct wm_slit;
+static int g_slit_relayout_count;
+static void wm_slit_relayout(struct wm_slit *slit)
+	{ (void)slit; g_slit_relayout_count++; }
 static void wm_toolbar_relayout(struct wm_toolbar *toolbar)
 {
 	(void)toolbar;

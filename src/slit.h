@@ -86,6 +86,7 @@ struct wm_slit {
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_rect *bg_rect;
 	struct wlr_scene_rect *border_rect;
+	struct wlr_scene_buffer *bg_buf;	/* the slit texture */
 
 	/* Configuration */
 	enum wm_slit_placement placement;

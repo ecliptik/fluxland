@@ -914,6 +914,14 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		return;
 	}
 
+	/* Slit::buttonPressEvent: the right button opens its menu */
+	if ((ctx & WM_MOUSE_CTX_SLIT) && event->button == BTN_RIGHT) {
+		wm_menu_show_slit_menu(server, (int)server->cursor->x,
+			(int)server->cursor->y);
+		ms->press_consumed = true;
+		return;
+	}
+
 	/* The toolbar's own tools */
 	if (ctx & WM_MOUSE_CTX_TOOLBAR) {
 		wm_toolbar_handle_button(server->toolbar, server->cursor->x,

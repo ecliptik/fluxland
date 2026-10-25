@@ -120,6 +120,48 @@ wm_server_check_rules_reload(struct wm_server *server)
 	}
 }
 
+/*
+ * A style chosen (SetStyle, a menu's [style]): loaded with the overlay,
+ * kept as the init's styleFile for the session, and everything drawn
+ * with it again; its background shows over the last wallpaper, as
+ * fbsetbg -Z puts it.
+ */
+void
+wm_server_set_style(struct wm_server *server, const char *path)
+{
+	if (!server || !server->style || !path)
+		return;
+	if (server->config) {
+		char *copy = strdup(path);
+		if (copy) {
+			free(server->config->style_file);
+			server->config->style_file = copy;
+		}
+	}
+	style_set_overlay(server->style, server->config ?
+		server->config->style_overlay : NULL);
+	if (style_load(server->style, path) != 0) {
+		wlr_log(WLR_ERROR, "style: cannot load %s", path);
+		return;
+	}
+	server->style_background = true;
+	if (server->toolbar)
+		wm_toolbar_relayout(server->toolbar);
+	if (server->slit)
+		wm_slit_relayout(server->slit);
+	struct wm_view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->decoration)
+			wm_decoration_update(v->decoration, server->style);
+	}
+	if (server->wallpaper)
+		wm_wallpaper_reload(server->wallpaper);
+	else
+		server->wallpaper = wm_wallpaper_create(server);
+	wm_ipc_broadcast_event(&server->ipc, WM_IPC_EVENT_STYLE_CHANGED,
+		"{\"event\":\"style_changed\"}");
+}
+
 void
 wm_server_reconfigure(struct wm_server *server)
 {

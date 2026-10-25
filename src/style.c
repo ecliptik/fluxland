@@ -1392,13 +1392,46 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 	load_menu(s, db, sd);
 
 	/* --- Slit --- */
-	load_texture(db, "slit", &s->slit_texture, sd);
-	load_color(db, "slit.borderColor", &s->slit_border_color);
-	s->slit_border_width = style_get_int(db, "slit.borderWidth",
-		s->slit_border_width);
+	/* SlitTheme: the toolbar's texture unless the slit has one;
+	 * borders to the top-level keys; no bevel unless set */
+	load_texture_chain(db, KEYS("slit", "toolbar"), &s->slit_texture, sd);
+	s->slit_border_color = color_chain(db, KEYS("slit.borderColor"),
+		make_color(0, 0, 0));
+	s->slit_border_width = int_chain(db, KEYS("slit.borderWidth"), 0);
+	if (s->slit_border_width < 0)
+		s->slit_border_width = 0;
+	s->slit_bevel_width = int_chain(db, KEYS("slit.bevelWidth"), 0);
+	if (s->slit_bevel_width < 0)
+		s->slit_bevel_width = 0;
 
 	/* --- Toolbar --- */
 	load_toolbar(s, db, sd);
+
+	/* --- The desktop's background (RootTheme) --- */
+	safe_free(&s->background);
+	safe_free(&s->background_pixmap);
+	const char *bg = style_get(db, "background");
+	if (bg)
+		s->background = strdup(bg);
+	const char *pm = style_get(db, "background.pixmap");
+	if (pm && *pm) {
+		const char *home = getenv("HOME");
+		if (pm[0] == '~' && home) {
+			size_t n = strlen(home) + strlen(pm);
+			s->background_pixmap = malloc(n);
+			if (s->background_pixmap)
+				snprintf(s->background_pixmap, n, "%s%s", home,
+					pm + 1);
+		} else {
+			s->background_pixmap = resolve_pixmap_file(sd, pm);
+		}
+	}
+	s->background_has_color = style_try_parse_color(
+		style_get(db, "background.color"), &s->background_color);
+	s->background_has_color_to = style_try_parse_color(
+		style_get(db, "background.colorTo"), &s->background_color_to);
+	s->background_mod_x = style_get_int(db, "background.modX", 0);
+	s->background_mod_y = style_get_int(db, "background.modY", 0);
 }
 
 /*
@@ -1574,6 +1607,8 @@ style_clear(struct wm_style *s)
 	free(s->menu_hilite_selected_pixmap);
 	free(s->menu_unselected_pixmap);
 	free(s->menu_hilite_unselected_pixmap);
+	free(s->background);
+	free(s->background_pixmap);
 	font_finish(&s->toolbar_font);
 	font_finish(&s->window_font);
 

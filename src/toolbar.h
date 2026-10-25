@@ -48,6 +48,8 @@ enum wm_toolbar_tool_type {
 	WM_TOOL_PREV_WINDOW,
 	WM_TOOL_NEXT_WINDOW,
 	WM_TOOL_SYSTRAY,
+	WM_TOOL_SPACER,		/* spacer, spacer_N */
+	WM_TOOL_BUTTON,		/* button.NAME */
 };
 
 /* A single tool instance in the toolbar */
@@ -60,6 +62,9 @@ struct wm_toolbar_tool {
 	/* Its box with the border, from (x, y): with no bevel the outer
 	 * borders fall outside the toolbar, as in Fluxbox */
 	int frame_x, frame_y, frame_width, frame_height, border;
+	int spacer_size;	/* a spacer's width; 0 shares what is left */
+	char *label;		/* a button's, and its commands: one for each */
+	char *commands;		/* mouse button, separated by ':' */
 	/* Per-tool hit boxes (workspace buttons within workspace_name, etc.) */
 	struct wlr_box *hit_boxes;
 	int hit_box_count;
@@ -91,8 +96,10 @@ struct wm_toolbar {
 
 	/* The system tray after the last tool when tools doesn't list it */
 	struct wm_toolbar_tool systray_slot;
-	/* The button held down (toolbar.button.pressed), or -1 */
+	/* The button held down (toolbar.button.pressed), or -1, and
+	 * which mouse button holds it */
 	int pressed_tool;
+	uint32_t pressed_button;
 
 	/* Quick-access pointers into tools array (NULL if not configured) */
 	struct wm_toolbar_tool *iconbar_tool;

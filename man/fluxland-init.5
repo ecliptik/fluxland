@@ -225,11 +225,32 @@ spaces:
 .BR clock ,
 .BR prevwindow ,
 .BR nextwindow ,
-and
 .B systemtray
-(which is shown at the end for now).
+(after the other tools when it isn't listed),
+.B spacer
+(sharing the width left over with the iconbar),
+.BI spacer_ N
+.RI ( N
+pixels), and
+.BI button. NAME\fR,
+a button with the label of
+.BI session.screen0.toolbar.button. NAME .label
+and the commands of
+.BI session.screen0.toolbar.button. NAME .commands\fR,
+one for each mouse button separated by
+.B :
+(the first for the left button, the second for the middle one, the
+third for the right one).
 Default:
 .IR "workspacename prevworkspace nextworkspace iconbar clock" .
+.IP
+Clicks on the toolbar are Fluxbox's: on the workspace name the left
+button goes to the workspace before and the right one to the one
+after; on an iconbar entry the left button focuses its window (or
+iconifies it when focused) and the right one opens its window menu;
+the middle button opens the toolbar's menu, which is also in the
+.B [config]
+menu.
 .TP
 .B session.screen0.toolbar.maxOver
 Allow maximized windows to cover the toolbar (default: false).
@@ -327,15 +348,26 @@ or
 Display tabs in the titlebar (default: true).
 .TP
 .B session.screen0.tab.placement
-External tab bar position when not in titlebar:
-.BR Top " (default),"
+Where the tabs hang when they aren't in the titlebar (tabs.intitlebar:
+false): Fluxbox's
+.BR TopLeft " (the default),"
+.BR Top ,
+.BR TopRight ,
+.BR BottomLeft ,
 .BR Bottom ,
+.BR BottomRight ,
+.BR LeftTop ,
 .BR Left ,
+.BR LeftBottom ,
+.BR RightTop ,
+.BR Right
 or
-.BR Right .
+.BR RightBottom .
+Every window has its tab then, as thick as a titlebar button; down
+the sides the text reads up (left) or down (right).
 .TP
 .B session.screen0.tab.width
-External tab width in pixels (0 = auto from font, default: 0).
+The length of an external tab (default: 64).
 .TP
 .B session.tabPadding
 Padding between tabs in pixels (default: 0; also
@@ -431,10 +463,15 @@ command (or a menu's
 set is used: it is kept in the configuration directory's
 .I lastwallpaper
 file, as Fluxbox's fbsetbg keeps its last one.
+A style's
+.B background
+shows when there is neither, or when a style is chosen (as Fluxbox
+does); this one always wins.
 .TP
 .B session.screen0.wallpaperMode
 .BR Stretch " (the default),"
 .BR Fill " (keep its shape and cover the output),"
+.BR Fit " (keep its shape and fit inside it, fbsetbg's aspect),"
 .BR Center ,
 or
 .BR Tile .

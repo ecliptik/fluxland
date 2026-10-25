@@ -431,6 +431,9 @@ struct wm_server {
 
 	/* Per-workspace wallpaper (NULL if not configured) */
 	struct wm_wallpaper *wallpaper;
+	/* A style was chosen this session: its background is shown over
+	 * the last wallpaper (fbsetbg -Z rather than -z) */
+	bool style_background;
 
 #ifdef WM_HAS_SYSTRAY
 	/* System tray (StatusNotifierItem) */
@@ -479,6 +482,9 @@ void wm_server_run(struct wm_server *server);
 
 /* Reload all configuration (style, menus, rules, keys, XKB, toolbar) */
 void wm_server_reconfigure(struct wm_server *server);
+
+/* Load and apply a style chosen by the user (SetStyle, a menu's [style]) */
+void wm_server_set_style(struct wm_server *server, const char *path);
 
 /* Re-read the apps file if it changed (Fluxbox does at each new window) */
 void wm_server_check_rules_reload(struct wm_server *server);

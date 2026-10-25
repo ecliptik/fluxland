@@ -21,6 +21,9 @@
 #include <wlr/util/log.h>
 
 #include "toolbar.h"
+#include "menu.h"
+#include "command.h"
+#include "util.h"
 #include "config.h"
 #include "i18n.h"
 #include "focus_nav.h"
@@ -91,55 +94,83 @@ parse_tool_name(const char *name, enum wm_toolbar_tool_type *out)
 	return false;
 }
 
+/*
+ * A tool of toolbar.tools: Fluxbox's names, spacer (sharing what is
+ * left) or spacer_N (N pixels), and button.NAME with its label and
+ * commands from the init; false for one that isn't.
+ */
+static bool
+parse_tool(struct wm_toolbar *toolbar, const char *name,
+	struct wm_toolbar_tool *tool)
+{
+	memset(tool, 0, sizeof(*tool));
+	if (parse_tool_name(name, &tool->type))
+		return true;
+	if (strncasecmp(name, "spacer", 6) == 0) {
+		int size = 0;
+		if (name[6] && (name[6] != '_' || !safe_atoi(name + 7, &size) ||
+		    size < 1))
+			return false;
+		tool->type = WM_TOOL_SPACER;
+		tool->spacer_size = size;
+		return true;
+	}
+	struct wm_config *config = toolbar->server->config;
+	if (strncasecmp(name, "button.", 7) == 0 && config) {
+		for (int i = 0; i < config->toolbar_button_count; i++) {
+			struct wm_toolbar_button_cfg *b =
+				&config->toolbar_buttons[i];
+			if (strcasecmp(b->name, name + 7) != 0 || !b->label ||
+			    !*b->label)
+				continue;
+			tool->type = WM_TOOL_BUTTON;
+			tool->label = strdup(b->label);
+			tool->commands = strdup(b->commands ? b->commands : "");
+			return true;
+		}
+	}
+	return false;
+}
+
 static void
 parse_toolbar_tools(struct wm_toolbar *toolbar, const char *tools_str)
 {
-	if (!tools_str || !*tools_str) {
-		toolbar->tools = NULL;
-		toolbar->tool_count = 0;
+	toolbar->tools = NULL;
+	toolbar->tool_count = 0;
+	if (!tools_str || !*tools_str)
 		return;
-	}
-
 	char *copy = strdup(tools_str);
-	if (!copy) {
+	if (!copy)
 		return;
-	}
-
-	/* First pass: count tokens */
+	struct wm_toolbar_tool tools[WM_TOOLBAR_MAX_TOOLS];
 	int count = 0;
-	enum wm_toolbar_tool_type types[WM_TOOLBAR_MAX_TOOLS];
 	char *saveptr = NULL;
 	/* Fluxbox separates them with commas, fluxland 1.x with spaces */
-	char *tok = strtok_r(copy, ", \t", &saveptr);
-	while (tok && count < WM_TOOLBAR_MAX_TOOLS) {
-		enum wm_toolbar_tool_type type;
-		if (parse_tool_name(tok, &type)) {
-			types[count++] = type;
-		} else {
-			wlr_log(WLR_INFO,
-				"toolbar: unknown tool '%s', skipping", tok);
-		}
-		tok = strtok_r(NULL, ", \t", &saveptr);
+	for (char *tok = strtok_r(copy, ", \t", &saveptr);
+	     tok && count < WM_TOOLBAR_MAX_TOOLS;
+	     tok = strtok_r(NULL, ", \t", &saveptr)) {
+		if (parse_tool(toolbar, tok, &tools[count]))
+			count++;
+		else
+			wlr_log(WLR_INFO, "toolbar: unknown tool '%s', skipping",
+				tok);
 	}
 	free(copy);
-
-	if (count == 0) {
-		toolbar->tools = NULL;
-		toolbar->tool_count = 0;
+	if (count == 0)
 		return;
-	}
 
 	toolbar->tools = calloc(count, sizeof(struct wm_toolbar_tool));
 	if (!toolbar->tools) {
-		toolbar->tool_count = 0;
+		for (int i = 0; i < count; i++) {
+			free(tools[i].label);
+			free(tools[i].commands);
+		}
 		return;
 	}
 	toolbar->tool_count = count;
-
-	/* Initialize each tool with a scene buffer */
 	for (int i = 0; i < count; i++) {
 		struct wm_toolbar_tool *tool = &toolbar->tools[i];
-		tool->type = types[i];
+		*tool = tools[i];
 		tool->buf = wlr_scene_buffer_create(toolbar->scene_tree, NULL);
 
 		/* Set quick-access pointers */
@@ -182,7 +213,7 @@ static int
 tool_border(struct wm_toolbar *toolbar, enum wm_toolbar_tool_type type)
 {
 	struct wm_style *style = toolbar->server->style;
-	if (tool_is_button(type))
+	if (tool_is_button(type) || type == WM_TOOL_BUTTON)
 		return style->toolbar_button.border_width;
 	switch (type) {
 	case WM_TOOL_WORKSPACE_NAME:
@@ -243,9 +274,23 @@ tool_fixed_width(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 			return wm_systray_get_width(server->systray);
 #endif
 		return 0;
+	case WM_TOOL_SPACER:
+		return tool->spacer_size;
+	case WM_TOOL_BUTTON:
+		return wm_measure_text_width(tool->label,
+			&style->toolbar_button.font, 1.0f) + 2;
 	default:
 		return 0;
 	}
+}
+
+/* Tools that share out what the fixed ones leave: the iconbar, and a
+ * spacer without a size */
+static bool
+tool_is_relative(const struct wm_toolbar_tool *tool)
+{
+	return tool->type == WM_TOOL_ICONBAR ||
+		(tool->type == WM_TOOL_SPACER && tool->spacer_size <= 0);
 }
 
 /*
@@ -333,7 +378,7 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 		last_bw = bw;
 		if (tool_is_button(tool->type)) {
 			fixed += height - (bevel ? 2 * (bw + bevel) : 0);
-		} else if (tool->type == WM_TOOL_ICONBAR) {
+		} else if (tool_is_relative(tool)) {
 			relative++;
 		} else {
 			fixed += pref[i];
@@ -365,7 +410,7 @@ compute_tool_layout(struct wm_toolbar *toolbar, int total_width)
 		last_bw = bw;
 
 		int w, h = height - size_offset;
-		if (tool->type == WM_TOOL_ICONBAR)
+		if (tool_is_relative(tool))
 			w = stretch;
 		else if (tool_is_button(tool->type))
 			w = h;
@@ -544,6 +589,26 @@ render_button_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
 		return NULL;
 	draw_arrow(cr, tool->type, cx, cy, cw, ch, style->toolbar_button_scale,
 		&style->toolbar_button_pic_color);
+	cairo_destroy(cr);
+	return wlr_buffer_from_cairo(surface);
+}
+
+/* A button.NAME tool: its label in the button style (FbTk::TextButton) */
+static struct wlr_buffer *
+render_text_button(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
+	bool pressed)
+{
+	struct wm_style *style = toolbar->server->style;
+	cairo_surface_t *surface;
+	int cx, cy, cw, ch;
+	cairo_t *cr = begin_tool(tool, &surface, pressed ?
+		&style->toolbar_button_pressed : &style->toolbar_button.texture,
+		&style->toolbar_button, &cx, &cy, &cw, &ch);
+	if (!cr)
+		return NULL;
+	draw_text(cr, tool->label, &style->toolbar_button.font,
+		&style->toolbar_button.text_color, WM_JUSTIFY_CENTER,
+		cx, cy, cw, ch);
 	cairo_destroy(cr);
 	return wlr_buffer_from_cairo(surface);
 }
@@ -919,6 +984,11 @@ render_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 		toolbar->cached_clock[0] = '\0'; /* force redraw */
 		buf = render_clock(toolbar, tool);
 		break;
+	case WM_TOOL_BUTTON:
+		buf = render_text_button(toolbar, tool, toolbar->tools &&
+			tool - toolbar->tools == toolbar->pressed_tool);
+		break;
+	case WM_TOOL_SPACER:
 	case WM_TOOL_SYSTRAY:
 		break;
 	}
@@ -1218,6 +1288,8 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 	/* Free tool hit boxes */
 	for (int i = 0; i < toolbar->tool_count; i++) {
 		free(toolbar->tools[i].hit_boxes);
+		free(toolbar->tools[i].label);
+		free(toolbar->tools[i].commands);
 	}
 	free(toolbar->tools);
 
@@ -1551,9 +1623,22 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 		return false;
 	}
 
-	/* Only handle left-click (BTN_LEFT = 272) */
-	if (button != 272) {
-		return true; /* consume but ignore non-left clicks */
+	/* Toolbar::buttonPressEvent: the middle button opens its menu
+	 * (Fluxbox's only on the toolbar's own background; here on any
+	 * tool without a middle-button command of its own) */
+	if (button == 274) {
+		struct wm_toolbar_tool *t = NULL;
+		for (int i = 0; i < toolbar->tool_count; i++) {
+			if (local_x >= toolbar->tools[i].x && local_x <
+			    toolbar->tools[i].x + toolbar->tools[i].width)
+				t = &toolbar->tools[i];
+		}
+		if (!t || t->type != WM_TOOL_BUTTON ||
+		    !strchr(t->commands ? t->commands : "", ':')) {
+			wm_menu_show_toolbar_menu(toolbar->server, (int)lx,
+				(int)ly);
+			return true;
+		}
 	}
 
 	/* Find which tool was clicked */
@@ -1565,9 +1650,13 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 
 		/* Arrow buttons show toolbar.button.pressed while held
 		 * and act on release (wm_toolbar_handle_release), as
-		 * Fluxbox's do */
-		if (tool_is_button(tool->type)) {
+		 * Fluxbox's do; only the left one */
+		if (tool_is_button(tool->type) && button != 272)
+			return true;
+		if (tool_is_button(tool->type) ||
+		    tool->type == WM_TOOL_BUTTON) {
 			toolbar->pressed_tool = i;
+			toolbar->pressed_button = button;
 			render_tool(toolbar, tool);
 			return true;
 		}
@@ -1588,13 +1677,27 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 				    ib_x < box->x + box->width) {
 					struct wm_view *view =
 						toolbar->ib_entries[j].view;
-					if (view) {
-						if (!view->scene_tree->node.enabled) {
-							deiconify_view(view);
-						} else {
-							wm_focus_view(view, NULL);
-							wm_view_raise(view);
-						}
+					if (!view)
+						return true;
+					/* IconbarTool: the right button
+					 * opens its window menu; the left
+					 * one iconifies the focused
+					 * window, focuses the others */
+					if (button == 273) {
+						toolbar->server->menu_view = view;
+						wm_menu_show_window(
+							toolbar->server,
+							(int)lx, (int)ly);
+					} else if (button != 272) {
+						/* nothing */
+					} else if (!view->scene_tree->node.enabled) {
+						deiconify_view(view);
+					} else if (view ==
+						   toolbar->server->focused_view) {
+						wm_view_minimize(view);
+					} else {
+						wm_focus_view(view, NULL);
+						wm_view_raise(view);
 					}
 					return true;
 				}
@@ -1603,6 +1706,14 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 		}
 
 		case WM_TOOL_WORKSPACE_NAME:
+			/* ToolFactory: prevworkspace on the left button,
+			 * nextworkspace on the right */
+			if (button == 272)
+				wm_workspace_switch_prev(toolbar->server);
+			else if (button == 273)
+				wm_workspace_switch_next(toolbar->server);
+			return true;
+
 		case WM_TOOL_CLOCK:
 		case WM_TOOL_SYSTRAY:
 			/* No click action */
@@ -1611,6 +1722,30 @@ wm_toolbar_handle_button(struct wm_toolbar *toolbar,
 	}
 
 	return false;
+}
+
+/* A button.NAME's command for a mouse button: the Nth of its commands
+ * separated by ':' (left 1, middle 2, right 3), on the focused window */
+static void
+run_button_command(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
+	uint32_t button)
+{
+	int n = button == 272 ? 1 : button == 274 ? 2 : button == 273 ? 3 : 0;
+	if (n == 0 || !tool->commands)
+		return;
+	char *copy = strdup(tool->commands);
+	if (!copy)
+		return;
+	char *save = NULL, *cmd = strtok_r(copy, ":", &save);
+	for (int i = 1; cmd && i < n; i++)
+		cmd = strtok_r(NULL, ":", &save);
+	struct wm_command *parsed = cmd ? wm_command_parse(cmd) : NULL;
+	if (parsed) {
+		wm_command_execute(toolbar->server, parsed,
+			toolbar->server->focused_view);
+		wm_command_destroy(parsed);
+	}
+	free(copy);
 }
 
 bool
@@ -1623,7 +1758,7 @@ wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx, double ly,
 	struct wm_toolbar_tool *tool = &toolbar->tools[toolbar->pressed_tool];
 	toolbar->pressed_tool = -1;
 	render_tool(toolbar, tool);
-	if (button != 272)
+	if (button != toolbar->pressed_button)
 		return true;
 
 	/* Released over the button it was pressed on */
@@ -1643,6 +1778,9 @@ wm_toolbar_handle_release(struct wm_toolbar *toolbar, double lx, double ly,
 		break;
 	case WM_TOOL_NEXT_WINDOW:
 		wm_focus_next_view(toolbar->server);
+		break;
+	case WM_TOOL_BUTTON:
+		run_button_command(toolbar, tool, button);
 		break;
 	default:
 		break;

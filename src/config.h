@@ -81,6 +81,7 @@ enum wm_wallpaper_mode {
 	WM_WALLPAPER_CENTER,     /* center at original size */
 	WM_WALLPAPER_TILE,       /* tile to fill */
 	WM_WALLPAPER_FILL,       /* scale to fill, maintain aspect ratio */
+	WM_WALLPAPER_FIT,        /* scale to fit inside (fbsetbg -a) */
 };
 
 /*
@@ -196,6 +197,12 @@ struct wm_config {
 	int toolbar_alpha;
 	int toolbar_on_head;
 	char *toolbar_tools; /* configurable tool layout string */
+	/* toolbar.button.NAME.label and .commands (a command for each
+	 * mouse button, separated by ':') */
+	struct wm_toolbar_button_cfg {
+		char *name, *label, *commands;
+	} *toolbar_buttons;
+	int toolbar_button_count;
 
 	/* Titlebar button layout */
 	char *titlebar_left;
@@ -331,6 +338,7 @@ struct wm_config {
 	/* Per-workspace wallpaper */
 	char *wallpaper;            /* default wallpaper image path */
 	enum wm_wallpaper_mode wallpaper_mode;
+	bool wallpaper_from_last;	/* the lastwallpaper file's, not the init's */
 	char *wallpaper_color;      /* fallback solid color (#RRGGBB) */
 	char **wallpaper_paths;     /* per-workspace overrides (indexed by ws) */
 	int wallpaper_path_count;

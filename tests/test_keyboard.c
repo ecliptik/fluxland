@@ -844,6 +844,7 @@ struct wm_workspace {
 enum wm_wallpaper_mode {
 	WM_WALLPAPER_STRETCH, WM_WALLPAPER_CENTER, WM_WALLPAPER_TILE,
 	WM_WALLPAPER_FILL,
+	WM_WALLPAPER_FIT,
 };
 
 struct wm_config {
@@ -852,6 +853,7 @@ struct wm_config {
 	char *config_dir;
 	char *wallpaper;
 	enum wm_wallpaper_mode wallpaper_mode;
+	bool wallpaper_from_last;
 	bool max_disable_move;
 	bool max_disable_resize;
 	int window_focus_alpha;
@@ -996,6 +998,7 @@ struct wm_server {
 	struct wlr_scene_buffer *position_overlay;
 	bool ipc_no_exec;
 	struct wm_wallpaper *wallpaper;
+	bool style_background;
 	struct wm_view *menu_view;
 };
 
@@ -1206,6 +1209,8 @@ void wm_decoration_set_preset(struct wm_decoration *d, enum wm_decor_preset p, s
 void wm_decoration_set_shaded(struct wm_decoration *d, bool shaded, struct wm_style *s) { (void)d; (void)s; stub_decoration_set_shaded_count++; stub_decoration_shaded_value = shaded; }
 
 int style_load(struct wm_style *s, const char *p) { (void)s; (void)p; stub_style_load_count++; return 0; }
+void wm_server_set_style(struct wm_server *s, const char *p);
+
 void wm_toolbar_relayout(struct wm_toolbar *t) { (void)t; stub_toolbar_relayout_count++; }
 void wm_toolbar_toggle_above(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_above_count++; }
 void wm_toolbar_toggle_visible(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_visible_count++; }
@@ -3272,6 +3277,22 @@ make_style_file(const char *name)
 	fputs("! style\n", f);
 	fclose(f);
 	return style_path;
+}
+
+/* server.c: SetStyle goes through it (the real one also redraws the
+ * slit and the wallpaper) */
+void
+wm_server_set_style(struct wm_server *s, const char *p)
+{
+	free(s->config->style_file);
+	s->config->style_file = strdup(p);
+	style_load(s->style, p);
+	wm_toolbar_relayout(s->toolbar);
+	struct wm_view *v;
+	wl_list_for_each(v, &s->views, link) {
+		if (v->decoration)
+			wm_decoration_update(v->decoration, s->style);
+	}
 }
 
 /* Test SetStyle action: loads style, relayouts toolbar, updates decorations */

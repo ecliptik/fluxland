@@ -20,6 +20,8 @@
 #include "slit.h"
 #include "config.h"
 #include "output.h"
+#include "pixel_buffer.h"
+#include "render.h"
 #include "server.h"
 #include "style.h"
 #include "util.h"
@@ -30,7 +32,6 @@
 #include <wlr/xwayland.h>
 #endif
 
-#define WM_SLIT_PADDING 2
 #define WM_SLIT_HIDE_DELAY_MS 800
 #define WM_SLIT_MIN_SIZE 8
 
@@ -108,56 +109,47 @@ slit_compute_position(struct wm_slit *slit, int out_w, int out_h)
 static void
 slit_layout_clients(struct wm_slit *slit)
 {
-	int offset = WM_SLIT_PADDING;
-	int max_cross = 0;
-
+	/*
+	 * Slit::reconfigure: the dockapps a bevel apart along the slit,
+	 * from a bevel in, centred across it; along it the slit is their
+	 * lengths and a bevel each and two more, across it the widest
+	 * and a bevel.
+	 */
+	int b = slit->server && slit->server->style ?
+		slit->server->style->slit_bevel_width : 0;
+	bool vertical = slit->direction == WM_SLIT_VERTICAL;
+	int along = 0, across = 0, n = 0;
 	struct wm_slit_client *client;
 	wl_list_for_each(client, &slit->clients, link) {
-		if (!client->mapped) {
+		if (!client->mapped)
 			continue;
-		}
-
-		if (slit->direction == WM_SLIT_VERTICAL) {
-			int cx = WM_SLIT_PADDING;
-			int cy = offset;
-			if (client->scene_tree) {
-				wlr_scene_node_set_position(
-					&client->scene_tree->node,
-					cx, cy);
-			}
-			offset += client->height + WM_SLIT_PADDING;
-			if (client->width > max_cross) {
-				max_cross = client->width;
-			}
-		} else {
-			int cx = offset;
-			int cy = WM_SLIT_PADDING;
-			if (client->scene_tree) {
-				wlr_scene_node_set_position(
-					&client->scene_tree->node,
-					cx, cy);
-			}
-			offset += client->width + WM_SLIT_PADDING;
-			if (client->height > max_cross) {
-				max_cross = client->height;
-			}
-		}
+		n++;
+		along += (vertical ? client->height : client->width) + b;
+		int c = vertical ? client->width : client->height;
+		if (c > across)
+			across = c;
 	}
-
-	/* Compute slit dimensions */
-	if (slit->direction == WM_SLIT_VERTICAL) {
-		slit->width = max_cross + 2 * WM_SLIT_PADDING;
-		slit->height = offset;
-	} else {
-		slit->width = offset;
-		slit->height = max_cross + 2 * WM_SLIT_PADDING;
+	if (n > 0) {
+		along += 2 * b;
+		across += b;
 	}
+	if (along < 1)
+		along = 1;
+	if (across < 1)
+		across = 1;
+	slit->width = vertical ? across : along;
+	slit->height = vertical ? along : across;
 
-	if (slit->width < WM_SLIT_MIN_SIZE) {
-		slit->width = WM_SLIT_MIN_SIZE;
-	}
-	if (slit->height < WM_SLIT_MIN_SIZE) {
-		slit->height = WM_SLIT_MIN_SIZE;
+	int pos = b;
+	wl_list_for_each(client, &slit->clients, link) {
+		if (!client->mapped)
+			continue;
+		int cx = vertical ? (slit->width - client->width) / 2 : pos;
+		int cy = vertical ? pos : (slit->height - client->height) / 2;
+		if (client->scene_tree)
+			wlr_scene_node_set_position(&client->scene_tree->node,
+				cx, cy);
+		pos += (vertical ? client->height : client->width) + b;
 	}
 }
 
@@ -556,10 +548,11 @@ wm_slit_create(struct wm_server *server)
 		bg_color[0] = tc.r / 255.0f;
 		bg_color[1] = tc.g / 255.0f;
 		bg_color[2] = tc.b / 255.0f;
-		bg_color[3] = 0.9f;
+		bg_color[3] = 1.0f;
 	}
 	slit->bg_rect = wlr_scene_rect_create(slit->scene_tree,
 		slit->width, slit->height, bg_color);
+	slit->bg_buf = wlr_scene_buffer_create(slit->scene_tree, NULL);
 
 	/* Border rect behind the background */
 	if (server->style && server->style->slit_border_width > 0) {
@@ -864,6 +857,18 @@ wm_slit_reconfigure(struct wm_slit *slit)
 			slit->width, slit->height);
 		wlr_scene_node_set_position(&slit->bg_rect->node,
 			bw, bw);
+	}
+
+	/* The slit texture over it (ParentRelative leaves the rect) */
+	if (slit->bg_buf && slit->server->style) {
+		struct wlr_buffer *buf = wlr_buffer_from_cairo(
+			wm_render_texture(&slit->server->style->slit_texture,
+				slit->width, slit->height, 1.0f));
+		wlr_scene_buffer_set_buffer(slit->bg_buf, buf);
+		if (buf)
+			wlr_buffer_drop(buf);
+		wlr_scene_node_set_position(&slit->bg_buf->node, bw, bw);
+		wlr_scene_buffer_set_opacity(slit->bg_buf, slit->alpha / 255.0f);
 	}
 
 	/* Update border rect size (full size including border) */

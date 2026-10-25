@@ -230,10 +230,20 @@ struct wm_style {
 	char *menu_selected_pixmap, *menu_hilite_selected_pixmap;
 	char *menu_unselected_pixmap, *menu_hilite_unselected_pixmap;
 
+	/* The desktop (RootTheme): background: none, unset, tiled,
+	 * centered, aspect, fullscreen, random, mod, or a texture;
+	 * background.pixmap, .color, .colorTo, .modX, .modY */
+	char *background;
+	char *background_pixmap;
+	struct wm_color background_color, background_color_to;
+	bool background_has_color, background_has_color_to;
+	int background_mod_x, background_mod_y;
+
 	/* Slit */
 	struct wm_texture slit_texture;
 	struct wm_color slit_border_color;
 	int slit_border_width;
+	int slit_bevel_width;	/* around and between the dockapps */
 
 	/* Toolbar (Fluxbox's ToolbarTheme) */
 	struct wm_texture toolbar_texture;

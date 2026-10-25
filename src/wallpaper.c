@@ -10,11 +10,13 @@
  * is enabled/disabled during workspace switching.
  */
 
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 
 #include <cairo.h>
 #include <drm_fourcc.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <dirent.h>
 #include <string.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/types/wlr_output_layout.h>
@@ -22,6 +24,7 @@
 #include <wlr/util/log.h>
 
 #include "wallpaper.h"
+#include "style.h"
 #include "config.h"
 #include "output.h"
 #include "server.h"
@@ -227,19 +230,20 @@ render_wallpaper_tile(cairo_surface_t *img, int width, int height)
 	return surf;
 }
 
+/* Scaled keeping its shape: to cover the output (Fill, cropped) or to
+ * fit inside it (Fit, fbsetbg -a, with the colour around) */
 static cairo_surface_t *
 render_wallpaper_fill(cairo_surface_t *img, int width, int height,
-	const char *bg_color)
+	const char *bg_color, bool cover)
 {
 	int iw = cairo_image_surface_get_width(img);
 	int ih = cairo_image_surface_get_height(img);
 	if (iw <= 0 || ih <= 0)
 		return NULL;
 
-	/* Scale to fill, maintaining aspect ratio (crop excess) */
 	double scale_x = (double)width / iw;
 	double scale_y = (double)height / ih;
-	double scale = (scale_x > scale_y) ? scale_x : scale_y;
+	double scale = (scale_x > scale_y) == cover ? scale_x : scale_y;
 
 	int sw = (int)(iw * scale);
 	int sh = (int)(ih * scale);
@@ -289,8 +293,9 @@ load_wallpaper(const char *path, enum wm_wallpaper_mode mode,
 		rendered = render_wallpaper_tile(img, width, height);
 		break;
 	case WM_WALLPAPER_FILL:
+	case WM_WALLPAPER_FIT:
 		rendered = render_wallpaper_fill(img, width, height,
-			bg_color);
+			bg_color, mode == WM_WALLPAPER_FILL);
 		break;
 	}
 
@@ -302,6 +307,119 @@ load_wallpaper(const char *path, enum wm_wallpaper_mode mode,
 	return wp_buffer_from_cairo(rendered);
 }
 
+/* --- The style's background (Fluxbox's RootTheme) --- */
+
+static bool
+style_background_shown(const struct wm_style *style)
+{
+	return style && style->background &&
+		!strcasestr(style->background, "none") &&
+		!strcasestr(style->background, "unset");
+}
+
+/* A random image of a directory (background: random) */
+static char *
+random_image(const char *dir)
+{
+	DIR *d = opendir(dir);
+	if (!d)
+		return NULL;
+	char *pick = NULL;
+	int seen = 0;
+	struct dirent *e;
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.')
+			continue;
+		char path[4096];
+		snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
+		struct stat st;
+		if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+			continue;
+		/* Reservoir sampling: each file as likely as the others */
+		if (rand() % ++seen == 0) {
+			free(pick);
+			pick = strdup(path);
+		}
+	}
+	closedir(d);
+	return pick;
+}
+
+/*
+ * As RootTheme::reconfigTheme has fbsetbg and fbsetroot draw it: the
+ * image of background.pixmap (tiled, centered, aspect, or fullscreen),
+ * a random one of its directory, or with no image the colours: mod X Y
+ * lines, a gradient texture, or solid.
+ */
+static struct wlr_buffer *
+render_style_background(const struct wm_style *style, int width, int height)
+{
+	const char *opts = style->background;
+	char hex[8] = "#000000";
+	if (style->background_has_color)
+		snprintf(hex, sizeof(hex), "#%02x%02x%02x",
+			style->background_color.r, style->background_color.g,
+			style->background_color.b);
+
+	const char *pm = style->background_pixmap;
+	struct stat st;
+	if (pm && stat(pm, &st) == 0) {
+		enum wm_wallpaper_mode mode = strcasestr(opts, "tiled") ?
+			WM_WALLPAPER_TILE : strcasestr(opts, "centered") ?
+			WM_WALLPAPER_CENTER : strcasestr(opts, "aspect") ?
+			WM_WALLPAPER_FIT : WM_WALLPAPER_STRETCH;
+		if (S_ISREG(st.st_mode))
+			return load_wallpaper(pm, mode, hex, width, height);
+		if (S_ISDIR(st.st_mode) && strcasestr(opts, "random")) {
+			char *pick = random_image(pm);
+			struct wlr_buffer *buf = pick ? load_wallpaper(pick,
+				WM_WALLPAPER_STRETCH, hex, width, height) : NULL;
+			free(pick);
+			return buf;
+		}
+	}
+
+	cairo_surface_t *surf = NULL;
+	if (strcasestr(opts, "mod") && style->background_mod_x > 0 &&
+	    style->background_mod_y > 0) {
+		/* fbsetroot -mod: the foreground every X and Y pixels */
+		surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+			width, height);
+		cairo_t *cr = cairo_create(surf);
+		const struct wm_color *bg = style->background_has_color_to ?
+			&style->background_color_to : &style->background_color;
+		cairo_set_source_rgb(cr, bg->r / 255.0, bg->g / 255.0,
+			bg->b / 255.0);
+		cairo_paint(cr);
+		const struct wm_color *fg = &style->background_color;
+		cairo_set_source_rgb(cr, fg->r / 255.0, fg->g / 255.0,
+			fg->b / 255.0);
+		for (int x = 0; x < width; x += style->background_mod_x)
+			cairo_rectangle(cr, x, 0, 1, height);
+		for (int y = 0; y < height; y += style->background_mod_y)
+			cairo_rectangle(cr, 0, y, width, 1);
+		cairo_fill(cr);
+		cairo_destroy(cr);
+	} else if (strcasestr(opts, "gradient")) {
+		struct wm_texture tex = style_parse_texture(opts);
+		if (style->background_has_color)
+			tex.color = 0xFF000000u |
+				((uint32_t)style->background_color.r << 16) |
+				((uint32_t)style->background_color.g << 8) |
+				style->background_color.b;
+		if (style->background_has_color_to)
+			tex.color_to = 0xFF000000u |
+				((uint32_t)style->background_color_to.r << 16) |
+				((uint32_t)style->background_color_to.g << 8) |
+				style->background_color_to.b;
+		surf = wm_render_texture(&tex, width, height, 1.0f);
+		free(tex.pixmap_path);
+	} else if (style->background_has_color) {
+		surf = render_solid_color(hex, width, height);
+	}
+	return surf ? wp_buffer_from_cairo(surf) : NULL;
+}
+
 /* --- Public API --- */
 
 struct wm_wallpaper *
@@ -311,9 +429,16 @@ wm_wallpaper_create(struct wm_server *server)
 	if (!config)
 		return NULL;
 
+	/* The style's background shows over the last wallpaper when a
+	 * style was chosen this session, or when there is none (fbsetbg
+	 * -Z and -z); the init's wallpaper always wins */
+	bool style_bg = style_background_shown(server->style) &&
+		(!config->wallpaper || (config->wallpaper_from_last &&
+		 server->style_background));
+
 	/* Check if any wallpaper is configured */
 	bool has_any = (config->wallpaper != NULL) ||
-		       (config->wallpaper_color != NULL);
+		       (config->wallpaper_color != NULL) || style_bg;
 	if (!has_any) {
 		for (int i = 0; i < config->wallpaper_path_count; i++) {
 			if (config->wallpaper_paths[i]) {
@@ -376,7 +501,12 @@ wm_wallpaper_create(struct wm_server *server)
 		}
 
 		struct wlr_buffer *buf = NULL;
-		if (path) {
+		bool own = i < config->wallpaper_path_count &&
+			config->wallpaper_paths[i];
+		if (style_bg && !own)
+			buf = render_style_background(server->style, width,
+				height);
+		if (!buf && path) {
 			buf = load_wallpaper(path, config->wallpaper_mode,
 				bg_color, width, height);
 		}

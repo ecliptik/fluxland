@@ -312,6 +312,8 @@ parse_wallpaper_mode(const char *value)
 		return WM_WALLPAPER_TILE;
 	if (strcasecmp(value, "Fill") == 0)
 		return WM_WALLPAPER_FILL;
+	if (strcasecmp(value, "Fit") == 0 || strcasecmp(value, "Aspect") == 0)
+		return WM_WALLPAPER_FIT;
 	return WM_WALLPAPER_STRETCH;
 }
 
@@ -731,6 +733,19 @@ apply_window_config(struct wm_config *config, struct rc_database *db)
 }
 
 static void
+free_toolbar_buttons(struct wm_config *config)
+{
+	for (int i = 0; i < config->toolbar_button_count; i++) {
+		free(config->toolbar_buttons[i].name);
+		free(config->toolbar_buttons[i].label);
+		free(config->toolbar_buttons[i].commands);
+	}
+	free(config->toolbar_buttons);
+	config->toolbar_buttons = NULL;
+	config->toolbar_button_count = 0;
+}
+
+static void
 apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 {
 	const char *val;
@@ -769,6 +784,34 @@ apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 	if (val) {
 		free(config->toolbar_tools);
 		config->toolbar_tools = strdup(val);
+	}
+
+	/* Fluxbox's button.NAME tools: their label and commands */
+	free_toolbar_buttons(config);
+	const char *prefix = "session.screen0.toolbar.button.";
+	size_t plen = strlen(prefix);
+	for (int i = 0; i < db->count; i++) {
+		const char *key = db->entries[i].key;
+		size_t klen = strlen(key);
+		if (strncasecmp(key, prefix, plen) != 0 || klen <= plen + 6 ||
+		    strcasecmp(key + klen - 6, ".label") != 0)
+			continue;
+		char name[64];
+		snprintf(name, sizeof(name), "%.*s", (int)(klen - plen - 6),
+			key + plen);
+		struct wm_toolbar_button_cfg *b = realloc(
+			config->toolbar_buttons,
+			(config->toolbar_button_count + 1) * sizeof(*b));
+		if (!b)
+			break;
+		config->toolbar_buttons = b;
+		b += config->toolbar_button_count++;
+		b->name = strdup(name);
+		b->label = strdup(db->entries[i].value);
+		char ckey[160];
+		snprintf(ckey, sizeof(ckey), "%s%s.commands", prefix, name);
+		const char *cmds = rc_get_string(db, ckey);
+		b->commands = strdup(cmds ? cmds : "");
 	}
 
 	/* Titlebar button layout */
@@ -1515,8 +1558,10 @@ apply_wallpaper_config(struct wm_config *config, struct rc_database *db)
 		char line[4096], mode[64];
 		if (f && fgets(line, sizeof(line), f)) {
 			line[strcspn(line, "\n")] = '\0';
-			if (*line)
+			if (*line) {
 				config->wallpaper = strdup(line);
+				config->wallpaper_from_last = true;
+			}
 			if (fgets(mode, sizeof(mode), f)) {
 				mode[strcspn(mode, "\n")] = '\0';
 				config->wallpaper_mode =
@@ -1636,6 +1681,7 @@ config_file_changed(const char *path, time_t *cached_mtime)
 	return false;
 }
 
+
 void
 config_destroy(struct wm_config *config)
 {
@@ -1643,6 +1689,7 @@ config_destroy(struct wm_config *config)
 		return;
 
 	free_workspace_names(config);
+	free_toolbar_buttons(config);
 	free_wallpaper_paths(config);
 	free_input_rules(config);
 	free_output_rules(config);
