@@ -627,6 +627,7 @@ struct wm_ipc_server {
 };
 
 struct wm_server {
+	struct wm_config *config;
 	struct wl_event_loop *wl_event_loop;
 	struct wm_toolbar *toolbar;
 	struct wlr_scene_tree *layer_top;
@@ -641,6 +642,7 @@ struct wm_systray_item {
 	char *bus_name;
 	char *object_path;
 	char *id;
+	int order;
 	char *icon_name;
 	cairo_surface_t *icon_pixmap;
 	struct wlr_scene_buffer *icon_buf;
@@ -2063,6 +2065,23 @@ test_property_get_registered_items(void)
 	printf("  PASS: test_property_get_registered_items\n");
 }
 
+/* systray.pinLeft/pinRight (TrayWindow::pinByClassname) */
+static void
+test_pin_order(void)
+{
+	const char *left = "nm-applet, Blueman";
+	const char *right = "pasystray clock";
+	/* The first of pinLeft is leftmost */
+	assert(wm_systray_pin_order(left, right, "nm-applet") == -2);
+	assert(wm_systray_pin_order(left, right, "blueman") == -1);
+	assert(wm_systray_pin_order(left, right, "pasystray") == 1);
+	assert(wm_systray_pin_order(left, right, "CLOCK") == 2);
+	assert(wm_systray_pin_order(left, right, "other") == 0);
+	assert(wm_systray_pin_order(NULL, NULL, "other") == 0);
+	assert(wm_systray_pin_order(left, right, NULL) == 0);
+	printf("  PASS: pin_order\n");
+}
+
 int
 main(void)
 {
@@ -2118,6 +2137,7 @@ main(void)
 	test_file_exists_nonexistent();
 	test_name_owner_changed_empty_old();
 	test_property_get_registered_items();
+	test_pin_order();
 
 	printf("All systray tests passed.\n");
 	return 0;

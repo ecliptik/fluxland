@@ -295,6 +295,11 @@ menu.
 .TP
 .B session.screen0.toolbar.maxOver
 Allow maximized windows to cover the toolbar (default: false).
+.TP
+.BR session.screen0.systray.pinLeft ", " session.screen0.systray.pinRight
+Tray icons to keep at the left or right of the system tray, by their
+id, separated by spaces or commas: the first of pinLeft leftmost, the
+last of pinRight rightmost.
 .SH TITLEBAR SETTINGS
 .TP
 .B session.screen0.titlebar.left
@@ -400,6 +405,13 @@ or
 .B session.screen0.tabs.intitlebar
 Display tabs in the titlebar (default: true).
 .TP
+.B session.screen0.tabs.usePixmap
+Show the window's icon in its tab (default: true).
+.TP
+.B session.screen0.tabs.maxOver
+A maximized window with its tabs outside the titlebar fills the screen,
+its tabs off it; by default the tabs stay on it (default: false).
+.TP
 .B session.screen0.tab.placement
 Where the tabs hang when they aren't in the titlebar (tabs.intitlebar:
 false): Fluxbox's
@@ -476,6 +488,10 @@ Allow maximized windows to cover the slit (default: false).
 .B session.slitlistFile
 Path to the slit client ordering file.
 .SH MENU SETTINGS
+.TP
+.B session.screen0.clientMenu.usePixmap
+Show windows' icons in the window lists (ClientMenu, WindowList,
+[workspaces]) (default: true).
 .TP
 .B session.screen0.menu.alpha
 Menu opacity (0\-255, default: 255).

@@ -245,6 +245,11 @@ struct wm_config {
 
 	/* External tab bar configuration */
 	bool tabs_intitlebar;       /* true = tabs in titlebar (default), false = external */
+	bool tabs_max_over;         /* tabs.maxOver: maximized over external tabs */
+	bool tabs_use_pixmap;       /* tabs.usePixmap: window icons in tabs */
+	bool clientmenu_use_pixmap; /* clientMenu.usePixmap: icons in window lists */
+	char *systray_pin_left;     /* systray.pinLeft: ids, the first leftmost */
+	char *systray_pin_right;    /* systray.pinRight */
 	int tab_placement;          /* enum wm_tab_placement */
 	int tab_width;              /* an external tab's length (64) */
 	int tab_padding;            /* padding between tabs in pixels */

@@ -742,13 +742,12 @@ test_fluxbox_init(void)
 		if (strstr(r.errors[i].message, "isn't supported"))
 			unsupported++;
 	}
-	/* No errors; warnings only for what fluxland doesn't do yet (and
-	 * the paths, which aren't there) */
+	/* No errors, and every key of it is fluxland's too: warnings only
+	 * for the paths, which aren't there */
 	assert(errors == 0);
-	assert(unsupported > 0);
+	assert(unsupported == 0);
 	for (int i = 0; i < r.count; i++)
-		assert(strstr(r.errors[i].message, "isn't supported") ||
-			strstr(r.errors[i].message, "non-existent path"));
+		assert(strstr(r.errors[i].message, "non-existent path"));
 	config_result_destroy(&r);
 	printf("  PASS: test_fluxbox_init\n");
 }

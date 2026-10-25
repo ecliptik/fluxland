@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <systemd/sd-bus.h>
 #include <wlr/interfaces/wlr_buffer.h>
@@ -27,6 +28,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
+#include "config.h"
 #include "pixel_buffer.h"
 #include "systray.h"
 #include "server.h"
@@ -243,6 +245,58 @@ systray_item_update_scene(struct wm_systray_item *item)
 	wlr_buffer_drop(buf);
 }
 
+/*
+ * Where systray.pinLeft and pinRight put an id (TrayWindow::pinByClassname):
+ * the further left in pinLeft the more negative, the further right in
+ * pinRight the more positive, 0 when in neither.  Case doesn't matter.
+ */
+int
+wm_systray_pin_order(const char *pin_left, const char *pin_right,
+	const char *id)
+{
+	if (!id)
+		return 0;
+	const char *lists[2] = { pin_left, pin_right };
+	for (int l = 0; l < 2; l++) {
+		if (!lists[l])
+			continue;
+		char *copy = strdup(lists[l]);
+		if (!copy)
+			continue;
+		int n = 0, at = -1;
+		char *save = NULL;
+		for (char *tok = strtok_r(copy, " ,", &save); tok;
+		     tok = strtok_r(NULL, " ,", &save)) {
+			if (at < 0 && strcasecmp(tok, id) == 0)
+				at = n;
+			n++;
+		}
+		free(copy);
+		if (at >= 0)
+			return l == 0 ? -(n - at) : at + 1;
+	}
+	return 0;
+}
+
+/* The item to its place by its order (SystemTray::sortClients, stable) */
+static void
+sort_item(struct wm_systray_item *item)
+{
+	struct wm_systray *systray = item->systray;
+	struct wm_config *cfg = systray->server->config;
+	item->order = cfg ? wm_systray_pin_order(cfg->systray_pin_left,
+		cfg->systray_pin_right, item->id) : 0;
+	wl_list_remove(&item->link);
+	struct wm_systray_item *it;
+	wl_list_for_each(it, &systray->items, link) {
+		if (it->order > item->order) {
+			wl_list_insert(it->link.prev, &item->link);
+			return;
+		}
+	}
+	wl_list_insert(systray->items.prev, &item->link);
+}
+
 /* --- D-Bus property query callbacks --- */
 
 static int
@@ -262,6 +316,7 @@ handle_get_id(sd_bus_message *reply, void *userdata,
 		item->id = strdup(val);
 		wlr_log(WLR_DEBUG, "systray: item %s id=%s",
 			item->bus_name, item->id);
+		sort_item(item);
 	}
 
 	return 0;

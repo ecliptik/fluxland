@@ -16,6 +16,7 @@
  */
 
 #define _GNU_SOURCE
+#include <cairo.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -242,6 +243,8 @@ menu_item_destroy(struct wm_menu_item *item)
 	free(item->label);
 	free(item->command);
 	free(item->icon_path);
+	if (item->icon)
+		cairo_surface_destroy(item->icon);
 	if (item->submenu) {
 		wm_menu_destroy(item->submenu);
 	}

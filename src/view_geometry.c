@@ -67,6 +67,17 @@ wm_view_maximize_area(struct wm_view *view, struct wlr_box *area)
 		wm_output_layout_box(output, area);
 	else
 		*area = output->usable_area;
+	/* tabs.maxOver: the frame fills it, its external tabs outside
+	 * (FbWinFrame::applyState) */
+	if (view->server->config && view->server->config->tabs_max_over &&
+	    view->decoration && view->show_decoration && !view->fullscreen) {
+		int x, y, w, h;
+		wm_decoration_tab_offsets(view->decoration, &x, &y, &w, &h);
+		area->x -= x;
+		area->y -= y;
+		area->width += w;
+		area->height += h;
+	}
 	return !wlr_box_empty(area);
 }
 

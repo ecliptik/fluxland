@@ -187,6 +187,11 @@ int wm_decoration_tab_at(struct wm_decoration *decoration,
  * StartTabbing drags it; false when it has none */
 bool wm_decoration_tab_size(struct wm_decoration *decoration, int *w, int *h);
 
+/* How far external tabs reach outside the frame (FbWinFrame's xOffset,
+ * yOffset, widthOffset, heightOffset); 0 without them */
+void wm_decoration_tab_offsets(struct wm_decoration *decoration, int *x,
+	int *y, int *w, int *h);
+
 /* The title of the tab (or label) at (x, y) when it is cut short, for a
  * tooltip; its window in *view */
 const char *wm_decoration_tooltip_at(struct wm_decoration *decoration,

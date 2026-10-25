@@ -535,6 +535,9 @@ config_create(void)
 	config->auto_tab_placement = false;
 	config->tab_focus_model = 0; /* click */
 	config->tabs_intitlebar = true;
+	config->tabs_max_over = false;
+	config->tabs_use_pixmap = true;
+	config->clientmenu_use_pixmap = true;
 	config->tab_placement = WM_TAB_TOP_LEFT;
 	config->tab_width = 64;
 	config->tab_padding = 0;
@@ -949,6 +952,18 @@ apply_tab_config(struct wm_config *config, struct rc_database *db)
 	/* External tab bar */
 	config->tabs_intitlebar =
 		rc_get_bool(db, "session.screen0.tabs.intitlebar", true);
+	config->tabs_max_over =
+		rc_get_bool(db, "session.screen0.tabs.maxOver", false);
+	config->tabs_use_pixmap =
+		rc_get_bool(db, "session.screen0.tabs.usePixmap", true);
+	config->clientmenu_use_pixmap =
+		rc_get_bool(db, "session.screen0.clientMenu.usePixmap", true);
+	free(config->systray_pin_left);
+	free(config->systray_pin_right);
+	const char *pins = rc_get_string(db, "session.screen0.systray.pinLeft");
+	config->systray_pin_left = pins ? strdup(pins) : NULL;
+	pins = rc_get_string(db, "session.screen0.systray.pinRight");
+	config->systray_pin_right = pins ? strdup(pins) : NULL;
 	config->tab_placement = parse_tab_placement(
 		rc_get_string(db, "session.screen0.tab.placement"));
 	config->tab_width =
@@ -1814,6 +1829,8 @@ config_destroy(struct wm_config *config)
 	free(config->toolbar_tools);
 	free(config->root_command);
 	free(config->default_deco);
+	free(config->systray_pin_left);
+	free(config->systray_pin_right);
 	free(config->window_menu_file);
 	free(config->iconbar_iconified_pattern);
 	free(config->iconbar_mode_spec);

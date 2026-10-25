@@ -373,6 +373,7 @@ enum wm_menu_search {
 
 struct wm_config {
 	int menu_alpha;
+	bool clientmenu_use_pixmap;
 	int workspace_count;
 	char *menu_file;
 	char *titlebar_left;
@@ -446,6 +447,7 @@ struct wm_decoration {
 struct wm_view {
 	struct wl_list link;
 	struct wm_server *server;
+	struct _cairo_surface *icon;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	struct wlr_scene_tree *scene_tree;
 	uint32_t id;
@@ -716,7 +718,7 @@ static PangoDirection pango_unichar_direction(gunichar ch)
 
 /* --- Stub Cairo functions --- */
 
-typedef struct { int dummy; } cairo_surface_t;
+typedef struct _cairo_surface { int dummy; } cairo_surface_t;
 typedef struct { int dummy; } cairo_t;
 typedef enum { CAIRO_FORMAT_ARGB32 = 0 } cairo_format_t;
 typedef enum { CAIRO_STATUS_SUCCESS = 0 } cairo_status_t;
@@ -777,6 +779,10 @@ static void cairo_set_source_rgba(cairo_t *cr, double r, double g, double b, dou
 	(void)cr; (void)r; (void)g; (void)b; (void)a;
 }
 static void cairo_paint(cairo_t *cr) { (void)cr; }
+static void *cairo_get_source(cairo_t *cr) { (void)cr; return NULL; }
+static void cairo_pattern_set_filter(void *p, int f) { (void)p; (void)f; }
+#define CAIRO_FILTER_GOOD 1
+static cairo_surface_t *cairo_surface_reference(cairo_surface_t *s) { return s; }
 static void cairo_set_source_surface(cairo_t *cr, cairo_surface_t *s, double x, double y)
 {
 	(void)cr; (void)s; (void)x; (void)y;

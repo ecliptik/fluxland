@@ -476,6 +476,7 @@ struct wm_config {
 	bool auto_tab_placement;
 	bool focus_new_windows;
 	bool focus_same_head;
+	bool tabs_max_over;
 	char *default_deco;
 	int no_focus_while_typing_ms;
 	int demands_attention_ms;
@@ -1148,6 +1149,13 @@ static void wm_decoration_refresh_geometry(struct wm_decoration *d,
 	struct wm_style *s) { (void)d; (void)s; }
 static void wm_decoration_set_focused(struct wm_decoration *d,
 	bool focused, struct wm_style *s) { (void)d; (void)focused; (void)s; }
+static void
+wm_decoration_tab_offsets(struct wm_decoration *d, int *x, int *y, int *w,
+	int *h)
+{
+	(void)d;
+	*x = 0; *y = -20; *w = 0; *h = 20;	/* a tab row above */
+}
 static void wm_decoration_get_extents(struct wm_decoration *d,
 	int *t, int *b, int *l, int *r)
 {

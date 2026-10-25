@@ -39,3 +39,31 @@ def test_default_deco_and_apps_override():
         ipc.close()
     finally:
         mgr.stop()
+
+
+def maximized_frame(init_extra):
+    mgr = CompositorManager()
+    mgr.start(config_set="default", headless=True, init_extra=init_extra)
+    try:
+        ipc = FluxlandIPC(socket_path=mgr.socket_path)
+        win = open_window(ipc, "maxTabs")
+        ipc.command("Maximize", window=win["id"])
+        time.sleep(SETTLE * 2)
+        win = ipc.get_window_by_app_id("maxTabs")
+        usable = ipc.get_outputs()[0]["usable"]
+        ipc.close()
+        return win, usable
+    finally:
+        mgr.stop()
+
+
+def test_tabs_max_over():
+    tabs = ["session.screen0.tabs.intitlebar: false",
+            "session.screen0.tab.placement: TopLeft"]
+    # Default: the tabs stay on the screen, the window under them
+    win, usable = maximized_frame(tabs)
+    assert win["frame"]["y"] == usable["y"]
+    # maxOver: the frame fills the screen, its tabs above it, off it
+    win2, usable = maximized_frame(tabs + ["session.screen0.tabs.maxOver: true"])
+    assert win2["frame"]["y"] < usable["y"]
+    assert win2["frame"]["height"] > win["frame"]["height"]

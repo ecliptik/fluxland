@@ -326,6 +326,7 @@ struct wm_config {
 	char *titlebar_left;
 	char *titlebar_right;
 	bool tabs_intitlebar;
+	bool tabs_use_pixmap;
 	int tab_padding;
 	int tab_width;
 	int tab_placement;
@@ -338,6 +339,7 @@ struct wm_decoration;
 struct wm_view {
 	struct wl_list link;
 	struct wm_server *server;
+	struct _cairo_surface *icon;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	struct wlr_scene_tree *scene_tree;
 	char *title;
@@ -500,7 +502,7 @@ wlr_xdg_decoration_manager_v1_create(struct wl_display *display)
 
 /* --- Stub Cairo functions --- */
 
-typedef struct { int dummy; } cairo_surface_t;
+typedef struct _cairo_surface { int dummy; } cairo_surface_t;
 typedef struct { int dummy; } cairo_t;
 typedef enum { CAIRO_FORMAT_ARGB32 = 0 } cairo_format_t;
 typedef enum { CAIRO_STATUS_SUCCESS = 0 } cairo_status_t;
@@ -568,6 +570,10 @@ static void cairo_save(cairo_t *cr) { (void)cr; }
 static void cairo_restore(cairo_t *cr) { (void)cr; }
 static void cairo_translate(cairo_t *cr, double x, double y) { (void)cr; (void)x; (void)y; }
 static void cairo_rotate(cairo_t *cr, double angle) { (void)cr; (void)angle; }
+static void cairo_scale(cairo_t *cr, double x, double y) { (void)cr; (void)x; (void)y; }
+static void *cairo_get_source(cairo_t *cr) { (void)cr; return NULL; }
+static void cairo_pattern_set_filter(void *p, int f) { (void)p; (void)f; }
+#define CAIRO_FILTER_GOOD 1
 
 #define CAIRO_FILL_RULE_EVEN_ODD 1
 

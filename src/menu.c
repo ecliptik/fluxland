@@ -147,6 +147,15 @@ fill_workspaces_menu(struct wm_menu *menu, struct wm_server *server)
 	append_command(menu, _("Remove Last"), "RemoveLastWorkspace");
 }
 
+/* A window list entry's icon: the window's (clientMenu.usePixmap) */
+static void
+set_window_icon(struct wm_menu_item *item, struct wm_view *view)
+{
+	struct wm_config *cfg = view->server ? view->server->config : NULL;
+	if (view->icon && (!cfg || cfg->clientmenu_use_pixmap))
+		item->icon = cairo_surface_reference(view->icon);
+}
+
 /* A window list entry */
 static void
 append_window(struct wm_menu *menu, struct wm_view *view, bool show_ws)
@@ -163,6 +172,7 @@ append_window(struct wm_menu *menu, struct wm_view *view, bool show_ws)
 	if (!item)
 		return;
 	item->data = view;
+	set_window_icon(item, view);
 	item->checked = view == view->server->focused_view;
 	if (show_ws && view->workspace) {
 		char cmd[32];
@@ -795,6 +805,7 @@ wm_menu_create_window_list(struct wm_server *server)
 				WM_MENU_WINDOW_ENTRY, entry_label);
 			if (item) {
 				item->data = view;
+				set_window_icon(item, view);
 				/* Store workspace index for switching */
 				char cmd[32];
 				snprintf(cmd, sizeof(cmd), "%d",
@@ -2171,6 +2182,7 @@ wm_menu_show_client_menu(struct wm_server *server, const char *pattern,
 			WM_MENU_WINDOW_ENTRY, entry_label);
 		if (item) {
 			item->data = view;
+			set_window_icon(item, view);
 			int ws_idx = view->workspace ?
 				view->workspace->index : 0;
 			char cmd[32];

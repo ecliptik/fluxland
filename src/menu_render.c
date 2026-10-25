@@ -101,7 +101,7 @@ menu_compute_layout(struct wm_menu *menu, struct wm_style *style)
 		int hw = wm_measure_text_width(item->label,
 			&style->menu_hilite_font, 1.0f);
 		int w = 2 * (bevel + ih) + (tw > hw ? tw : hw);
-		if (item->icon_path)
+		if (item->icon_path || item->icon)
 			w += ih;
 		if (w > item_w)
 			item_w = w;
@@ -306,14 +306,30 @@ render_menu_items(struct wm_menu *menu, struct wm_style *style)
 
 		/* The icon, a bevel in */
 		int icon_w = 0;
-		if (item->icon_path && ih - 2 * bevel > 0) {
+		int isize = ih - 2 * bevel;
+		if (item->icon_path && isize > 0) {
 			cairo_surface_t *icon = wm_load_pixmap(item->icon_path,
-				ih - 2 * bevel, ih - 2 * bevel);
+				isize, isize);
 			if (icon) {
 				cairo_set_source_surface(cr, icon, bevel,
 					y + bevel);
 				cairo_paint(cr);
 				cairo_surface_destroy(icon);
+				icon_w = ih;
+			}
+		} else if (item->icon && isize > 0) {
+			/* A window's icon (clientMenu.usePixmap) */
+			int isrc = cairo_image_surface_get_width(item->icon);
+			if (isrc > 0) {
+				cairo_save(cr);
+				cairo_translate(cr, bevel, y + bevel);
+				cairo_scale(cr, (double)isize / isrc,
+					(double)isize / isrc);
+				cairo_set_source_surface(cr, item->icon, 0, 0);
+				cairo_pattern_set_filter(cairo_get_source(cr),
+					CAIRO_FILTER_GOOD);
+				cairo_paint(cr);
+				cairo_restore(cr);
 				icon_w = ih;
 			}
 		}

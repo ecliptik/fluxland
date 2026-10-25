@@ -470,6 +470,19 @@ tab_is_current(struct wm_decoration *deco, struct wm_view *v)
 	return tg ? v == tg->active_view : v == deco->view;
 }
 
+/* The room a tab's icon takes (tabs.usePixmap): its height and a pixel
+ * either side, when it has one and the tab is wide enough */
+static int
+tab_icon_width(struct wm_decoration *deco, struct wm_view *v, int w, int h)
+{
+	struct wm_config *cfg = deco->server ? deco->server->config : NULL;
+	int isize = h - 2;
+	if (!v->icon || (cfg && !cfg->tabs_use_pixmap) || isize < 8 ||
+	    w <= isize * 2)
+		return 0;
+	return isize + 2;
+}
+
 /*
  * A row of tabs as FbTk::Container lays out IconButtons: len long each
  * (the last ones a pixel longer when shared out), borders between them
@@ -492,12 +505,27 @@ draw_tab_row(cairo_t *cr, struct wm_decoration *deco,
 		fill_rect(cr, bc, x - b, -b, w + 2 * b, row_h + 2 * b);
 		paint_texture(cr, f ? &style->window_label_focus :
 			&style->window_label_unfocus, x, 0, w, row_h);
+		/* tabs.usePixmap: its icon first, as an IconButton */
+		int icon_w = tab_icon_width(deco, v, w, row_h);
+		if (icon_w > 0) {
+			int isize = icon_w - 2;
+			int isrc = cairo_image_surface_get_width(v->icon);
+			cairo_save(cr);
+			cairo_translate(cr, x + 1, (row_h - isize) / 2);
+			cairo_scale(cr, (double)isize / isrc,
+				(double)isize / isrc);
+			cairo_set_source_surface(cr, v->icon, 0, 0);
+			cairo_pattern_set_filter(cairo_get_source(cr),
+				CAIRO_FILTER_GOOD);
+			cairo_paint(cr);
+			cairo_restore(cr);
+		}
 		draw_label_text(cr, v->title ? v->title : "",
 			f ? &style->window_label_focus_font :
 			&style->window_label_unfocus_font,
 			f ? &style->window_label_focus_text_color :
 			&style->window_label_unfocus_text_color,
-			style->window_justify, x, 0, w, row_h);
+			style->window_justify, x + icon_w, 0, w - icon_w, row_h);
 	}
 }
 
@@ -1218,6 +1246,24 @@ wm_decoration_region_at(struct wm_decoration *decoration, double x, double y)
 	return WM_DECOR_REGION_CLIENT;
 }
 
+void
+wm_decoration_tab_offsets(struct wm_decoration *decoration, int *x, int *y,
+	int *w, int *h)
+{
+	*x = *y = *w = *h = 0;
+	if (!decoration)
+		return;
+	struct frame_geom g;
+	frame_geometry(decoration, decoration->server ?
+		decoration->server->style : NULL, &g);
+	if (!g.ext_tabs)
+		return;
+	*x = g.fx;
+	*y = g.fy;
+	*w = g.total_w - g.fw;
+	*h = g.total_h - g.fh;
+}
+
 bool
 wm_decoration_tab_size(struct wm_decoration *decoration, int *w, int *h)
 {
@@ -1264,7 +1310,9 @@ wm_decoration_tooltip_at(struct wm_decoration *decoration, double x,
 	*view = v;
 	struct frame_geom g;
 	frame_geometry(decoration, style, &g);
-	int room = (g.ext_tabs && g.tabs_vertical ? h : w) - 4;
+	int len = g.ext_tabs && g.tabs_vertical ? h : w;
+	int thick = g.ext_tabs && g.tabs_vertical ? w : h;
+	int room = len - tab_icon_width(decoration, v, len, thick) - 4;
 	bool f = decoration->focused && tab_is_current(decoration, v);
 	const char *title = v->title ? v->title : "";
 	return wm_measure_text_width(title, f ?

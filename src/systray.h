@@ -23,6 +23,10 @@
 
 struct wm_server;
 
+/* Where systray.pinLeft/pinRight put an item id: < 0 left, > 0 right */
+int wm_systray_pin_order(const char *pin_left, const char *pin_right,
+	const char *id);
+
 #define WM_SYSTRAY_ICON_SIZE 18
 #define WM_SYSTRAY_ICON_PADDING 2
 
@@ -31,6 +35,7 @@ struct wm_systray_item {
 	char *bus_name;        /* D-Bus sender / unique name */
 	char *object_path;     /* /StatusNotifierItem or custom path */
 	char *id;              /* application identifier */
+	int order;             /* systray.pinLeft (< 0) / pinRight (> 0) */
 	char *icon_name;       /* named icon (freedesktop) */
 	cairo_surface_t *icon_pixmap; /* rendered icon surface */
 	struct wlr_scene_buffer *icon_buf;
