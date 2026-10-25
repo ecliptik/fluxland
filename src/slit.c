@@ -744,9 +744,10 @@ wm_slit_add_native_client(struct wm_slit *slit,
 	client->height = geo.height > 0 ? geo.height : 64;
 
 	/* Set tiled hints so client fills exact size (no gaps) */
-	wlr_xdg_toplevel_set_tiled(toplevel,
-		WLR_EDGE_TOP | WLR_EDGE_BOTTOM |
-		WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+	if (toplevel->base->initialized)
+		wlr_xdg_toplevel_set_tiled(toplevel,
+			WLR_EDGE_TOP | WLR_EDGE_BOTTOM |
+			WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
 
 	/* Listen for surface commit (size changes) */
 	client->native_commit.notify = handle_native_slit_client_commit;

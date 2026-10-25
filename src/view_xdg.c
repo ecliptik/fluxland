@@ -41,34 +41,52 @@ xdg_view_content_geometry(struct wm_view *view, struct wlr_box *geo)
 	*geo = view->xdg_toplevel->base->geometry;
 }
 
+/*
+ * A configure can go to the client: not before its first commit, nor
+ * once it has unmapped (wlroots marks the surface uninitialized then,
+ * and asserts) -- a window that is closing may still be in a tab group
+ * or hold the keyboard focus for a moment.
+ */
+static bool
+configurable(struct wm_view *view)
+{
+	return view->xdg_toplevel && view->xdg_toplevel->base->initialized;
+}
+
 static void
 xdg_view_set_size(struct wm_view *view, int width, int height)
 {
-	wlr_xdg_toplevel_set_size(view->xdg_toplevel, width, height);
+	if (configurable(view))
+		wlr_xdg_toplevel_set_size(view->xdg_toplevel, width, height);
 }
 
 static void
 xdg_view_set_activated(struct wm_view *view, bool activated)
 {
-	wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
+	if (configurable(view))
+		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
 }
 
 static void
 xdg_view_set_maximized(struct wm_view *view, bool maximized)
 {
-	wlr_xdg_toplevel_set_maximized(view->xdg_toplevel, maximized);
+	if (configurable(view))
+		wlr_xdg_toplevel_set_maximized(view->xdg_toplevel, maximized);
 }
 
 static void
 xdg_view_set_fullscreen(struct wm_view *view, bool fullscreen)
 {
-	wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, fullscreen);
+	if (configurable(view))
+		wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel,
+			fullscreen);
 }
 
 static void
 xdg_view_set_tiled(struct wm_view *view, uint32_t edges)
 {
-	wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, edges);
+	if (configurable(view))
+		wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, edges);
 }
 
 static void

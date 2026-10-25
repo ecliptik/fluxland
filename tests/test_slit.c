@@ -190,6 +190,7 @@ struct wlr_xdg_surface {
 	struct wlr_surface *surface;
 	void *data;
 	bool initial_commit;
+	bool initialized;
 	struct wlr_box geometry;
 };
 
