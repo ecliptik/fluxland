@@ -80,23 +80,6 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 		return;
 	}
 
-	/* Focus protection: block non-user-initiated focus changes */
-	if (!server->focus_user_initiated) {
-		/* Current view has REFUSE: block unless target has GAIN */
-		if (server->focused_view &&
-		    (server->focused_view->focus_protection &
-		     WM_FOCUS_PROT_REFUSE) &&
-		    !(view->focus_protection & WM_FOCUS_PROT_GAIN)) {
-			server->focus_user_initiated = false;
-			return;
-		}
-		/* Target view has DENY: block programmatic focus */
-		if (view->focus_protection & WM_FOCUS_PROT_DENY) {
-			server->focus_user_initiated = false;
-			return;
-		}
-	}
-
 	/* It has the user's attention now */
 	if (view->urgent) {
 		view->urgent = false;
@@ -633,6 +616,62 @@ wm_view_present(struct wm_view *view)
 	}
 }
 
+static struct wm_view *
+root_transient(struct wm_view *view)
+{
+	for (int depth = 0; depth < 32; depth++) {
+		struct wm_view *parent = wm_view_parent(view);
+		if (!parent || parent == view)
+			break;
+		view = parent;
+	}
+	return view;
+}
+
+/*
+ * May a window take the focus by itself? Fluxbox's
+ * FluxboxWindow::focusRequestFromClient: not with [FocusProtection]
+ * Deny, not from a focused Lock window, and not from a fullscreen window
+ * on the same head unless it is a dialog of that window.
+ */
+static bool
+focus_request_allowed(struct wm_view *view, bool check_deny)
+{
+	struct wm_view *focused = view->server->focused_view;
+	if (check_deny && (view->focus_protection & WM_FOCUS_PROT_DENY))
+		return false;
+	if (!focused || focused == view || !focused->mapped)
+		return true;
+	if (focused->focus_protection & WM_FOCUS_PROT_LOCK)
+		return false;
+	if (root_transient(view) != root_transient(focused) &&
+	    focused->fullscreen &&
+	    wm_output_for_view(focused) == wm_output_for_view(view))
+		return false;
+	return true;
+}
+
+void
+wm_view_focus_new(struct wm_view *view)
+{
+	/* FluxboxWindow::isFocusNew */
+	bool focus_new = view->server->config ?
+		view->server->config->focus_new_windows : true;
+	if (view->focus_protection & WM_FOCUS_PROT_GAIN)
+		focus_new = true;
+	else if (view->focus_protection & WM_FOCUS_PROT_REFUSE)
+		focus_new = false;
+	if (!focus_new)
+		return;
+	/* A new window is not held back by its own Deny */
+	if (focus_request_allowed(view, false)) {
+		wm_focus_view(view, wm_view_surface(view));
+	} else {
+		wm_view_lower(view);
+		wm_view_set_urgent(view, true);
+	}
+}
+
 bool
 wm_view_request_activate(struct wm_view *view, bool allowed)
 {
@@ -640,12 +679,7 @@ wm_view_request_activate(struct wm_view *view, bool allowed)
 		return false;
 	struct wm_view *focused = view->server->focused_view;
 
-	/* [FocusProtection]: Deny never claims focus; nothing beats Lock */
-	if (view->focus_protection & WM_FOCUS_PROT_DENY)
-		allowed = false;
-	if (focused && focused != view &&
-	    (focused->focus_protection & WM_FOCUS_PROT_LOCK) ==
-	    WM_FOCUS_PROT_LOCK)
+	if (!focus_request_allowed(view, true))
 		allowed = false;
 
 	if (!allowed) {

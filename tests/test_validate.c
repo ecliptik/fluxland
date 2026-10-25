@@ -16,6 +16,17 @@
 #define TEST_INIT TEST_DIR "/init"
 #define TEST_KEYS TEST_DIR "/keys"
 #define TEST_STYLE TEST_DIR "/style"
+#define TEST_APPS TEST_DIR "/apps"
+
+/* client_pattern.c's matching is linked but not used here */
+struct wm_view;
+struct wm_server;
+struct wlr_box;
+struct wm_view *wm_view_parent(struct wm_view *v) { (void)v; return NULL; }
+void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
+	{ (void)v; (void)b; }
+struct wm_workspace *wm_workspace_get_active(struct wm_server *s)
+	{ (void)s; return NULL; }
 
 static void
 setup(void)
@@ -30,6 +41,7 @@ cleanup(void)
 	unlink(TEST_INIT);
 	unlink(TEST_KEYS);
 	unlink(TEST_STYLE);
+	unlink(TEST_APPS);
 	rmdir(TEST_DIR);
 }
 
@@ -40,6 +52,7 @@ clean_files(void)
 	unlink(TEST_INIT);
 	unlink(TEST_KEYS);
 	unlink(TEST_STYLE);
+	unlink(TEST_APPS);
 }
 
 static void
@@ -565,6 +578,67 @@ test_nonexistent_file(void)
 	printf("  PASS: test_nonexistent_file\n");
 }
 
+/* ---- Apps file ---- */
+
+static int
+count_fatal(const struct config_result *r, bool fatal)
+{
+	int n = 0;
+	for (int i = 0; i < r->count; i++)
+		n += r->errors[i].fatal == fatal;
+	return n;
+}
+
+static void
+test_apps_file(void)
+{
+	clean_files();
+	/* What Fluxbox writes and documents: no problems */
+	write_file(TEST_APPS,
+		"[startup] {xsetroot -solid grey}\n"
+		"[app] (name=xterm) (class=XTerm) {2}\n"
+		"  [Workspace]\t{1}\n"
+		"  [Dimensions]\t{50% 100%}\n"
+		"  [Position]\t(WINCENTER)\t{0 0}\n"
+		"  [Layer]\t{8}\n"
+		"  [Deco]\t{0x5}\n"
+		"  [FocusProtection] {Gain, Lock}\n"
+		"[end]\n"
+		"[group] (workspace)\n"
+		"  [app] (foot)\n"
+		"  [Layer] {Top}\n"
+		"[end]\n");
+	struct config_result r;
+	config_result_init(&r);
+	validate_apps_file(TEST_APPS, &r);
+	assert(r.count == 0);
+	config_result_destroy(&r);
+
+	/* Errors with their lines; an unknown key is a warning */
+	write_file(TEST_APPS,
+		"[app] (class=[oops)\n"           /* 1: bad pattern */
+		"[end]\n"
+		"[app] (a)\n"
+		"  [Layer] {Sky}\n"               /* 4: bad layer */
+		"  [Position] (Middle) {1 1}\n"   /* 5: bad corner */
+		"  [Colour] {red}\n"              /* 6: unknown key */
+		"[end]\n"
+		"stray text\n");                  /* 8: not an entry */
+	config_result_init(&r);
+	validate_apps_file(TEST_APPS, &r);
+	assert(count_fatal(&r, true) == 4);
+	assert(count_fatal(&r, false) == 1);
+	int lines[] = {1, 4, 5, 6, 8};
+	for (int i = 0; i < 5; i++)
+		assert(r.errors[i].line == lines[i]);
+	config_result_destroy(&r);
+
+	/* validate_config checks it too */
+	assert(validate_config(TEST_DIR) == 1);
+	clean_files();
+	printf("  PASS: test_apps_file\n");
+}
+
 /* ---- Top-level validation test ---- */
 
 static void
@@ -1086,6 +1160,7 @@ main(void)
 
 	/* Result helpers */
 	test_result_init_destroy();
+	test_apps_file();
 	test_result_no_errors();
 
 	/* Init file validation */

@@ -394,7 +394,7 @@ struct wlr_subcompositor;
 #define WM_FOCUS_PROT_GAIN   0x01
 #define WM_FOCUS_PROT_REFUSE 0x02
 #define WM_FOCUS_PROT_DENY   0x04
-#define WM_FOCUS_PROT_LOCK   (WM_FOCUS_PROT_REFUSE | WM_FOCUS_PROT_DENY)
+#define WM_FOCUS_PROT_LOCK   0x08
 
 /* Focus policy from config.h */
 enum wm_focus_policy {
@@ -448,6 +448,8 @@ struct wm_config {
 	int animation_duration_ms;
 	bool full_maximization;
 	bool auto_tab_placement;
+	bool focus_new_windows;
+	char *apps_file;
 };
 
 /* IPC */
@@ -614,6 +616,10 @@ struct wm_view {
 	bool no_decoration;
 	bool no_focus;
 	bool pending_maximize, pending_fullscreen, pending_minimize;
+	bool pending_maximize_horiz, pending_maximize_vert;
+	bool refuse_maximize, refuse_fullscreen;
+	bool rule_placed;
+	struct wm_window_rule *rule;
 	int pending_head;
 	bool modal;
 	struct _cairo_surface *icon;
@@ -1114,6 +1120,9 @@ static void wm_placement_apply(struct wm_server *s,
 
 static void wm_rules_apply(struct wm_rules *r,
 	struct wm_view *v) { (void)r; (void)v; }
+static void wm_rules_release(struct wm_rules *r, struct wm_view *v,
+	const char *path) { (void)r; (void)v; (void)path; }
+static void wm_server_check_rules_reload(struct wm_server *s) { (void)s; }
 static bool wm_rules_should_dock(struct wm_rules *r,
 	struct wm_view *v) { (void)r; (void)v; return false; }
 static struct wm_slit_client *wm_slit_add_native_client(
@@ -1479,6 +1488,7 @@ init_test_server(void)
 
 	test_config.window_focus_alpha = 255;
 	test_config.window_unfocus_alpha = 200;
+	test_config.focus_new_windows = true;
 
 	test_server.config = &test_config;
 	test_server.toolbar = &test_toolbar;
@@ -4224,84 +4234,91 @@ test_deiconify_view_with_animation(void)
 
 /* ===== Focus protection tests ===== */
 
+/* v0 focused; v1 opens and asks for focus the way a new window does */
 static void
-test_focus_view_protection_refuse(void)
+setup_focus_new(int prot0, int prot1, bool focus_new_windows)
 {
 	init_test_server();
 	setup_mock_view(0, &test_workspace);
 	setup_mock_view(1, &test_workspace);
-
-	/* Focus v0 first (user-initiated) */
+	test_config.focus_new_windows = focus_new_windows;
 	test_server.focus_user_initiated = true;
 	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
 	assert(test_server.focused_view == &test_views[0]);
-
-	/* Set v0 with REFUSE protection */
-	test_views[0].focus_protection = WM_FOCUS_PROT_REFUSE;
-
-	/* Non-user-initiated focus to v1 should be BLOCKED (v0 has REFUSE) */
+	test_views[0].focus_protection = prot0;
+	test_views[1].focus_protection = prot1;
+	test_views[1].urgent = false;
 	test_server.focus_user_initiated = false;
-	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
-	assert(test_server.focused_view == &test_views[0]); /* unchanged */
-
-	/* User-initiated focus to v1 should succeed */
-	test_server.focus_user_initiated = true;
-	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
-	assert(test_server.focused_view == &test_views[1]);
-
-	wl_list_remove(&test_views[0].link);
-	wl_list_remove(&test_views[1].link);
-	printf("  PASS: focus_view_protection_refuse\n");
 }
 
 static void
-test_focus_view_protection_deny(void)
+teardown_focus_new(void)
 {
-	init_test_server();
-	setup_mock_view(0, &test_workspace);
-	setup_mock_view(1, &test_workspace);
+	test_config.focus_new_windows = true;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_views[1].link);
+}
 
-	/* Focus v0 first */
-	test_server.focus_user_initiated = true;
-	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
+static void
+test_focus_new_default(void)
+{
+	setup_focus_new(0, 0, true);
+	wm_view_focus_new(&test_views[1]);
+	assert(test_server.focused_view == &test_views[1]);
+	teardown_focus_new();
+
+	/* focusNewWindows: false */
+	setup_focus_new(0, 0, false);
+	wm_view_focus_new(&test_views[1]);
 	assert(test_server.focused_view == &test_views[0]);
-
-	/* Set v1 with DENY protection */
-	test_views[1].focus_protection = WM_FOCUS_PROT_DENY;
-
-	/* Non-user-initiated focus to v1 should be BLOCKED (target has DENY) */
-	test_server.focus_user_initiated = false;
-	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
-	assert(test_server.focused_view == &test_views[0]); /* unchanged */
-
-	wl_list_remove(&test_views[0].link);
-	wl_list_remove(&test_views[1].link);
-	printf("  PASS: focus_view_protection_deny\n");
+	teardown_focus_new();
+	printf("  PASS: focus_new_default\n");
 }
 
 static void
-test_focus_view_protection_gain_overrides_refuse(void)
+test_focus_new_refuse_gain(void)
 {
-	init_test_server();
-	setup_mock_view(0, &test_workspace);
-	setup_mock_view(1, &test_workspace);
+	/* Refuse: the new window doesn't take focus */
+	setup_focus_new(0, WM_FOCUS_PROT_REFUSE, true);
+	wm_view_focus_new(&test_views[1]);
+	assert(test_server.focused_view == &test_views[0]);
+	teardown_focus_new();
 
-	/* Focus v0 first */
+	/* Refuse on the focused window doesn't hold the focus (that's Lock) */
+	setup_focus_new(WM_FOCUS_PROT_REFUSE, 0, true);
+	wm_view_focus_new(&test_views[1]);
+	assert(test_server.focused_view == &test_views[1]);
+	teardown_focus_new();
+
+	/* Gain: takes focus even with focusNewWindows off */
+	setup_focus_new(0, WM_FOCUS_PROT_GAIN, false);
+	wm_view_focus_new(&test_views[1]);
+	assert(test_server.focused_view == &test_views[1]);
+	teardown_focus_new();
+	printf("  PASS: focus_new_refuse_gain\n");
+}
+
+static void
+test_focus_protection_lock_deny(void)
+{
+	/* A focused Lock window keeps the focus; the new one wants attention */
+	setup_focus_new(WM_FOCUS_PROT_LOCK, 0, true);
+	wm_view_focus_new(&test_views[1]);
+	assert(test_server.focused_view == &test_views[0]);
+	assert(test_views[1].urgent);
+	assert(!wm_view_request_activate(&test_views[1], true));
+	teardown_focus_new();
+
+	/* Deny doesn't stop a new window, only its later requests */
+	setup_focus_new(0, WM_FOCUS_PROT_DENY, true);
+	wm_view_focus_new(&test_views[1]);
+	assert(test_server.focused_view == &test_views[1]);
 	test_server.focus_user_initiated = true;
 	wm_focus_view(&test_views[0], test_views[0].xdg_toplevel->base->surface);
-
-	/* Set v0 with REFUSE, v1 with GAIN */
-	test_views[0].focus_protection = WM_FOCUS_PROT_REFUSE;
-	test_views[1].focus_protection = WM_FOCUS_PROT_GAIN;
-
-	/* Non-user focus to v1 should SUCCEED (v1 has GAIN overriding REFUSE) */
-	test_server.focus_user_initiated = false;
-	wm_focus_view(&test_views[1], test_views[1].xdg_toplevel->base->surface);
-	assert(test_server.focused_view == &test_views[1]);
-
-	wl_list_remove(&test_views[0].link);
-	wl_list_remove(&test_views[1].link);
-	printf("  PASS: focus_view_protection_gain_overrides_refuse\n");
+	assert(!wm_view_request_activate(&test_views[1], true));
+	assert(test_server.focused_view == &test_views[0]);
+	teardown_focus_new();
+	printf("  PASS: focus_protection_lock_deny\n");
 }
 
 static void
@@ -5380,9 +5397,9 @@ main(void)
 	test_deiconify_view_with_animation();
 
 	/* focus protection */
-	test_focus_view_protection_refuse();
-	test_focus_view_protection_deny();
-	test_focus_view_protection_gain_overrides_refuse();
+	test_focus_new_default();
+	test_focus_new_refuse_gain();
+	test_focus_protection_lock_deny();
 	test_focus_view_same_surface_noop();
 
 	/* cursor focus */

@@ -8,6 +8,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <signal.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <wlr/render/allocator.h>
@@ -92,6 +93,31 @@ handle_sigchld(int signal_number, void *data)
 	 * run as grandchildren adopted by init.
 	 */
 	return 0;
+}
+
+static void
+reload_rules(struct wm_server *server)
+{
+	wm_rules_forget_views(server);
+	wm_rules_finish(&server->rules);
+	wm_rules_init(&server->rules);
+	if (server->config && server->config->apps_file)
+		wm_rules_load(&server->rules, server->config->apps_file);
+}
+
+void
+wm_server_check_rules_reload(struct wm_server *server)
+{
+	if (!server->config || !server->config->apps_file)
+		return;
+	/* A removed file means no rules (mtime 0 stands for "none") */
+	struct stat st;
+	if (stat(server->config->apps_file, &st) != 0)
+		st.st_mtime = 0;
+	if (st.st_mtime != server->config->apps_file_mtime) {
+		server->config->apps_file_mtime = st.st_mtime;
+		reload_rules(server);
+	}
 }
 
 void
@@ -237,14 +263,8 @@ wm_server_reconfigure(struct wm_server *server)
 	}
 
 	/* 7. Reload rules (if apps file changed) */
-	if (apps_changed) {
-		wm_rules_finish(&server->rules);
-		wm_rules_init(&server->rules);
-		if (server->config && server->config->apps_file) {
-			wm_rules_load(&server->rules,
-				server->config->apps_file);
-		}
-	}
+	if (apps_changed)
+		reload_rules(server);
 
 	/* 8. Reapply XKB keyboard layout (always — from init file) */
 	wm_keyboard_apply_config(server);
@@ -541,6 +561,9 @@ wm_server_init(struct wm_server *server)
 	/* Load per-window rules (Fluxbox apps file) */
 	wm_rules_init(&server->rules);
 	if (server->config && server->config->apps_file) {
+		struct stat st;
+		if (stat(server->config->apps_file, &st) == 0)
+			server->config->apps_file_mtime = st.st_mtime;
 		if (wm_rules_load(&server->rules,
 				server->config->apps_file)) {
 			wlr_log(WLR_INFO, "loaded window rules from %s",

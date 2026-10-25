@@ -176,6 +176,7 @@ struct wm_view {
 	struct wlr_scene_tree *scene_tree;
 	uint32_t id;
 	int x, y;
+	bool rule_placed;
 	struct wlr_box saved_geometry;
 	bool maximized, fullscreen;
 	bool sticky;

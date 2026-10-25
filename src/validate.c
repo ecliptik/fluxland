@@ -5,7 +5,7 @@
  *
  * validate.c - Configuration validation
  *
- * Validates init, keys, and style config files offline, reporting
+ * Validates init, keys, style and apps files offline, reporting
  * errors and warnings without requiring compositor startup.
  */
 
@@ -1072,6 +1072,24 @@ validate_style_file(const char *path, struct config_result *result)
 
 /* ---- Top-level validation ---- */
 
+static void
+report_apps(void *data, const char *path, int line, bool fatal,
+	const char *msg)
+{
+	if (fatal)
+		config_result_add_error(data, path, line, "%s", msg);
+	else
+		config_result_add_warning(data, path, line, "%s", msg);
+}
+
+void
+validate_apps_file(const char *path, struct config_result *result)
+{
+	if (!wm_rules_check_file(path, report_apps, result))
+		config_result_add_warning(result, path, 0,
+			"cannot open apps file");
+}
+
 int
 validate_config(const char *config_dir)
 {
@@ -1108,6 +1126,13 @@ validate_config(const char *config_dir)
 	if (file_exists(path)) {
 		fprintf(stderr, "Checking %s ...\n", path);
 		validate_style_file(path, &result);
+	}
+
+	/* Validate apps file */
+	snprintf(path, sizeof(path), "%s/apps", config_dir);
+	if (file_exists(path)) {
+		fprintf(stderr, "Checking %s ...\n", path);
+		validate_apps_file(path, &result);
 	}
 
 	/* Print results */

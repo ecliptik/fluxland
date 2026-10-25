@@ -94,7 +94,9 @@ test('style', test_style)
 # --- test_rules: window rules parser tests ---
 test_rules = executable(
   'test_rules',
-  files('test_rules.c', '../src/rules.c', '../src/regex_guard.c'),
+  files('test_rules.c', '../src/rules.c', '../src/rules_parse.c',
+    '../src/fbcompat.c',
+    '../src/client_pattern.c', '../src/regex_guard.c'),
   include_directories: test_inc,
   dependencies: [server_protos, wayland_server, wlroots, xkbcommon, pangocairo, libdrm],
   install: false,
@@ -209,9 +211,11 @@ test('atspi_bridge', test_atspi_bridge)
 test_validate = executable(
   'test_validate',
   files('test_validate.c', '../src/validate.c', '../src/rcparser.c',
-    '../src/config.c'),
+    '../src/config.c', '../src/rules_parse.c', '../src/client_pattern.c',
+    '../src/fbcompat.c', '../src/regex_guard.c'),
   include_directories: test_inc,
-  dependencies: [],
+  dependencies: [wayland_server, wlroots, server_protos, pangocairo,
+    xkbcommon],
   install: false,
 )
 test('validate', test_validate)

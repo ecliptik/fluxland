@@ -1093,6 +1093,11 @@ static void wm_rules_finish(struct wm_rules *rules)
 	g_rules_finish_count++;
 }
 
+static void wm_rules_forget_views(struct wm_server *server)
+{
+	(void)server;
+}
+
 static int wm_rules_load(struct wm_rules *rules, const char *path)
 {
 	(void)rules; (void)path;

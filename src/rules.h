@@ -2,131 +2,119 @@
  * fluxland - A Fluxbox-inspired Wayland compositor
  * Copyright (c) 2025 fluxland contributors
  * SPDX-License-Identifier: MIT
- * rules.h - Per-window rules and auto-grouping (Fluxbox apps file)
+ * rules.h - Per-window rules (Fluxbox apps file)
  *
- * Parses the Fluxbox-compatible apps file to define per-window rules
- * (workspace, geometry, decoration preset, etc.) and auto-grouping rules
- * for tab grouping.
+ * Reads Fluxbox's apps file as Fluxbox's Remember does: [app] and
+ * [transient] entries with client patterns, [group] entries whose
+ * windows tab together, and [startup] commands.
  */
 
 #ifndef WM_RULES_H
 #define WM_RULES_H
 
-#include <regex.h>
 #include <stdbool.h>
 #include <wayland-server-core.h>
 
 #include "decoration.h"
+#include "fbcompat.h"
 
 struct wm_view;
 struct wm_server;
+struct wm_client_pattern;
 
-/* Focus protection flags (bitmask) */
-#define WM_FOCUS_PROT_GAIN   0x01
-#define WM_FOCUS_PROT_REFUSE 0x02
-#define WM_FOCUS_PROT_DENY   0x04
-#define WM_FOCUS_PROT_LOCK   (WM_FOCUS_PROT_REFUSE | WM_FOCUS_PROT_DENY)
-
-/* --- Match pattern (single property=regex clause) --- */
-
-struct wm_match_pattern {
-	char *property;    /* "class", "name", "title", "role", "transient" */
-	char *regex_str;   /* raw regex string for diagnostics / serialization */
-	regex_t compiled;  /* compiled POSIX regex */
-	bool negate;       /* true for != (negated match) */
+enum wm_rule_maximize {
+	WM_RULE_MAX_NONE,   /* [Maximized] {no} */
+	WM_RULE_MAX_FULL,   /* {yes} */
+	WM_RULE_MAX_HORZ,   /* {horz} */
+	WM_RULE_MAX_VERT,   /* {vert} */
 };
 
-/* --- Window rule (one [app] ... [end] block) --- */
+/*
+ * What to do with a window (Fluxbox's Application). Every [app] pattern
+ * of a [group] shares one.
+ */
+struct wm_rule_app {
+	bool transient;   /* [transient]: matches dialogs only */
+	bool grouped;     /* [group]: its windows tab together */
+	/* [group] (pattern): which open window of the group to join */
+	struct wm_client_pattern *group_pattern;
 
-struct wm_window_rule {
-	/* Match criteria (AND-combined) */
-	struct wm_match_pattern *patterns;
-	int pattern_count;
-
-	/* Actions — each has a "has_" flag to indicate whether it was set */
+	/* Settings; each has a "has_" flag saying whether it was given */
 	bool has_workspace;     int workspace;
-	bool has_dimensions;    int width, height;
-	bool has_position;      int pos_x, pos_y;
-	char *pos_anchor;       /* "Center", "UpperLeft", etc. (NULL = default) */
+	bool has_jump;          bool jump;
+	bool has_head;          int head;
+	bool has_dimensions;    struct wm_size_token width, height;
+	bool has_position;      struct wm_size_token pos_x, pos_y;
+	enum wm_corner pos_corner;
 	bool has_deco;          enum wm_decor_preset deco;
 	bool has_sticky;        bool sticky;
-	bool has_layer;         int layer;
+	bool has_layer;         enum wm_view_layer layer;
 	bool has_alpha;         int focus_alpha, unfocus_alpha;
-	bool has_maximized;     bool maximized;
+	bool has_maximized;     enum wm_rule_maximize maximized;
 	bool has_minimized;     bool minimized;
 	bool has_fullscreen;    bool fullscreen;
 	bool has_shaded;        bool shaded;
-	bool has_focus_new;     bool focus_new;
-	bool has_head;          int head;
 	bool has_focus_protection; int focus_protection;
+	bool has_focus_hidden;  bool focus_hidden;
+	bool has_icon_hidden;   bool icon_hidden;
 	bool has_ignore_size_hints; bool ignore_size_hints;
-	bool has_dock;          bool dock; /* route to slit instead of workspace */
+	bool has_close;         bool save_on_close;  /* [Close] */
+	bool has_dock;          bool dock; /* fluxland: into the slit */
 
+	struct wl_list link;    /* wm_rules.apps */
+};
+
+/* One [app] pattern and the settings it selects */
+struct wm_window_rule {
+	struct wm_client_pattern *pattern;
+	struct wm_rule_app *app;
+	int matches;            /* open windows it matched, for {N} */
 	struct wl_list link;    /* wm_rules.window_rules */
 };
 
-/* --- Group rule (one [group] ... [end] block) --- */
-
-struct wm_group_rule {
-	struct wm_match_pattern *patterns;  /* OR-combined: any match joins group */
-	int pattern_count;
-	bool workspace_scope;  /* if true, only group on same workspace */
-
-	struct wl_list link;   /* wm_rules.group_rules */
-};
-
-/* --- Top-level rules container --- */
-
 struct wm_rules {
-	struct wl_list window_rules;  /* wm_window_rule.link */
-	struct wl_list group_rules;   /* wm_group_rule.link */
+	struct wl_list window_rules;  /* wm_window_rule.link, file order */
+	struct wl_list apps;          /* wm_rule_app.link */
+	char **startup;               /* [startup] commands */
+	int startup_count;
+	/* Optional: told about each problem in the file (--check-config) */
+	void (*report)(void *data, const char *path, int line, bool fatal,
+		const char *msg);
+	void *report_data;
 };
 
-/*
- * Load rules from a Fluxbox-compatible apps file.
- * Returns true on success. On error, logs a warning and returns false.
- * The rules struct should be initialized with wm_rules_init() first.
- */
+/* rules_parse.c */
+void wm_rules_init(struct wm_rules *rules);
+void wm_rules_finish(struct wm_rules *rules);
+
+/* Read an apps file (adds to rules); false if it can't be read */
 bool wm_rules_load(struct wm_rules *rules, const char *path);
 
 /*
- * Initialize rules lists (call before wm_rules_load).
+ * The rule for a window: the one it matched before, or the first that
+ * matches it now (which then counts the window against its {N}).
  */
-void wm_rules_init(struct wm_rules *rules);
+struct wm_window_rule *wm_rules_match(struct wm_rules *rules,
+	struct wm_view *view);
 
-/*
- * Free all rules and reset lists.
- */
-void wm_rules_finish(struct wm_rules *rules);
-
-/*
- * Apply the first matching window rule to a newly-mapped view.
- * Sets workspace, geometry, decoration preset, state flags, etc.
- * Should be called after the view is mapped, before initial focus.
- */
+/* Apply the window's rule (at map, or when its app_id arrives late) */
 void wm_rules_apply(struct wm_rules *rules, struct wm_view *view);
 
-/*
- * Find an existing view that matches the same group rule as `view`.
- * Returns a view to tab with, or NULL if no group rule matches.
- * The caller should use wm_tab_group_add() to group the views.
- */
+/* The window has closed: uncount it; [Close] {yes} saves its state */
+void wm_rules_release(struct wm_rules *rules, struct wm_view *view,
+	const char *apps_path);
+
+/* Before rules are reloaded: windows forget the rules they matched */
+void wm_rules_forget_views(struct wm_server *server);
+
+/* A [group] window to tab a new window with, or NULL */
 struct wm_view *wm_rules_find_group(struct wm_rules *rules,
 	struct wm_view *view, struct wm_server *server);
 
-/*
- * Check whether a newly-mapped view should be routed to the slit (dockapp).
- * Returns true if a matching window rule has [Dock] {yes}.
- */
+/* Should this window go into the slit? ([Dock] {yes}) */
 bool wm_rules_should_dock(struct wm_rules *rules, struct wm_view *view);
 
-/*
- * Save the current window properties to the apps file.
- * Appends a new [app] (class=APP_ID) block with the view's current
- * workspace, position, dimensions, layer, alpha, sticky, maximized,
- * fullscreen, and decoration state.
- * Returns 0 on success, -1 on error.
- */
+/* Write the window's current state as an [app] entry (Remember) */
 int wm_rules_remember_window(struct wm_view *view, const char *apps_path);
 
 #endif /* WM_RULES_H */

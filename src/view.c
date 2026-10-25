@@ -389,14 +389,18 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 			offset_surface_tree(view);
 	}
 
-	/* Apply per-window rules (workspace, geometry, state flags) */
+	/* Apply per-window rules; like Fluxbox, re-read a changed apps file */
+	wm_server_check_rules_reload(view->server);
 	wm_rules_apply(&view->server->rules, view);
 
-	/* Auto-group by rules (tab grouping) */
+	/* [group]: tab with an open window of the same group */
 	struct wm_view *group_peer = wm_rules_find_group(
 		&view->server->rules, view, view->server);
-	if (group_peer && group_peer->tab_group) {
-		wm_tab_group_add(group_peer->tab_group, view);
+	if (group_peer) {
+		struct wm_tab_group *tg = group_peer->tab_group ?
+			group_peer->tab_group : wm_tab_group_create(group_peer);
+		if (tg)
+			wm_tab_group_add(tg, view);
 	}
 
 	/* Auto-tab placement: group new windows with matching app_id */
@@ -437,6 +441,10 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 	 * Then the states that fill an output, on the output it was placed
 	 * on: from window rules, or asked for by the client before mapping.
 	 */
+	if (view->refuse_maximize)
+		want_maximized = false;
+	if (view->refuse_fullscreen)
+		want_fullscreen = false;
 	if ((want_maximized || view->pending_maximize) && !view->maximized)
 		wm_view_toggle_maximize(view);
 	if ((want_fullscreen || view->pending_fullscreen) && !view->fullscreen)
@@ -444,11 +452,19 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 	view->pending_maximize = view->pending_fullscreen = false;
 
 	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
+	/* [Maximized] {horz|vert} (these need the window shown) */
+	if (view->pending_maximize_horiz && !view->maximized_horiz)
+		wm_view_maximize_horiz(view);
+	if (view->pending_maximize_vert && !view->maximized_vert)
+		wm_view_maximize_vert(view);
+	view->pending_maximize_horiz = view->pending_maximize_vert = false;
+
 	if (view->pending_minimize) {
 		view->pending_minimize = false;
 		wm_view_minimize(view);
 	} else if (!view->no_focus) {
-		wm_focus_view(view, wm_view_surface(view));
+		/* focusNewWindows, [FocusNewWindow], [FocusProtection] */
+		wm_view_focus_new(view);
 	}
 
 	/* Broadcast window open event via IPC */
@@ -500,6 +516,9 @@ void
 wm_view_unmap_common(struct wm_view *view)
 {
 	view->mapped = false;
+	/* Uncount it for {N}; [Close] {yes} saves its state */
+	wm_rules_release(&view->server->rules, view,
+		view->server->config ? view->server->config->apps_file : NULL);
 	if (view->server->focus_cycle.restore_minimized == view)
 		view->server->focus_cycle.restore_minimized = NULL;
 

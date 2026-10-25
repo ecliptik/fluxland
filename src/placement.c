@@ -393,7 +393,7 @@ void
 wm_placement_apply(struct wm_server *server, struct wm_view *view)
 {
 	/* Skip if view already has a position set by rules */
-	if (view->x != 0 || view->y != 0)
+	if (view->rule_placed || view->x != 0 || view->y != 0)
 		return;
 
 	/* Dialogs open centered over the window they belong to */

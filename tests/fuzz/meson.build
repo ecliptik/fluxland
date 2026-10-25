@@ -77,8 +77,9 @@ if have_fuzzer
   # --- fuzz_rules: window rules/apps file parser fuzzer ---
   executable(
     'fuzz_rules',
-    files('fuzz_rules.c', '../../src/rules.c',
-      '../../src/regex_guard.c', 'view_stubs.c'),
+    files('fuzz_rules.c', '../../src/rules_parse.c', '../../src/fbcompat.c',
+      '../../src/client_pattern.c', '../../src/regex_guard.c',
+      'view_stubs.c'),
     include_directories: fuzz_inc,
     c_args: fuzz_args,
     link_args: fuzz_link_args,

@@ -16,6 +16,7 @@
 #include <wlr/util/box.h>
 
 #include "server.h"
+#include "view_layer.h"
 struct wm_workspace;
 struct wm_tab_group;
 struct wm_decoration;
@@ -23,14 +24,6 @@ struct wm_animation;
 struct wlr_foreign_toplevel_handle_v1;
 struct wlr_ext_foreign_toplevel_handle_v1;
 
-/* Fluxbox-inspired window layers (bottom to top) */
-enum wm_view_layer {
-	WM_LAYER_DESKTOP = 0,
-	WM_LAYER_BELOW,
-	WM_LAYER_NORMAL,
-	WM_LAYER_ABOVE,
-	WM_VIEW_LAYER_COUNT, /* sentinel */
-};
 
 struct wlr_xwayland_surface;
 struct wm_view;
@@ -103,6 +96,13 @@ struct wm_view {
 	bool no_focus;
 	/* Set by window rules before the window is shown; realized at map */
 	bool pending_maximize, pending_fullscreen, pending_minimize;
+	bool pending_maximize_horiz, pending_maximize_vert;
+	/* [Maximized] {no} / [Fullscreen] {no}: refuse the client's request */
+	bool refuse_maximize, refuse_fullscreen;
+	/* [Position] placed the window: no automatic placement */
+	bool rule_placed;
+	/* The apps-file entry this window matched (see rules.c) */
+	struct wm_window_rule *rule;
 	/* xdg-dialog: a modal dialog takes focus from its parent */
 	bool modal;
 	/*
@@ -262,6 +262,14 @@ void wm_view_present(struct wm_view *view);
  * blocked by [FocusProtection] Deny/Lock). Returns true if presented.
  */
 bool wm_view_request_activate(struct wm_view *view, bool allowed);
+
+/*
+ * Focus a window that has just opened, if focusNewWindows and its
+ * [FocusNewWindow]/[FocusProtection] say so and the focused window
+ * doesn't hold on to the focus (Lock, fullscreen); otherwise it opens
+ * lowered and wanting attention.
+ */
+void wm_view_focus_new(struct wm_view *view);
 void wm_focus_prev_view(struct wm_server *server);
 
 struct wm_window_list_spec;

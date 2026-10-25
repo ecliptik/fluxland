@@ -1,226 +1,374 @@
-.TH FLUXLAND-APPS 5 "2026-03-03" "fluxland 1.1.0" "File Formats Manual"
+.TH FLUXLAND-APPS 5 "2026-10-24" "fluxland 1.1.0" "File Formats Manual"
 .SH NAME
-fluxland-apps \- per-window rules configuration for fluxland
+fluxland-apps \- per-window settings (the Fluxbox apps file)
 .SH DESCRIPTION
-The apps file defines per-window rules that are automatically applied
-when windows are mapped.
-The format is compatible with the Fluxbox apps file format.
+The apps file says where windows open and how they look: their
+workspace, head, size and position, layer, decorations and state.
+It is read the way Fluxbox reads its own
+.I ~/.fluxbox/apps
+(Fluxbox's "Remember" feature), so a Fluxbox apps file works unchanged.
 .PP
-By default, the file is located at
+The file is
 .I ~/.config/fluxland/apps
-but the path can be overridden in the init file via
-.BR session.appsFile .
-.PP
-The file contains two types of blocks:
-.B [app]
-blocks for window rules, and
-.B [group]
-blocks for automatic tab grouping.
+(or
+.I ~/.fluxbox/apps
+when fluxland uses a Fluxbox configuration directory); the init file's
+.B session.appsFile
+names another.
+Like Fluxbox, fluxland reads the file again when it has changed and a
+window opens, so edits apply to the next window without a reconfigure.
 .SH SYNTAX
 Blank lines and lines beginning with
 .B #
 or
 .B !
 are ignored.
-.SS Window Rule Blocks
+.SS Entries
 .PP
 .RS 4
 .nf
-[app] (\fIproperty\fP=\fIpattern\fP) [(\fIproperty\fP=\fIpattern\fP) ...]
+[app] (\fIpattern\fP) [(\fIpattern\fP) ...] [{\fIN\fP}]
   [\fISetting\fP] {\fIvalue\fP}
   ...
 [end]
 .fi
 .RE
 .PP
-Multiple match patterns on the
+An
 .B [app]
-line are AND-combined: all patterns must match for the rule to apply.
-The first matching rule wins; subsequent rules are not evaluated.
-.SS Group Blocks
+entry applies to the windows its client pattern matches (see
+.BR "CLIENT PATTERNS" ).
+Entries are tried from the top; a window takes the first that matches
+it and keeps it until it closes.
+.B [app]
+entries match only main windows;
+.B [transient]
+entries, written the same way, match only dialogs (windows with a
+parent).
+.PP
+.BI { N }
+after the pattern limits the entry to
+.I N
+open windows at a time; later windows go on to the next entries.
+.SS Groups
 .PP
 .RS 4
 .nf
-[group] [(workspace)]
-  [app] (\fIproperty\fP=\fIpattern\fP)
-  [app] (\fIproperty\fP=\fIpattern\fP)
+[group] [(\fIpattern\fP)]
+  [app] (\fIpattern\fP)
+  [app] (\fIpattern\fP)
+  ...
+  [\fISetting\fP] {\fIvalue\fP}
   ...
 [end]
 .fi
 .RE
 .PP
-Group blocks define automatic tab grouping.
-Windows matching any
+A window matching any of the group's
 .B [app]
-pattern within a group block are grouped together into tabs.
-The optional
-.B (workspace)
-modifier restricts grouping to windows on the same workspace.
-.SH MATCH PROPERTIES
-Patterns use POSIX extended regular expressions.
-.TP
-.B class
-Matches the XDG toplevel
-.IR app_id .
-.TP
-.B name
-Alias for
-.BR class .
-.TP
-.B title
-Matches the window title.
-.TP
-.B role
-Matches an X11 window's WM_WINDOW_ROLE.
-.TP
-.B tag
-Matches the tag a Wayland application gives a window
-(xdg-toplevel-tag), such as
-.IR main-window ;
-a fluxland extension.
-.TP
-.B transient
-Matches
-.B yes
-or
-.B no
-based on whether the window is a transient (child) window.
-.PP
-Negated matching is supported with
-.BR != :
+lines opens as a tab of a window of the same group that is already open.
+The settings after the
+.B [app]
+lines apply to every window of the group.
+The optional pattern on the
+.B [group]
+line picks which open window to join: with
+.BR (workspace) ,
+only one on the current workspace.
+.SS Startup commands
 .PP
 .RS 4
 .nf
-[app] (class!=firefox)
+[startup] [(screen=\fIN\fP)] {\fIcommand\fP}
 .fi
 .RE
+.PP
+Runs
+.I command
+when fluxland starts.
+.SH CLIENT PATTERNS
+A pattern is one or more terms in parentheses, all of which must match.
+Each term is
+.BI ( property = regex )
+or
+.BI ( property != regex ),
+where
+.I regex
+is a POSIX extended regular expression that must match the whole value
+(it is anchored, as in Fluxbox).
+A term with no property, such as
+.BR (xterm) ,
+matches the name.
+.TP
+.B name
+An X11 window's WM_CLASS instance; for a Wayland window, its app_id.
+.TP
+.B class
+An X11 window's WM_CLASS class; for a Wayland window, its app_id.
+.TP
+.B title
+The window title.
+.TP
+.B role
+An X11 window's WM_WINDOW_ROLE.
+.TP
+.B tag
+The tag a Wayland application gives a window (xdg-toplevel-tag), such as
+.IR main-window ;
+a fluxland extension.
+.TP
+.BR transient ", " maximized ", " minimized ", " fullscreen ", " shaded ", " stuck ", " urgent
+.B yes
+or
+.BR no .
+.TP
+.BR workspace ", " workspacename ", " head ", " layer
+Where the window is.
+.B (workspace=[current])
+(or just
+.BR (workspace) )
+matches windows on the current workspace.
+.PP
+Patterns are described in full in
+.BR fluxland-keys (5).
 .SH SETTINGS
-Settings are placed inside
-.B [app]
-blocks, one per line.
-Each setting has the form
-.BI [ Name "] {" value }
-with an optional modifier in parentheses.
+Settings have the form
+.BI [ Name "] {" value },
+some with an option in parentheses.
+Values are not case sensitive.
 .TP
 .BI [Workspace] " {" N }
-Open the window on workspace
+Open on workspace
 .I N
-(0-based).
+(counting from 0).
 .TP
-.BI [Dimensions] " {" "W H" }
-Set initial window size to
-.I W
-by
-.I H
-pixels.
-.TP
-.BI [Position] " (" anchor ") {" "X Y" }
-Set initial position.
-The optional
-.I anchor
-is one of
-.BR Center ,
-.BR UpperLeft ,
-.BR UpperRight ,
-.BR LowerLeft ,
-or
-.BR LowerRight .
-The coordinates are relative to the anchor point.
-.TP
-.BI [Deco] " {" preset }
-Set decoration preset:
-.BR NORMAL " (full decorations),"
-.BR NONE " (no decorations),"
-.BR BORDER " (border only),"
-.BR TAB " (tab only),"
-.BR TINY " (minimal),"
-or
-.BR TOOL " (tool window)."
-.TP
-.BI [Sticky] " {" yes | no }
-Visible on all workspaces.
-.TP
-.BI [Layer] " {" N }
-Stacking layer number.
-.TP
-.BI [Alpha] " {" "focus [unfocus]" }
-Window opacity (0\-255).
-If only one value is given, it is used for both focused and unfocused states.
-.TP
-.BI [Maximized] " {" yes | no }
-Start maximized.
-.TP
-.BI [Minimized] " {" yes | no }
-Start minimized.
-.TP
-.BI [Fullscreen] " {" yes | no }
-Start fullscreen.
-.TP
-.BI [Shaded] " {" yes | no }
-Start shaded (title bar only).
-.TP
-.BI [FocusNewWindow] " {" yes | no }
-Whether the window receives focus when opened.
+.BI [Jump] " {" yes | no }
+With
+.BR [Workspace] ,
+also switch to that workspace.
 .TP
 .BI [Head] " {" N }
-Open on monitor number
-.IR N .
+Open on head (monitor)
+.IR N ,
+counting from 1.
+Dimensions and positions are then on that head.
+.TP
+.BI [Dimensions] " {" "W H" }
+The window's size, decorations included.
+Each value is in pixels, or a percentage of the head's usable area
+(without the toolbar, slit and panels), as in
+.BR "{50% 100%}" .
+.TP
+.BI [Position] " [(" corner ")] {" "X Y" }
+Where the window opens: offsets in pixels or percent from a
+.I corner
+of the head's usable area.
+The corner is
+.B TopLeft
+(the default; also
+.BR UpperLeft ),
+.B Top
+(also
+.BR TopCenter ),
+.BR TopRight ,
+.BR Left ,
+.B Center
+(also
+.BR WinCenter ),
+.BR Right ,
+.BR BottomLeft ,
+.BR Bottom ,
+or
+.BR BottomRight ,
+and the Fluxbox spellings
+.BR LeftTop ,
+.BR Upper ,
+.BR LowerLeft ,
+.BR Lower ,
+.BR LowerRight
+and so on.
+Offsets from a right or bottom corner count inwards:
+.B (BottomRight) {10 10}
+leaves 10 pixels to the edges.
+.TP
+.BI [Layer] " {" layer }
+A Fluxbox layer number or name:
+.B 0
+.BR Menu ,
+.B 2
+.BR AboveDock ,
+.B 4
+.BR Dock ,
+.B 6
+.BR Top ,
+.B 8
+.BR Normal ,
+.B 10
+.BR Bottom ,
+.B 12
+.BR Desktop .
+fluxland has four window layers: numbers below 8 (and
+.BR Above )
+are its top layer,
+.B 10
+(and
+.BR Below )
+its bottom one.
+.TP
+.BI [Deco] " {" decoration }
+.B NORMAL
+(full decorations),
+.B NONE
+(none),
+.B BORDER
+(border only),
+.B TAB
+(titlebar with tabs, no handle),
+.B TINY
+(titlebar with fewer buttons),
+.B TOOL
+(titlebar only), or a Fluxbox decoration bitmask such as
+.BR 0x5 .
+.TP
+.BI [Alpha] " {" "focused [unfocused]" }
+Opacity, 0\-255; one value is used for both.
+.TP
+.BI [Sticky] " {" yes | no }
+On all workspaces.
+.TP
+.BI [Shaded] " {" yes | no }
+Rolled up to its titlebar.
+.TP
+.BI [Minimized] " {" yes | no }
+Open iconified.
+.TP
+.BI [Maximized] " {" yes | horz | vert | no }
+Open maximized, or maximized in one direction.
+.B no
+refuses the application's own request to open maximized.
+.TP
+.BI [Fullscreen] " {" yes | no }
+Open fullscreen;
+.B no
+refuses the application's request.
+.TP
+.BI [FocusHidden] " {" yes | no }
+Leave the window out of window cycling (NextWindow).
+.TP
+.BI [IconHidden] " {" yes | no }
+Leave the window out of the iconbar.
+.TP
+.BI [Hidden] " {" yes | no }
+Both of the above.
+.TP
+.BI [FocusNewWindow] " {" yes | no }
+Whether the window takes the focus when it opens, overriding
+.BR session.screen0.focusNewWindows .
+.TP
+.BI [FocusProtection] " {" "flags" }
+A comma-separated list:
+.B Gain
+(take the focus when opening),
+.B Refuse
+(don't),
+.B Deny
+(never take the focus by itself, for example when an application
+asks to be activated),
+.B Lock
+(while this window has the focus, no other window takes it by itself),
+or
+.BR None .
+.TP
+.BI [Close] " {" yes | no }
+When the window closes, save its state back into its entry.
+.TP
+.BI [IgnoreSizeHints] " {" yes | no }
+Accepted for compatibility.
+.TP
+.BI [Dock] " {" yes | no }
+Put the window into the slit (fluxland extension).
+.TP
+.B [Tab]
+Accepted for compatibility; like Fluxbox, it has no effect.
+.SH REMEMBER
+The window menu's
+.B Remember
+item and the
+.B Remember
+command write the window's current state as an entry of the apps file,
+replacing the window's previous entry and keeping the rest of the file.
 .SH EXAMPLES
-Open Firefox on workspace 2:
+Open Firefox on workspace 2 and go there:
 .PP
 .RS 4
 .nf
 [app] (class=firefox)
-  [Workspace] {2}
+  [Workspace] {1}
+  [Jump] {yes}
 [end]
 .fi
 .RE
 .PP
-Make mpv borderless and fullscreen:
+A terminal across the top half of the second monitor:
 .PP
 .RS 4
 .nf
-[app] (class=mpv)
+[app] (name=xterm)
+  [Head] {2}
+  [Dimensions] {100% 50%}
+  [Position] (Top) {0 0}
+[end]
+.fi
+.RE
+.PP
+Center every dialog:
+.PP
+.RS 4
+.nf
+[transient] (class=.*)
+  [Position] (Center) {0 0}
+[end]
+.fi
+.RE
+.PP
+Only the first mpv window, borderless and fullscreen:
+.PP
+.RS 4
+.nf
+[app] (class=mpv) {1}
   [Deco] {NONE}
   [Fullscreen] {yes}
 [end]
 .fi
 .RE
 .PP
-Center new dialog windows:
-.PP
-.RS 4
-.nf
-[app] (transient=yes)
-  [Position] (Center) {0 0}
-[end]
-.fi
-.RE
-.PP
-Set terminal emulator opacity:
-.PP
-.RS 4
-.nf
-[app] (class=foot)
-  [Alpha] {230 200}
-[end]
-.fi
-.RE
-.PP
-Auto-group terminal emulators into tabs (same workspace only):
+Terminals open as tabs of a terminal on the current workspace, below
+other windows:
 .PP
 .RS 4
 .nf
 [group] (workspace)
   [app] (class=foot)
   [app] (class=Alacritty)
-  [app] (class=kitty)
+  [Layer] {Bottom}
 [end]
 .fi
 .RE
+.SH COMPATIBILITY
+fluxland 1.x read this file differently.
+Patterns now match whole values: write
+.B (class=.*term.*)
+for "contains term".
+.B [app]
+entries no longer match dialogs; use
+.BR [transient] .
+.B [Layer]
+numbers are Fluxbox's (8 is Normal), and
+.B [Dimensions]
+include the decorations.
 .SH SEE ALSO
 .BR fluxland (1),
+.BR fluxland-init (5),
 .BR fluxland-keys (5),
-.BR fluxland-style (5),
 .BR fluxland-menu (5),
 .BR regex (7)

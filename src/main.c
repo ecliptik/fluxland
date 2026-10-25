@@ -159,6 +159,10 @@ main(int argc, char *argv[])
 	wm_autostart_run(server.config ? server.config->config_dir : NULL,
 		server.socket);
 
+	/* The apps file's [startup] commands */
+	for (int i = 0; i < server.rules.startup_count; i++)
+		wm_autostart_run_cmd(server.rules.startup[i], server.socket);
+
 	/* Run root command from config if set */
 	if (server.config && server.config->root_command) {
 		wm_autostart_run_cmd(server.config->root_command,

@@ -51,6 +51,16 @@ void config_result_print(const struct config_result *result);
 void validate_init_file(const char *path, struct config_result *result);
 void validate_keys_file(const char *path, struct config_result *result);
 void validate_style_file(const char *path, struct config_result *result);
+void validate_apps_file(const char *path, struct config_result *result);
+
+/*
+ * Read an apps file only to report its problems (rules_parse.c); returns
+ * false if it can't be read.
+ */
+bool wm_rules_check_file(const char *path,
+	void (*report)(void *data, const char *path, int line, bool fatal,
+		const char *msg),
+	void *data);
 
 /* Top-level: validate all config files in config_dir. Returns 0 if valid. */
 int validate_config(const char *config_dir);

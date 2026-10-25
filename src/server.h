@@ -477,6 +477,9 @@ void wm_server_run(struct wm_server *server);
 /* Reload all configuration (style, menus, rules, keys, XKB, toolbar) */
 void wm_server_reconfigure(struct wm_server *server);
 
+/* Re-read the apps file if it changed (Fluxbox does at each new window) */
+void wm_server_check_rules_reload(struct wm_server *server);
+
 /* Tear down and free resources */
 void wm_server_destroy(struct wm_server *server);
 

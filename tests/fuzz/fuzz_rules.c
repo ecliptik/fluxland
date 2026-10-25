@@ -8,12 +8,7 @@
  * The apps file parser processes per-window rules including regex
  * patterns, which makes it a valuable fuzz target.
  *
- * Build with: clang -fsanitize=fuzzer,address -o fuzz_rules \
- *             fuzz_rules.c ../../src/rules.c \
- *             -I../../include -I../../src \
- *             $(pkg-config --cflags --libs wayland-server wlroots-0.18)
- *
- * Or use the meson build system (if compiler supports -fsanitize=fuzzer).
+ * Built by meson when the compiler supports -fsanitize=fuzzer (Clang).
  */
 
 #define _GNU_SOURCE
@@ -30,29 +25,12 @@
 #include <string.h>
 #include <unistd.h>
 
-/*
- * Stubs for compositor functions referenced in rules.c but not
- * exercised by the parser-only fuzz target.
- */
+/* What client_pattern.c's matching (linked, not exercised) refers to */
 struct wm_view *wm_view_parent(struct wm_view *v) { (void)v; return NULL; }
-void wm_view_set_sticky(struct wm_view *v, bool s)
-	{ (void)v; (void)s; }
 void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b)
 	{ (void)v; if (b) { b->x = 0; b->y = 0; b->width = 0; b->height = 0; } }
-void wm_view_set_layer(struct wm_view *v, enum wm_view_layer l)
-	{ (void)v; (void)l; }
-void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m)
-	{ (void)v; (void)m; }
-void wm_view_move_to_workspace(struct wm_view *v, struct wm_workspace *w)
-	{ (void)v; (void)w; }
-struct wm_workspace *wm_workspace_get(struct wm_server *s, int i)
-	{ (void)s; (void)i; return NULL; }
-void wm_decoration_set_preset(struct wm_decoration *d,
-	enum wm_decor_preset p, struct wm_style *s)
-	{ (void)d; (void)p; (void)s; }
-void wm_decoration_set_shaded(struct wm_decoration *d,
-	bool s, struct wm_style *st)
-	{ (void)d; (void)s; (void)st; }
+struct wm_workspace *wm_workspace_get_active(struct wm_server *s)
+	{ (void)s; return NULL; }
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

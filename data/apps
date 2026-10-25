@@ -1,43 +1,43 @@
-# fluxland per-window rules
-# Format: [app] (property=pattern) ... settings ... [end]
-# See fluxbox-apps(5) for format documentation.
+# fluxland per-window settings: the Fluxbox apps file
+# Format: [app] (pattern) ... settings ... [end]; see fluxland-apps(5).
+# A Fluxbox ~/.fluxbox/apps works as it is.
 #
-# Properties (Wayland mapping):
-#   class  -> xdg_toplevel app_id
-#   name   -> xdg_toplevel app_id
-#   title  -> xdg_toplevel title
+# Patterns (anchored POSIX extended regexes, all terms must match):
+#   (name=...)   X11 WM_CLASS instance; Wayland app_id
+#   (class=...)  X11 WM_CLASS class; Wayland app_id
+#   (title=...)  window title; also role, tag, transient, workspace...
+#   (xterm)      a bare word matches the name
+#   (class!=firefox) negates; {N} after the pattern: at most N windows
 #
-# Patterns use POSIX extended regular expressions.
-# Multiple patterns on one [app] line are AND-combined.
-# Use != for negated matching: (class!=firefox)
+# [app] entries match main windows, [transient] entries dialogs.
+# The first entry that matches a window wins.
 #
-# Available settings:
+# Settings:
 #   [Workspace]      {N}          - open on workspace N (0-based)
-#   [Dimensions]     {W H}        - initial size in pixels
-#   [Position]       (Anchor) {X Y} - initial position
-#                     Anchors: Center, UpperLeft, UpperRight,
-#                              LowerLeft, LowerRight
+#   [Jump]           {yes|no}     - and switch to it
+#   [Head]           {N}          - open on monitor N (1-based)
+#   [Dimensions]     {W H}        - size with decorations, pixels or % of the head
+#   [Position]       (Corner) {X Y} - from a corner: TopLeft, Top, TopRight,
+#                                   Left, Center, Right, BottomLeft, Bottom,
+#                                   BottomRight; pixels or %
 #   [Deco]           {preset}     - NORMAL, NONE, BORDER, TAB, TINY, TOOL
-#   [Sticky]         {yes|no}     - visible on all workspaces
-#   [Layer]          {N}          - stacking layer
+#   [Layer]          {name|N}     - Top (6), Normal (8), Bottom (10), Desktop (12)
 #   [Alpha]          {focus unfocus} - transparency (0-255)
-#   [Maximized]      {yes|no}     - start maximized
-#   [Minimized]      {yes|no}     - start minimized
-#   [Fullscreen]     {yes|no}     - start fullscreen
-#   [Shaded]         {yes|no}     - start shaded (title bar only)
+#   [Sticky] [Shaded] [Minimized] [Fullscreen] {yes|no}
+#   [Maximized]      {yes|horz|vert|no}
+#   [Hidden] [FocusHidden] [IconHidden] {yes|no} - skip iconbar/cycling
 #   [FocusNewWindow] {yes|no}     - focus when opened
-#   [Head]           {N}          - open on monitor N
+#   [FocusProtection] {Gain|Refuse|Deny|Lock|None, ...}
+#   [Close]          {yes|no}     - save the window's state when it closes
 #
-# Auto-grouping (tab grouping):
-#   [group] (workspace)   <- optional: only group on same workspace
+# Tab groups:
+#   [group] (workspace)   <- optional: join a window on this workspace
 #     [app] (class=pattern1)
 #     [app] (class=pattern2)
+#     [Layer] {Bottom}    <- optional settings for the whole group
 #   [end]
 #
-# Notes:
-#   - First matching rule wins (rules are evaluated top to bottom).
-#   - "class" matches the Wayland app_id (e.g. "firefox", "foot").
-#   - Workspace is 0-based in rules (workspace 0 = first workspace).
+# [startup] {command} runs a command when fluxland starts.
 
 # -------------------------------------------------------------------
 # Web browsers: open on workspace 2, maximized

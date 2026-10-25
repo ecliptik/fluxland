@@ -504,7 +504,8 @@ wm_client_pattern_property(struct wm_server *server, struct wm_view *view,
 		break;
 	case WM_PROP_MINIMIZED:
 		snprintf(buf, len, "%s",
-			yes_no(!view->scene_tree->node.enabled));
+			yes_no(view->scene_tree &&
+				!view->scene_tree->node.enabled));
 		break;
 	case WM_PROP_FULLSCREEN:
 		snprintf(buf, len, "%s", yes_no(view->fullscreen));
