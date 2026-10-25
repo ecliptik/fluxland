@@ -138,6 +138,7 @@ struct wm_view {
 
 	/* Focus protection (bitmask of WM_FOCUS_PROT_* flags, 0 = none) */
 	int focus_protection;
+	int64_t last_key_ms;    /* its last key typed, for noFocusWhileTypingDelay */
 
 	/* Ignore size hints from xdg_toplevel min/max constraints */
 	bool ignore_size_hints;
@@ -271,6 +272,10 @@ bool wm_view_request_activate(struct wm_view *view, bool allowed);
  * lowered and wanting attention.
  */
 void wm_view_focus_new(struct wm_view *view);
+
+/* A key the focused window got (an xkb keysym), for
+ * noFocusWhileTypingDelay */
+void wm_view_note_key(struct wm_view *view, uint32_t sym);
 
 /*
  * GoToWindow: bring forward the num-th window of a window list (from the

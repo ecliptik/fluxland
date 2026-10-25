@@ -450,6 +450,8 @@ struct wm_config {
 	bool full_maximization;
 	bool auto_tab_placement;
 	bool focus_new_windows;
+	bool focus_same_head;
+	int no_focus_while_typing_ms;
 	char *apps_file;
 };
 
@@ -657,6 +659,7 @@ struct wm_view {
 	int unfocus_alpha;
 	struct wm_animation *animation;
 	int focus_protection;
+	int64_t last_key_ms;
 	bool ignore_size_hints;
 	bool docked;
 	bool focus_hidden;
@@ -1265,6 +1268,11 @@ wlr_layer_surface_v1_try_from_wlr_surface(struct wlr_surface *surface)
 }
 
 /* output.c stand-ins: the output is whatever output_at returns */
+static struct wm_output *g_output_at_cursor;
+static struct wm_output *
+wm_output_from_wlr(struct wm_server *server, struct wlr_output *o)
+	{ (void)server; (void)o; return g_output_at_cursor; }
+
 static struct wm_output *
 wm_output_for_view(struct wm_view *view)
 {

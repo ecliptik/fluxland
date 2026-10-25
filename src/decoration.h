@@ -183,6 +183,10 @@ enum wm_decor_region wm_decoration_region_at(
 int wm_decoration_tab_at(struct wm_decoration *decoration,
 	double x, double y);
 
+/* The size of one of its tabs (in the titlebar's label or outside), as
+ * StartTabbing drags it; false when it has none */
+bool wm_decoration_tab_size(struct wm_decoration *decoration, int *w, int *h);
+
 /* Draw a button pressed (window.button.pressed), or none (NULL) */
 void wm_decoration_set_pressed(struct wm_decoration *decoration,
 	struct wm_decor_button *button, struct wm_style *style);

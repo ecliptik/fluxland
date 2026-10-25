@@ -60,6 +60,74 @@
 #include "view_geometry.h"
 #include "workspace.h"
 
+/*
+ * Workspace warping as Fluxbox's moveResize: a window dragged within the
+ * edge snap threshold of the layout's edge, moving towards it, goes to
+ * the workspace offset that way (wrapping), the pointer to the other
+ * edge.  An opaque move takes the window along; a wireframe one only
+ * changes the workspace and sends it there when it ends.
+ */
+static bool
+warp_workspace(struct wm_server *server, struct wm_view *view)
+{
+	static struct wm_view *last_view;
+	static double last_x, last_y;
+	double cx = server->cursor->x, cy = server->cursor->y;
+	double moved_x = last_view == view ? cx - last_x : 0;
+	double moved_y = last_view == view ? cy - last_y : 0;
+	last_view = view;
+	last_x = cx;
+	last_y = cy;
+
+	struct wm_config *cfg = server->config;
+	int count = server->workspace_count;
+	if (!cfg || !cfg->workspace_warping || count < 2 ||
+	    (moved_x == 0 && moved_y == 0))
+		return false;
+	struct wlr_box box;
+	wlr_output_layout_get_box(server->output_layout, NULL, &box);
+	if (wlr_box_empty(&box))
+		return false;
+	struct wm_workspace *ws = wm_workspace_get_active(server);
+	if (!ws)
+		return false;
+
+	int pad = cfg->edge_snap_threshold;
+	int cur = ws->index, id = cur;
+	double to_x = cx, to_y = cy;
+	if (moved_x != 0 && cfg->workspace_warping_horizontal) {
+		int off = cfg->workspace_warping_horizontal_offset;
+		if (cx >= box.x + box.width - pad - 1 && moved_x > 0) {
+			id = ((cur + off) % count + count) % count;
+			to_x = box.x;
+		} else if (cx <= box.x + pad && moved_x < 0) {
+			id = ((cur - off) % count + count) % count;
+			to_x = box.x + box.width - 1;
+		}
+	}
+	if (moved_y != 0 && cfg->workspace_warping_vertical) {
+		int off = cfg->workspace_warping_vertical_offset;
+		if (cy >= box.y + box.height - pad - 1 && moved_y > 0) {
+			id = ((cur + off) % count + count) % count;
+			to_y = box.y;
+		} else if (cy <= box.y + pad && moved_y < 0) {
+			id = ((cur - off) % count + count) % count;
+			to_y = box.y + box.height - 1;
+		}
+	}
+	if (id == cur)
+		return false;
+
+	wlr_cursor_warp(server->cursor, NULL, to_x, to_y);
+	last_x = server->cursor->x;
+	last_y = server->cursor->y;
+	if (cfg->opaque_move)
+		wm_view_take_to_workspace(server, view, id);
+	else
+		wm_workspace_switch(server, id);
+	return true;
+}
+
 static void
 process_cursor_move(struct wm_server *server, uint32_t time)
 {
@@ -74,48 +142,11 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 		server->grab_geobox.y;
 	struct wm_view *view = server->grabbed_view;
 
-	/*
-	 * Workspace edge warping: when dragging a window and the
-	 * cursor hits the left or right edge of the output, switch
-	 * to the prev/next workspace and teleport the cursor to
-	 * the opposite edge.
-	 */
-	if (server->config && server->config->workspace_warping) {
-		struct wlr_output *output =
-			wlr_output_layout_output_at(server->output_layout,
-				server->cursor->x, server->cursor->y);
-		if (output) {
-			struct wlr_box obox;
-			wlr_output_layout_get_box(server->output_layout,
-				output, &obox);
-			int cx = (int)server->cursor->x;
-			int edge_margin = 1;
-
-			if (cx <= obox.x + edge_margin) {
-				/* Left edge: switch to previous workspace */
-				wm_workspace_switch_prev(server);
-				/* Warp cursor to right side */
-				double warp_x = obox.x + obox.width - 2;
-				wlr_cursor_warp(server->cursor, NULL,
-					warp_x, server->cursor->y);
-				/* Adjust grab so the view position stays
-				 * relative to the cursor */
-				server->grab_x = server->cursor->x -
-					new_x + server->grab_geobox.x;
-				return;
-			}
-			if (cx >= obox.x + obox.width - edge_margin - 1) {
-				/* Right edge: switch to next workspace */
-				wm_workspace_switch_next(server);
-				/* Warp cursor to left side */
-				double warp_x = obox.x + 2;
-				wlr_cursor_warp(server->cursor, NULL,
-					warp_x, server->cursor->y);
-				server->grab_x = server->cursor->x -
-					new_x + server->grab_geobox.x;
-				return;
-			}
-		}
+	if (warp_workspace(server, view)) {
+		new_x = server->cursor->x - server->grab_x +
+			server->grab_geobox.x;
+		new_y = server->cursor->y - server->grab_y +
+			server->grab_geobox.y;
 	}
 
 	int snap_x = (int)new_x;
@@ -208,6 +239,43 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 	}
 }
 
+/*
+ * The window a tab dropped at the pointer goes to (FluxboxWindow::attachTo):
+ * the window under it, or with tabsAttachArea Titlebar only when on its
+ * titlebar; *in_titlebar says whether it was.
+ */
+static struct wm_view *
+tab_drop_target(struct wm_server *server, bool *in_titlebar)
+{
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	struct wm_view *target = view_at(server, server->cursor->x,
+		server->cursor->y, &surface, &sx, &sy);
+	*in_titlebar = false;
+	if (!target)
+		return NULL;
+	if (target->decoration) {
+		double dx = server->cursor->x - target->x;
+		double dy = server->cursor->y - target->y;
+		enum wm_decor_region region = wm_decoration_region_at(
+			target->decoration, dx, dy);
+		*in_titlebar = region == WM_DECOR_REGION_TITLEBAR ||
+			region == WM_DECOR_REGION_LABEL ||
+			region == WM_DECOR_REGION_BUTTON ||
+			wm_decoration_tab_at(target->decoration, dx, dy) >= 0;
+	}
+	if (server->config && server->config->tabs_attach_titlebar &&
+	    !*in_titlebar)
+		return NULL;
+	return target;
+}
+
+static bool
+same_frame(struct wm_view *a, struct wm_view *b)
+{
+	return a == b || (a->tab_group && a->tab_group == b->tab_group);
+}
+
 static void
 process_cursor_tabbing(struct wm_server *server, uint32_t time)
 {
@@ -218,36 +286,108 @@ process_cursor_tabbing(struct wm_server *server, uint32_t time)
 
 	struct wm_view *view = server->grabbed_view;
 
-	/* Move the dragged window along with cursor */
-	double new_x = server->cursor->x - server->grab_x;
-	double new_y = server->cursor->y - server->grab_y;
-
-	view->x = (int)new_x;
-	view->y = (int)new_y;
-	wlr_scene_node_set_position(&view->scene_tree->node,
-		view->x, view->y);
-
-	/* Find if cursor is over another view's titlebar */
-	double sx, sy;
-	struct wlr_surface *surface = NULL;
-	struct wm_view *target = view_at(server,
-		server->cursor->x, server->cursor->y, &surface, &sx, &sy);
-
-	if (target && target != view && target->decoration) {
-		double dx = server->cursor->x - target->x;
-		double dy = server->cursor->y - target->y;
-		enum wm_decor_region region =
-			wm_decoration_region_at(target->decoration, dx, dy);
-		if (region == WM_DECOR_REGION_TITLEBAR ||
-		    region == WM_DECOR_REGION_LABEL) {
-			wlr_cursor_set_xcursor(server->cursor,
-				server->cursor_mgr, "dnd-link");
-			return;
+	/*
+	 * An outline is dragged, the window stays (FluxboxWindow::
+	 * startTabbing): a tab's size from a tab, the frame's from
+	 * elsewhere, where the pointer took it.
+	 */
+	if (server->grab_geobox.width == 0) {
+		int w = 0, h = 0;
+		int top = 0, bottom = 0, left = 0, right = 0;
+		struct wlr_box geo;
+		if (view->decoration &&
+		    wm_decoration_tab_at(view->decoration, server->grab_x,
+			server->grab_y) >= 0 &&
+		    wm_decoration_tab_size(view->decoration, &w, &h)) {
+			server->grab_x = w / 2;
+			server->grab_y = h / 2;
+		} else {
+			wm_view_get_geometry(view, &geo);
+			if (view->decoration)
+				wm_decoration_get_extents(view->decoration,
+					&top, &bottom, &left, &right);
+			w = geo.width + left + right;
+			h = geo.height + top + bottom;
 		}
+		server->grab_geobox.width = w > 0 ? w : 1;
+		server->grab_geobox.height = h > 0 ? h : 1;
+	}
+	wireframe_show(server, (int)(server->cursor->x - server->grab_x),
+		(int)(server->cursor->y - server->grab_y),
+		server->grab_geobox.width, server->grab_geobox.height);
+
+	bool in_titlebar;
+	struct wm_view *target = tab_drop_target(server, &in_titlebar);
+	wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr,
+		target && !same_frame(target, view) ? "dnd-link" : "dnd-none");
+}
+
+/* Its tab to the one under the pointer in target's frame (moveClientTo) */
+static void
+move_tab_to_pointer(struct wm_server *server, struct wm_view *target,
+	struct wm_view *dragged)
+{
+	struct wm_tab_group *group = target->tab_group;
+	if (!group || !target->decoration || dragged->tab_group != group)
+		return;
+	int to = wm_decoration_tab_at(target->decoration,
+		server->cursor->x - target->x, server->cursor->y - target->y);
+	for (int n = 0; to >= 0 && n < group->count; n++) {
+		int at = 0;
+		struct wm_view *v;
+		wl_list_for_each(v, &group->views, tab_link) {
+			if (v == dragged)
+				break;
+			at++;
+		}
+		if (at == to)
+			break;
+		if (at < to)
+			wm_tab_group_move_right(group, dragged);
+		else
+			wm_tab_group_move_left(group, dragged);
+	}
+}
+
+/*
+ * The tab dropped (FluxboxWindow::attachTo): into the window there, moved
+ * within its own titlebar, or out of its frame to where the outline is.
+ */
+static void
+drop_tab(struct wm_server *server)
+{
+	struct wm_view *dragged = server->grabbed_view;
+	int ox = server->wireframe_x, oy = server->wireframe_y;
+	bool moved = server->wireframe_active;
+	if (server->wireframe_active)
+		wireframe_hide(server);
+	if (!dragged || !moved) {
+		wlr_log(WLR_DEBUG, "tab drop: nothing dragged");
+		return;
 	}
 
-	wlr_cursor_set_xcursor(server->cursor,
-		server->cursor_mgr, "dnd-none");
+	bool in_titlebar;
+	struct wm_view *target = tab_drop_target(server, &in_titlebar);
+	wlr_log(WLR_DEBUG, "tab drop at %.0f,%.0f: on %u%s",
+		server->cursor->x, server->cursor->y, target ? target->id : 0,
+		in_titlebar ? " (titlebar)" : "");
+	if (target && !same_frame(target, dragged)) {
+		if (!target->tab_group)
+			wm_tab_group_create(target);
+		if (target->tab_group) {
+			wm_tab_group_add(target->tab_group, dragged);
+			move_tab_to_pointer(server, target, dragged);
+		}
+	} else if (!target || !in_titlebar) {
+		if (dragged->tab_group && dragged->tab_group->count > 1)
+			wm_tab_group_remove(dragged);
+		dragged->x = ox;
+		dragged->y = oy;
+		wlr_scene_node_set_position(&dragged->scene_tree->node,
+			dragged->x, dragged->y);
+	} else {
+		move_tab_to_pointer(server, target, dragged);
+	}
 }
 
 /*
@@ -376,7 +516,12 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		double dy = server->cursor->y - ms->press_y;
 		double dist = sqrt(dx * dx + dy * dy);
 
-		if (dist > WM_CLICK_MOVE_THRESHOLD) {
+		/* session.ignoreBorder: no drags from the border
+		 * (FluxboxWindow::motionNotifyEvent) */
+		bool ignored = server->config &&
+			server->config->ignore_border &&
+			(ms->press_context & WM_MOUSE_CTX_WINDOW_BORDER);
+		if (dist > WM_CLICK_MOVE_THRESHOLD && !ignored) {
 			/* A drag: Move bindings of where it started */
 			struct wm_view *view = ms->pressed_view;
 			uint32_t mods = get_keyboard_modifiers(server);
@@ -679,65 +824,7 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 			/* Handle tab drop for tabbing mode */
 			if (server->cursor_mode == WM_CURSOR_TABBING &&
 			    server->grabbed_view) {
-				struct wm_view *dragged =
-					server->grabbed_view;
-				double sx2, sy2;
-				struct wlr_surface *surf2 = NULL;
-				struct wm_view *target = view_at(server,
-					server->cursor->x,
-					server->cursor->y,
-					&surf2, &sx2, &sy2);
-
-				if (target && target != dragged &&
-				    target->decoration) {
-					double tdx = server->cursor->x -
-						target->x;
-					double tdy = server->cursor->y -
-						target->y;
-					enum wm_decor_region region =
-						wm_decoration_region_at(
-							target->decoration,
-							tdx, tdy);
-					if (region ==
-					    WM_DECOR_REGION_TITLEBAR ||
-					    region ==
-					    WM_DECOR_REGION_LABEL) {
-						/* Drop on titlebar:
-						 * create/join tab group */
-						if (!target->tab_group) {
-							wm_tab_group_create(
-								target);
-						}
-						if (target->tab_group) {
-							wm_tab_group_add(
-								target->
-								tab_group,
-								dragged);
-						}
-						server->cursor_mode =
-							WM_CURSOR_PASSTHROUGH;
-						server->grabbed_view = NULL;
-						wlr_cursor_set_xcursor(
-							server->cursor,
-							server->cursor_mgr,
-							"default");
-						wlr_seat_pointer_notify_button(
-							server->seat,
-							event->time_msec,
-							event->button,
-							event->state);
-						return;
-					}
-				}
-
-				/* No valid drop target: restore position */
-				dragged->x =
-					server->grab_geobox.x;
-				dragged->y =
-					server->grab_geobox.y;
-				wlr_scene_node_set_position(
-					&dragged->scene_tree->node,
-					dragged->x, dragged->y);
+				drop_tab(server);
 				server->cursor_mode =
 					WM_CURSOR_PASSTHROUGH;
 				server->grabbed_view = NULL;
@@ -806,6 +893,16 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 					wlr_scene_node_set_position(
 						&wf_view->scene_tree->node,
 						wf_view->x, wf_view->y);
+					/* Warped while moving: it goes where
+					 * the pointer went (stopMoving) */
+					struct wm_workspace *now =
+						wm_workspace_get_active(server);
+					if (now && !wf_view->sticky &&
+					    wf_view->workspace != now) {
+						wm_view_send_to_workspace(server,
+							wf_view, now->index);
+						wm_focus_view(wf_view, NULL);
+					}
 				} else if (server->cursor_mode ==
 					   WM_CURSOR_RESIZE) {
 					wf_view->x = server->wireframe_x;

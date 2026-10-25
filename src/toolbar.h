@@ -112,6 +112,7 @@ struct wm_toolbar {
 	bool visible;
 	bool on_top; /* true if placed at top of screen */
 	bool raised; /* ToggleToolbarAbove: above the windows for now */
+	bool hover_raised; /* toolbar.autoRaise, the pointer on it */
 
 	/* Auto-hide state */
 	bool auto_hide;
@@ -180,6 +181,9 @@ void wm_toolbar_toggle_visible(struct wm_toolbar *toolbar);
 /* Handle button click on toolbar; returns true if consumed */
 /* Is (lx, ly) on the shown toolbar? */
 bool wm_toolbar_contains(struct wm_toolbar *toolbar, double lx, double ly);
+
+/* The pointer moved onto (or off) the toolbar: toolbar.autoRaise */
+void wm_toolbar_set_hovered(struct wm_toolbar *toolbar, bool hovered);
 
 /* A button.NAME tool's command for a mouse button (BTN_LEFT...) */
 void wm_toolbar_run_button(struct wm_toolbar *toolbar,

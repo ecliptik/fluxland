@@ -1,8 +1,10 @@
 """Input simulation using wtype (keyboard) and wlrctl (pointer)."""
 
+import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 
 # Map button numbers to wlrctl names
@@ -11,6 +13,24 @@ _BUTTON_MAP = {
     2: "middle",
     3: "right",
 }
+
+
+def _find_test_pointer():
+    """fluxland-test-pointer (tests/ui/tools/test_pointer.c), which holds
+    a button across moves: FLUXLAND_TEST_POINTER, or beside the fluxland
+    being tested, or in build/."""
+    candidates = [os.environ.get("FLUXLAND_TEST_POINTER")]
+    binary = os.environ.get("FLUXLAND_BINARY")
+    if binary:
+        candidates.append(str(Path(binary).parent / "tests" /
+                              "fluxland-test-pointer"))
+    root = Path(__file__).parent.parent.parent.parent
+    candidates.append(str(root / "build" / "tests" /
+                          "fluxland-test-pointer"))
+    for path in candidates:
+        if path and os.access(path, os.X_OK):
+            return path
+    return None
 
 
 class InputDriver:
@@ -154,33 +174,20 @@ class InputDriver:
         )
 
     def drag(self, x1, y1, x2, y2, button=1):
-        """Drag from (x1, y1) to (x2, y2).
+        """Drag from (x1, y1) to (x2, y2): press there, move, release.
 
-        Moves to start, presses button, moves to end, releases button.
-
-        Args:
-            x1, y1: Start coordinates.
-            x2, y2: End coordinates.
-            button: Mouse button (1=left, 2=middle, 3=right).
+        wlrctl only clicks, so this takes fluxland-test-pointer (built
+        with the tests); without it the test is skipped.
         """
-        self._require_wlrctl()
-        btn_name = _BUTTON_MAP.get(button)
-        if btn_name is None:
-            raise ValueError(f"Unknown button {button}; expected 1, 2, or 3")
-
-        self.move_to(x1, y1)
-        # Press button down
+        import pytest
+        helper = _find_test_pointer()
+        if not helper:
+            pytest.skip("fluxland-test-pointer is not built")
         subprocess.run(
-            ["wlrctl", "pointer", "click", btn_name, "--press"],
-            check=True,
-            capture_output=True,
-            env=self.env,
-        )
-        # Move to destination
-        self.move_to(x2, y2)
-        # Release button
-        subprocess.run(
-            ["wlrctl", "pointer", "click", btn_name, "--release"],
+            [helper, "move", str(x1), str(y1), "press", str(button),
+             "sleep", "50", "to", str((x1 + x2) // 2), str((y1 + y2) // 2),
+             "sleep", "50", "to", str(x2), str(y2), "sleep", "50",
+             "release", str(button)],
             check=True,
             capture_output=True,
             env=self.env,

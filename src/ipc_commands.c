@@ -231,6 +231,14 @@ cmd_get_windows(struct wm_server *server)
 		if (pid <= 0)
 			pid = -1;
 
+		/* Its tabs: the first tab's id, the same for all of them */
+		unsigned tab_group = 0;
+		if (view->tab_group && view->tab_group->count > 1) {
+			struct wm_view *first = wl_container_of(
+				view->tab_group->views.next, first, tab_link);
+			tab_group = first->id;
+		}
+
 		strbuf_appendf(&sb,
 			"{\"id\":%u,\"app_id\":%s,\"title\":%s,"
 			"\"workspace\":%d,\"focused\":%s,"
@@ -238,6 +246,7 @@ cmd_get_windows(struct wm_server *server)
 			"\"minimized\":%s,\"shaded\":%s,\"sticky\":%s,"
 			"\"layer\":\"%s\",\"decorated\":%s,"
 			"\"role\":\"%s\",\"pid\":%d,\"xwayland\":%s,"
+			"\"tab_group\":%u,"
 			"\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,"
 			"\"frame\":{\"x\":%d,\"y\":%d,\"width\":%d,"
 			"\"height\":%d}}",
@@ -254,6 +263,7 @@ cmd_get_windows(struct wm_server *server)
 				"true" : "false",
 			role, (int)pid,
 			view->type == WM_VIEW_XWAYLAND ? "true" : "false",
+			tab_group,
 			geo.x, geo.y, geo.width, geo.height,
 			frame.x, frame.y, frame.width, frame.height);
 		free(title_esc);

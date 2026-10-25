@@ -261,6 +261,7 @@ wlr_buffer_from_cairo(cairo_surface_t *surface)
 
 struct wm_config {
 	bool slit_auto_hide;
+	bool slit_auto_raise;
 	int slit_placement;
 	int slit_direction;
 	int slit_layer;
@@ -2102,11 +2103,13 @@ test_slit_toggle_above_overlay_to_base(void)
 	g_arrange_slit = slit;
 	assert(slit != NULL);
 
-	/* Move to overlay first */
+	/* Raised above first */
+	slit->raised = true;
 	slit->scene_tree->node.parent = &test_layer_overlay;
 
 	reset_globals();
 	wm_slit_toggle_above(slit);
+	assert(!slit->raised);
 
 	/* Should reparent back to configured base layer (layer_top) */
 	assert(g_scene_node_reparent_count > 0);

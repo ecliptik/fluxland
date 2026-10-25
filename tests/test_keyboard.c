@@ -1162,6 +1162,9 @@ void wm_view_lower_layer(struct wm_view *v) { (void)v; stub_lower_layer_count++;
 void wm_view_set_layer(struct wm_view *v, enum wm_view_layer l) { (void)v; (void)l; stub_set_layer_count++; }
 void wm_view_set_sticky(struct wm_view *v, bool s) { (void)v; stub_set_sticky_count++; stub_set_sticky_value = s; }
 static char stub_title[128];
+static int stub_note_key_count;
+void wm_view_note_key(struct wm_view *v, uint32_t sym)
+	{ (void)v; (void)sym; stub_note_key_count++; }
 void wm_view_set_title(struct wm_view *v, const char *t)
 {
 	if (v->title_override)

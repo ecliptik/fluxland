@@ -167,6 +167,11 @@ struct wm_config {
 	char **workspace_names;
 	int workspace_name_count;
 	bool workspace_warping;
+	/* Fluxbox's workspacewarping{horizontal,vertical}[offset] */
+	bool workspace_warping_horizontal;
+	bool workspace_warping_vertical;
+	int workspace_warping_horizontal_offset;
+	int workspace_warping_vertical_offset;
 	enum wm_workspace_mode workspace_mode;
 
 	/* Focus */
@@ -175,6 +180,10 @@ struct wm_config {
 	int auto_raise_delay_ms;
 	bool click_raises;
 	bool focus_new_windows;
+	bool focus_same_head;            /* focus reverts on the pointer's head */
+	int no_focus_while_typing_ms;    /* noFocusWhileTypingDelay */
+	bool ignore_border;              /* session.ignoreBorder */
+	bool tabs_attach_titlebar;       /* session.tabsAttachArea: Titlebar */
 
 	/* Window behavior */
 	bool opaque_move;
@@ -190,6 +199,7 @@ struct wm_config {
 	bool toolbar_visible;
 	enum wm_toolbar_placement toolbar_placement;
 	bool toolbar_auto_hide;
+	bool toolbar_auto_raise;
 	int toolbar_auto_hide_delay_ms;
 	int toolbar_width_percent;
 	int toolbar_height;
@@ -261,6 +271,7 @@ struct wm_config {
 
 	/* Slit configuration */
 	bool slit_auto_hide;
+	bool slit_auto_raise;
 	int slit_placement;
 	int slit_direction;
 	int slit_layer;

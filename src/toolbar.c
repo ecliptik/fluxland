@@ -58,7 +58,7 @@ apply_toolbar_layer(struct wm_toolbar *toolbar)
 	struct wm_server *server = toolbar->server;
 	int layer = server->config ? server->config->toolbar_layer : 4;
 	struct wlr_scene_tree *parent = server->layer_top;
-	if (toolbar->raised || layer == 6)
+	if (toolbar->raised || toolbar->hover_raised || layer == 6)
 		parent = server->layer_overlay;
 	else if (layer == 2)
 		parent = server->layer_bottom;
@@ -1856,6 +1856,19 @@ wm_toolbar_notify_pointer_motion(struct wm_toolbar *toolbar,
 			wl_event_source_timer_update(toolbar->hide_timer, 0);
 		}
 	}
+}
+
+void
+wm_toolbar_set_hovered(struct wm_toolbar *toolbar, bool hovered)
+{
+	/* AboveDock while the pointer is on it (Toolbar::updateCrossingState) */
+	if (!toolbar || !toolbar->server->config ||
+	    !toolbar->server->config->toolbar_auto_raise)
+		hovered = false;
+	if (!toolbar || toolbar->hover_raised == hovered)
+		return;
+	toolbar->hover_raised = hovered;
+	apply_toolbar_layer(toolbar);
 }
 
 void

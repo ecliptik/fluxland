@@ -259,7 +259,7 @@ wm_view_begin_interactive(struct wm_view *view,
 	 * pointer focus is NULL because decorations are scene buffers,
 	 * not wl_surfaces. Allow interactive mode in that case.
 	 */
-	if (focused && view->xdg_toplevel->base->surface !=
+	if (focused && wm_view_surface(view) !=
 			wlr_surface_get_root_surface(focused)) {
 		return;
 	}
@@ -282,7 +282,7 @@ wm_view_begin_interactive(struct wm_view *view,
 		server->grab_geobox.height = 0;
 	} else {
 		struct wlr_box geo;
-		geo = view->xdg_toplevel->base->geometry;
+		wm_view_content_geometry(view, &geo);
 
 		double border_x = (view->x + geo.x) +
 			((edges & WLR_EDGE_RIGHT) ? geo.width : 0);

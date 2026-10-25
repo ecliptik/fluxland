@@ -213,6 +213,10 @@ static const char *valid_workspace_modes[] = {
 	"global", "per-output", NULL
 };
 
+static const char *tabs_attach_areas[] = {
+	"Window", "Titlebar", NULL
+};
+
 /* Valid menu search values */
 static const char *valid_activation_env[] = {
 	"auto", "true", "false", "yes", "no", NULL};
@@ -417,25 +421,25 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.maxIgnoreIncrement", VT_IGNORED, 0, 0, NULL},
 
 	/* Fluxbox's, not in fluxland yet */
-	{"session.screen0.focusSameHead", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.noFocusWhileTypingDelay", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.focusSameHead", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.noFocusWhileTypingDelay", VT_INT, 0, 100000, NULL},
 	{"session.screen0.demandsAttentionTimeout", VT_UNSUPPORTED, 0, 0, NULL},
 	{"session.screen0.tooltipDelay", VT_UNSUPPORTED, 0, 0, NULL},
 	{"session.screen0.clientMenu.usePixmap", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.toolbar.autoRaise", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.toolbar.button.*", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.toolbar.autoRaise", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.toolbar.button.*", VT_STRING, 0, 0, NULL},
 	{"session.screen0.systray.pinLeft", VT_UNSUPPORTED, 0, 0, NULL},
 	{"session.screen0.systray.pinRight", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.slit.autoRaise", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.workspacewarpinghorizontal", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.workspacewarpingvertical", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.workspacewarpinghorizontaloffset", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.screen0.workspacewarpingverticaloffset", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.screen0.slit.autoRaise", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.workspacewarpinghorizontal", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.workspacewarpingvertical", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.workspacewarpinghorizontaloffset", VT_INT, 0, 1000, NULL},
+	{"session.screen0.workspacewarpingverticaloffset", VT_INT, 0, 1000, NULL},
 	{"session.screen0.iconbar.iconTextPadding", VT_UNSUPPORTED, 0, 0, NULL},
 	{"session.screen0.tabs.maxOver", VT_UNSUPPORTED, 0, 0, NULL},
 	{"session.screen0.tabs.usePixmap", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.tabsAttachArea", VT_UNSUPPORTED, 0, 0, NULL},
-	{"session.ignoreBorder", VT_UNSUPPORTED, 0, 0, NULL},
+	{"session.tabsAttachArea", VT_ENUM, 0, 0, tabs_attach_areas},
+	{"session.ignoreBorder", VT_BOOL, 0, 0, NULL},
 
 	/* File paths */
 	{"session.keyFile", VT_PATH, 0, 0, NULL},

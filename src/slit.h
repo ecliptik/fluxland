@@ -100,6 +100,8 @@ struct wm_slit {
 	int width, height;
 	bool visible;
 	bool hidden; /* auto-hide: currently hidden */
+	bool raised; /* ToggleSlitAbove */
+	bool hover_raised; /* slit.autoRaise, the pointer on it */
 
 	/* Docked clients */
 	struct wl_list clients; /* wm_slit_client.link */
@@ -155,5 +157,8 @@ void wm_slit_toggle_above(struct wm_slit *slit);
 
 /* Toggle slit auto-hide on/off */
 void wm_slit_toggle_hidden(struct wm_slit *slit);
+
+/* The pointer moved onto (or off) the slit: slit.autoRaise */
+void wm_slit_set_hovered(struct wm_slit *slit, bool hovered);
 
 #endif /* WM_SLIT_H */

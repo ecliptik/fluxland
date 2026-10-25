@@ -836,6 +836,22 @@ wm_slit_remove_client(struct wm_slit_client *client)
 	wm_slit_reconfigure(slit);
 }
 
+/* The scene layer for slit.layer, AboveDock while it's raised */
+static void
+apply_slit_layer(struct wm_slit *slit)
+{
+	struct wm_server *server = slit->server;
+	struct wlr_scene_tree *parent = server->layer_top;
+	int layer = server->config ? server->config->slit_layer : 4;
+	if (slit->raised || slit->hover_raised || layer == 6)
+		parent = server->layer_overlay;
+	else if (layer == 2)
+		parent = server->layer_bottom;
+	if (slit->scene_tree && parent &&
+	    slit->scene_tree->node.parent != parent)
+		wlr_scene_node_reparent(&slit->scene_tree->node, parent);
+}
+
 void
 wm_slit_reconfigure(struct wm_slit *slit)
 {
@@ -986,16 +1002,9 @@ wm_slit_relayout(struct wm_slit *slit)
 		slit->alpha = config->slit_alpha;
 
 		/* Handle layer change by reparenting the scene tree */
-		struct wlr_scene_tree *target_layer = server->layer_top;
-		if (config->slit_layer == 6) /* AboveDock/Overlay */
-			target_layer = server->layer_overlay;
-		else if (config->slit_layer == 2) /* Bottom */
-			target_layer = server->layer_bottom;
-
-		if (slit->scene_tree) {
-			wlr_scene_node_reparent(
-				&slit->scene_tree->node, target_layer);
-		}
+		if (!config->slit_auto_raise)
+			slit->hover_raised = false;
+		apply_slit_layer(slit);
 	}
 
 	/* Update background color from style */
@@ -1034,35 +1043,23 @@ wm_slit_toggle_above(struct wm_slit *slit)
 	if (!slit || !slit->scene_tree) {
 		return;
 	}
+	/* Above the windows, and back to slit.layer (Slit::toggleAboveDock) */
+	slit->raised = !slit->raised;
+	apply_slit_layer(slit);
+}
 
-	struct wm_server *server = slit->server;
-
-	/*
-	 * Toggle between configured base layer and layer_overlay.
-	 * Reparent the slit scene tree to the other layer.
-	 */
-	struct wlr_scene_tree *current_parent =
-		(struct wlr_scene_tree *)slit->scene_tree->node.parent;
-
-	/* Determine the configured base layer */
-	struct wlr_scene_tree *base_layer = server->layer_top;
-	if (server->config) {
-		int layer = server->config->slit_layer;
-		if (layer == 6)
-			base_layer = server->layer_overlay;
-		else if (layer == 2)
-			base_layer = server->layer_bottom;
-	}
-
-	if (current_parent == server->layer_overlay) {
-		wlr_scene_node_reparent(&slit->scene_tree->node,
-			base_layer);
-		wlr_log(WLR_INFO, "%s", "slit moved to configured layer");
-	} else {
-		wlr_scene_node_reparent(&slit->scene_tree->node,
-			server->layer_overlay);
-		wlr_log(WLR_INFO, "%s", "slit moved to overlay layer");
-	}
+void
+wm_slit_set_hovered(struct wm_slit *slit, bool hovered)
+{
+	/* slit.autoRaise: AboveDock while the pointer is on it
+	 * (Slit::updateCrossingState) */
+	if (!slit || !slit->server->config ||
+	    !slit->server->config->slit_auto_raise)
+		hovered = false;
+	if (!slit || slit->hover_raised == hovered)
+		return;
+	slit->hover_raised = hovered;
+	apply_slit_layer(slit);
 }
 
 void

@@ -62,7 +62,7 @@ test_create_destroy(void)
 	assert(c->toolbar_auto_hide_delay_ms == 500);
 	assert(c->toolbar_width_percent == 72);
 	assert(c->workspace_warping == true);
-	assert(c->raise_on_focus == false);
+	assert(c->raise_on_focus == true);	/* Fluxbox's autoRaise */
 	assert(c->auto_raise_delay_ms == 250);
 
 	/* Default workspace names */
@@ -475,9 +475,29 @@ test_fluxbox_init_keys(void)
 		"session.screen0.slit.layer:	12\n"
 		"session.screen0.struts:	1,2,3,4\n"
 		"session.screen0.struts.2:	0,0,30,0\n"
+		"session.screen0.focusSameHead:	true\n"
+		"session.screen0.noFocusWhileTypingDelay:	750\n"
+		"session.ignoreBorder:	true\n"
+		"session.tabsAttachArea:	Titlebar\n"
+		"session.screen0.toolbar.autoRaise:	true\n"
+		"session.screen0.slit.autoRaise:	true\n"
+		"session.screen0.workspacewarpingvertical:	false\n"
+		"session.screen0.workspacewarpinghorizontaloffset:	2\n"
 	);
 	struct wm_config *c = config_create();
+	/* Fluxbox's defaults */
+	assert(!c->focus_same_head && c->no_focus_while_typing_ms == 0);
+	assert(!c->ignore_border && !c->tabs_attach_titlebar);
+	assert(c->workspace_warping_vertical &&
+		c->workspace_warping_vertical_offset == 1);
 	config_load(c, TEST_INIT);
+
+	assert(c->focus_same_head && c->no_focus_while_typing_ms == 750);
+	assert(c->ignore_border && c->tabs_attach_titlebar);
+	assert(c->toolbar_auto_raise && c->slit_auto_raise);
+	assert(!c->workspace_warping_vertical &&
+		c->workspace_warping_horizontal);
+	assert(c->workspace_warping_horizontal_offset == 2);
 
 	assert(strncmp(c->titlebar_left, "Stick", 5) == 0);
 	assert(strncmp(c->titlebar_right, "Minimize Maximize Close", 23) == 0);

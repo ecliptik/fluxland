@@ -6,6 +6,8 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <time.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -264,12 +266,25 @@ wm_focus_fallback(struct wm_server *server, struct wm_view *except)
 	struct wm_workspace *ws = wm_workspace_get_active(server);
 	struct wm_view *v, *best = NULL;
 
+	/* focusSameHead: the pointer's head only, unless a window is being
+	 * moved (FocusControl::lastFocusedWindow) */
+	struct wm_output *head = NULL;
+	if (server->config && server->config->focus_same_head &&
+	    server->cursor_mode != WM_CURSOR_MOVE) {
+		struct wlr_output *o = wlr_output_layout_output_at(
+			server->output_layout, server->cursor->x,
+			server->cursor->y);
+		head = o ? wm_output_from_wlr(server, o) : NULL;
+	}
+
 	/* Most recently focused; ties keep stacking (list) order */
 	wl_list_for_each(v, &server->views, link) {
 		/* Disabled scene node: unmapped or minimized */
 		if (v == except || !v->scene_tree->node.enabled)
 			continue;
 		if (v->workspace != ws && !v->sticky)
+			continue;
+		if (head && wm_output_for_view(v) != head)
 			continue;
 		if (v->focus_hidden)
 			continue;
@@ -702,10 +717,46 @@ root_transient(struct wm_view *view)
 }
 
 /*
+ * A key the focused window got: noFocusWhileTypingDelay keeps new
+ * windows from taking the focus while its user types (Return isn't
+ * typing: the window it starts is expected).  FluxboxWindow::keyPressEvent
+ */
+void
+wm_view_note_key(struct wm_view *view, uint32_t sym)
+{
+	/* X's IsModifierKey */
+	if ((sym >= XKB_KEY_Shift_L && sym <= XKB_KEY_Hyper_R) ||
+	    (sym >= XKB_KEY_ISO_Lock && sym <= XKB_KEY_ISO_Level5_Lock) ||
+	    sym == XKB_KEY_Mode_switch || sym == XKB_KEY_Num_Lock)
+		return;
+	if (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) {
+		view->last_key_ms = 0;
+		return;
+	}
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	view->last_key_ms = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static bool
+is_typing(struct wm_view *view)
+{
+	int delay = view->server->config ?
+		view->server->config->no_focus_while_typing_ms : 0;
+	if (delay <= 0 || view->last_key_ms == 0)
+		return false;
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+	return now - view->last_key_ms < delay;
+}
+
+/*
  * May a window take the focus by itself? Fluxbox's
  * FluxboxWindow::focusRequestFromClient: not with [FocusProtection]
  * Deny, not from a focused Lock window, and not from a fullscreen window
- * on the same head unless it is a dialog of that window.
+ * on the same head, or while the focused window's user is typing,
+ * unless it is a dialog of that window.
  */
 static bool
 focus_request_allowed(struct wm_view *view, bool check_deny)
@@ -718,8 +769,9 @@ focus_request_allowed(struct wm_view *view, bool check_deny)
 	if (focused->focus_protection & WM_FOCUS_PROT_LOCK)
 		return false;
 	if (root_transient(view) != root_transient(focused) &&
-	    focused->fullscreen &&
-	    wm_output_for_view(focused) == wm_output_for_view(view))
+	    ((focused->fullscreen &&
+	      wm_output_for_view(focused) == wm_output_for_view(view)) ||
+	     is_typing(focused)))
 		return false;
 	return true;
 }

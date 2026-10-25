@@ -548,11 +548,17 @@ struct wm_config {
 	bool raise_on_focus;
 	int auto_raise_delay_ms;
 	bool opaque_move;
+	bool ignore_border;
+	bool tabs_attach_titlebar;
 	bool opaque_resize;
 	int edge_snap_threshold;
 	bool enable_window_snapping;
 	int snap_zone_threshold;
 	bool workspace_warping;
+	bool workspace_warping_horizontal;
+	bool workspace_warping_vertical;
+	int workspace_warping_horizontal_offset;
+	int workspace_warping_vertical_offset;
 	int double_click_interval;
 	bool click_raises;
 	bool focus_new_windows;
@@ -872,7 +878,7 @@ enum wm_cursor_mode {
 #define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
 
-struct wm_workspace;
+struct wm_workspace { int index; };
 
 struct wm_server {
 	struct wl_display *wl_display;
@@ -1094,8 +1100,6 @@ static int g_begin_interactive_count;
 static int g_set_position_count;
 static int g_set_size_count;
 static int g_scene_node_destroy_count;
-static int g_switch_next_count;
-static int g_switch_prev_count;
 
 /* --- Stub wlroots functions used by cursor.c --- */
 
@@ -1193,6 +1197,17 @@ wlr_output_layout_get_box(struct wlr_output_layout *layout,
 {
 	(void)layout; (void)output;
 	memset(box, 0, sizeof(*box));
+	if (!output) {
+		/* The whole layout */
+		box->width = 1920;
+		box->height = 1080;
+	}
+}
+
+static bool
+wlr_box_empty(const struct wlr_box *box)
+{
+	return !box || box->width <= 0 || box->height <= 0;
 }
 
 static void
@@ -1398,12 +1413,23 @@ static void wm_view_get_geometry(struct wm_view *view, struct wlr_box *box)
 	  box->width = 800; box->height = 600; }
 static void wm_view_set_sticky(struct wm_view *view, bool sticky)
 	{ (void)view; (void)sticky; }
+static struct wm_workspace g_workspaces[4] = { {0}, {1}, {2}, {3} };
+static int g_active_ws;
+static int g_take_to_ws = -1, g_send_to_ws = -1, g_switch_to_ws = -1;
 static void wm_workspace_switch_next(struct wm_server *server)
-	{ (void)server; g_switch_next_count++; }
+	{ (void)server; }
 static void wm_workspace_switch_prev(struct wm_server *server)
-	{ (void)server; g_switch_prev_count++; }
+	{ (void)server; }
 static void wm_workspace_switch(struct wm_server *server, int idx)
-	{ (void)server; (void)idx; }
+	{ (void)server; g_switch_to_ws = idx; g_active_ws = idx; }
+static struct wm_workspace *wm_workspace_get_active(struct wm_server *server)
+	{ (void)server; return &g_workspaces[g_active_ws]; }
+static void wm_view_take_to_workspace(struct wm_server *server,
+	struct wm_view *view, int idx)
+	{ (void)server; (void)view; g_take_to_ws = idx; g_active_ws = idx; }
+static void wm_view_send_to_workspace(struct wm_server *server,
+	struct wm_view *view, int idx)
+	{ (void)server; (void)view; g_send_to_ws = idx; }
 static struct wm_decor_button *wm_decoration_button_at(
 	struct wm_decoration *d, double x, double y)
 	{ (void)d; (void)x; (void)y; return NULL; }
@@ -1412,6 +1438,11 @@ static enum wm_decor_region wm_decoration_region_at(
 	{ (void)d; (void)x; (void)y; return WM_DECOR_REGION_NONE; }
 static int wm_decoration_tab_at(struct wm_decoration *d, double x, double y)
 	{ (void)d; (void)x; (void)y; return -1; }
+static bool wm_decoration_tab_size(struct wm_decoration *d, int *w, int *h)
+	{ (void)d; *w = 100; *h = 20; return true; }
+static void wm_decoration_get_extents(struct wm_decoration *d,
+	int *top, int *bottom, int *left, int *right)
+	{ (void)d; *top = 20; *bottom = 6; *left = *right = 1; }
 static void wm_decoration_set_shaded(struct wm_decoration *d, bool s,
 	struct wm_style *st) { (void)d; (void)s; (void)st; }
 static void wm_decoration_set_pressed(struct wm_decoration *d,
@@ -1465,6 +1496,10 @@ static bool mousebind_has_move(struct wl_list *bindings, uint32_t ctx,
 	{ (void)bindings; (void)ctx; (void)button; (void)mods; return false; }
 static bool wm_toolbar_contains(struct wm_toolbar *tb, double x, double y)
 	{ (void)tb; (void)x; (void)y; return false; }
+static void wm_toolbar_set_hovered(struct wm_toolbar *tb, bool h)
+	{ (void)tb; (void)h; }
+static void wm_slit_set_hovered(struct wm_slit *s, bool h)
+	{ (void)s; (void)h; }
 static void wm_snap_edges(struct wm_server *s, struct wm_view *v,
 	int *sx, int *sy) { (void)s; (void)v; (void)sx; (void)sy; }
 static void wm_focus_update_for_cursor(struct wm_server *s,
@@ -1476,6 +1511,10 @@ static struct wm_tab_group *wm_tab_group_create(struct wm_view *v)
 static void wm_tab_group_add(struct wm_tab_group *g,
 	struct wm_view *v) { (void)g; (void)v; }
 static void wm_tab_group_remove(struct wm_view *v) { (void)v; }
+static void wm_tab_group_move_right(struct wm_tab_group *g,
+	struct wm_view *v) { (void)g; (void)v; }
+static void wm_tab_group_move_left(struct wm_tab_group *g,
+	struct wm_view *v) { (void)g; (void)v; }
 static void wm_view_activate_tab(struct wm_view *v, int idx)
 	{ (void)v; (void)idx; }
 static cairo_surface_t *wm_render_text(const char *text,
@@ -1581,8 +1620,7 @@ reset_globals(void)
 	g_set_position_count = 0;
 	g_set_size_count = 0;
 	g_scene_node_destroy_count = 0;
-	g_switch_next_count = 0;
-	g_switch_prev_count = 0;
+	g_take_to_ws = g_send_to_ws = g_switch_to_ws = -1;
 }
 
 static void
@@ -2096,6 +2134,83 @@ test_process_cursor_move_opaque(void)
 	assert(view.y == 320);
 	assert(g_set_position_count > 0);
 	printf("  PASS: process_cursor_move_opaque\n");
+}
+
+/*
+ * Workspace warping (Window.cc moveResize): within the edge snap
+ * threshold of the layout's edge, moving towards it, with the offsets.
+ */
+static void
+test_workspace_warping(void)
+{
+	setup();
+	struct wlr_scene_tree tree = {0};
+	struct wm_view view = {0};
+	view.server = &test_server;
+	view.scene_tree = &tree;
+	test_server.grabbed_view = &view;
+	test_server.cursor_mode = WM_CURSOR_MOVE;
+	test_server.grab_geobox = (struct wlr_box){100, 200, 800, 600};
+	test_server.workspace_count = 4;
+	test_config.workspace_warping = true;
+	test_config.workspace_warping_horizontal = true;
+	test_config.workspace_warping_vertical = true;
+	test_config.workspace_warping_horizontal_offset = 1;
+	test_config.workspace_warping_vertical_offset = 2;
+	test_config.edge_snap_threshold = 10;
+	test_config.opaque_move = true;
+	g_active_ws = 0;
+
+	/* Moving right, short of the pad: nothing */
+	test_cursor.x = 1800; test_cursor.y = 500;
+	process_cursor_move(&test_server, 0);
+	test_cursor.x = 1900;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == -1);
+	/* Into it: the window goes to the next one, the pointer to the
+	 * left edge */
+	test_cursor.x = 1915;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == 1 && g_active_ws == 1);
+	assert(test_cursor.x == 0);
+	/* Moving right from the left edge doesn't warp back */
+	test_cursor.x = 5;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == 1);
+	/* Moving left into it: back, wrapping from 0 to 3 */
+	g_active_ws = 0;
+	test_cursor.x = 2;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == 3 && test_cursor.x == 1919);
+	/* Up, by the vertical offset */
+	g_active_ws = 0;
+	test_cursor.x = 900; test_cursor.y = 300;
+	process_cursor_move(&test_server, 0);
+	test_cursor.y = 8;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == 2 && test_cursor.y == 1079);
+	/* Vertical off: nothing */
+	test_config.workspace_warping_vertical = false;
+	g_take_to_ws = -1;
+	test_cursor.y = 300;
+	process_cursor_move(&test_server, 0);
+	test_cursor.y = 3;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == -1);
+
+	/* A wireframe move only changes the workspace */
+	test_config.opaque_move = false;
+	g_active_ws = 0;
+	test_cursor.x = 1800;
+	process_cursor_move(&test_server, 0);
+	test_cursor.x = 1919;
+	process_cursor_move(&test_server, 0);
+	assert(g_take_to_ws == -1 && g_switch_to_ws == 1);
+
+	test_server.workspace_count = 0;
+	test_config.workspace_warping = false;
+	test_server.grabbed_view = NULL;
+	printf("  PASS: workspace_warping\n");
 }
 
 /*
@@ -3823,6 +3938,7 @@ main(void)
 	test_snap_preview_destroy_with_preview();
 	test_wireframe_show_reuse();
 	test_pixel_buffer_destroy();
+	test_workspace_warping();
 
 	printf("All cursor_snap tests passed.\n");
 	return 0;

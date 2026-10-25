@@ -488,12 +488,20 @@ config_create(void)
 	/* Set defaults */
 	config->workspace_count = 4;
 	config->workspace_warping = true;
+	config->workspace_warping_horizontal = true;
+	config->workspace_warping_vertical = true;
+	config->workspace_warping_horizontal_offset = 1;
+	config->workspace_warping_vertical_offset = 1;
 	config->workspace_mode = WM_WORKSPACE_GLOBAL;
 	config->focus_policy = WM_FOCUS_CLICK;
-	config->raise_on_focus = false;
+	config->raise_on_focus = true;
 	config->auto_raise_delay_ms = 250;
 	config->click_raises = true;
 	config->focus_new_windows = true;
+	config->focus_same_head = false;
+	config->no_focus_while_typing_ms = 0;
+	config->ignore_border = false;
+	config->tabs_attach_titlebar = false;
 	config->opaque_move = true;
 	config->opaque_resize = false;
 	config->edge_snap_threshold = 10;
@@ -501,6 +509,7 @@ config_create(void)
 	config->toolbar_visible = true;
 	config->toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
 	config->toolbar_auto_hide = false;
+	config->toolbar_auto_raise = false;
 	config->toolbar_auto_hide_delay_ms = 500;
 	config->toolbar_width_percent = 72;
 	config->toolbar_height = 0;
@@ -540,6 +549,7 @@ config_create(void)
 	config->workspace_transition_duration_ms = 300;
 
 	config->slit_auto_hide = false;
+	config->slit_auto_raise = false;
 	config->slit_placement = 4; /* RightCenter */
 	config->slit_direction = 0; /* Vertical */
 	config->slit_layer = 4; /* Dock */
@@ -611,6 +621,14 @@ apply_workspace_config(struct wm_config *config, struct rc_database *db)
 
 	config->workspace_warping =
 		rc_get_bool(db, "session.screen0.workspacewarping", true);
+	config->workspace_warping_horizontal = rc_get_bool(db,
+		"session.screen0.workspacewarpinghorizontal", true);
+	config->workspace_warping_vertical = rc_get_bool(db,
+		"session.screen0.workspacewarpingvertical", true);
+	config->workspace_warping_horizontal_offset = rc_get_int(db,
+		"session.screen0.workspacewarpinghorizontaloffset", 1);
+	config->workspace_warping_vertical_offset = rc_get_int(db,
+		"session.screen0.workspacewarpingverticaloffset", 1);
 
 	val = rc_get_string(db, "session.screen0.workspaceMode");
 	if (val && strcasecmp(val, "per-output") == 0)
@@ -639,13 +657,22 @@ apply_focus_config(struct wm_config *config, struct rc_database *db)
 	config->focus_policy = parse_focus_model(val);
 
 	config->raise_on_focus =
-		rc_get_bool(db, "session.screen0.autoRaise", false);
+		rc_get_bool(db, "session.screen0.autoRaise", true);
 	config->auto_raise_delay_ms =
 		rc_get_int(db, "session.autoRaiseDelay", 250);
 	config->click_raises =
 		rc_get_bool(db, "session.screen0.clickRaises", true);
 	config->focus_new_windows =
 		rc_get_bool(db, "session.screen0.focusNewWindows", true);
+	config->focus_same_head =
+		rc_get_bool(db, "session.screen0.focusSameHead", false);
+	config->no_focus_while_typing_ms = rc_get_int(db,
+		"session.screen0.noFocusWhileTypingDelay", 0);
+	config->ignore_border =
+		rc_get_bool(db, "session.ignoreBorder", false);
+	const char *area = rc_get_string(db, "session.tabsAttachArea");
+	config->tabs_attach_titlebar = area &&
+		strcasecmp(area, "Titlebar") == 0;
 }
 
 static void
@@ -759,6 +786,8 @@ apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 
 	config->toolbar_auto_hide =
 		rc_get_bool(db, "session.screen0.toolbar.autoHide", false);
+	config->toolbar_auto_raise =
+		rc_get_bool(db, "session.screen0.toolbar.autoRaise", false);
 	config->toolbar_auto_hide_delay_ms =
 		rc_get_int(db, "session.screen0.toolbar.autoHideDelay", 500);
 
@@ -929,6 +958,8 @@ apply_slit_config(struct wm_config *config, struct rc_database *db)
 
 	config->slit_auto_hide =
 		rc_get_bool(db, "session.screen0.slit.autoHide", false);
+	config->slit_auto_raise =
+		rc_get_bool(db, "session.screen0.slit.autoRaise", false);
 	val = rc_get_string(db, "session.screen0.slit.placement");
 	config->slit_placement = parse_slit_placement(val);
 	val = rc_get_string(db, "session.screen0.slit.direction");

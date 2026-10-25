@@ -255,6 +255,12 @@ update_pointer_crossing(struct wm_server *server, struct wm_view *view)
 	struct wm_view *old_view = ms->over_view;
 	ms->over_context = ctx;
 	ms->over_view = view;
+	/* toolbar.autoRaise, slit.autoRaise */
+	if ((old_ctx ^ ctx) & WM_MOUSE_CTX_TOOLBAR)
+		wm_toolbar_set_hovered(server->toolbar,
+			ctx == WM_MOUSE_CTX_TOOLBAR);
+	if ((old_ctx ^ ctx) & WM_MOUSE_CTX_SLIT)
+		wm_slit_set_hovered(server->slit, ctx == WM_MOUSE_CTX_SLIT);
 	if (old_ctx)
 		wm_cursor_run_event(server, old_ctx, WM_MOUSE_OUT, old_view);
 	/* The MouseOut command may have closed the new window */

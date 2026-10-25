@@ -389,6 +389,10 @@ handle_key(struct wl_listener *listener, void *data)
 	}
 
 	if (!handled) {
+		/* Its user is typing (noFocusWhileTypingDelay) */
+		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED &&
+		    server->focused_view && nsyms > 0)
+			wm_view_note_key(server->focused_view, syms[0]);
 		/* Forward the key event to the focused client */
 		wlr_seat_set_keyboard(server->seat,
 			keyboard->wlr_keyboard);

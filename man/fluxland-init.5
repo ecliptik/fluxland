@@ -51,8 +51,18 @@ Comma-separated workspace names (e.g.\&
 .IR Web,Code,Term,Chat ).
 .TP
 .B session.screen0.workspacewarping
-Allow moving windows between workspaces by dragging to screen edges
-(default: true).
+Allow moving windows between workspaces by dragging them to the edges
+of the screen, within
+.B edgeSnapThreshold
+of them (default: true).
+An opaque move takes the window along, a wireframe one sends it when
+it is let go.
+.TP
+.BR session.screen0.workspacewarpinghorizontal ", " session.screen0.workspacewarpingvertical
+Warp at the left and right, or top and bottom edges (default: true).
+.TP
+.BR session.screen0.workspacewarpinghorizontaloffset ", " session.screen0.workspacewarpingverticaloffset
+How many workspaces a warp goes (default: 1).
 .TP
 .B session.screen0.workspaceMode
 Workspace mode:
@@ -70,7 +80,16 @@ or
 .BR StrictMouseFocus .
 .TP
 .B session.screen0.autoRaise
-Automatically raise windows on focus (default: false).
+With MouseFocus, raise the window the pointer focuses (default: true).
+.TP
+.B session.screen0.focusSameHead
+When the focused window goes away (or another workspace is shown), the
+focus goes to a window on the head the pointer is on (default: false).
+.TP
+.B session.screen0.noFocusWhileTypingDelay
+A new window doesn't take the focus from the window you typed in less
+than this many milliseconds ago (Return doesn't count); it shows that
+it wants attention instead (default: 0, off).
 .TP
 .B session.autoRaiseDelay
 Delay in milliseconds before auto-raising (default: 250).
@@ -87,6 +106,11 @@ Show window contents while moving (default: true).
 .TP
 .B session.screen0.opaqueResize
 Show window contents while resizing (default: false).
+.TP
+.B session.ignoreBorder
+Dragging a window's border doesn't move it (Move bindings on
+.B OnWindowBorder
+don't start; default: false).
 .TP
 .B session.screen0.edgeSnapThreshold
 Pixel distance for edge snapping (default: 10).
@@ -189,6 +213,10 @@ Auto-hide the toolbar (default: false).
 .TP
 .B session.screen0.toolbar.autoHideDelay
 Delay in milliseconds before hiding (default: 500).
+.TP
+.B session.screen0.toolbar.autoRaise
+Bring the toolbar above the windows while the pointer is on it
+(default: false).
 .TP
 .B session.screen0.toolbar.widthPercent
 Toolbar width as percentage of screen (10\-100, default: 100).
@@ -335,6 +363,14 @@ fluxland 1.x's
 works too).
 .SH TAB SETTINGS
 .TP
+.B session.tabsAttachArea
+Where a tab dragged with
+.B StartTabbing
+joins a window:
+.BR Window " (default), anywhere on it, or"
+.BR Titlebar .
+Dropped anywhere else, it leaves its window for where it was dropped.
+.TP
 .B session.screen0.autoTabPlacement
 Automatically group new windows into tabs (default: false).
 .TP
@@ -376,6 +412,10 @@ Padding between tabs in pixels (default: 0; also
 .TP
 .B session.screen0.slit.autoHide
 Auto-hide the slit (default: false).
+.TP
+.B session.screen0.slit.autoRaise
+Bring the slit above the windows while the pointer is on it
+(default: false).
 .TP
 .B session.screen0.slit.placement
 Slit position.

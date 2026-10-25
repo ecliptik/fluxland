@@ -406,25 +406,8 @@ wm_workspace_switch(struct wm_server *server, int index)
 	}
 	wm_ext_workspace_schedule(server);
 
-	/*
-	 * Focus the topmost view on the new workspace.
-	 * Walk the views list (stacking order) and find the first
-	 * view that belongs to this workspace.
-	 */
-	struct wm_view *view, *top = NULL;
-	wl_list_for_each(view, &server->views, link) {
-		/* Also consider sticky views */
-		if ((view->workspace == target || view->sticky) &&
-		    view->scene_tree->node.enabled) {
-			top = view;
-			break;
-		}
-	}
-	if (top)
-		wm_focus_view(top, wm_view_surface(top));
-	else
-		/* No views on new workspace, clear focus */
-		wm_unfocus_current(server);
+	/* Its most recently focused window (FocusControl::revertFocus) */
+	wm_focus_fallback(server, NULL);
 
 	/* The keys file's ChangeWorkspace, once the switch is done
 	 * (BScreen::changeWorkspaceID) */

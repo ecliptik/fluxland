@@ -375,6 +375,7 @@ struct wm_config {
 	bool toolbar_visible;
 	enum wm_toolbar_placement toolbar_placement;
 	bool toolbar_auto_hide;
+	bool toolbar_auto_raise;
 	int toolbar_auto_hide_delay_ms;
 	int toolbar_width_percent;
 	int toolbar_height;

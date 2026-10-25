@@ -659,6 +659,15 @@ if wayland_client.found()
     install: false,
   )
   test('wheel_bindings', test_wheel_bindings, env: test_main_env, depends: fluxland_exe, timeout: 20, suite: 'integration')
+
+  # --- fluxland-test-pointer: a virtual pointer holding buttons across
+  # moves, for the UI tests (wlrctl only clicks) ---
+  executable('fluxland-test-pointer',
+    files('ui/tools/test_pointer.c'),
+    virtual_pointer_client,
+    dependencies: [wayland_client],
+    install: false,
+  )
 endif
 
 # --- Visual regression tests (decoration rendering) ---

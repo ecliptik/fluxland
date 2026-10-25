@@ -1210,6 +1210,30 @@ wm_decoration_region_at(struct wm_decoration *decoration, double x, double y)
 	return WM_DECOR_REGION_CLIENT;
 }
 
+bool
+wm_decoration_tab_size(struct wm_decoration *decoration, int *w, int *h)
+{
+	if (!decoration || !decoration->view)
+		return false;
+	struct wm_style *style = decoration->server ?
+		decoration->server->style : NULL;
+	struct frame_geom g;
+	frame_geometry(decoration, style, &g);
+	struct wm_tab_group *group = decoration->view->tab_group;
+	int n = group && group->count > 0 ? group->count : 1;
+	if (g.ext_tabs) {
+		*w = g.tabs_vertical ? g.tw - 2 * g.bw : g.tab_len;
+		*h = g.tabs_vertical ? g.tab_len : g.tth - 2 * g.bw;
+	} else if (g.titlebar) {
+		int b = style ? style->window_label_unfocus_border_width : 0;
+		*w = (g.label_w - (n - 1) * b) / n;
+		*h = g.button_size;
+	} else {
+		return false;
+	}
+	return *w > 0 && *h > 0;
+}
+
 int
 wm_decoration_tab_at(struct wm_decoration *decoration, double x, double y)
 {
