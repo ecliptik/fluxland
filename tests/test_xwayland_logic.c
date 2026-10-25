@@ -199,12 +199,23 @@ typedef struct xcb_connection_t xcb_connection_t;
 #define XCB_ICCCM_WM_STATE_WITHDRAWN 0
 #define XCB_ICCCM_SIZE_HINT_US_POSITION (1 << 0)
 #define XCB_ICCCM_SIZE_HINT_P_POSITION (1 << 2)
+#define XCB_ICCCM_SIZE_HINT_P_MIN_SIZE (1 << 4)
+#define XCB_ICCCM_SIZE_HINT_P_MAX_SIZE (1 << 5)
+#define XCB_ICCCM_SIZE_HINT_P_RESIZE_INC (1 << 6)
+#define XCB_ICCCM_SIZE_HINT_P_ASPECT (1 << 7)
+#define XCB_ICCCM_SIZE_HINT_BASE_SIZE (1 << 8)
 
 typedef struct { unsigned int sequence; } xcb_intern_atom_cookie_t;
 typedef struct { xcb_atom_t atom; } xcb_intern_atom_reply_t;
 typedef struct { uint32_t flags; int32_t initial_state; }
 	xcb_icccm_wm_hints_t;
-typedef struct { uint32_t flags; } xcb_size_hints_t;
+typedef struct {
+	uint32_t flags;
+	int32_t min_width, min_height, max_width, max_height;
+	int32_t width_inc, height_inc;
+	int32_t min_aspect_num, min_aspect_den, max_aspect_num, max_aspect_den;
+	int32_t base_width, base_height;
+} xcb_size_hints_t;
 
 static xcb_intern_atom_cookie_t
 xcb_intern_atom(xcb_connection_t *c, uint8_t o, uint16_t l, const char *n)
@@ -556,6 +567,12 @@ enum wm_view_type {
 
 struct wm_view;
 
+struct wm_size_hints {
+	int min_w, min_h, max_w, max_h;
+	int base_w, base_h;
+	int inc_w, inc_h;
+	int min_aspect_x, min_aspect_y, max_aspect_x, max_aspect_y;
+};
 struct wm_view_impl {
 	struct wlr_surface *(*surface)(struct wm_view *view);
 	void (*content_geometry)(struct wm_view *view, struct wlr_box *geo);
@@ -570,6 +587,7 @@ struct wm_view_impl {
 	pid_t (*pid)(struct wm_view *view);
 	struct wm_view *(*parent)(struct wm_view *view);
 	void (*set_minimized)(struct wm_view *view, bool minimized);
+	void (*size_hints)(struct wm_view *view, struct wm_size_hints *hints);
 	bool (*get_xprop)(struct wm_view *view, const char *name, char *buf,
 		size_t len);
 	void (*set_xprop)(struct wm_view *view, const char *name,

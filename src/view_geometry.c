@@ -57,6 +57,137 @@ wm_view_frame_box(struct wm_view *view, struct wlr_box *box)
 	box->height = geo.height + top + bottom;
 }
 
+/* --- Size hints (Fluxbox's SizeHints, WindowState.cc) --- */
+
+void
+wm_view_size_hints(struct wm_view *view, struct wm_size_hints *hints)
+{
+	memset(hints, 0, sizeof(*hints));
+	hints->inc_w = hints->inc_h = 1;
+	if (view->ignore_size_hints || !view->impl || !view->impl->size_hints)
+		return;
+	view->impl->size_hints(view, hints);
+	if (hints->inc_w < 1)
+		hints->inc_w = 1;
+	if (hints->inc_h < 1)
+		hints->inc_h = 1;
+}
+
+static unsigned
+increase_to_multiple(unsigned val, unsigned inc)
+{
+	return val % inc ? val + inc - val % inc : val;
+}
+
+static unsigned
+decrease_to_multiple(unsigned val, unsigned inc)
+{
+	return val % inc ? val - val % inc : val;
+}
+
+static void
+closest_point_to_aspect(unsigned *x, unsigned *y, unsigned ax, unsigned ay)
+{
+	double u = (double)(*x * ax + *y * ay) / (double)(ax * ax + ay * ay);
+	*x = (unsigned)(u * ax);
+	*y = (unsigned)(u * ay);
+}
+
+void
+wm_size_hints_apply(const struct wm_size_hints *hints, int *width,
+	int *height, bool make_fit)
+{
+	const struct wm_size_hints *s = hints;
+	unsigned inc_w = s->inc_w > 0 ? (unsigned)s->inc_w : 1;
+	unsigned inc_h = s->inc_h > 0 ? (unsigned)s->inc_h : 1;
+	unsigned base_w = s->base_w > 0 ? (unsigned)s->base_w : 0;
+	unsigned base_h = s->base_h > 0 ? (unsigned)s->base_h : 0;
+	unsigned in_w = *width > 0 ? (unsigned)*width : 1;
+	unsigned in_h = *height > 0 ? (unsigned)*height : 1;
+	unsigned min_w = s->min_w > 0 ? (unsigned)s->min_w : 0;
+	unsigned min_h = s->min_h > 0 ? (unsigned)s->min_h : 0;
+	unsigned max_wh = s->max_w > 0 ? (unsigned)s->max_w : 0;
+	unsigned max_hh = s->max_h > 0 ? (unsigned)s->max_h : 0;
+	unsigned mnx = s->min_aspect_x, mny = s->min_aspect_y;
+	unsigned mxx = s->max_aspect_x, mxy = s->max_aspect_y;
+
+	/* The aspect ratios go on the size over the base */
+	unsigned w = in_w > base_w ? in_w - base_w : 0;
+	unsigned h = in_h > base_h ? in_h - base_h : 0;
+	if (mny > 0 && w * mny < mnx * h) {
+		closest_point_to_aspect(&w, &h, mnx, mny);
+		w = increase_to_multiple(w, inc_w);
+		h = decrease_to_multiple(h, inc_h);
+	} else if (mxx > 0 && w * mxy > mxx * h) {
+		closest_point_to_aspect(&w, &h, mxx, mxy);
+		w = decrease_to_multiple(w, inc_w);
+		h = increase_to_multiple(h, inc_h);
+	}
+
+	if (w + base_w < min_w) {
+		w = increase_to_multiple(min_w - base_w, inc_w);
+		if (mxx > 0 && w * mxy > mxx * h)
+			h = increase_to_multiple(w * mxy / mxx, inc_h);
+	}
+	if (h + base_h < min_h) {
+		h = increase_to_multiple(min_h - base_h, inc_h);
+		if (mny > 0 && w * mny < mnx * h)
+			w = increase_to_multiple(h * mnx / mny, inc_w);
+	}
+
+	unsigned max_w = make_fit && (in_w < max_wh || max_wh == 0) ?
+		in_w : max_wh;
+	unsigned max_h = make_fit && (in_h < max_hh || max_hh == 0) ?
+		in_h : max_hh;
+	if (max_w > 0 && w + base_w > max_w)
+		w = max_w > base_w ? max_w - base_w : 0;
+	if (max_h > 0 && h + base_h > max_h)
+		h = max_h > base_h ? max_h - base_h : 0;
+
+	w = decrease_to_multiple(w, inc_w);
+	h = decrease_to_multiple(h, inc_h);
+
+	if (mny > 0 && w * mny < mnx * h)
+		h = decrease_to_multiple(w * mny / mnx, inc_h);
+	if (mxx > 0 && w * mxy > mxx * h)
+		w = decrease_to_multiple(h * mxx / mxy, inc_w);
+
+	*width = (int)(w + base_w);
+	*height = (int)(h + base_h);
+}
+
+void
+wm_size_hints_display(const struct wm_size_hints *hints, int width,
+	int height, int *dw, int *dh)
+{
+	int inc_w = hints->inc_w > 0 ? hints->inc_w : 1;
+	int inc_h = hints->inc_h > 0 ? hints->inc_h : 1;
+	*dw = (width - hints->base_w) / inc_w;
+	*dh = (height - hints->base_h) / inc_h;
+}
+
+/*
+ * A maximized window's frame box: the area, or with maxIgnoreIncrement
+ * off what of it the client's size hints allow (FbWinFrame::applyState)
+ */
+static void
+set_maximized_box(struct wm_view *view, const struct wlr_box *area)
+{
+	struct wlr_box box = *area;
+	struct wm_config *cfg = view->server->config;
+	if (cfg && !cfg->max_ignore_increment) {
+		int top, bottom, left, right;
+		wm_view_frame_extents(view, &top, &bottom, &left, &right);
+		int w = box.width - left - right, h = box.height - top - bottom;
+		struct wm_size_hints hints;
+		wm_view_size_hints(view, &hints);
+		wm_size_hints_apply(&hints, &w, &h, true);
+		box.width = w + left + right;
+		box.height = h + top + bottom;
+	}
+	wm_view_set_frame_box(view, &box);
+}
+
 bool
 wm_view_maximize_area(struct wm_view *view, struct wlr_box *area)
 {
@@ -117,7 +248,7 @@ wm_view_toggle_maximize(struct wm_view *view)
 
 		struct wlr_box max_box;
 		if (wm_view_maximize_area(view, &max_box))
-			wm_view_set_frame_box(view, &max_box);
+			set_maximized_box(view, &max_box);
 		view->maximized = true;
 	}
 
@@ -242,7 +373,7 @@ wm_view_maximize_vert(struct wm_view *view)
 			wm_view_frame_box(view, &frame);
 			frame.y = area.y;
 			frame.height = area.height;
-			wm_view_set_frame_box(view, &frame);
+			set_maximized_box(view, &frame);
 		}
 		view->maximized_vert = true;
 	}
@@ -277,7 +408,7 @@ wm_view_maximize_horiz(struct wm_view *view)
 			wm_view_frame_box(view, &frame);
 			frame.x = area.x;
 			frame.width = area.width;
-			wm_view_set_frame_box(view, &frame);
+			set_maximized_box(view, &frame);
 		}
 		view->maximized_horiz = true;
 	}
@@ -414,7 +545,7 @@ wm_view_refit(struct wm_view *view)
 	}
 	if (view->maximized) {
 		if (wm_view_maximize_area(view, &box))
-			wm_view_set_frame_box(view, &box);
+			set_maximized_box(view, &box);
 		return;
 	}
 	if (!wm_view_maximize_area(view, &box))

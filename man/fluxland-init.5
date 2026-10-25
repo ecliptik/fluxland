@@ -152,6 +152,12 @@ One of
 or
 .BR BottomToTop .
 .TP
+.B session.screen0.maxIgnoreIncrement
+A maximized window fills the screen even if that isn't a whole number
+of its steps (a terminal's character cells); false keeps it to them
+(default: true).
+Resizing with the mouse always keeps to them.
+.TP
 .B session.screen0.fullMaximization
 Maximize windows over the toolbar and slit (default: false).
 .TP

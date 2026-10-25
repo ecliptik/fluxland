@@ -312,7 +312,12 @@ struct wlr_xdg_toplevel_requested {
 	bool fullscreen;
 };
 
+struct wlr_xdg_toplevel_state {
+	int32_t max_width, max_height, min_width, min_height;
+};
+
 struct wlr_xdg_toplevel {
+	struct wlr_xdg_toplevel_state current;
 	struct wlr_xdg_surface *base;
 	char *title;
 	char *app_id;
@@ -476,6 +481,7 @@ struct wm_config {
 	bool auto_tab_placement;
 	bool focus_new_windows;
 	bool focus_same_head;
+	bool max_ignore_increment;
 	int placement_policy;
 	bool tabs_max_over;
 	char *default_deco;
@@ -626,6 +632,12 @@ enum wm_view_type {
 	WM_VIEW_XWAYLAND,
 };
 
+struct wm_size_hints {
+	int min_w, min_h, max_w, max_h;
+	int base_w, base_h;
+	int inc_w, inc_h;
+	int min_aspect_x, min_aspect_y, max_aspect_x, max_aspect_y;
+};
 struct wm_view_impl {
 	struct wlr_surface *(*surface)(struct wm_view *view);
 	void (*content_geometry)(struct wm_view *view, struct wlr_box *geo);
@@ -640,6 +652,7 @@ struct wm_view_impl {
 	pid_t (*pid)(struct wm_view *view);
 	struct wm_view *(*parent)(struct wm_view *view);
 	void (*set_minimized)(struct wm_view *view, bool minimized);
+	void (*size_hints)(struct wm_view *view, struct wm_size_hints *hints);
 	bool (*get_xprop)(struct wm_view *view, const char *name, char *buf,
 		size_t len);
 	void (*set_xprop)(struct wm_view *view, const char *name,
@@ -5137,6 +5150,43 @@ test_activate_presents_window(void)
 	printf("  PASS: activate_presents_window\n");
 }
 
+/* Fluxbox's SizeHints::apply: increments over the base size, minimum
+ * and maximum, make_fit; shown in increments */
+static void
+test_size_hints_apply(void)
+{
+	/* A terminal: a 4 pixel base, 8 x 16 cells, at least 2 x 1 */
+	struct wm_size_hints h = { .base_w = 4, .base_h = 4, .inc_w = 8,
+		.inc_h = 16, .min_w = 20, .min_h = 20 };
+	int w = 803, ht = 500;
+	wm_size_hints_apply(&h, &w, &ht, false);
+	assert(w == 4 + 99 * 8 && ht == 4 + 31 * 16);
+	int dw, dh;
+	wm_size_hints_display(&h, w, ht, &dw, &dh);
+	assert(dw == 99 && dh == 31);
+	/* Not under its minimum, in whole cells */
+	w = 5; ht = 5;
+	wm_size_hints_apply(&h, &w, &ht, false);
+	assert(w == 4 + 16 && ht == 4 + 16);
+
+	/* A maximum, kept to; make_fit keeps under what it was given */
+	struct wm_size_hints m = { .inc_w = 1, .inc_h = 1, .max_w = 400,
+		.max_h = 300 };
+	w = 1000; ht = 1000;
+	wm_size_hints_apply(&m, &w, &ht, false);
+	assert(w == 400 && ht == 300);
+	w = 350; ht = 1000;
+	wm_size_hints_apply(&m, &w, &ht, true);
+	assert(w == 350 && ht == 300);
+
+	/* None: as it was */
+	struct wm_size_hints none = { .inc_w = 1, .inc_h = 1 };
+	w = 777; ht = 555;
+	wm_size_hints_apply(&none, &w, &ht, false);
+	assert(w == 777 && ht == 555);
+	printf("  PASS: size_hints_apply\n");
+}
+
 /* demandsAttentionTimeout: a window wanting attention flashes focused until
  * it has the focus (AttentionNoticeHandler) */
 static void
@@ -5634,6 +5684,7 @@ main(void)
 	test_activate_presents_window();
 	test_activate_refused_marks_urgent();
 	test_attention_flashes();
+	test_size_hints_apply();
 	test_modal_dialog_keeps_focus();
 	test_popup_without_parent_is_left_to_layer_shell();
 	test_popup_nests_and_unconstrains();

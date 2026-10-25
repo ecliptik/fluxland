@@ -508,6 +508,7 @@ config_create(void)
 	config->click_raises = true;
 	config->focus_new_windows = true;
 	config->focus_same_head = false;
+	config->max_ignore_increment = true;
 	config->no_focus_while_typing_ms = 0;
 	config->demands_attention_ms = 500;
 	config->ignore_border = false;
@@ -681,6 +682,8 @@ apply_focus_config(struct wm_config *config, struct rc_database *db)
 		rc_get_bool(db, "session.screen0.focusNewWindows", true);
 	config->focus_same_head =
 		rc_get_bool(db, "session.screen0.focusSameHead", false);
+	config->max_ignore_increment = rc_get_bool(db,
+		"session.screen0.maxIgnoreIncrement", true);
 	config->no_focus_while_typing_ms = rc_get_int(db,
 		"session.screen0.noFocusWhileTypingDelay", 0);
 	config->demands_attention_ms = rc_get_int(db,

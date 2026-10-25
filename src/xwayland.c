@@ -339,6 +339,41 @@ xw_set_minimized(struct wm_view *view, bool minimized)
 	wlr_xwayland_surface_set_minimized(view->xsurface, minimized);
 }
 
+/* WM_NORMAL_HINTS as Fluxbox's SizeHints::reset reads them */
+static void
+xw_size_hints(struct wm_view *view, struct wm_size_hints *h)
+{
+	const xcb_size_hints_t *s = view->xsurface->size_hints;
+	if (!s)
+		return;
+	if (s->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE) {
+		h->min_w = s->min_width;
+		h->min_h = s->min_height;
+	}
+	if (s->flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE) {
+		h->base_w = s->base_width > 0 ? s->base_width : 0;
+		h->base_h = s->base_height > 0 ? s->base_height : 0;
+		if (!(s->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE)) {
+			h->min_w = h->base_w;
+			h->min_h = h->base_h;
+		}
+	}
+	if (s->flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) {
+		h->max_w = s->max_width;
+		h->max_h = s->max_height;
+	}
+	if (s->flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC) {
+		h->inc_w = s->width_inc;
+		h->inc_h = s->height_inc;
+	}
+	if (s->flags & XCB_ICCCM_SIZE_HINT_P_ASPECT) {
+		h->min_aspect_x = s->min_aspect_num;
+		h->min_aspect_y = s->min_aspect_den;
+		h->max_aspect_x = s->max_aspect_num;
+		h->max_aspect_y = s->max_aspect_den;
+	}
+}
+
 /* A text property of the X window (@NAME patterns, SetXProp) */
 static bool
 xw_get_xprop(struct wm_view *view, const char *name, char *buf, size_t len)
@@ -400,6 +435,7 @@ static const struct wm_view_impl xwayland_view_impl = {
 	.pid = xw_pid,
 	.parent = xw_parent,
 	.set_minimized = xw_set_minimized,
+	.size_hints = xw_size_hints,
 	.get_xprop = xw_get_xprop,
 	.set_xprop = xw_set_xprop,
 };

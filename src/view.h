@@ -37,6 +37,15 @@ enum wm_view_type {
  * Backend operations. Window management code calls the wm_view_*()
  * wrappers below and never touches xdg_toplevel/xsurface directly.
  */
+/* A window's size hints (ICCCM WM_NORMAL_HINTS, xdg min/max size), as
+ * Fluxbox's SizeHints holds them; 0 for none */
+struct wm_size_hints {
+	int min_w, min_h, max_w, max_h;
+	int base_w, base_h;
+	int inc_w, inc_h;		/* 1 at least */
+	int min_aspect_x, min_aspect_y, max_aspect_x, max_aspect_y;
+};
+
 struct wm_view_impl {
 	struct wlr_surface *(*surface)(struct wm_view *view);
 	/* Visible content: offset within the surface, and size */
@@ -55,6 +64,8 @@ struct wm_view_impl {
 	struct wm_view *(*parent)(struct wm_view *view);
 	/* Optional: tell the client it was (un)minimized */
 	void (*set_minimized)(struct wm_view *view, bool minimized);
+	/* Optional: the client's size hints (wm_size_hints, defaults set) */
+	void (*size_hints)(struct wm_view *view, struct wm_size_hints *hints);
 	/* Optional: a text property of the window (X11's, SetXProp) */
 	bool (*get_xprop)(struct wm_view *view, const char *name, char *buf,
 		size_t len);
@@ -326,6 +337,23 @@ void wm_view_set_xprop(struct wm_view *view, const char *name,
 	const char *value);
 
 void wm_view_free_props(struct wm_view *view);
+
+/* The window's size hints: none with [IgnoreSizeHints] */
+void wm_view_size_hints(struct wm_view *view, struct wm_size_hints *hints);
+
+/*
+ * A client size made to keep to the hints (SizeHints::apply): its
+ * increments over the base size, its aspect, at least its minimum and
+ * at most its maximum -- and with make_fit (maximizing) at most what it
+ * was. width, height changed in place.
+ */
+void wm_size_hints_apply(const struct wm_size_hints *hints, int *width,
+	int *height, bool make_fit);
+
+/* The size as the position window shows it: in increments over the base
+ * when the client has them, "80 x 24" for a terminal (displaySize) */
+void wm_size_hints_display(const struct wm_size_hints *hints, int width,
+	int height, int *dw, int *dh);
 
 /* Deiconify [all|allworkspace|last|lastworkspace] [current|origin|
  * originquiet]: the most recently iconified window (or all) of the

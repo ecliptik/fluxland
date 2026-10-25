@@ -190,6 +190,7 @@ struct wm_config {
 	bool click_raises;
 	bool focus_new_windows;
 	bool focus_same_head;            /* focus reverts on the pointer's head */
+	bool max_ignore_increment;       /* maximized: size hints ignored */
 	int no_focus_while_typing_ms;    /* noFocusWhileTypingDelay */
 	int demands_attention_ms;        /* demandsAttentionTimeout: flashes */
 	bool ignore_border;              /* session.ignoreBorder */

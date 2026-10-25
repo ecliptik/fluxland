@@ -214,6 +214,19 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 		new_h = (int)(server->grab_geobox.height - dy);
 	}
 
+	/* The client's size hints (FluxboxWindow::fixSize), the edge
+	 * across from the one dragged staying where it is */
+	struct wm_size_hints hints;
+	wm_view_size_hints(view, &hints);
+	int fit_w = new_w, fit_h = new_h;
+	wm_size_hints_apply(&hints, &fit_w, &fit_h, false);
+	if (server->resize_edges & WLR_EDGE_LEFT)
+		new_x += new_w - fit_w;
+	if (server->resize_edges & WLR_EDGE_TOP)
+		new_y += new_h - fit_h;
+	new_w = fit_w;
+	new_h = fit_h;
+
 	/* edgeResizeSnapThreshold */
 	wm_snap_resize(server, view, server->resize_edges, &new_x, &new_y,
 		&new_w, &new_h);
@@ -239,6 +252,9 @@ process_cursor_resize(struct wm_server *server, uint32_t time)
 			server->wireframe_w : new_w;
 		int disp_h = server->wireframe_active ?
 			server->wireframe_h : new_h;
+		/* In its increments (FbWinFrame::displaySize) */
+		wm_size_hints_display(&hints, disp_w, disp_h, &disp_w,
+			&disp_h);
 		snprintf(buf, sizeof(buf), "%d x %d", disp_w, disp_h);
 		position_overlay_update(server, buf);
 	}

@@ -1504,6 +1504,18 @@ static void wm_slit_set_hovered(struct wm_slit *s, bool h)
 	{ (void)s; (void)h; }
 static void wm_snap_edges(struct wm_server *s, struct wm_view *v,
 	int *sx, int *sy) { (void)s; (void)v; (void)sx; (void)sy; }
+struct wm_size_hints {
+	int min_w, min_h, max_w, max_h;
+	int base_w, base_h;
+	int inc_w, inc_h;
+	int min_aspect_x, min_aspect_y, max_aspect_x, max_aspect_y;
+};
+static void wm_view_size_hints(struct wm_view *v, struct wm_size_hints *h)
+	{ (void)v; memset(h, 0, sizeof(*h)); h->inc_w = h->inc_h = 1; }
+static void wm_size_hints_apply(const struct wm_size_hints *h, int *w, int *ht,
+	bool fit) { (void)h; (void)w; (void)ht; (void)fit; }
+static void wm_size_hints_display(const struct wm_size_hints *h, int w, int ht,
+	int *dw, int *dh) { (void)h; *dw = w; *dh = ht; }
 static void wm_snap_resize(struct wm_server *s, struct wm_view *v,
 	uint32_t edges, int *x, int *y, int *w, int *h)
 	{ (void)s; (void)v; (void)edges; (void)x; (void)y; (void)w; (void)h; }

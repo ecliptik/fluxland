@@ -53,6 +53,17 @@ configurable(struct wm_view *view)
 	return view->xdg_toplevel && view->xdg_toplevel->base->initialized;
 }
 
+/* An xdg window has a minimum and maximum size only */
+static void
+xdg_view_size_hints(struct wm_view *view, struct wm_size_hints *h)
+{
+	const struct wlr_xdg_toplevel_state *s = &view->xdg_toplevel->current;
+	h->min_w = s->min_width;
+	h->min_h = s->min_height;
+	h->max_w = s->max_width;
+	h->max_h = s->max_height;
+}
+
 static void
 xdg_view_set_size(struct wm_view *view, int width, int height)
 {
@@ -128,6 +139,7 @@ xdg_view_parent(struct wm_view *view)
 
 const struct wm_view_impl wm_xdg_view_impl = {
 	.surface = xdg_view_surface,
+	.size_hints = xdg_view_size_hints,
 	.content_geometry = xdg_view_content_geometry,
 	.set_size = xdg_view_set_size,
 	.moved = NULL,

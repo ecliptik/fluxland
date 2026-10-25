@@ -419,7 +419,7 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.imageDither", VT_IGNORED, 0, 0, NULL},
 	{"session.screen0.antialias", VT_IGNORED, 0, 0, NULL},
 	{"session.screen0.opaqueResizeDelay", VT_IGNORED, 0, 0, NULL},
-	{"session.screen0.maxIgnoreIncrement", VT_IGNORED, 0, 0, NULL},
+	{"session.screen0.maxIgnoreIncrement", VT_BOOL, 0, 0, NULL},
 
 	/* Fluxbox's, not in fluxland yet */
 	{"session.screen0.focusSameHead", VT_BOOL, 0, 0, NULL},
