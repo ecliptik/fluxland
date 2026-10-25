@@ -681,17 +681,32 @@ handle_request_configure(struct wl_listener *listener, void *data)
 		return;
 	}
 
+	/*
+	 * Just after it opened, a program (MPlayer...) doesn't move or size
+	 * itself over what its apps entry gives it (configureRequestEvent)
+	 */
+	uint16_t mask = event->mask;
+	int width = event->width, height = event->height;
+	bool keep_pos, keep_size;
+	wm_view_rule_holds_geometry(view, &keep_pos, &keep_size);
+	if (keep_pos)
+		mask &= ~(XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y);
+	if (keep_size) {
+		width = xs->width;
+		height = xs->height;
+	}
+
 	/* ICCCM ConfigureRequest: honour size, and moves (frame follows) */
 	int cx, cy;
 	content_position(view, &cx, &cy);
-	if (event->mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y)) {
-		int nx = (event->mask & XCB_CONFIG_WINDOW_X) ? event->x : cx;
-		int ny = (event->mask & XCB_CONFIG_WINDOW_Y) ? event->y : cy;
+	if (mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y)) {
+		int nx = (mask & XCB_CONFIG_WINDOW_X) ? event->x : cx;
+		int ny = (mask & XCB_CONFIG_WINDOW_Y) ? event->y : cy;
 		wm_view_move(view, view->x + (nx - cx), view->y + (ny - cy));
 		content_position(view, &cx, &cy);
 	}
 	wlr_xwayland_surface_configure(xs, (int16_t)cx, (int16_t)cy,
-		clamp_size(event->width), clamp_size(event->height));
+		clamp_size(width), clamp_size(height));
 }
 
 static void

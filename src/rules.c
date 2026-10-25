@@ -15,6 +15,7 @@
 
 #define _GNU_SOURCE
 
+#include <time.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -678,4 +679,22 @@ wm_rules_remember_window(struct wm_view *view, const char *apps_path)
 	free(header);
 	free(block);
 	return ret;
+}
+
+/* view.h's: an apps entry's hold on a new X window's geometry */
+void
+wm_view_rule_holds_geometry(struct wm_view *view, bool *pos, bool *size)
+{
+	*pos = *size = false;
+	const struct wm_rule_app *app = view->rule ? view->rule->app : NULL;
+	if (!app)
+		return;
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+	if (now - view->mapped_ms >= 1000)
+		return;
+	bool all = app->has_maximized || app->has_fullscreen;
+	*pos = all || app->has_position;
+	*size = all || app->has_dimensions;
 }

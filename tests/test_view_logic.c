@@ -718,6 +718,7 @@ struct wm_view {
 	int focus_protection;
 	int64_t last_key_ms;
 	uint64_t iconify_seq;
+	int64_t mapped_ms;
 	struct wm_view_prop *props;
 	bool ignore_size_hints;
 	bool docked;

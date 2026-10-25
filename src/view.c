@@ -6,6 +6,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include <time.h>
 #include <assert.h>
 #include <signal.h>
 #include <cairo.h>
@@ -426,6 +427,9 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 {
 	view->mapped = true;
 	view->app_id_at_map = view->app_id && *view->app_id;
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	view->mapped_ms = (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
 
 	/* Create server-side decorations */
 	if (!view->decoration && view->server->style &&

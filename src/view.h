@@ -126,6 +126,7 @@ struct wm_view {
 	bool rule_placed;
 	/* The apps-file entry this window matched (see rules.c) */
 	struct wm_window_rule *rule;
+	int64_t mapped_ms;	/* when it mapped (monotonic), for its rule */
 	/* xdg-dialog: a modal dialog takes focus from its parent */
 	bool modal;
 	/*
@@ -337,6 +338,11 @@ void wm_view_set_xprop(struct wm_view *view, const char *name,
 	const char *value);
 
 void wm_view_free_props(struct wm_view *view);
+
+/* Within a second of mapping, does its apps entry hold its position or
+ * its size against the program's own requests (configureRequestEvent)? */
+void wm_view_rule_holds_geometry(struct wm_view *view, bool *pos,
+	bool *size);
 
 /* The window's size hints: none with [IgnoreSizeHints] */
 void wm_view_size_hints(struct wm_view *view, struct wm_size_hints *hints);

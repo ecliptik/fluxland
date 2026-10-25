@@ -294,11 +294,16 @@ Put the window into the slit (fluxland extension).
 Accepted for compatibility; like Fluxbox, it has no effect.
 .SH REMEMBER
 The window menu's
+.B Remember...
+submenu turns each setting of the window's entry on (as the window is
+now) or off, one at a time; the
 .B Remember
-item and the
-.B Remember
-command write the window's current state as an entry of the apps file,
+command writes all of the window's current state as its entry,
 replacing the window's previous entry and keeping the rest of the file.
+.PP
+For a second after an X program's window opens, the program can't move
+it from a remembered position or resize it from remembered dimensions
+(or either, when it is remembered maximized or fullscreen).
 .SH EXAMPLES
 Open Firefox on workspace 2 and go there:
 .PP

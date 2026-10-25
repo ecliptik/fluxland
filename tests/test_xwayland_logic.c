@@ -878,6 +878,12 @@ wm_slit_add_client(struct wm_slit *s, void *surface)
 
 int setenv(const char *name, const char *value, int overwrite);
 
+/* rules.c: an apps entry holding a new window's geometry */
+static bool g_hold_pos, g_hold_size;
+static void
+wm_view_rule_holds_geometry(struct wm_view *v, bool *pos, bool *size)
+	{ (void)v; *pos = g_hold_pos; *size = g_hold_size; }
+
 #include "xwayland.c"
 
 /* --- Fixture --- */
@@ -1321,6 +1327,22 @@ test_configure_mapped(void)
 	emit_configure(&f, 0, 0, 10, 10, 0);
 	assert(g_cfg_w == 500 && g_cfg_h == 350);
 	v->maximized = false;
+
+	/* Just opened with a remembered position and size: the program's
+	 * own move and resize don't take (configureRequestEvent) */
+	f.xs.width = 500;
+	f.xs.height = 350;
+	g_hold_pos = g_hold_size = true;
+	emit_configure(&f, 11, 12, 20, 30,
+		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y);
+	assert(v->x == 300 && v->y == 200);
+	assert(g_cfg_w == 500 && g_cfg_h == 350);
+	/* Only the position held: the size goes through */
+	g_hold_size = false;
+	emit_configure(&f, 11, 12, 640, 480,
+		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y);
+	assert(v->x == 300 && g_cfg_w == 640 && g_cfg_h == 480);
+	g_hold_pos = false;
 
 	fake_unmap(&f);
 	fake_destroy(&f);
