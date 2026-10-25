@@ -167,7 +167,19 @@ in any menu opens the dialog of
 .BR CommandDialog .
 .SH USING MENUS
 Hovering over a submenu opens it (after
-.BR session.screen0.menuDelay ).
+.BR session.screen0.menuDelay ),
+and so does pressing a button on it.
+An item runs when the button is let go over it, as Fluxbox's do:
+.B [maximize]
+maximizes with the left button, up and down with the middle one and
+across with the right one, and a workspace of
+.B [sendto]
+with the middle button takes you along.
+The menu closes, unless Control is held or the item is a setting or
+shade, stick, iconify or maximize, which leave it open to show what
+they did.
+A menu is moved by dragging its title, and closed by right-clicking
+it.
 Typing searches the menu for an item whose label starts with what was
 typed
 .RB ( session.menuSearch :

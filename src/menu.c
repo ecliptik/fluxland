@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <linux/input-event-codes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -122,6 +123,11 @@ fill_sendto_menu(struct wm_menu *menu, struct wm_server *server)
 		snprintf(cmd, sizeof(cmd), "SendToWorkspace %d", ws->index + 1);
 		append_command(menu, workspace_label(ws, name, sizeof(name)),
 			cmd);
+		/* The middle button follows it (SendToMenu) */
+		struct wm_menu_item *last = wl_container_of(menu->items.prev,
+			last, link);
+		snprintf(cmd, sizeof(cmd), "TakeToWorkspace %d", ws->index + 1);
+		last->command2 = strdup(cmd);
 	}
 }
 
@@ -1001,12 +1007,25 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 	}
 }
 
+/*
+ * A press in a menu, as FbTk::Menu keeps it: its title dragged with the
+ * left button (or the right one, to close it on release), or an item
+ * pressed, which runs on release over it
+ */
+static struct {
+	struct wm_menu *menu;
+	bool dragging, closing;
+	double dx, dy;
+} menu_press;
+
 void
 wm_menu_hide(struct wm_menu *menu)
 {
 	if (!menu || !menu->visible) {
 		return;
 	}
+	if (menu_press.menu == menu)
+		memset(&menu_press, 0, sizeof(menu_press));
 
 	/* Hide any open submenu */
 	struct wm_menu_item *item;
@@ -1235,10 +1254,11 @@ menu_target(struct wm_menu *menu)
 }
 
 static void execute_menu_item_now(struct wm_menu *menu,
-	struct wm_menu_item *item, struct wm_view *target);
+	struct wm_menu_item *item, struct wm_view *target, uint32_t button);
 
 static void
-execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
+execute_menu_item_button(struct wm_menu *menu, struct wm_menu_item *item,
+	uint32_t button)
 {
 	if (!menu || !item) {
 		return;
@@ -1246,13 +1266,47 @@ execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
 	struct wm_server *server = menu->server;
 	struct wm_view *target = menu_target(menu);
 	server->menu_executing = true;
-	execute_menu_item_now(menu, item, target);
+	execute_menu_item_now(menu, item, target, button);
 	server->menu_executing = false;
 }
 
 static void
+execute_menu_item(struct wm_menu *menu, struct wm_menu_item *item)
+{
+	execute_menu_item_button(menu, item, BTN_LEFT);
+}
+
+/*
+ * Does clicking it close the menu (MenuItem::click)? Not the toggles
+ * (BoolMenuItem, IntMenuItem) nor the ones taking several buttons
+ * (MultiButtonMenuItem: Maximize, the SendTo workspaces), nor with
+ * Control held.
+ */
+static bool
+item_closes_menu(struct wm_menu *menu, struct wm_menu_item *item)
+{
+	struct wlr_keyboard *kb = menu->server && menu->server->seat ?
+		wlr_seat_get_keyboard(menu->server->seat) : NULL;
+	if (kb && (wlr_keyboard_get_modifiers(kb) & WLR_MODIFIER_CTRL))
+		return false;
+	switch (item->type) {
+	case WM_MENU_SHADE:
+	case WM_MENU_STICK:
+	case WM_MENU_ICONIFY:
+	case WM_MENU_MAXIMIZE:
+		return false;
+	case WM_MENU_COMMAND:
+		return !(item->command &&
+			strncmp(item->command, "config:", 7) == 0) &&
+			!item->command2;
+	default:
+		return true;
+	}
+}
+
+static void
 execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
-	struct wm_view *target)
+	struct wm_view *target, uint32_t button)
 {
 	struct wm_server *server = menu->server;
 
@@ -1304,7 +1358,11 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 		break;
 
 	case WM_MENU_MAXIMIZE:
-		wm_execute_action_on(server, WM_ACTION_MAXIMIZE, NULL, target);
+		/* Left: both ways, middle: up and down, right: across */
+		wm_execute_action_on(server, button == BTN_MIDDLE ?
+			WM_ACTION_MAXIMIZE_VERT : button == BTN_RIGHT ?
+			WM_ACTION_MAXIMIZE_HORIZ : WM_ACTION_MAXIMIZE, NULL,
+			target);
 		break;
 
 	case WM_MENU_ICONIFY:
@@ -1329,11 +1387,13 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 
 	case WM_MENU_COMMAND:
 		if (item->command) {
-			wlr_log(WLR_INFO, "menu command: %s", item->command);
+			/* The middle button's own (SendTo's: and follow) */
+			const char *command = button == BTN_MIDDLE &&
+				item->command2 ? item->command2 : item->command;
+			wlr_log(WLR_INFO, "menu command: %s", command);
 			/* Config submenu commands use "config:" prefix */
-			if (strncmp(item->command, "config:", 7) == 0) {
-				handle_config_command(server,
-					item->command + 7);
+			if (strncmp(command, "config:", 7) == 0) {
+				handle_config_command(server, command + 7);
 				/* Toggle the checked indicator */
 				item->checked = !item->checked;
 				break;
@@ -1342,11 +1402,10 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 			 * Full command language (MacroCmd, If, ...). Parse
 			 * first: the command may reconfigure and free the menu.
 			 */
-			struct wm_command *cmd =
-				wm_command_parse(item->command);
+			struct wm_command *cmd = wm_command_parse(command);
 			if (!cmd) {
 				wlr_log(WLR_ERROR, "menu: bad command '%s'",
-					item->command);
+					command);
 				break;
 			}
 			wm_command_execute(server, cmd, target);
@@ -1763,6 +1822,22 @@ wm_menu_handle_motion(struct wm_server *server, double lx, double ly)
 		return false;
 	}
 
+	/* A title being dragged moves its menu (Menu::motionNotifyEvent);
+	 * its open submenus go */
+	if (menu_press.dragging && menu_press.menu &&
+	    menu_press.menu->visible && menu_press.menu->scene_tree) {
+		struct wm_menu *m = menu_press.menu;
+		struct wm_menu_item *item;
+		wl_list_for_each(item, &m->items, link) {
+			if (item->submenu && item->submenu->visible)
+				wm_menu_hide(item->submenu);
+		}
+		m->x = (int)(lx - menu_press.dx);
+		m->y = (int)(ly - menu_press.dy);
+		wlr_scene_node_set_position(&m->scene_tree->node, m->x, m->y);
+		return true;
+	}
+
 	struct wm_menu *menus[6];
 	int n = open_menus(server, menus);
 	for (int i = 0; i < n; i++) {
@@ -1886,6 +1961,14 @@ wm_menu_handle_button(struct wm_server *server, double lx, double ly,
 /*
  * Internal: handle button click for a specific menu tree.
  */
+/* Over the menu's title (its border line under it too) */
+static bool
+menu_title_at(struct wm_menu *menu, double ly)
+{
+	return menu && menu->title && *menu->title &&
+		ly >= menu->y && ly < menu->y + menu->items_y;
+}
+
 bool
 wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 	uint32_t button, bool pressed)
@@ -1894,21 +1977,71 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 		return false;
 	}
 
-	/* Only handle press events */
+	struct wm_menu *hit_menu = find_menu_at(root_menu, lx, ly);
+
 	if (!pressed) {
-		return find_menu_at(root_menu, lx, ly) != NULL;
+		/* Menu::buttonReleaseEvent */
+		if (menu_press.dragging || menu_press.closing) {
+			struct wm_menu *m = menu_press.menu;
+			bool close = menu_press.closing && button == BTN_RIGHT &&
+				m == hit_menu && menu_title_at(m, ly);
+			memset(&menu_press, 0, sizeof(menu_press));
+			if (close)
+				wm_menu_hide(m);
+			return true;
+		}
+		if (!hit_menu)
+			return false;
+		int idx = menu_item_at(hit_menu, lx, ly);
+		struct wm_menu_item *item = idx >= 0 ?
+			menu_get_item(hit_menu, idx) : NULL;
+		if (!item)
+			return true;
+		/* It runs when let go over it, highlighted (pressed or
+		 * pointed at): items with submenus open on press */
+		if (idx != hit_menu->selected_index || item->submenu ||
+		    item->type == WM_MENU_SEPARATOR ||
+		    item->type == WM_MENU_NOP) {
+			hit_menu->selected_index = idx;
+			menu_update_render(hit_menu);
+			return true;
+		}
+		if (item_closes_menu(hit_menu, item)) {
+			/* Hide menus BEFORE executing the action to avoid
+			 * UAF: it may reconfigure, which destroys and
+			 * recreates all menus */
+			wm_menu_hide(root_menu);
+			execute_menu_item_button(hit_menu, item, button);
+		} else {
+			/* Toggles and such stay, showing what they did */
+			execute_menu_item_button(hit_menu, item, button);
+			if (hit_menu->visible)
+				menu_update_render(hit_menu);
+		}
+		return true;
 	}
 
-	struct wm_menu *hit_menu = find_menu_at(root_menu, lx, ly);
 	if (!hit_menu) {
 		/* Click outside all menus - close */
 		wm_menu_hide(root_menu);
 		return false;
 	}
 
+	/* The title: dragged with the left button, closed with the right
+	 * (Menu::buttonPressEvent) */
+	if (menu_title_at(hit_menu, ly)) {
+		memset(&menu_press, 0, sizeof(menu_press));
+		menu_press.menu = hit_menu;
+		menu_press.closing = button == BTN_RIGHT;
+		menu_press.dragging = button == BTN_LEFT;
+		menu_press.dx = lx - hit_menu->x;
+		menu_press.dy = ly - hit_menu->y;
+		return true;
+	}
+
 	int idx = menu_item_at(hit_menu, lx, ly);
 	if (idx < 0) {
-		return true; /* clicked on title or border */
+		return true; /* clicked on the border */
 	}
 
 	struct wm_menu_item *item = menu_get_item(hit_menu, idx);
@@ -1916,32 +2049,14 @@ wm_menu_handle_button_for(struct wm_menu *root_menu, double lx, double ly,
 		return true;
 	}
 
-	/* If item has submenu, toggle it */
-	if (item->submenu) {
-		if (item->submenu->visible) {
-			wm_menu_hide(item->submenu);
-		} else {
-			hit_menu->selected_index = idx;
-			menu_update_render(hit_menu);
-
-			int sub_x, sub_y;
-			submenu_position(hit_menu, idx, &sub_x, &sub_y);
-			wm_menu_show(item->submenu, sub_x, sub_y);
-		}
-		return true;
+	/* Highlighted; a submenu opens */
+	hit_menu->selected_index = idx;
+	menu_update_render(hit_menu);
+	if (item->submenu && !item->submenu->visible) {
+		int sub_x, sub_y;
+		submenu_position(hit_menu, idx, &sub_x, &sub_y);
+		wm_menu_show(item->submenu, sub_x, sub_y);
 	}
-
-	/* Activate the item */
-	if (item->type != WM_MENU_SEPARATOR &&
-	    item->type != WM_MENU_NOP) {
-		/* Hide menus BEFORE executing the action to avoid UAF:
-		 * execute_menu_item may trigger wm_server_reconfigure()
-		 * which destroys and recreates all menus. If we hid
-		 * after, root_menu would be a dangling pointer. */
-		wm_menu_hide(root_menu);
-		execute_menu_item(hit_menu, item);
-	}
-
 	return true;
 }
 

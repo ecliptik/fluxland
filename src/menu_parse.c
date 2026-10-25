@@ -242,6 +242,7 @@ menu_item_destroy(struct wm_menu_item *item)
 	}
 	free(item->label);
 	free(item->command);
+	free(item->command2);
 	free(item->icon_path);
 	if (item->icon)
 		cairo_surface_destroy(item->icon);

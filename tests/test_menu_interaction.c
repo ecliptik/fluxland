@@ -487,6 +487,7 @@ struct wm_server {
 	struct wlr_scene *scene;
 	struct wlr_output_layout *output_layout;
 	struct wlr_cursor *cursor;
+	struct wlr_seat *seat;
 	struct wl_list outputs;
 	struct wl_list views;
 	struct wl_list workspaces;
@@ -782,6 +783,14 @@ static cairo_t g_stub_cairo;
 
 static cairo_t *cairo_create(cairo_surface_t *s) { (void)s; return &g_stub_cairo; }
 static void cairo_destroy(cairo_t *cr) { (void)cr; }
+/* The keyboard's modifiers: Control held keeps a menu open */
+#define WLR_MODIFIER_CTRL 4
+struct wlr_keyboard;
+static uint32_t g_kb_mods;
+static struct wlr_keyboard *wlr_seat_get_keyboard(struct wlr_seat *seat)
+	{ return (struct wlr_keyboard *)seat; }
+static uint32_t wlr_keyboard_get_modifiers(struct wlr_keyboard *kb)
+	{ (void)kb; return g_kb_mods; }
 static void cairo_set_source_rgb(cairo_t *cr, double r, double g, double b)
 	{ (void)cr; (void)r; (void)g; (void)b; }
 static void wm_cut_corners(cairo_surface_t *s, int x, int y, int w, int h,
@@ -1004,6 +1013,8 @@ void wm_spawn_command(const char *cmd) { (void)cmd; }
 enum wm_action {
 	WM_ACTION_NOP = 0,
 	WM_ACTION_MAXIMIZE,
+	WM_ACTION_MAXIMIZE_VERT,
+	WM_ACTION_MAXIMIZE_HORIZ,
 	WM_ACTION_MINIMIZE,
 	WM_ACTION_SHADE,
 	WM_ACTION_RECONFIGURE,
@@ -2161,6 +2172,26 @@ test_execute_null_safety(void)
 	printf("  PASS: execute_null_safety\n");
 }
 
+/* A click: pressed, then let go there (items run on release, as in
+ * FbTk::Menu) */
+static bool
+click_for(struct wm_menu *menu, double lx, double ly, uint32_t button)
+{
+	bool a = wm_menu_handle_button_for(menu, lx, ly, button, true);
+	if (!menu || !menu->visible)
+		return a;
+	bool r = wm_menu_handle_button_for(menu, lx, ly, button, false);
+	return a || r;
+}
+
+static bool
+click_server(struct wm_server *server, double lx, double ly, uint32_t button)
+{
+	bool a = wm_menu_handle_button(server, lx, ly, button, true);
+	bool r = wm_menu_handle_button(server, lx, ly, button, false);
+	return a || r;
+}
+
 /* --- Button click: activate item --- */
 
 static void
@@ -2176,13 +2207,74 @@ test_button_activates_item(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + menu->items_y + 5;
 
-	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	bool consumed = click_for(menu, lx, ly, 0x110);
 	assert(consumed == true);
 	/* Menu should be hidden after activation */
 	assert(menu->visible == false);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: button_activates_item\n");
+}
+
+/* FbTk::Menu: a press highlights, the release over it runs; toggles and
+ * Maximize stay open (Control too); Maximize takes the button */
+static void
+test_click_semantics(void)
+{
+	setup_server();
+	struct wm_menu *menu = menu_create(&test_server, "Window");
+	struct wm_menu_item *max = menu_item_create(WM_MENU_MAXIMIZE,
+		"Maximize");
+	wl_list_insert(menu->items.prev, &max->link);
+	struct wm_menu_item *close = menu_item_create(WM_MENU_CLOSE, "Close");
+	wl_list_insert(menu->items.prev, &close->link);
+	prepare_menu(menu, 100, 100);
+	menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+	int bw = menu->border_width, ih = menu->item_height;
+	double x = 100 + bw + 5;
+	double y0 = 100 + menu->items_y + 2, y1 = y0 + ih;
+
+	/* Pressed: highlighted, nothing run */
+	stub_action_on_count = 0;
+	wm_menu_handle_button_for(menu, x, y0, BTN_MIDDLE, true);
+	assert(menu->selected_index == 0 && stub_action_on_count == 0);
+	/* Let go elsewhere (on Close): only the highlight moves */
+	wm_menu_handle_button_for(menu, x, y1, BTN_MIDDLE, false);
+	assert(stub_action_on_count == 0 && menu->selected_index == 1);
+
+	/* Maximize: the middle button, up and down; the menu stays */
+	click_for(menu, x, y0, BTN_MIDDLE);
+	assert(stub_action_on == WM_ACTION_MAXIMIZE_VERT);
+	assert(menu->visible);
+	click_for(menu, x, y0, BTN_RIGHT);
+	assert(stub_action_on == WM_ACTION_MAXIMIZE_HORIZ && menu->visible);
+
+	/* Close with Control held: run, the menu stays */
+	static int seat_dummy;
+	test_server.seat = (struct wlr_seat *)&seat_dummy;
+	g_kb_mods = WLR_MODIFIER_CTRL;
+	click_for(menu, x, y1, BTN_LEFT);
+	assert(stub_action_on == WM_ACTION_CLOSE && menu->visible);
+	g_kb_mods = 0;
+	test_server.seat = NULL;
+	/* Without: it closes */
+	click_for(menu, x, y1, BTN_LEFT);
+	assert(!menu->visible);
+
+	/* The title: a right click closes it; the left button drags it */
+	prepare_menu(menu, 100, 100);
+	menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+	wm_menu_handle_button_for(menu, 110, 102, BTN_LEFT, true);
+	wm_menu_handle_motion(&test_server, 150, 132);
+	assert(menu->x == 140 && menu->y == 130);
+	wm_menu_handle_button_for(menu, 150, 132, BTN_LEFT, false);
+	wm_menu_handle_motion(&test_server, 300, 300);
+	assert(menu->x == 140);
+	click_for(menu, 150, 132, BTN_RIGHT);
+	assert(!menu->visible);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: click_semantics\n");
 }
 
 /* --- Button click: outside closes menu --- */
@@ -2195,7 +2287,7 @@ test_button_outside_closes(void)
 	prepare_menu(menu, 100, 100);
 	menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
 
-	bool consumed = wm_menu_handle_button_for(menu, 0, 0, 0x110, true);
+	bool consumed = click_for(menu, 0, 0, 0x110);
 	assert(consumed == false);
 	assert(menu->visible == false);
 
@@ -2217,7 +2309,7 @@ test_button_on_title(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + bw + 5; /* title area */
 
-	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	bool consumed = click_for(menu, lx, ly, 0x110);
 	assert(consumed == true);
 	/* Menu stays visible (clicked on title, no item) */
 	assert(menu->visible == true);
@@ -2240,19 +2332,18 @@ test_button_toggle_submenu(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + menu->items_y + menu->item_height + 5;
 
-	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	bool consumed = click_for(menu, lx, ly, 0x110);
 	assert(consumed == true);
 
 	/* Submenu should now be visible */
 	struct wm_menu_item *sub_item = menu_get_item(menu, 1);
 	assert(sub_item->submenu->visible == true);
 
-	/* Click again to close submenu */
-	/* Need to prepare submenu layout for it to be found */
+	/* Clicked again it stays: a press only opens (Menu::buttonPressEvent) */
 	prepare_menu(sub_item->submenu, sub_item->submenu->x, sub_item->submenu->y);
-	consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	consumed = click_for(menu, lx, ly, 0x110);
 	assert(consumed == true);
-	assert(sub_item->submenu->visible == false);
+	assert(sub_item->submenu->visible == true);
 
 	wm_menu_destroy(menu);
 	printf("  PASS: button_toggle_submenu\n");
@@ -2757,7 +2848,7 @@ test_handle_button_dispatches(void)
 	test_server.root_menu = root;
 
 	/* Click outside: closes */
-	bool consumed = wm_menu_handle_button(&test_server, 0, 0, 0x110, true);
+	bool consumed = click_server(&test_server, 0, 0, 0x110);
 	assert(consumed == false);
 	assert(root->visible == false);
 
@@ -4224,7 +4315,7 @@ test_handle_button_dispatches_to_window_list(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + wl_menu->items_y + 5;
 
-	bool consumed = wm_menu_handle_button(&test_server, lx, ly, 0x110, true);
+	bool consumed = click_server(&test_server, lx, ly, 0x110);
 	assert(consumed == true);
 
 	test_server.window_list_menu = NULL;
@@ -4246,7 +4337,7 @@ test_handle_button_dispatches_to_window_menu(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + bw + 5;
 
-	bool consumed = wm_menu_handle_button(&test_server, lx, ly, 0x110, true);
+	bool consumed = click_server(&test_server, lx, ly, 0x110);
 	assert(consumed == true);
 
 	test_server.window_menu = NULL;
@@ -5049,7 +5140,7 @@ test_handle_motion_null_server(void)
 static void
 test_handle_button_null_server(void)
 {
-	bool consumed = wm_menu_handle_button(NULL, 0, 0, 0x110, true);
+	bool consumed = click_server(NULL, 0, 0, 0x110);
 	assert(consumed == false);
 	printf("  PASS: handle_button_null_server\n");
 }
@@ -5135,7 +5226,7 @@ test_button_click_nop_stays_open(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + menu->items_y + 5;
 
-	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	bool consumed = click_for(menu, lx, ly, 0x110);
 	assert(consumed == true);
 	/* Menu stays visible when clicking on NOP */
 	assert(menu->visible == true);
@@ -5159,7 +5250,7 @@ test_button_click_separator_stays_open(void)
 	double lx = 100 + bw + 5;
 	double ly = 100 + menu->items_y + 2;
 
-	bool consumed = wm_menu_handle_button_for(menu, lx, ly, 0x110, true);
+	bool consumed = click_for(menu, lx, ly, 0x110);
 	assert(consumed == true);
 	/* Menu should remain visible */
 	assert(menu->visible == true);
@@ -5320,7 +5411,7 @@ static void
 test_handle_button_not_visible(void)
 {
 	setup_server();
-	bool consumed = wm_menu_handle_button_for(NULL, 0, 0, 0x110, true);
+	bool consumed = click_for(NULL, 0, 0, 0x110);
 	assert(consumed == false);
 	printf("  PASS: handle_button_not_visible\n");
 }
@@ -5875,7 +5966,7 @@ test_motion_null_server(void)
 static void
 test_button_null_server(void)
 {
-	bool handled = wm_menu_handle_button(NULL, 0, 0, 0, true);
+	bool handled = click_server(NULL, 0, 0, 0);
 	assert(handled == false);
 	printf("  PASS: button_null_server\n");
 }
@@ -6091,8 +6182,8 @@ test_button_on_title_area(void)
 	test_server.root_menu = menu;
 
 	/* Click on title bar area (y within border + title_height) */
-	bool handled = wm_menu_handle_button_for(menu,
-		menu->x + 10, menu->y + 5, 0x110, true);
+	bool handled = click_for(menu,
+		menu->x + 10, menu->y + 5, 0x110);
 	assert(handled == true);
 	/* Menu should still be visible */
 	assert(menu->visible == true);
@@ -6186,6 +6277,7 @@ main(void)
 
 	/* Button interaction */
 	test_button_activates_item();
+	test_click_semantics();
 	test_button_outside_closes();
 	test_button_on_title();
 	test_button_toggle_submenu();

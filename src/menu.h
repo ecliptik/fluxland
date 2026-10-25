@@ -66,6 +66,7 @@ struct wm_menu_item {
 	enum wm_menu_item_type type;
 	char *label;
 	char *command;		/* for exec, style, restart, command */
+	char *command2;		/* the middle button's, when not the same */
 	char *icon_path;	/* optional icon */
 	struct _cairo_surface *icon;	/* a window's icon (a reference) */
 	struct wm_menu *submenu;	/* for submenu type */
