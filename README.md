@@ -52,14 +52,14 @@ Four of the author's Fluxbox desktops from 2002 to 2005 (left, from
 [Screenshots Over the Years](https://www.ecliptik.com/blog/2008/Screenshots-Over-the-Years/))
 and fluxland running the same Fluxbox styles today (right). Programs
 that don't run on Wayland have modern stand-ins: foot for Eterm and
-aterm, Audacious with a Winamp skin for XMMS.
+aterm, Audacious with the same Winamp skins for XMMS.
 
 | | |
 |---|---|
 | ![2002, Fluxarnation](docs/screenshots/fluxbox-desktops/2002-fluxarnation.png) | ![2002, Eterm](docs/screenshots/fluxbox-desktops/2002-eterm.png) |
-| 2002: *Fluxarnation* by aLEczapKA, with its wallpaper | 2002: an Eterm desktop (style and wallpaper rebuilt from the screenshot) |
+| 2002: *Fluxarnation* by aLEczapKA with its wallpaper, gkrellm's *CoplandOS* ([original](https://www.ecliptik.com/assets/images/posts/screenshots-over-the-years/desktop_2002.png)) | 2002: *Kernel Destruction* wallpaper, the *LCD screen: titanium* skin ([original](https://www.ecliptik.com/assets/images/posts/screenshots-over-the-years/screenshot01.png)) |
 | ![2004, Magraxx](docs/screenshots/fluxbox-desktops/2004-magraxx.png) | ![2005, Meta](docs/screenshots/fluxbox-desktops/2005-meta.png) |
-| 2004: *Magraxx* by ikaro, with ayo73's *Debian Style* wallpaper | 2005: Fluxbox's own *Meta* (wallpaper rebuilt from the screenshot) |
+| 2004: *Magraxx* by ikaro, ayo's *Debian Style* wallpaper ([original](https://www.ecliptik.com/assets/images/posts/screenshots-over-the-years/desktop09032004.png)) | 2005: Fluxbox's *Meta*, lisyria's *Winter's Eve* wallpaper, the *ArcticAMP* skin ([original](https://www.ecliptik.com/assets/images/posts/screenshots-over-the-years/chrome_desktop_01072005.png)) |
 
 See [`examples/`](examples/) for styles and complete configuration examples, and the [style gallery](docs/STYLES.md) for Fluxbox style compatibility screenshots.
 
