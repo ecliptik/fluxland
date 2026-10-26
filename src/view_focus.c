@@ -838,6 +838,10 @@ wm_view_focus_new(struct wm_view *view)
 		return;
 	/* A new window is not held back by its own Deny */
 	if (focus_request_allowed(view, false)) {
+		/* A new tab that gets the focus is the one shown
+		 * (FluxboxWindow::setCurrentClient) */
+		if (view->tab_group && view->tab_group->active_view != view)
+			wm_tab_group_activate(view->tab_group, view);
 		wm_focus_view(view, wm_view_surface(view));
 	} else {
 		wm_view_lower(view);

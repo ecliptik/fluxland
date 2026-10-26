@@ -506,8 +506,14 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 		}
 	}
 
+	/* A new tab takes its group's frame and stays hidden behind the
+	 * active tab (focusing it below brings it to the front) */
+	bool new_tab = view->tab_group &&
+		view->tab_group->active_view != view;
+
 	/* Apply automatic window placement */
-	wm_placement_apply(view->server, view);
+	if (!new_tab)
+		wm_placement_apply(view->server, view);
 	wm_view_move(view, view->x, view->y);
 	if (view->pending_head > 0) {
 		wm_view_set_head(view, view->pending_head);
@@ -528,7 +534,8 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 		wm_view_toggle_fullscreen(view);
 	view->pending_maximize = view->pending_fullscreen = false;
 
-	wlr_scene_node_set_enabled(&view->scene_tree->node, true);
+	if (!new_tab)
+		wlr_scene_node_set_enabled(&view->scene_tree->node, true);
 	/* [Maximized] {horz|vert} (these need the window shown) */
 	if (view->pending_maximize_horiz && !view->maximized_horiz)
 		wm_view_maximize_horiz(view);

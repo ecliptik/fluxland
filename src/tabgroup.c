@@ -252,6 +252,10 @@ wm_tab_group_activate(struct wm_tab_group *group, struct wm_view *view)
 			view->x, view->y);
 	}
 
+	/* Its frame draws the group's tabs, the current one now its own */
+	if (view->decoration && group->server->style)
+		wm_decoration_update(view->decoration, group->server->style);
+
 	/* Focus the newly active view */
 	wm_focus_view(view, wm_view_surface(view));
 

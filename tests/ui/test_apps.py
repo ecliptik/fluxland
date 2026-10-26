@@ -141,3 +141,18 @@ def test_hidden_from_cycling(comp, aipc):
         aipc.command("NextWindow")
         time.sleep(0.2)
         assert not aipc.get_window_by_title("AppsHidden")["focused"]
+
+
+def test_group_new_tab_joins_the_frame(comp, aipc):
+    # A window joining a [group] as it maps is a tab of the group's
+    # frame, not placed beside it, and the shown tab is the focused one
+    set_apps(comp, "[group]\n"
+                   "  [app] (title=AppsTab.*)\n"
+                   "[end]\n")
+    first = open_window(aipc, "AppsTabOne")
+    second = open_window(aipc, "AppsTabTwo")
+    first = aipc.get_window_by_title("AppsTabOne")
+    assert second["tab_group"] != 0
+    assert second["tab_group"] == first["tab_group"]
+    assert second["frame"] == first["frame"]
+    assert second["focused"] and not first["focused"]
