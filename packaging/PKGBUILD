@@ -1,4 +1,4 @@
-# Maintainer: fluxland contributors <fluxland@example.com>
+# Maintainer: Micheal Waltz <social.github@accounts.ecliptik.com>
 #
 # Built from the release tarball (tools/dist.sh): it carries wlroots 0.20
 # and the libraries fluxland needs newer than a distribution may have,

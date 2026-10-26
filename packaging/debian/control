@@ -1,7 +1,7 @@
 Source: fluxland
 Section: x11
 Priority: optional
-Maintainer: fluxland contributors <fluxland@example.com>
+Maintainer: Micheal Waltz <social.github@accounts.ecliptik.com>
 # wlroots 0.20 and the libraries newer than the distribution's come in
 # the source tarball (tools/dist.sh) and are linked in statically; these
 # are what they and fluxland build against. (libxcb-errors-dev, for

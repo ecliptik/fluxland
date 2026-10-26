@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 #
-# Build and test fluxland. Runs on GitHub Actions and Forgejo Actions
-# (Forgejo also reads .github/workflows). Every job calls tools/ci.sh,
+# Build and test fluxland on GitHub Actions. Forgejo reads .github/workflows
+# too, so Actions stays off for the repo there. Every job calls tools/ci.sh,
 # so the same steps run locally: tools/ci.sh build|sanitize|fuzz|ui|wlcs.
 
 name: ci

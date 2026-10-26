@@ -6,7 +6,7 @@ fluxland (2.0.0-1) UNRELEASED; urgency=medium
   * X11 programs are ordinary windows; libinput and output settings in
     init; portals; WLCS in CI.
 
- -- fluxland contributors <fluxland@example.com>  Sun, 25 Oct 2026 00:00:00 +0000
+ -- Micheal Waltz <social.github@accounts.ecliptik.com>  Sun, 25 Oct 2026 00:00:00 +0000
 
 fluxland (1.1.0-1) unstable; urgency=medium
 
@@ -22,10 +22,10 @@ fluxland (1.0.0-1) unstable; urgency=medium
 
   * Release 1.0.0.
 
- -- fluxland contributors <fluxland@example.com>  Thu, 27 Feb 2026 00:00:00 +0000
+ -- Micheal Waltz <social.github@accounts.ecliptik.com>  Thu, 27 Feb 2026 00:00:00 +0000
 
 fluxland (0.1.0~dev-1) unstable; urgency=medium
 
   * Initial packaging.
 
- -- fluxland contributors <fluxland@example.com>  Tue, 25 Feb 2026 00:00:00 +0000
+ -- Micheal Waltz <social.github@accounts.ecliptik.com>  Tue, 25 Feb 2026 00:00:00 +0000

@@ -95,7 +95,7 @@ Call `wm_toolbar_update_iconbar()` in BOTH `unmap` and `destroy` handlers.
 - UI tests connect via `FLUXLAND_SOCK` env var; support headless and live session modes
 - Tests needing `/tmp/fluxland-test/` fail under sandbox
 - UI harness logs compositor stderr to a file (an unread pipe fills and blocks the compositor); `FLUXLAND_TEST_KEEP_LOG=<path>` keeps it, `FLUXLAND_BINARY` picks the binary
-- CI: `.github/workflows/ci.yml` (GitHub and Forgejo Actions) runs `tools/ci.sh build|sanitize|fuzz|ui|wlcs` in `debian:trixie`; run the same steps locally
+- CI: `.github/workflows/ci.yml` (GitHub Actions; not run on Forgejo) runs `tools/ci.sh build|sanitize|fuzz|ui|wlcs` in `debian:trixie`; run the same steps locally
 - WLCS: `tools/ci.sh wlcs` runs the conformance suite through `src/wlcs_shim.c`; `tests/wlcs/known-failures` lists the expected failures with reasons, anything else fails
 
 ## Security

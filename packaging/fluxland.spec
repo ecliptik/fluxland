@@ -95,7 +95,7 @@ DESTDIR=%{buildroot} meson install -C %{_vpath_builddir} --no-rebuild \
 %{_mandir}/man5/fluxland-style.5*
 
 %changelog
-* Sun Oct 25 2026 fluxland contributors <fluxland@example.com> - 2.0.0-1
+* Sun Oct 25 2026 Micheal Waltz <social.github@accounts.ecliptik.com> - 2.0.0-1
 - fluxland 2.0, for Fluxbox users: an existing ~/.fluxbox works
   unchanged (init, keys, apps, menu, styles), fluxland --import-fluxbox
 - wlroots 0.20, bundled and linked statically
@@ -109,8 +109,8 @@ DESTDIR=%{buildroot} meson install -C %{_vpath_builddir} --no-rebuild \
 - Performance: iconbar dirty tracking, decoration position guards
 - Multiple critical bug fixes (UAF, type confusion, config hardening)
 
-* Fri Feb 27 2026 fluxland contributors <fluxland@example.com> - 1.0.0-1
+* Fri Feb 27 2026 Micheal Waltz <social.github@accounts.ecliptik.com> - 1.0.0-1
 - Release 1.0.0
 
-* Tue Feb 25 2026 fluxland contributors <fluxland@example.com> - 0.1.0-1
+* Tue Feb 25 2026 Micheal Waltz <social.github@accounts.ecliptik.com> - 0.1.0-1
 - Initial package

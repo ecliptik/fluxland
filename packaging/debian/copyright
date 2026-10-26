@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: fluxland
-Upstream-Contact: fluxland contributors <fluxland@example.com>
+Upstream-Contact: Micheal Waltz <social.github@accounts.ecliptik.com>
 Source: https://github.com/ecliptik/fluxland
 Comment: The release tarball carries the libraries fluxland links in
  statically, under subprojects/; each one's own LICENSE or COPYING file
