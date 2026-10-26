@@ -1,0 +1,134 @@
+# Fluxbox's commands (tools/fluxbox-names.sh), each with an example
+# when it needs one: tests/compat.py binds each in a keys file
+activate
+activatetab
+addworkspace
+and	If {And {Matches (name=xterm)} {Matches (title=a)}} {Raise}
+arrangewindows
+arrangewindowshorizontal
+arrangewindowsstackbottom
+arrangewindowsstackleft
+arrangewindowsstackright
+arrangewindowsstacktop
+arrangewindowsvertical
+attach
+clientmenu
+clientpatterntest
+close
+closeallwindows
+commanddialog
+cond	Cond {Matches (name=xterm)} {Raise}
+custommenu
+deiconify
+delay	Delay {Raise} 500
+detachclient
+every	If {Every Matches (name=xterm)} {Raise}
+exit
+export
+focus
+focusdown
+focusleft
+focusright
+focusup
+foreach	ForEach {Raise} {Matches (name=xterm)}
+fullscreen
+gotomarkedwindow
+gotowindow
+hidemenus
+iconify
+if	If {Matches (name=xterm)} {Raise} {Lower}
+keymode
+kill
+killwindow
+leftworkspace
+lower
+lowerlayer
+macrocmd	MacroCmd {Raise} {Focus}
+map	Map {Raise} {Matches (name=xterm)}
+markwindow
+matches	If {Matches (name=xterm)} {Raise}
+maximize
+maximizehorizontal
+maximizevertical
+maximizewindow
+minimize
+minimizewindow
+move
+movedown
+moveleft
+moveright
+movetableft
+movetabright
+moveto
+moveup
+nextgroup
+nexttab
+nextwindow
+nextworkspace
+not	If {Not Matches (name=xterm)} {Raise}
+or	If {Or {Matches (name=xterm)} {Matches (title=a)}} {Raise}
+prevgroup
+prevtab
+prevwindow
+prevworkspace
+quit
+raise
+raiselayer
+reconfig
+reconfigure
+relabelbutton
+reloadstyle
+removelastworkspace
+resize
+resizehorizontal
+resizeto
+resizevertical
+restart
+rightworkspace
+rootmenu
+saverc
+sendtonexthead
+sendtonextworkspace
+sendtoprevhead
+sendtoprevworkspace
+sendtoworkspace
+setalpha
+setdecor
+setenv
+setfocusprotection
+sethead
+setlayer
+setresourcevalue
+setresourcevaluedialog
+setstyle
+settitle
+settitledialog
+setworkspacename
+setworkspacenamedialog
+setxprop
+shade
+shadeoff
+shadeon
+shadewindow
+showdesktop
+some	If {Some Matches (name=xterm)} {Raise}
+startmoving
+startresizing
+starttabbing
+stick
+stickwindow
+tab
+taketonextworkspace
+taketoprevworkspace
+taketoworkspace
+togglecmd	ToggleCmd {Raise} {Lower}
+toggledecor
+toggleslitbarabove
+toggleslithidden
+toggletoolbarabove
+toggletoolbarvisible
+unclutter
+windowmenu
+workspace
+workspacemenu
+xor	If {Xor {Matches (name=xterm)} {Matches (title=a)}} {Raise}

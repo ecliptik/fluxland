@@ -1,0 +1,27 @@
+# Fluxbox's apps file attributes and sections (tools/fluxbox-names.sh),
+# each with an example: tests/compat.py puts them in an apps file
+alpha	[Alpha] {200}
+app	[app] (name=xterm)
+close	[Close] {yes}
+deco	[Deco] {NORMAL}
+dimensions	[Dimensions] {400 300}
+focushidden	[FocusHidden] {yes}
+focusnewwindow	[FocusNewWindow] {yes}
+focusprotection	[FocusProtection] {Gain}
+fullscreen	[Fullscreen] {no}
+group	[group] (workspace)
+head	[Head] {1}
+hidden	[Hidden] {no}
+iconhidden	[IconHidden] {yes}
+ignoresizehints	[IgnoreSizeHints] {yes}
+jump	[Jump] {yes}
+layer	[Layer] {8}
+maximized	[Maximized] {horz}
+minimized	[Minimized] {no}
+position	[Position] (UpperLeft) {10 20}
+shaded	[Shaded] {no}
+startup	[startup] (screen=0) {true}
+sticky	[Sticky] {yes}
+tab	[Tab] {yes}
+transient	[transient] (role=dialog)
+workspace	[Workspace] {1}

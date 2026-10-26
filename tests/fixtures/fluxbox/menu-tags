@@ -1,0 +1,38 @@
+# Fluxbox's menu tags (tools/fluxbox-names.sh), each with an example:
+# tests/compat.py puts them in a menu file
+alpha	[alpha] (Transparency)
+close	[close] (Close)
+config	[config] (Configure)
+encoding	[encoding] {UTF-8}
+exec	[exec] (Terminal) {xterm}
+exit	[exit] (Exit)
+extramenus	[extramenus] (Remember...)
+iconify	[iconify] (Iconify)
+icons	[icons] (Icons)
+include	[include] (~/included)
+kill	[kill] (Kill)
+killwindow	[killwindow] (Kill)
+layer	[layer] (Layer)
+lower	[lower] (Lower)
+macrocmd	[macrocmd] (Raise) {Raise}
+maximize	[maximize] (Maximize)
+nop	[nop] (-)
+raise	[raise] (Raise)
+reconfig	[reconfig] (Reload)
+reconfigure	[reconfigure] (Reload)
+restart	[restart] (Restart)
+rootcommands	[rootcommands] (/tmp) {true}
+sendto	[sendto] (Send To)
+separator	[separator]
+settitledialog	[settitledialog] (Title...)
+shade	[shade] (Shade)
+stick	[stick] (Stick)
+style	[style] (Style) {/dev/null}
+stylesdir	[stylesdir] (/tmp)
+stylesmenu	[stylesmenu] (Styles) {/tmp}
+submenu	[submenu] (More)
+themesdir	[themesdir] (/tmp)
+themesmenu	[themesmenu] (Styles) {/tmp}
+wallpapermenu	[wallpapermenu] (Wallpapers) {/tmp}
+wallpapers	[wallpapers] (/tmp)
+workspaces	[workspaces] (Workspaces)

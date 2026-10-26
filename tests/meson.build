@@ -392,6 +392,15 @@ test_main = executable(
 )
 test('main', test_main, env: test_main_env, depends: fluxland_exe, timeout: 30)
 
+# --- compat: Fluxbox parity, every name Fluxbox knows through --check-config
+# (tests/compat.py; --markdown makes docs/COMPATIBILITY.md) ---
+python3 = find_program('python3', required: false)
+if python3.found()
+  test('compat', python3,
+    args: [files('compat.py'), fluxland_exe],
+    depends: fluxland_exe, timeout: 60)
+endif
+
 # --- test_output: output utility function tests ---
 # output.c is #included directly in the test to allow stubbing wlroots deps.
 test_output_exe = executable(
