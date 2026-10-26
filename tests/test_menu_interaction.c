@@ -547,11 +547,16 @@ wlr_scene_tree_create(struct wlr_scene_tree *parent)
 	return tree;
 }
 
+/* The largest scene rect made (the menu frame's parts) */
+static int g_rect_max_area;
+
 static struct wlr_scene_rect *
 wlr_scene_rect_create(struct wlr_scene_tree *parent, int w, int h,
 	const float color[4])
 {
 	(void)parent; (void)color;
+	if (w * h > g_rect_max_area)
+		g_rect_max_area = w * h;
 	struct wlr_scene_rect *rect = calloc(1, sizeof(*rect));
 	if (rect) {
 		rect->width = w;
@@ -731,6 +736,7 @@ typedef struct _cairo_surface { int dummy; } cairo_surface_t;
 typedef struct { int dummy; } cairo_t;
 typedef enum { CAIRO_FORMAT_ARGB32 = 0 } cairo_format_t;
 typedef enum { CAIRO_STATUS_SUCCESS = 0 } cairo_status_t;
+typedef enum { CAIRO_OPERATOR_CLEAR = 0, CAIRO_OPERATOR_OVER = 2 } cairo_operator_t;
 
 static cairo_surface_t g_stub_surface;
 
@@ -800,6 +806,8 @@ static void cairo_set_source_rgba(cairo_t *cr, double r, double g, double b, dou
 	(void)cr; (void)r; (void)g; (void)b; (void)a;
 }
 static void cairo_paint(cairo_t *cr) { (void)cr; }
+static void cairo_set_operator(cairo_t *cr, cairo_operator_t op)
+{ (void)cr; (void)op; }
 static void *cairo_get_source(cairo_t *cr) { (void)cr; return NULL; }
 static void cairo_pattern_set_filter(void *p, int f) { (void)p; (void)f; }
 #define CAIRO_FILTER_GOOD 1
@@ -2457,8 +2465,13 @@ test_menu_show_hide_lifecycle(void)
 
 	/* menu.alpha */
 	test_config.menu_alpha = 102;
+	g_rect_max_area = 0;
 	wm_menu_show(menu, 50, 50);
 	assert(g_menu_opacity > 0.39f && g_menu_opacity < 0.41f);
+	/* Applied once: the frame is only its border lines, nothing
+	 * translucent stacked under the title and items (a full-size
+	 * frame behind them made 215 look opaque) */
+	assert(g_rect_max_area <= menu->width * menu->border_width);
 	test_config.menu_alpha = 255;
 
 	wm_menu_hide(menu);

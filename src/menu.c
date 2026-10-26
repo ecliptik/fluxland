@@ -980,6 +980,14 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 		cairo_set_source_rgb(bcr, bc->r / 255.0, bc->g / 255.0,
 			bc->b / 255.0);
 		cairo_paint(bcr);
+		/* Only the lines: the title and items aren't over it, or
+		 * menu.alpha would apply twice there */
+		cairo_set_operator(bcr, CAIRO_OPERATOR_CLEAR);
+		cairo_rectangle(bcr, bw, bw, menu->width - 2 * bw,
+			menu->items_y - 2 * bw);
+		cairo_rectangle(bcr, bw, menu->items_y, menu->width - 2 * bw,
+			menu->height - menu->items_y - bw);
+		cairo_fill(bcr);
 		cairo_destroy(bcr);
 		wm_cut_corners(bs, 0, 0, menu->width, menu->height, corners);
 		struct wlr_buffer *bb = wlr_buffer_from_cairo(bs);
@@ -989,11 +997,27 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 			wlr_scene_buffer_set_opacity(border, alpha);
 		if (bb)
 			wlr_buffer_drop(bb);
-	} else {
-		struct wlr_scene_rect *border_rect = wlr_scene_rect_create(
-			menu->scene_tree, menu->width, menu->height,
-			border_color);
-		wlr_scene_node_set_position(&border_rect->node, 0, 0);
+	} else if (bw > 0) {
+		/* The border lines and the one under the title, nothing
+		 * behind the title and items: menu.alpha applies once, as
+		 * to Fluxbox's menu window */
+		const struct { int x, y, w, h; } lines[] = {
+			{ 0, 0, menu->width, bw },
+			{ 0, menu->height - bw, menu->width, bw },
+			{ 0, bw, bw, menu->height - 2 * bw },
+			{ menu->width - bw, bw, bw, menu->height - 2 * bw },
+			{ bw, menu->items_y - bw, menu->width - 2 * bw, bw },
+		};
+		for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++) {
+			if (lines[i].w <= 0 || lines[i].h <= 0)
+				continue;
+			struct wlr_scene_rect *line = wlr_scene_rect_create(
+				menu->scene_tree, lines[i].w, lines[i].h,
+				border_color);
+			if (line)
+				wlr_scene_node_set_position(&line->node,
+					lines[i].x, lines[i].y);
+		}
 	}
 
 	/* Title bar */
