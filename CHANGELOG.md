@@ -77,6 +77,16 @@ session is a complete Wayland desktop. See
   that start maximized, the text-input relay
 - Run from `~/.fluxbox`, its startup script's `exec fluxbox` no longer
   starts Fluxbox on Xwayland
+- Bugs found by recreating Fluxbox desktops from 2002–2005: `menu.alpha`
+  and `toolbar.alpha` applied twice (translucent menus and toolbar
+  labels came out nearly opaque); stretched style pixmaps were partly
+  transparent; the iconbar kept a window's old title; a window an apps
+  `[group]` tabs as it maps was placed beside the group, and hidden tabs
+  didn't follow their frame's moves and resizes; the wallpaper wasn't
+  refitted when an output's mode changed
+- A new user installed from a package started with no menu or default
+  configuration: the first start copies the defaults to
+  `~/.config/fluxland`, as Fluxbox fills `~/.fluxbox`
 
 ### Removed
 - The PipeWire screen cast module that sent no frames (screen sharing
