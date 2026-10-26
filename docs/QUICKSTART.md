@@ -86,30 +86,25 @@ Expected Fail:      0
 Fail:               0
 ```
 
-## 3. Create a .deb package (optional)
+## 3. Make packages (optional)
 
-Use `checkinstall` for a quick local package:
+The release tarball carries wlroots and the libraries fluxland needs
+newer than a distribution has; packages build from it offline, each in
+a clean container of its distribution (podman or docker):
 
 ```sh
-sudo apt install -y checkinstall
-
-sudo checkinstall --pkgname=fluxland \
-  --pkgversion=1.1.0 \
-  --pkgrelease=1 \
-  --pkggroup=x11 \
-  --maintainer="you@example.com" \
-  --requires="libwayland-server0,libxkbcommon0,libinput10,libpixman-1-0,libpango-1.0-0" \
-  --backup=no \
-  --deldoc=yes \
-  --default \
-  meson install -C build --skip-subprojects
+tools/dist.sh                   # dist-build/meson-dist/fluxland-2.0.0.tar.xz
+packaging/build.sh debian       # Debian 13
+packaging/build.sh ubuntu       # Ubuntu 24.04 and Linux Mint 22
+packaging/build.sh arch         # Arch Linux
+packaging/build.sh fedora       # Fedora
 ```
 
-This creates `fluxland_1.1.0-1_amd64.deb` in the current directory and
-installs it. To share or reinstall:
+The packages land in `packaging/out/<target>/`. To install the Debian or
+Ubuntu one with its dependencies:
 
 ```sh
-sudo dpkg -i fluxland_1.1.0-1_amd64.deb
+sudo apt install ./packaging/out/ubuntu/fluxland_2.0.0-1_amd64.deb
 ```
 
 To remove:

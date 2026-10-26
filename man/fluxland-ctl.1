@@ -1,4 +1,4 @@
-.TH FLUXLAND-CTL 1 "2026-03-03" "fluxland 1.1.0" "General Commands Manual"
+.TH FLUXLAND-CTL 1 "2026-10-25" "fluxland 2.0.0" "General Commands Manual"
 .SH NAME
 fluxland-ctl \- command-line IPC client for fluxland
 .SH SYNOPSIS
@@ -31,6 +31,17 @@ auto-detects the socket by checking
 and then trying
 .IR $XDG_RUNTIME_DIR/fluxland.$WAYLAND_DISPLAY.sock .
 .TP
+.BI \-w " id"
+Run the
+.B action
+on window
+.I id
+(its
+.B id
+in
+.BR get_windows )
+instead of the focused one.
+.TP
 .B \-r
 Raw output mode (no pretty printing).
 This is currently the default.
@@ -40,7 +51,11 @@ Print usage information and exit.
 .SH COMMANDS
 .TP
 .BI action " name" " [" argument ]
-Execute a compositor action on the focused window.
+Execute a compositor action on the focused window (or
+.BR \-w 's).
+Any command line the keys file takes works, as with Fluxbox's
+.BR fluxbox\-remote :
+.BR "fluxland\-ctl action 'MacroCmd {Raise} {Focus}'" .
 The action name is case-insensitive.
 See the
 .B ACTIONS
