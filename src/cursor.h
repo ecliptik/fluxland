@@ -27,7 +27,8 @@ void wm_cursor_finish(struct wm_server *server);
 /*
  * The scene changed under a pointer that didn't move (a window moved,
  * resized, mapped, went, was raised): the surface under it gets enter,
- * leave and motion as if it had moved -- no focus, no bindings.
+ * leave and motion as if it had moved -- no focus, no bindings. Done
+ * once the scene has settled, before events go out.
  */
 void wm_cursor_rebase(struct wm_server *server);
 

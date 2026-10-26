@@ -232,6 +232,7 @@ struct wm_server {
 
 	/* Auto-raise timer for focus-follows-mouse modes */
 	struct wl_event_source *auto_raise_timer;
+	struct wl_event_source *cursor_rebase_idle;	/* wm_cursor_rebase */
 	struct wm_view *auto_raise_view;
 
 	/* Managed windows */

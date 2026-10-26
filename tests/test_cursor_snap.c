@@ -49,6 +49,8 @@
 #define WLR_TYPES_WLR_TOUCH_H
 #define WLR_TYPES_WLR_POINTER_GESTURES_V1_H
 #define WLR_TYPES_WLR_RELATIVE_POINTER_V1_H
+#define WLR_TYPES_WLR_POINTER_CONSTRAINTS_V1_H
+#define WLR_UTIL_REGION_H
 #define WLR_TYPES_WLR_BUFFER_H
 #define WLR_INTERFACES_WLR_BUFFER_H
 #define WLR_BACKEND_H
@@ -191,6 +193,21 @@ wl_event_loop_add_timer(struct wl_event_loop *loop,
 	return NULL;
 }
 
+static inline struct wl_event_source *
+wl_event_loop_add_idle(struct wl_event_loop *loop, void (*func)(void *),
+	void *data)
+{
+	(void)loop; (void)func; (void)data;
+	return NULL;
+}
+
+static inline int
+wl_event_source_remove(struct wl_event_source *source)
+{
+	(void)source;
+	return 0;
+}
+
 #define wl_container_of(ptr, sample, member) \
 	(__typeof__(sample))((char *)(ptr) - \
 		offsetof(__typeof__(*sample), member))
@@ -308,8 +325,10 @@ struct wlr_output_layout {
 };
 
 /* Surface */
+typedef int pixman_region32_t;
 struct wlr_surface {
 	int dummy;
+	pixman_region32_t input_region;
 };
 
 /* XDG shell */
@@ -364,6 +383,7 @@ struct wlr_keyboard {
 struct wlr_touch_point {
 	struct wl_list link;
 	void *client;
+	struct wlr_surface *surface;
 };
 
 struct wlr_seat {
@@ -375,6 +395,7 @@ struct wlr_seat {
 		double sx, sy;
 		size_t button_count;
 	} pointer_state;
+	void *drag;
 };
 
 /* Input event types */
@@ -982,6 +1003,7 @@ struct wm_server {
 	bool focus_user_initiated;
 
 	struct wl_event_source *auto_raise_timer;
+	struct wl_event_source *cursor_rebase_idle;
 	struct wm_view *auto_raise_view;
 
 	struct wl_list views;
@@ -1015,7 +1037,7 @@ struct wm_server {
 	struct wl_listener request_set_primary_selection;
 	void *data_control_mgr;
 	void *pointer_constraints;
-	void *active_constraint;
+	struct wlr_pointer_constraint_v1 *active_constraint;
 	struct wl_listener new_pointer_constraint;
 	struct wl_listener pointer_constraint_destroy;
 
@@ -1341,6 +1363,20 @@ wlr_seat_touch_notify_up(struct wlr_seat *seat, uint32_t time,
 	(void)seat; (void)time; (void)id;
 }
 
+static struct wlr_touch_point *
+wlr_seat_touch_get_point(struct wlr_seat *seat, int32_t id)
+{
+	(void)seat; (void)id;
+	return NULL;
+}
+
+static void
+wlr_scene_node_for_each_buffer(struct wlr_scene_node *node,
+	void (*iter)(struct wlr_scene_buffer *, int, int, void *), void *data)
+{
+	(void)node; (void)iter; (void)data;
+}
+
 static void
 wlr_seat_touch_notify_motion(struct wlr_seat *seat, uint32_t time,
 	int32_t id, double sx, double sy)
@@ -1390,6 +1426,28 @@ static void
 wlr_pointer_gestures_v1_send_hold_end(void *g, void *s,
 	uint32_t t, bool c)
 { (void)g; (void)s; (void)t; (void)c; }
+
+/* Pointer constraints stubs */
+enum wlr_pointer_constraint_v1_type {
+	WLR_POINTER_CONSTRAINT_V1_LOCKED,
+	WLR_POINTER_CONSTRAINT_V1_CONFINED,
+};
+static int pixman_region32_not_empty(const pixman_region32_t *r)
+	{ return *r; }
+struct wlr_pointer_constraint_v1 {
+	struct wlr_surface *surface;
+	enum wlr_pointer_constraint_v1_type type;
+	pixman_region32_t region;
+};
+static bool
+wlr_region_confine(const void *region, double x1, double y1, double x2,
+	double y2, double *x2_out, double *y2_out)
+{
+	(void)region; (void)x1; (void)y1;
+	*x2_out = x2;
+	*y2_out = y2;
+	return true;
+}
 
 /* Relative pointer stub */
 static void

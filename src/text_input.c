@@ -390,6 +390,14 @@ handle_ti_destroy(struct wl_listener *listener, void *data)
 	struct wm_text_input_impl *ti =
 		wl_container_of(listener, ti, destroy);
 
+	/* Gone while enabled: the input method is done with it too
+	 * (wlroots sends no disable first) */
+	struct wlr_input_method_v2 *im = ti->relay->input_method;
+	if (im && ti->input->current_enabled) {
+		wlr_input_method_v2_send_deactivate(im);
+		wlr_input_method_v2_send_done(im);
+	}
+
 	wl_list_remove(&ti->enable.link);
 	wl_list_remove(&ti->commit.link);
 	wl_list_remove(&ti->disable.link);
@@ -418,14 +426,12 @@ handle_im_commit(struct wl_listener *listener, void *data)
 
 	struct wlr_text_input_v3 *text_input = ti->input;
 
+	/* No preedit sent is none: done resets it (text-input-v3) */
 	if (im->current.preedit.text) {
 		wlr_text_input_v3_send_preedit_string(text_input,
 			im->current.preedit.text,
 			im->current.preedit.cursor_begin,
 			im->current.preedit.cursor_end);
-	} else {
-		wlr_text_input_v3_send_preedit_string(text_input,
-			NULL, 0, 0);
 	}
 
 	if (im->current.commit_text) {

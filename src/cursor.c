@@ -17,6 +17,8 @@
 #include <string.h>
 #include <strings.h>
 #include <linux/input-event-codes.h>
+#include <wlr/util/region.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_scene.h>
@@ -476,7 +478,41 @@ schedule_auto_raise(struct wm_server *server, struct wm_view *view)
 	wl_event_source_timer_update(server->auto_raise_timer, delay);
 }
 
+static /* Where a surface's top left is on screen, from the scene */
+struct surface_origin_find {
+	struct wlr_surface *surface;
+	int x, y;
+	bool found;
+};
+
 static void
+surface_origin_iter(struct wlr_scene_buffer *buffer, int sx, int sy,
+	void *data)
+{
+	struct surface_origin_find *f = data;
+	struct wlr_scene_surface *ss =
+		wlr_scene_surface_try_from_buffer(buffer);
+	if (!f->found && ss && ss->surface == f->surface) {
+		f->x = sx;
+		f->y = sy;
+		f->found = true;
+	}
+}
+
+static bool
+surface_origin(struct wm_server *server, struct wlr_surface *surface,
+	double *x, double *y)
+{
+	struct surface_origin_find f = { .surface = surface };
+	if (surface)
+		wlr_scene_node_for_each_buffer(&server->scene->tree.node,
+			surface_origin_iter, &f);
+	*x = f.x;
+	*y = f.y;
+	return f.found;
+}
+
+void
 process_cursor_motion(struct wm_server *server, uint32_t time)
 {
 	/* Update drag icon position if a drag is active */
@@ -561,6 +597,21 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 		}
 	}
 
+	/*
+	 * A button held since a press on a surface: it keeps the pointer
+	 * (the implicit grab -- a text selection dragged past its edge),
+	 * unless a drag and drop is choosing where it goes
+	 */
+	struct wlr_seat_pointer_state *ps = &server->seat->pointer_state;
+	double ox, oy;
+	if (ps->button_count > 0 && ps->focused_surface &&
+	    !server->seat->drag &&
+	    surface_origin(server, ps->focused_surface, &ox, &oy)) {
+		wlr_seat_pointer_notify_motion(server->seat, time,
+			server->cursor->x - ox, server->cursor->y - oy);
+		return;
+	}
+
 	/* Default: passthrough - find the surface under cursor */
 	double sx, sy;
 	struct wlr_surface *surface = NULL;
@@ -638,9 +689,12 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	}
 }
 
-void
-wm_cursor_rebase(struct wm_server *server)
+static void
+rebase_now(void *data)
 {
+	struct wm_server *server = data;
+	server->cursor_rebase_idle = NULL;
+
 	/* Not mid-drag, nor with a button held (the implicit grab keeps
 	 * its surface), nor where motion has its own rules */
 	if (!server->cursor || !server->seat ||
@@ -674,6 +728,16 @@ wm_cursor_rebase(struct wm_server *server)
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
+/* Once the scene has settled (subsurfaces move after the commit that
+ * moves them), before anything goes out to clients */
+void
+wm_cursor_rebase(struct wm_server *server)
+{
+	if (!server->cursor_rebase_idle && server->wl_event_loop)
+		server->cursor_rebase_idle = wl_event_loop_add_idle(
+			server->wl_event_loop, rebase_now, server);
+}
+
 static void
 handle_cursor_motion(struct wl_listener *listener, void *data)
 {
@@ -682,8 +746,36 @@ handle_cursor_motion(struct wl_listener *listener, void *data)
 	struct wlr_pointer_motion_event *event = data;
 
 	wm_idle_notify_activity(server);
-	wlr_cursor_move(server->cursor, &event->pointer->base,
-		event->delta_x, event->delta_y);
+
+	/* Pointer constraints of the surface under it: locked stays put,
+	 * confined stays in its region (relative motion still goes out) */
+	double dx = event->delta_x, dy = event->delta_y;
+	struct wlr_pointer_constraint_v1 *constraint =
+		server->active_constraint;
+	bool locked = false;
+	if (constraint && server->seat->pointer_state.focused_surface ==
+	    constraint->surface) {
+		if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+			dx = dy = 0;
+			locked = true;
+		} else {
+			double sx = server->seat->pointer_state.sx;
+			double sy = server->seat->pointer_state.sy;
+			double cx, cy;
+			/* Its region comes with the surface's next commit:
+			 * till then, the surface's input region */
+			const pixman_region32_t *region =
+				pixman_region32_not_empty(&constraint->region) ?
+				&constraint->region :
+				&constraint->surface->input_region;
+			if (wlr_region_confine(region, sx, sy, sx + dx,
+			    sy + dy, &cx, &cy)) {
+				dx = cx - sx;
+				dy = cy - sy;
+			}
+		}
+	}
+	wlr_cursor_move(server->cursor, &event->pointer->base, dx, dy);
 
 	/* Forward relative motion for games/3D apps */
 	if (server->relative_pointer_mgr) {
@@ -694,7 +786,8 @@ handle_cursor_motion(struct wl_listener *listener, void *data)
 			event->unaccel_dx, event->unaccel_dy);
 	}
 
-	process_cursor_motion(server, event->time_msec);
+	if (!locked)
+		process_cursor_motion(server, event->time_msec);
 }
 
 static void
@@ -1192,14 +1285,14 @@ handle_cursor_touch_motion(struct wl_listener *listener, void *data)
 	wlr_cursor_absolute_to_layout_coords(server->cursor,
 		&event->touch->base, event->x, event->y, &lx, &ly);
 
-	double sx, sy;
-	struct wlr_surface *surface = NULL;
-	view_at(server, lx, ly, &surface, &sx, &sy);
-
-	if (surface) {
+	/* The surface it went down on has it, wherever it goes now
+	 * (outside it too: negative or past its size) */
+	struct wlr_touch_point *point = wlr_seat_touch_get_point(server->seat,
+		event->touch_id);
+	double ox, oy;
+	if (point && surface_origin(server, point->surface, &ox, &oy))
 		wlr_seat_touch_notify_motion(server->seat,
-			event->time_msec, event->touch_id, sx, sy);
-	}
+			event->time_msec, event->touch_id, lx - ox, ly - oy);
 }
 
 static void
@@ -1552,6 +1645,10 @@ wm_cursor_init(struct wm_server *server)
 void
 wm_cursor_finish(struct wm_server *server)
 {
+	if (server->cursor_rebase_idle) {
+		wl_event_source_remove(server->cursor_rebase_idle);
+		server->cursor_rebase_idle = NULL;
+	}
 	wl_list_remove(&server->cursor_motion.link);
 	wl_list_remove(&server->cursor_motion_absolute.link);
 	wl_list_remove(&server->cursor_button.link);
