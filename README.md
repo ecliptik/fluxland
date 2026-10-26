@@ -221,24 +221,18 @@ See the man pages below for detailed format documentation.
 
 ## Migration from Fluxbox
 
-### What works the same
+fluxland reads Fluxbox's files the way Fluxbox does: with no
+`~/.config/fluxland` it uses `~/.fluxbox` as it is, and
+`fluxland --import-fluxbox` makes fluxland's own copy of it, its startup
+script turned into one fluxland runs. Every Fluxbox command, init
+resource, apps attribute and menu tag is supported (a handful of init
+resources that mean nothing on Wayland are accepted and ignored).
 
-- **Config file formats** -- `init`, `keys`, `apps`, `menu`, and `style` files use the same syntax as Fluxbox.
-- **Key binding format** -- modifier and key names, action names, key chains, and keymodes are compatible.
-- **Mouse bindings** -- same context names (OnTitlebar, OnDesktop, OnWindowBorder, etc.) and button syntax.
-- **Per-window rules** -- same `[app]`/`[end]` block syntax with property matching and settings.
-- **Styles** -- Fluxbox style files [work directly](docs/STYLES.md); texture syntax (Raised, Flat, Gradient, etc.) is preserved.
-- **Menu format** -- `[exec]`, `[submenu]`, `[separator]`, `[stylesdir]`, `[reconfig]`, `[exit]` entries.
-- **Config directory** -- fluxland falls back to `~/.fluxbox/` if no fluxland config directory exists.
-
-### What is different
-
-- **Wayland-only** -- no X11 root window, no `xprop`/`xdotool`; use `fluxland-ctl` for IPC and scripting.
-- **app_id replaces WM_CLASS** -- in `apps` rules, the `class` property matches the Wayland `app_id` (e.g. "firefox", "foot") rather than the X11 WM_CLASS.
-- **No `screen0` at runtime** -- while `init` still uses `session.screen0.*` keys for compatibility, Wayland outputs are managed per-monitor via `wlr-output-management`.
-- **Slit uses layer-shell** -- dockable applications use the Wayland layer-shell protocol instead of X11 docking.
-- **Session lock** -- uses `ext-session-lock-v1` protocol; pair with `swaylock` instead of X11 lock programs.
-- **XWayland is optional** -- X11 apps work through XWayland when enabled at build time, but native Wayland clients are preferred.
+- [Migrating from Fluxbox](docs/MIGRATING.md): what works the same, and
+  what Wayland changes (the startup script's X programs, `fluxbox-remote`,
+  `fbrun`, X11 programs and dockapps, the tray).
+- [Compatibility](docs/COMPATIBILITY.md): each Fluxbox name and what
+  fluxland does with it, from the parity test.
 
 ## IPC
 
