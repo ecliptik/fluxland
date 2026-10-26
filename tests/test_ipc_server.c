@@ -257,7 +257,7 @@ read_pipe_contents(size_t *out_len)
 
 /* --- Include ipc.c source directly --- */
 
-#include "../../src/ipc.c"
+#include "../src/ipc.c"
 
 /* --- Test helpers --- */
 
