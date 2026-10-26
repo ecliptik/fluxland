@@ -2956,11 +2956,14 @@ test_begin_interactive_resize_mode(void)
 	assert(test_server.cursor_mode == WM_CURSOR_RESIZE);
 	assert(test_server.resize_edges ==
 		(WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM));
-	/* grab_geobox: the window geometry (0,0,800,600) plus view offset */
+	/* grab_geobox: the window's position and size */
 	assert(test_server.grab_geobox.x == 100);
 	assert(test_server.grab_geobox.y == 200);
 	assert(test_server.grab_geobox.width == 800);
 	assert(test_server.grab_geobox.height == 600);
+	/* grab_x/y: where the pointer started */
+	assert(test_server.grab_x == 900.0);
+	assert(test_server.grab_y == 800.0);
 
 	wl_list_remove(&test_views[0].link);
 	printf("  PASS: begin_interactive_resize_mode\n");
@@ -3027,11 +3030,9 @@ test_begin_interactive_resize_edges_left_top(void)
 	assert(test_server.cursor_mode == WM_CURSOR_RESIZE);
 	assert(test_server.resize_edges ==
 		(WLR_EDGE_LEFT | WLR_EDGE_TOP));
-	/* border_x = (100 + 0) + (LEFT => 0) = 100
-	 * border_y = (200 + 0) + (TOP => 0) = 200
-	 * grab_x = 100 - 100 = 0, grab_y = 200 - 200 = 0 */
-	assert(test_server.grab_x == 0.0);
-	assert(test_server.grab_y == 0.0);
+	/* Where the pointer started: the resize follows how far it moves */
+	assert(test_server.grab_x == 100.0);
+	assert(test_server.grab_y == 200.0);
 
 	wl_list_remove(&test_views[0].link);
 	printf("  PASS: begin_interactive_resize_edges_left_top\n");

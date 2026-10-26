@@ -345,17 +345,17 @@ wm_view_begin_interactive(struct wm_view *view,
 		struct wlr_box geo;
 		wm_view_content_geometry(view, &geo);
 
-		double border_x = (view->x + geo.x) +
-			((edges & WLR_EDGE_RIGHT) ? geo.width : 0);
-		double border_y = (view->y + geo.y) +
-			((edges & WLR_EDGE_BOTTOM) ? geo.height : 0);
+		/* Where the pointer started: process_cursor_resize moves the
+		 * dragged edges by how far it has gone since */
+		server->grab_x = server->cursor->x;
+		server->grab_y = server->cursor->y;
 
-		server->grab_x = server->cursor->x - border_x;
-		server->grab_y = server->cursor->y - border_y;
-
-		server->grab_geobox = geo;
-		server->grab_geobox.x += view->x;
-		server->grab_geobox.y += view->y;
+		/* The window as it was: its position (view->x/y, which the
+		 * resize sets) and its size */
+		server->grab_geobox = (struct wlr_box){
+			.x = view->x, .y = view->y,
+			.width = geo.width, .height = geo.height,
+		};
 
 		server->resize_edges = edges;
 	}

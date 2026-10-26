@@ -84,6 +84,9 @@ session is a complete Wayland desktop. See
   `[group]` tabs as it maps was placed beside the group, and hidden tabs
   didn't follow their frame's moves and resizes; the wallpaper wasn't
   refitted when an output's mode changed
+- Resizing by dragging a window's grip or border: the window jumped by
+  its own position (hundreds of pixels) on the first move, and from a
+  client-side-decorated window's shadow offset
 - A new user installed from a package started with no menu or default
   configuration: the first start copies the defaults to
   `~/.config/fluxland`, as Fluxbox fills `~/.fluxbox`
