@@ -42,3 +42,5 @@ vgcore.*
 # Meson subprojects (fetched from their .wrap files)
 subprojects/*/
 subprojects/packagecache/
+# Redirects meson writes for subprojects' own subprojects
+subprojects/edid-decode.wrap
