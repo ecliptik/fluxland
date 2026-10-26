@@ -41,10 +41,25 @@ the benefits of a modern Wayland session.
 
 | | |
 |---|---|
-| ![Desktop](docs/screenshots/desktop.png) | ![Single Window](docs/screenshots/window_slit.png) |
-| Desktop with wallpaper | Single window with [gkrellm](http://gkrellm.srcbox.net/) in slit (XWayland) |
+| ![Desktop](docs/screenshots/desktop.png) | ![Tabs](docs/screenshots/window_slit.png) |
+| Desktop with wallpaper | Three terminals tabbed in one frame (an apps file `[group]`), [gkrellm](http://gkrellm.srcbox.net/) in the slit (XWayland) |
 | ![Menu](docs/screenshots/menu.png) | ![Grid](docs/screenshots/grid.png) |
-| Root menu | Grid arrangement (4 windows) |
+| Root menu | `ArrangeWindows` (4 windows) |
+
+### Fluxbox desktops, recreated
+
+Four of the author's Fluxbox desktops from 2002 to 2005 (left, from
+[Screenshots Over the Years](https://www.ecliptik.com/blog/2008/Screenshots-Over-the-Years/))
+and fluxland running the same Fluxbox styles today (right). Programs
+that don't run on Wayland have modern stand-ins: foot for Eterm and
+aterm, Audacious with a Winamp skin for XMMS.
+
+| | |
+|---|---|
+| ![2002, Fluxarnation](docs/screenshots/fluxbox-desktops/2002-fluxarnation.png) | ![2002, Eterm](docs/screenshots/fluxbox-desktops/2002-eterm.png) |
+| 2002: *Fluxarnation* by aLEczapKA, with its wallpaper | 2002: an Eterm desktop (style and wallpaper rebuilt from the screenshot) |
+| ![2004, Magraxx](docs/screenshots/fluxbox-desktops/2004-magraxx.png) | ![2005, Meta](docs/screenshots/fluxbox-desktops/2005-meta.png) |
+| 2004: *Magraxx* by ikaro, with ayo73's *Debian Style* wallpaper | 2005: Fluxbox's own *Meta* (wallpaper rebuilt from the screenshot) |
 
 See [`examples/`](examples/) for styles and complete configuration examples, and the [style gallery](docs/STYLES.md) for Fluxbox style compatibility screenshots.
 
