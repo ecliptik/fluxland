@@ -5,6 +5,7 @@
  * test_perf.c - Performance profiling infrastructure tests
  */
 
+#define _POSIX_C_SOURCE 200809L	/* clock_gettime, in perf.h */
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>

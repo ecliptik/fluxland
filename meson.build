@@ -128,6 +128,9 @@ wlroots = dependency(
     'examples=false',
     'renderers=gles2',
     'xwayland=enabled',
+    # Required, not left to what's found: without the DRM backend (it
+    # needs hwdata, libdisplay-info...) fluxland can't run on hardware
+    'backends=drm,libinput',
   ],
 )
 
