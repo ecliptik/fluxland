@@ -533,7 +533,14 @@ draw_tab_row(cairo_t *cr, struct wm_decoration *deco,
 			&style->window_label_unfocus_border_color;
 		int w = len + (i < extra ? 1 : 0);
 		int x = i * (len + b) + (i < extra ? i : extra);
-		fill_rect(cr, bc, x - b, -b, w + 2 * b, row_h + 2 * b);
+		/* Its border, as lines: a ParentRelative tab paints nothing
+		 * inside, and what's behind it shows */
+		if (b > 0) {
+			fill_rect(cr, bc, x - b, -b, w + 2 * b, b);
+			fill_rect(cr, bc, x - b, row_h, w + 2 * b, b);
+			fill_rect(cr, bc, x - b, 0, b, row_h);
+			fill_rect(cr, bc, x + w, 0, b, row_h);
+		}
 		paint_texture(cr, f ? &style->window_label_focus :
 			&style->window_label_unfocus, x, 0, w, row_h);
 		/* tabs.usePixmap: its icon first, as an IconButton */
@@ -574,6 +581,14 @@ render_label(struct wm_decoration *deco, const struct wm_style *style,
 		return NULL;
 	}
 	cairo_t *cr = cairo_create(surface);
+	/* ParentRelative: the titlebar behind it shows, its texture laid
+	 * over the whole titlebar (a gradient goes on under the label) */
+	const struct wm_texture *lt = deco->focused ?
+		&style->window_label_focus : &style->window_label_unfocus;
+	if (lt->fill == WM_TEX_PARENT_RELATIVE)
+		paint_texture(cr, deco->focused ? &style->window_title_focus :
+			&style->window_title_unfocus, -g->label_x, -g->bevel,
+			g->cw, g->th);
 	if (g->ext_tabs) {
 		paint_texture(cr, deco->focused ? &style->window_label_focus :
 			&style->window_label_unfocus, 0, 0, w, h);
