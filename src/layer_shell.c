@@ -190,6 +190,72 @@ wm_layer_shell_focus_if_requested(struct wm_server *server)
 	return false;
 }
 
+struct wlr_surface *
+wm_layer_shell_exclusive_surface(struct wm_server *server)
+{
+	struct wlr_scene_tree *layers[] = {
+		server->layer_overlay,
+		server->layer_top,
+	};
+	for (int i = 0; i < 2; i++) {
+		struct wlr_scene_node *node;
+		wl_list_for_each_reverse(node, &layers[i]->children, link) {
+			if (node->type != WLR_SCENE_NODE_TREE || !node->data)
+				continue;
+			struct wlr_scene_tree *tree =
+				wl_container_of(node, tree, node);
+			struct wlr_scene_layer_surface_v1 *scene_layer =
+				tree->node.data;
+			struct wlr_layer_surface_v1 *ls =
+				scene_layer->layer_surface;
+			if (ls->surface->mapped &&
+			    ls->current.keyboard_interactive ==
+			    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
+				return ls->surface;
+		}
+	}
+	return NULL;
+}
+
+/* The keyboard back to the focused window (or nobody) */
+static void
+restore_window_focus(struct wm_server *server)
+{
+	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+	struct wlr_surface *surface = server->focused_view ?
+		wm_view_surface(server->focused_view) : NULL;
+	if (surface && keyboard)
+		wlr_seat_keyboard_notify_enter(server->seat, surface,
+			keyboard->keycodes, keyboard->num_keycodes,
+			&keyboard->modifiers);
+	else if (surface)
+		wlr_seat_keyboard_notify_enter(server->seat, surface, NULL, 0,
+			NULL);
+	else
+		wlr_seat_keyboard_clear_focus(server->seat);
+}
+
+void
+wm_layer_shell_focus_on_click(struct wm_server *server,
+	struct wlr_surface *surface)
+{
+	if (!surface)
+		return;
+	struct wlr_layer_surface_v1 *ls =
+		wlr_layer_surface_v1_try_from_wlr_surface(
+			wlr_surface_get_root_surface(surface));
+	if (!ls || ls->current.keyboard_interactive ==
+	    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+		return;
+	/* An exclusive one elsewhere keeps it */
+	struct wlr_surface *exclusive =
+		wm_layer_shell_exclusive_surface(server);
+	if (exclusive && exclusive != ls->surface)
+		return;
+	wlr_seat_keyboard_notify_enter(server->seat, ls->surface, NULL, 0,
+		NULL);
+}
+
 static void
 handle_layer_surface_commit(struct wl_listener *listener, void *data)
 {
@@ -201,36 +267,35 @@ handle_layer_surface_commit(struct wl_listener *listener, void *data)
 		return;
 
 	/*
-	 * On initial commit, the layer surface is not yet configured.
-	 * Send the initial configure with the desired size (or output
-	 * dimensions if size is 0).
+	 * On initial commit, the layer surface is not yet configured:
+	 * arranging its output configures it as it will be laid out
+	 * (anchors, margins, the others' exclusive zones).
 	 */
 	if (layer_surface->initial_commit) {
-		uint32_t width = layer_surface->current.desired_width;
-		uint32_t height = layer_surface->current.desired_height;
-
-		/* If anchored to opposite edges, use the output dimension */
-		if (layer_surface->output) {
-			struct wlr_box box;
-			wlr_output_effective_resolution(
-				layer_surface->output,
-				&box.width, &box.height);
-
-			uint32_t anchor = layer_surface->current.anchor;
-			if (width == 0 &&
-			    (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) &&
-			    (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-				width = (uint32_t)box.width;
-			}
-			if (height == 0 &&
-			    (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) &&
-			    (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-				height = (uint32_t)box.height;
-			}
-		}
-
-		wlr_layer_surface_v1_configure(layer_surface, width, height);
+		struct wm_output *output = layer_surface->output ?
+			output_from_wlr(ls->server, layer_surface->output) :
+			NULL;
+		if (output)
+			wm_output_arrange(output);
+		else
+			wlr_layer_surface_v1_configure(layer_surface,
+				layer_surface->current.desired_width,
+				layer_surface->current.desired_height);
 		return;
+	}
+
+	/* Its keyboard interactivity changed: exclusive takes the
+	 * keyboard, none gives it back */
+	if (layer_surface->current.committed &
+	    WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY) {
+		bool has = ls->server->seat->keyboard_state.focused_surface ==
+			layer_surface->surface;
+		enum zwlr_layer_surface_v1_keyboard_interactivity ki =
+			layer_surface->current.keyboard_interactive;
+		if (has && ki ==
+		    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE &&
+		    !wm_layer_shell_focus_if_requested(ls->server))
+			restore_window_focus(ls->server);
 	}
 
 	/* Moved to another layer: move its scene tree with it */
@@ -298,10 +363,8 @@ handle_layer_surface_unmap(struct wl_listener *listener, void *data)
 		ls->server->seat->keyboard_state.focused_surface;
 	if (focused == ls->layer_surface->surface) {
 		/* Try to focus another layer surface first, then fall back */
-		if (!wm_layer_shell_focus_if_requested(ls->server)) {
-			/* Clear keyboard focus - let normal focus logic take over */
-			wlr_seat_keyboard_clear_focus(ls->server->seat);
-		}
+		if (!wm_layer_shell_focus_if_requested(ls->server))
+			restore_window_focus(ls->server);
 	}
 }
 

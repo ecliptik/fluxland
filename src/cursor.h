@@ -24,6 +24,13 @@ void wm_cursor_finish(struct wm_server *server);
  * enum wm_mouse_event: FocusIn, FocusOut, MouseOver, MouseOut) in
  * context, on view (NULL: the focused window).
  */
+/*
+ * The scene changed under a pointer that didn't move (a window moved,
+ * resized, mapped, went, was raised): the surface under it gets enter,
+ * leave and motion as if it had moved -- no focus, no bindings.
+ */
+void wm_cursor_rebase(struct wm_server *server);
+
 void wm_cursor_run_event(struct wm_server *server, uint32_t context,
 	int event, struct wm_view *view);
 

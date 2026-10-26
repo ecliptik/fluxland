@@ -512,6 +512,9 @@ void wm_json_escape(char *dst, size_t dst_size, const char *src)
 
 #include "workspace.c"
 
+static int g_rebase_count;
+void wm_cursor_rebase(struct wm_server *s) { (void)s; g_rebase_count++; }
+
 void
 wm_cursor_run_event(struct wm_server *server, uint32_t context, int event,
 	struct wm_view *view)

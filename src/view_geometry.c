@@ -166,6 +166,32 @@ wm_size_hints_display(const struct wm_size_hints *hints, int width,
 	*dh = (height - hints->base_h) / inc_h;
 }
 
+void
+wm_view_initial_size(struct wm_view *view, bool fullscreen, int *width,
+	int *height)
+{
+	*width = *height = 0;
+	struct wlr_box box;
+	if (fullscreen) {
+		struct wm_output *output = wm_output_for_view(view);
+		if (!output)
+			return;
+		wm_output_layout_box(output, &box);
+		*width = box.width;
+		*height = box.height;
+		return;
+	}
+	wm_view_ensure_decoration(view);
+	if (!wm_view_maximize_area(view, &box))
+		return;
+	int top, bottom, left, right;
+	wm_view_frame_extents(view, &top, &bottom, &left, &right);
+	*width = box.width - left - right;
+	*height = box.height - top - bottom;
+	if (*width < 1 || *height < 1)
+		*width = *height = 0;
+}
+
 /*
  * A maximized window's frame box: the area, or with maxIgnoreIncrement
  * off what of it the client's size hints allow (FbWinFrame::applyState)

@@ -339,6 +339,17 @@ void wm_view_set_xprop(struct wm_view *view, const char *name,
 
 void wm_view_free_props(struct wm_view *view);
 
+/* Make the window's server-side decoration if it has none (map does) */
+void wm_view_ensure_decoration(struct wm_view *view);
+
+/*
+ * The client size for the first configure of a window that asked to
+ * start fullscreen or maximized (its decoration made for that), so it
+ * draws once at its size; 0, 0 if there's nowhere to put it.
+ */
+void wm_view_initial_size(struct wm_view *view, bool fullscreen, int *width,
+	int *height);
+
 /* Within a second of mapping, does its apps entry hold its position or
  * its size against the program's own requests (configureRequestEvent)? */
 void wm_view_rule_holds_geometry(struct wm_view *view, bool *pos,

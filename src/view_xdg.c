@@ -20,6 +20,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "cursor.h"
 #include "decoration.h"
 #include "menu.h"
 #include "rules.h"
@@ -201,8 +202,19 @@ handle_xdg_toplevel_commit(struct wl_listener *listener, void *data)
 		/*
 		 * On initial commit, send a configure so the client
 		 * knows it can map. This is required by wlroots 0.18+.
+		 * Asked to start maximized or fullscreen: so it does, at
+		 * that size, instead of drawing twice.
 		 */
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel, 0, 0);
+		struct wlr_xdg_toplevel *tl = view->xdg_toplevel;
+		int w = 0, h = 0;
+		if (tl->requested.fullscreen || tl->requested.maximized)
+			wm_view_initial_size(view, tl->requested.fullscreen,
+				&w, &h);
+		if (tl->requested.fullscreen)
+			wlr_xdg_toplevel_set_fullscreen(tl, true);
+		else if (tl->requested.maximized && w > 0)
+			wlr_xdg_toplevel_set_maximized(tl, true);
+		wlr_xdg_toplevel_set_size(tl, w, h);
 		return;
 	}
 
@@ -211,6 +223,9 @@ handle_xdg_toplevel_commit(struct wl_listener *listener, void *data)
 		wm_decoration_refresh_geometry(view->decoration,
 			view->server->style);
 	}
+	/* Its size may have changed under the pointer */
+	if (view->mapped)
+		wm_cursor_rebase(view->server);
 }
 
 static void

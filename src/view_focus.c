@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "layer_shell.h"
 #include "animation.h"
 #include "client_pattern.h"
 #include "tabgroup.h"
@@ -182,9 +183,10 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 	/* Apply focus opacity to newly focused view */
 	wm_view_set_opacity(view, view->focus_alpha);
 
-	/* Send keyboard focus */
+	/* Send keyboard focus -- unless a layer surface (a lock dialog,
+	 * a launcher) holds it exclusively */
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-	if (keyboard) {
+	if (keyboard && !wm_layer_shell_exclusive_surface(server)) {
 		wlr_seat_keyboard_notify_enter(seat,
 			wm_view_surface(view),
 			keyboard->keycodes, keyboard->num_keycodes,
@@ -332,6 +334,7 @@ wm_view_raise(struct wm_view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(&view->server->views, &view->link);
 	wlr_scene_node_raise_to_top(&view->scene_tree->node);
+	wm_cursor_rebase(view->server);
 }
 
 void
@@ -341,6 +344,7 @@ wm_view_lower(struct wm_view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(view->server->views.prev, &view->link);
 	wlr_scene_node_lower_to_bottom(&view->scene_tree->node);
+	wm_cursor_rebase(view->server);
 }
 
 struct wlr_scene_tree *

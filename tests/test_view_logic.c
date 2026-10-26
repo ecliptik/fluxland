@@ -88,6 +88,12 @@
 #define WM_INPUT_H
 #define WM_KEYBOARD_H
 #define WM_LAYER_SHELL_H
+struct wlr_surface;
+struct wm_server;
+static struct wlr_surface *wm_layer_shell_exclusive_surface(struct wm_server *s)
+	{ (void)s; return NULL; }
+static void wm_layer_shell_focus_on_click(struct wm_server *s,
+	struct wlr_surface *surface) { (void)s; (void)surface; }
 #define WM_MENU_H
 #define WM_SLIT_H
 #define WM_UTIL_H
@@ -546,6 +552,9 @@ struct wm_server;
 enum { WM_MOUSE_FOCUS_IN = 4, WM_MOUSE_FOCUS_OUT = 5 };
 static int g_event_count[8];
 static struct wm_view *g_event_view;
+static int g_rebase_count;
+static void wm_cursor_rebase(struct wm_server *s) { (void)s; g_rebase_count++; }
+
 static void
 wm_cursor_run_event(struct wm_server *s, uint32_t ctx, int event,
 	struct wm_view *v)
@@ -1319,6 +1328,7 @@ void wm_view_frame_extents(struct wm_view *view, int *top, int *bottom,
 void wm_view_frame_box(struct wm_view *view, struct wlr_box *box);
 void wm_view_set_frame_box(struct wm_view *view, const struct wlr_box *box);
 bool wm_view_maximize_area(struct wm_view *view, struct wlr_box *area);
+void wm_view_ensure_decoration(struct wm_view *view);
 void wm_xdg_popup_track(struct wm_server *server, struct wlr_xdg_popup *popup);
 
 static inline bool

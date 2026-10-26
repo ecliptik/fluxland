@@ -94,6 +94,12 @@
 #define WM_INPUT_H
 #define WM_KEYBOARD_H
 #define WM_LAYER_SHELL_H
+struct wlr_surface;
+struct wm_server;
+static struct wlr_surface *wm_layer_shell_exclusive_surface(struct wm_server *s)
+	{ (void)s; return NULL; }
+static void wm_layer_shell_focus_on_click(struct wm_server *s,
+	struct wlr_surface *surface) { (void)s; (void)surface; }
 #define WM_CURSOR_SNAP_H
 #define WM_CURSOR_ACTIONS_H
 #define WM_COMMAND_H
@@ -364,6 +370,11 @@ struct wlr_seat {
 	struct {
 		struct wl_list touch_points;
 	} touch_state;
+	struct wlr_seat_pointer_state {
+		struct wlr_surface *focused_surface;
+		double sx, sy;
+		size_t button_count;
+	} pointer_state;
 };
 
 /* Input event types */
@@ -1468,6 +1479,7 @@ static bool wm_toolbar_handle_button(struct wm_toolbar *tb, double x,
 /* dialog.h */
 static bool wm_dialog_handle_button(struct wm_server *s, double x, double y,
 	bool p) { (void)s; (void)x; (void)y; (void)p; return false; }
+static bool wm_dialog_is_open(struct wm_server *s) { (void)s; return false; }
 static bool wm_dialog_handle_motion(struct wm_server *s, double x, double y)
 	{ (void)s; (void)x; (void)y; return false; }
 static void wm_menu_show_slit_menu(struct wm_server *s, int x, int y)

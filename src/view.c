@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
+#include "cursor.h"
 #include "animation.h"
 #include "config.h"
 #include "decoration.h"
@@ -275,6 +276,7 @@ wm_view_move(struct wm_view *view, int x, int y)
 	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
 	if (impl_of(view)->moved)
 		impl_of(view)->moved(view);
+	wm_cursor_rebase(view->server);
 }
 
 /* --- Geometry helpers --- */
@@ -421,6 +423,24 @@ offset_surface_tree(struct wm_view *view)
 	}
 }
 
+/* The window's server-side decoration, made once: session.screen0.
+ * defaultDeco, which [Deco] overrides at map */
+void
+wm_view_ensure_decoration(struct wm_view *view)
+{
+	if (view->decoration || !view->server->style || view->no_decoration)
+		return;
+	view->decoration = wm_decoration_create(view, view->server->style);
+	enum wm_decor_preset preset;
+	if (view->decoration && view->server->config &&
+	    wm_decor_parse(view->server->config->default_deco, &preset) &&
+	    preset != WM_DECOR_NORMAL)
+		wm_decoration_set_preset(view->decoration, preset,
+			view->server->style);
+	if (view->decoration)
+		offset_surface_tree(view);
+}
+
 void
 wm_view_map_common(struct wm_view *view, bool want_maximized,
 	bool want_fullscreen)
@@ -431,21 +451,9 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	view->mapped_ms = (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
 
-	/* Create server-side decorations */
-	if (!view->decoration && view->server->style &&
-	    !view->no_decoration) {
-		view->decoration = wm_decoration_create(view,
-			view->server->style);
-		/* session.screen0.defaultDeco, which [Deco] overrides */
-		enum wm_decor_preset preset;
-		if (view->decoration && view->server->config &&
-		    wm_decor_parse(view->server->config->default_deco,
-			&preset) && preset != WM_DECOR_NORMAL)
-			wm_decoration_set_preset(view->decoration, preset,
-				view->server->style);
-		if (view->decoration)
-			offset_surface_tree(view);
-	}
+	/* Server-side decorations (made already if it asked to start
+	 * maximized) */
+	wm_view_ensure_decoration(view);
 
 	/* Apply per-window rules; like Fluxbox, re-read a changed apps file */
 	wm_server_check_rules_reload(view->server);
@@ -568,6 +576,8 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 			view->server->config->animation_duration_ms,
 			NULL, NULL);
 	}
+	/* Under the pointer? It gets enter */
+	wm_cursor_rebase(view->server);
 }
 
 static void
@@ -657,6 +667,8 @@ wm_view_unmap_common(struct wm_view *view)
 		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
 		wm_toolbar_update_iconbar(view->server->toolbar);
 	}
+	/* What was under it gets the pointer */
+	wm_cursor_rebase(view->server);
 }
 
 void
@@ -766,6 +778,7 @@ wm_view_minimize(struct wm_view *view)
 		wlr_scene_node_set_enabled(&view->scene_tree->node, false);
 		wm_toolbar_update_iconbar(view->server->toolbar);
 	}
+	wm_cursor_rebase(view->server);
 }
 
 void
@@ -776,6 +789,7 @@ wm_view_unminimize(struct wm_view *view)
 	if (impl_of(view)->set_minimized)
 		impl_of(view)->set_minimized(view, false);
 	deiconify_view(view);
+	wm_cursor_rebase(view->server);
 }
 
 void

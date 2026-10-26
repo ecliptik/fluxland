@@ -413,6 +413,7 @@ wm_workspace_switch(struct wm_server *server, int index)
 	 * (BScreen::changeWorkspaceID) */
 	wm_cursor_run_event(server, WM_MOUSE_CTX_DESKTOP, WM_MOUSE_FOCUS_IN,
 		NULL);
+	wm_cursor_rebase(server);
 }
 
 void

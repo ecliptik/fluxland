@@ -17,6 +17,7 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#include "cursor.h"
 #include "xwayland.h"
 
 #ifdef WM_HAS_XWAYLAND
@@ -480,6 +481,8 @@ handle_commit(struct wl_listener *listener, void *data)
 	if (view->decoration && view->server->style)
 		wm_decoration_refresh_geometry(view->decoration,
 			view->server->style);
+	if (view->mapped)
+		wm_cursor_rebase(view->server);
 }
 
 static void

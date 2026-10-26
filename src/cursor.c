@@ -10,6 +10,7 @@
  */
 
 #define _GNU_SOURCE
+#include <time.h>
 #include <math.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -34,6 +35,7 @@
 #include <cairo.h>
 #include <drm_fourcc.h>
 
+#include "layer_shell.h"
 #include "config.h"
 #include "cursor.h"
 #include "command.h"
@@ -636,6 +638,42 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	}
 }
 
+void
+wm_cursor_rebase(struct wm_server *server)
+{
+	/* Not mid-drag, nor with a button held (the implicit grab keeps
+	 * its surface), nor where motion has its own rules */
+	if (!server->cursor || !server->seat ||
+	    server->cursor_mode != WM_CURSOR_PASSTHROUGH ||
+	    server->seat->pointer_state.button_count > 0 ||
+	    wm_session_is_locked(server) || wm_dialog_is_open(server))
+		return;
+
+	double sx, sy;
+	struct wlr_surface *surface = NULL;
+	view_at(server, server->cursor->x, server->cursor->y, &surface,
+		&sx, &sy);
+	struct wlr_seat_pointer_state *ps = &server->seat->pointer_state;
+	if (surface == ps->focused_surface &&
+	    (!surface || (sx == ps->sx && sy == ps->sy)))
+		return;		/* nothing changed under it */
+
+	if (surface) {
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
+		wlr_seat_pointer_notify_motion(server->seat,
+			(uint32_t)(now.tv_sec * 1000 + now.tv_nsec / 1000000),
+			sx, sy);
+	} else {
+		wlr_seat_pointer_clear_focus(server->seat);
+		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr,
+			"default");
+	}
+	/* Clients take pointer events a frame at a time */
+	wlr_seat_pointer_notify_frame(server->seat);
+}
+
 static void
 handle_cursor_motion(struct wl_listener *listener, void *data)
 {
@@ -794,6 +832,11 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 			event->time_msec, event->button, event->state);
 		return;
 	}
+
+	/* A layer surface that takes the keyboard on a click */
+	if (event->state == WL_POINTER_BUTTON_STATE_PRESSED)
+		wm_layer_shell_focus_on_click(server,
+			server->seat->pointer_state.focused_surface);
 
 	/* An open dialog: its title drags it, a click elsewhere ends it */
 	if (wm_dialog_handle_button(server, server->cursor->x,

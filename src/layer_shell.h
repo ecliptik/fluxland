@@ -66,4 +66,16 @@ void wm_layer_shell_output_destroyed(struct wm_server *server,
  */
 bool wm_layer_shell_focus_if_requested(struct wm_server *server);
 
+/*
+ * The mapped top or overlay layer surface asking for the keyboard
+ * exclusively, or NULL: while there is one, windows don't get it.
+ */
+struct wlr_surface *wm_layer_shell_exclusive_surface(
+	struct wm_server *server);
+
+/* A press on surface: a layer surface that takes the keyboard (on
+ * demand or exclusively) gets it */
+void wm_layer_shell_focus_on_click(struct wm_server *server,
+	struct wlr_surface *surface);
+
 #endif /* WM_LAYER_SHELL_H */

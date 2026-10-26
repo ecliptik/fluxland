@@ -878,6 +878,9 @@ wm_slit_add_client(struct wm_slit *s, void *surface)
 
 int setenv(const char *name, const char *value, int overwrite);
 
+/* cursor.c */
+static void wm_cursor_rebase(struct wm_server *s) { (void)s; }
+
 /* rules.c: an apps entry holding a new window's geometry */
 static bool g_hold_pos, g_hold_size;
 static void

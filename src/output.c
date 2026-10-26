@@ -195,9 +195,12 @@ wm_output_arrange(struct wm_output *output)
 
 	struct wlr_box usable = full;
 	if (!wlr_box_empty(&full)) {
-		wm_layer_shell_configure(output, &full, &usable);
+		/* fluxland's own toolbar and slit first: panels (layer
+		 * surfaces with an exclusive zone) go beside them, not
+		 * under them */
 		wm_toolbar_reserve(server->toolbar, output, &usable);
 		wm_slit_reserve(server->slit, output, &usable);
+		wm_layer_shell_configure(output, &full, &usable);
 		apply_struts(output, &usable);
 	}
 
