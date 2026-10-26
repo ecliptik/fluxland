@@ -8,6 +8,8 @@
 #ifndef WM_INPUT_H
 #define WM_INPUT_H
 
+#include <stdbool.h>
+
 #include <wlr/types/wlr_switch.h>
 
 #include "config.h"
@@ -15,6 +17,10 @@
 struct wm_server;
 
 /* Register input handlers (new_input, seat request_cursor, etc.) */
+/* The seat's capabilities from the devices there are (touch: one has
+ * just come) */
+void wm_input_update_capabilities(struct wm_server *server, bool touch);
+
 void wm_input_init(struct wm_server *server);
 
 /* Remove input listeners */

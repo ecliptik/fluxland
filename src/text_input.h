@@ -57,6 +57,16 @@ void wm_im_popup_place(const struct wlr_box *cursor, int pw, int ph,
 	const struct wlr_box *usable, int *x, int *y);
 
 /* Initialize text input and input method protocols */
+/*
+ * The input method's keyboard grab, which keys from keyboard go to
+ * instead of the focused window (fcitx5, ibus...): NULL when there is
+ * none, or for the input method's own virtual keyboard (what it sends
+ * back goes to the window).
+ */
+struct wlr_keyboard;
+struct wlr_input_method_keyboard_grab_v2 *wm_text_input_keyboard_grab(
+	struct wm_server *server, struct wlr_keyboard *keyboard);
+
 void wm_text_input_init(struct wm_server *server);
 
 /* Clean up text input relay */

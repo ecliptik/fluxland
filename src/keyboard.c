@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <wlr/types/wlr_input_method_v2.h>
 #include <wlr/backend/session.h>
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/types/wlr_input_device.h>
@@ -22,6 +23,7 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "text_input.h"
 #include "keyboard.h"
 #include "dialog.h"
 #include "keyboard_actions.h"
@@ -416,6 +418,19 @@ handle_key(struct wl_listener *listener, void *data)
 		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED &&
 		    server->focused_view && nsyms > 0)
 			wm_view_note_key(server->focused_view, syms[0]);
+		/* An input method (fcitx5...) takes the keys first; what
+		 * it doesn't use comes back on its virtual keyboard */
+		struct wlr_input_method_keyboard_grab_v2 *grab =
+			wm_text_input_keyboard_grab(server,
+				keyboard->wlr_keyboard);
+		if (grab) {
+			wlr_input_method_keyboard_grab_v2_set_keyboard(grab,
+				keyboard->wlr_keyboard);
+			wlr_input_method_keyboard_grab_v2_send_key(grab,
+				event->time_msec, event->keycode,
+				event->state);
+			return;
+		}
 		/* Forward the key event to the focused client */
 		wlr_seat_set_keyboard(server->seat,
 			keyboard->wlr_keyboard);
@@ -431,9 +446,18 @@ handle_modifiers(struct wl_listener *listener, void *data)
 		wl_container_of(listener, keyboard, modifiers);
 	struct wm_server *server = keyboard->server;
 
-	wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
-	wlr_seat_keyboard_notify_modifiers(server->seat,
-		&keyboard->wlr_keyboard->modifiers);
+	struct wlr_input_method_keyboard_grab_v2 *grab =
+		wm_text_input_keyboard_grab(server, keyboard->wlr_keyboard);
+	if (grab) {
+		wlr_input_method_keyboard_grab_v2_set_keyboard(grab,
+			keyboard->wlr_keyboard);
+		wlr_input_method_keyboard_grab_v2_send_modifiers(grab,
+			&keyboard->wlr_keyboard->modifiers);
+	} else {
+		wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
+		wlr_seat_keyboard_notify_modifiers(server->seat,
+			&keyboard->wlr_keyboard->modifiers);
+	}
 
 	/* Releasing the modifiers ends a NextWindow/PrevWindow cycle */
 	if (server->focus_cycle.active &&

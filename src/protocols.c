@@ -48,6 +48,7 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/util/log.h>
 
+#include "input.h"
 #include "icon.h"
 #include "ipc.h"
 #include "protocols.h"
@@ -148,6 +149,7 @@ handle_new_virtual_keyboard(struct wl_listener *listener, void *data)
 
 	/* Treat the virtual keyboard like any physical keyboard */
 	wm_keyboard_setup(server, &vkbd->keyboard.base, true);
+	wm_input_update_capabilities(server, false);
 	wlr_log(WLR_INFO, "%s", "new virtual keyboard");
 }
 

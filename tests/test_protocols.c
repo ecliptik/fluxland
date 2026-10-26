@@ -60,6 +60,7 @@
 #define WM_SERVER_H
 #define WM_VIEW_H
 #define WM_KEYBOARD_H
+#define WM_INPUT_H
 #define WM_IPC_H
 #define WLR_TYPES_WLR_EXT_DATA_CONTROL_V1_H
 #define WLR_TYPES_WLR_EXT_IMAGE_CAPTURE_SOURCE_V1_H
@@ -72,6 +73,11 @@
 #define WLR_TYPES_WLR_FIXES_H
 #define WLR_TYPES_WLR_EXT_FOREIGN_TOPLEVEL_LIST_V1_H
 #define WM_ICON_H
+
+/* input.c */
+struct wm_server;
+static void wm_input_update_capabilities(struct wm_server *s, bool touch)
+	{ (void)s; (void)touch; }
 
 /* --- Stub wayland types --- */
 

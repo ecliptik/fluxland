@@ -186,11 +186,17 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 	/* Send keyboard focus -- unless a layer surface (a lock dialog,
 	 * a launcher) holds it exclusively */
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-	if (keyboard && !wm_layer_shell_exclusive_surface(server)) {
-		wlr_seat_keyboard_notify_enter(seat,
-			wm_view_surface(view),
-			keyboard->keycodes, keyboard->num_keycodes,
-			&keyboard->modifiers);
+	if (!wm_layer_shell_exclusive_surface(server)) {
+		/* With no keyboard yet too: the focus is the window's, and
+		 * a keyboard plugged in later types into it (wlroots sends
+		 * it the enter); the input method relay looks it up */
+		if (keyboard)
+			wlr_seat_keyboard_notify_enter(seat,
+				wm_view_surface(view), keyboard->keycodes,
+				keyboard->num_keycodes, &keyboard->modifiers);
+		else
+			wlr_seat_keyboard_notify_enter(seat,
+				wm_view_surface(view), NULL, 0, NULL);
 	}
 
 	/* Notify text input relay of focus change for IME */

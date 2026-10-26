@@ -15,6 +15,7 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_input_method_v2.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
@@ -404,6 +405,22 @@ handle_ti_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&ti->destroy.link);
 	wl_list_remove(&ti->link);
 	free(ti);
+}
+
+struct wlr_input_method_keyboard_grab_v2 *
+wm_text_input_keyboard_grab(struct wm_server *server,
+	struct wlr_keyboard *keyboard)
+{
+	struct wlr_input_method_v2 *im = server->text_input_relay.input_method;
+	if (!im || !im->keyboard_grab || !keyboard)
+		return NULL;
+	struct wlr_input_method_keyboard_grab_v2 *grab = im->keyboard_grab;
+	struct wlr_virtual_keyboard_v1 *vk =
+		wlr_input_device_get_virtual_keyboard(&keyboard->base);
+	if (vk && wl_resource_get_client(vk->resource) ==
+	    wl_resource_get_client(grab->resource))
+		return NULL;
+	return grab;
 }
 
 /* --- Input method event handlers --- */

@@ -55,6 +55,8 @@
 #define WM_ANIMATION_H
 #define WM_FOREIGN_TOPLEVEL_H
 #define WM_COMMAND_H
+#define WM_TEXT_INPUT_H
+#define WLR_TYPES_WLR_INPUT_METHOD_V2_H
 #define WM_CLIENT_PATTERN_H
 #define WM_WALLPAPER_H
 #define WLR_TYPES_WLR_CURSOR_H
@@ -998,6 +1000,21 @@ struct wm_idle {
 struct wm_text_input_relay {
 	int dummy;
 };
+
+/* text_input.c: no input method here */
+struct wlr_input_method_keyboard_grab_v2;
+static struct wlr_input_method_keyboard_grab_v2 *
+wm_text_input_keyboard_grab(struct wm_server *s, struct wlr_keyboard *k)
+	{ (void)s; (void)k; return NULL; }
+static void wlr_input_method_keyboard_grab_v2_set_keyboard(
+	struct wlr_input_method_keyboard_grab_v2 *g, struct wlr_keyboard *k)
+	{ (void)g; (void)k; }
+static void wlr_input_method_keyboard_grab_v2_send_key(
+	struct wlr_input_method_keyboard_grab_v2 *g, uint32_t t, uint32_t k,
+	uint32_t st) { (void)g; (void)t; (void)k; (void)st; }
+static void wlr_input_method_keyboard_grab_v2_send_modifiers(
+	struct wlr_input_method_keyboard_grab_v2 *g,
+	struct wlr_keyboard_modifiers *m) { (void)g; (void)m; }
 
 struct wm_session_lock {
 	int dummy;

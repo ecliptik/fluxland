@@ -172,24 +172,21 @@ handle_new_input(struct wl_listener *listener, void *data)
 		break;
 	}
 
-	/*
-	 * Update seat capabilities based on available devices.
-	 * For simplicity, always advertise both pointer and keyboard
-	 * capabilities once we have at least one of each type.
-	 */
-	uint32_t caps = 0;
-	if (!wl_list_empty(&server->keyboards)) {
+	wm_input_update_capabilities(server,
+		device->type == WLR_INPUT_DEVICE_TOUCH);
+}
+
+void
+wm_input_update_capabilities(struct wm_server *server, bool touch)
+{
+	/* A keyboard once there is one (virtual ones too: wtype, a remote
+	 * desktop), the pointer always, touch once a touch device has
+	 * been seen */
+	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
+	if (!wl_list_empty(&server->keyboards))
 		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-	}
-	caps |= WL_SEAT_CAPABILITY_POINTER;
-	/*
-	 * Once a touch device has been seen, keep advertising touch
-	 * capability (even if other device types are added later).
-	 */
-	if (device->type == WLR_INPUT_DEVICE_TOUCH ||
-	    (server->seat->capabilities & WL_SEAT_CAPABILITY_TOUCH)) {
+	if (touch || (server->seat->capabilities & WL_SEAT_CAPABILITY_TOUCH))
 		caps |= WL_SEAT_CAPABILITY_TOUCH;
-	}
 	wlr_seat_set_capabilities(server->seat, caps);
 }
 

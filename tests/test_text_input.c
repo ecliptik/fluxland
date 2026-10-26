@@ -34,6 +34,7 @@
 #define WLR_TYPES_WLR_OUTPUT_LAYOUT_H
 #define WLR_TYPES_WLR_TEXT_INPUT_V3_H
 #define WLR_TYPES_WLR_INPUT_METHOD_V2_H
+#define WLR_TYPES_WLR_VIRTUAL_KEYBOARD_V1_H
 #define WLR_TYPES_WLR_KEYBOARD_H
 #define WLR_TYPES_WLR_SEAT_H
 #define WLR_TYPES_WLR_SCENE_H
@@ -215,6 +216,7 @@ struct wlr_input_method_v2 {
 		} delete;
 	} current;
 	struct wl_list popup_surfaces;
+	struct wlr_input_method_keyboard_grab_v2 *keyboard_grab;
 	struct {
 		struct wl_signal commit;
 		struct wl_signal grab_keyboard;
@@ -223,11 +225,25 @@ struct wlr_input_method_v2 {
 	} events;
 };
 
-struct wlr_keyboard {
+struct wlr_input_device {
 	int dummy;
 };
 
+struct wlr_keyboard {
+	struct wlr_input_device base;
+};
+
+struct wlr_virtual_keyboard_v1 {
+	struct wl_resource *resource;
+};
+
+static struct wlr_virtual_keyboard_v1 *g_virtual_keyboard;
+static struct wlr_virtual_keyboard_v1 *
+wlr_input_device_get_virtual_keyboard(struct wlr_input_device *d)
+	{ (void)d; return g_virtual_keyboard; }
+
 struct wlr_input_method_keyboard_grab_v2 {
+	struct wl_resource *resource;
 	struct {
 		struct wl_signal destroy;
 	} events;
