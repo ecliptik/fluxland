@@ -2,9 +2,9 @@
 
 A lightweight, highly configurable Wayland compositor inspired by [Fluxbox](http://fluxbox.org/).
 
-[![Build](https://img.shields.io/github/actions/workflow/status/ecliptik/fluxland/ui-tests.yml)](https://github.com/ecliptik/fluxland/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/ecliptik/fluxland/ci.yml?branch=main)](https://github.com/ecliptik/fluxland/actions)
 [![License](https://img.shields.io/github/license/ecliptik/fluxland)](LICENSE)
-[![Version](https://img.shields.io/github/v/release/ecliptik/fluxland)](https://github.com/ecliptik/fluxland/releases)
+[![Version](https://img.shields.io/github/v/release/ecliptik/fluxland?include_prereleases)](https://github.com/ecliptik/fluxland/releases)
 
 ---
 
