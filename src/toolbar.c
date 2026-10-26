@@ -613,14 +613,20 @@ draw_text(cairo_t *cr, const char *text, const struct wm_font *font,
 
 /* A tool's frame drawn into the surface of what shows of it */
 static cairo_t *
-begin_tool(struct wm_toolbar_tool *tool, cairo_surface_t **surface,
-	const struct wm_texture *tex, const struct wm_tool_style *ts,
-	int *cx, int *cy, int *cw, int *ch)
+begin_tool(const struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
+	cairo_surface_t **surface, const struct wm_texture *tex,
+	const struct wm_tool_style *ts, int *cx, int *cy, int *cw, int *ch)
 {
 	*surface = new_surface(tool->width, tool->height);
 	if (!*surface)
 		return NULL;
 	cairo_t *cr = cairo_create(*surface);
+	/* Its part of the toolbar's texture first (bg_buf leaves it out) */
+	if (toolbar->bg_surface) {
+		cairo_set_source_surface(cr, toolbar->bg_surface, -tool->x,
+			-tool->y);
+		cairo_paint(cr);
+	}
 	draw_box(cr, tex, tool->border, &ts->border_color, tool->frame_x,
 		tool->frame_y, tool->frame_width, tool->frame_height);
 	*cx = tool->frame_x + tool->border;
@@ -667,7 +673,7 @@ render_button_tool(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
 	struct wm_style *style = toolbar->server->style;
 	cairo_surface_t *surface;
 	int cx, cy, cw, ch;
-	cairo_t *cr = begin_tool(tool, &surface, pressed ?
+	cairo_t *cr = begin_tool(toolbar, tool, &surface, pressed ?
 		&style->toolbar_button_pressed : &style->toolbar_button.texture,
 		&style->toolbar_button, &cx, &cy, &cw, &ch);
 	if (!cr)
@@ -686,7 +692,7 @@ render_text_button(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool,
 	struct wm_style *style = toolbar->server->style;
 	cairo_surface_t *surface;
 	int cx, cy, cw, ch;
-	cairo_t *cr = begin_tool(tool, &surface, pressed ?
+	cairo_t *cr = begin_tool(toolbar, tool, &surface, pressed ?
 		&style->toolbar_button_pressed : &style->toolbar_button.texture,
 		&style->toolbar_button, &cx, &cy, &cw, &ch);
 	if (!cr)
@@ -719,7 +725,7 @@ render_workspace_name_tool(struct wm_toolbar *toolbar,
 
 	cairo_surface_t *surface;
 	int cx, cy, cw, ch;
-	cairo_t *cr = begin_tool(tool, &surface,
+	cairo_t *cr = begin_tool(toolbar, tool, &surface,
 		&style->toolbar_workspace.texture, &style->toolbar_workspace,
 		&cx, &cy, &cw, &ch);
 	if (!cr)
@@ -902,7 +908,7 @@ render_iconbar(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 	};
 	cairo_surface_t *surface;
 	int cx, cy, cw, ch;
-	cairo_t *cr = begin_tool(tool, &surface, &style->toolbar_iconbar_empty,
+	cairo_t *cr = begin_tool(toolbar, tool, &surface, &style->toolbar_iconbar_empty,
 		&frame, &cx, &cy, &cw, &ch);
 	if (!cr)
 		return NULL;
@@ -1022,7 +1028,7 @@ render_clock(struct wm_toolbar *toolbar, struct wm_toolbar_tool *tool)
 
 	cairo_surface_t *surface;
 	int cx, cy, cw, ch;
-	cairo_t *cr = begin_tool(tool, &surface, &style->toolbar_clock.texture,
+	cairo_t *cr = begin_tool(toolbar, tool, &surface, &style->toolbar_clock.texture,
 		&style->toolbar_clock, &cx, &cy, &cw, &ch);
 	if (!cr)
 		return NULL;
@@ -1126,12 +1132,36 @@ toolbar_render(struct wm_toolbar *toolbar)
 	}
 
 	/* Background: the toolbar's border and texture */
-	cairo_surface_t *bg_surface = new_surface(w, h);
-	if (bg_surface) {
-		cairo_t *bcr = cairo_create(bg_surface);
+	if (toolbar->bg_surface)
+		cairo_surface_destroy(toolbar->bg_surface);
+	toolbar->bg_surface = new_surface(w, h);
+	if (toolbar->bg_surface) {
+		cairo_t *bcr = cairo_create(toolbar->bg_surface);
 		draw_box(bcr, &style->toolbar_texture,
 			style->toolbar_border_width,
 			&style->toolbar_border_color, 0, 0, w, h);
+		cairo_destroy(bcr);
+	}
+
+	/* Compute layout for all tools */
+	compute_tool_layout(toolbar, w);
+
+	/* What shows of the background: the tools draw their own parts */
+	cairo_surface_t *bg_surface = new_surface(w, h);
+	if (bg_surface && toolbar->bg_surface) {
+		cairo_t *bcr = cairo_create(bg_surface);
+		cairo_set_source_surface(bcr, toolbar->bg_surface, 0, 0);
+		cairo_paint(bcr);
+		cairo_set_operator(bcr, CAIRO_OPERATOR_CLEAR);
+		for (int i = 0; i < toolbar->tool_count; i++) {
+			const struct wm_toolbar_tool *t = &toolbar->tools[i];
+			if (!t->buf || t->width <= 0 || t->height <= 0 ||
+			    t->type == WM_TOOL_SPACER ||
+			    t->type == WM_TOOL_SYSTRAY)
+				continue;
+			cairo_rectangle(bcr, t->x, t->y, t->width, t->height);
+		}
+		cairo_fill(bcr);
 		cairo_destroy(bcr);
 	}
 	struct wlr_buffer *bg = toolbar_buffer(toolbar, bg_surface);
@@ -1140,9 +1170,6 @@ toolbar_render(struct wm_toolbar *toolbar)
 		wlr_buffer_drop(bg);
 	}
 	place_buffer(toolbar, toolbar->bg_buf, 0, 0, w, h);
-
-	/* Compute layout for all tools */
-	compute_tool_layout(toolbar, w);
 
 	/* Render each tool, and the system tray where it goes */
 	for (int i = 0; i < toolbar->tool_count; i++) {
@@ -1408,6 +1435,8 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 
 	free(toolbar->ib_boxes);
 	free(toolbar->ib_entries);
+	if (toolbar->bg_surface)
+		cairo_surface_destroy(toolbar->bg_surface);
 	free(toolbar->ib_cached_entries);
 	if (toolbar->ib_cached_titles) {
 		for (int i = 0; i < WM_TOOLBAR_ICONBAR_MAX; i++)

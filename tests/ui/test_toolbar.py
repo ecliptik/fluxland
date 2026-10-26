@@ -137,3 +137,51 @@ class TestToolbarWindowPlacement:
         # Maximized window should not exceed the output dimensions
         assert win["height"] <= output["height"]
         assert win["width"] <= output["width"]
+
+
+# ---------------------------------------------------------------------------
+# toolbar.alpha: once over the whole toolbar, as for Fluxbox's one window
+# ---------------------------------------------------------------------------
+
+def test_toolbar_alpha_applies_once(tmp_path):
+    """A tool's own texture over the toolbar's is not a second layer."""
+    import os
+    import shutil
+    import subprocess
+
+    from PIL import Image
+
+    from lib.compositor import CompositorManager
+
+    if not shutil.which("grim"):
+        pytest.skip("grim is not installed")
+    style = tmp_path / "style"
+    style.write_text(
+        "toolbar: flat solid\ntoolbar.color: #000000\n"
+        "toolbar.workspace: flat solid\ntoolbar.workspace.color: #000000\n"
+        "toolbar.clock: parentrelative\n"
+        "toolbar.iconbar.empty: parentrelative\n"
+        "toolbar.borderWidth: 0\n"
+        "background: flat solid\nbackground.color: #ffffff\n")
+    mgr = CompositorManager()
+    mgr.start(config_set="default", headless=True, init_extra=[
+        f"session.styleFile: {style}",
+        "session.screen0.toolbar.alpha: 128",
+        "session.screen0.toolbar.tools: workspacename, iconbar, clock",
+        "session.screen0.toolbar.widthPercent: 100",
+        "session.screen0.toolbar.placement: BottomCenter",
+    ])
+    try:
+        time.sleep(1.0)
+        shot = tmp_path / "shot.png"
+        subprocess.run(["grim", str(shot)], env=mgr.client_env, check=True,
+                       capture_output=True)
+        im = Image.open(shot).convert("RGB")
+        y = im.height - 3
+        label = im.getpixel((5, y))[0]
+        plain = im.getpixel((im.width // 2, y))[0]
+        # Black at 50% over white: both about 127 (stacked: 63)
+        assert abs(plain - 127) <= 3, plain
+        assert abs(label - plain) <= 3, (label, plain)
+    finally:
+        mgr.stop()

@@ -91,6 +91,10 @@ struct wm_toolbar {
 	/* Scene graph nodes */
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_buffer *bg_buf;
+	/* The toolbar's texture: each tool draws its part of it under its
+	 * own, and bg_buf leaves those parts out, so toolbar.alpha applies
+	 * once (as to Fluxbox's one toolbar window) */
+	void *bg_surface;	/* cairo_surface_t */
 
 	/* Configurable tool array */
 	struct wm_toolbar_tool *tools;
