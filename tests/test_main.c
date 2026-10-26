@@ -215,6 +215,11 @@ test_check_config_valid(void)
 static void
 test_check_config_unreadable(void)
 {
+	/* Root reads a mode 0000 file (package builds run as root) */
+	if (geteuid() == 0) {
+		printf("  SKIP: check_config_unreadable (running as root)\n");
+		return;
+	}
 	const char *bin = get_binary();
 
 	mkdir("/tmp/fluxland-test", 0755);
