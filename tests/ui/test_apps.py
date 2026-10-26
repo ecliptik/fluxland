@@ -156,3 +156,24 @@ def test_group_new_tab_joins_the_frame(comp, aipc):
     assert second["tab_group"] == first["tab_group"]
     assert second["frame"] == first["frame"]
     assert second["focused"] and not first["focused"]
+
+
+def test_group_tabs_share_the_frame(comp, aipc):
+    # Moved and resized as one frame: the hidden tab comes forward where
+    # the frame is, at its size
+    set_apps(comp, "[group]\n"
+                   "  [app] (title=AppsShare.*)\n"
+                   "[end]\n")
+    open_window(aipc, "AppsShareOne")
+    open_window(aipc, "AppsShareTwo")
+    aipc.command("MoveTo 200 150")
+    aipc.command("ResizeTo 500 300")
+    time.sleep(0.5)
+    two = aipc.get_window_by_title("AppsShareTwo")
+    one = aipc.get_window_by_title("AppsShareOne")
+    assert (one["frame"]["x"], one["frame"]["y"]) == (200, 150)
+    aipc.command("NextTab")
+    time.sleep(0.5)
+    one = aipc.get_window_by_title("AppsShareOne")
+    assert one["focused"]
+    assert one["frame"] == two["frame"]

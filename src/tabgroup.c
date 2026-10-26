@@ -234,6 +234,10 @@ wm_tab_group_activate(struct wm_tab_group *group, struct wm_view *view)
 		return;
 	}
 
+	/* It takes the frame as it is now: moved or resized while it was
+	 * hidden behind the old tab */
+	sync_view_to_group(group, view);
+
 	/* Hide the old active tab */
 	struct wm_view *old = group->active_view;
 	if (old) {
@@ -243,14 +247,6 @@ wm_tab_group_activate(struct wm_tab_group *group, struct wm_view *view)
 	/* Show the new active tab */
 	group->active_view = view;
 	set_view_surface_visible(view, true);
-
-	/* Sync position in case something drifted */
-	if (old) {
-		view->x = old->x;
-		view->y = old->y;
-		wlr_scene_node_set_position(&view->scene_tree->node,
-			view->x, view->y);
-	}
 
 	/* Its frame draws the group's tabs, the current one now its own */
 	if (view->decoration && group->server->style)

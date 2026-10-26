@@ -276,6 +276,18 @@ wm_view_move(struct wm_view *view, int x, int y)
 	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
 	if (impl_of(view)->moved)
 		impl_of(view)->moved(view);
+	/* Its tabs share the frame */
+	if (view->tab_group) {
+		struct wm_view *tab;
+		wl_list_for_each(tab, &view->tab_group->views, tab_link) {
+			if (tab == view)
+				continue;
+			tab->x = x;
+			tab->y = y;
+			wlr_scene_node_set_position(&tab->scene_tree->node,
+				x, y);
+		}
+	}
 	wm_cursor_rebase(view->server);
 }
 
