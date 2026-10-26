@@ -7,6 +7,7 @@ and use [Deco] {NONE}, so a window's size is its frame size.
 """
 
 import os
+import math
 import time
 
 import pytest
@@ -77,9 +78,11 @@ def test_percent_dimensions_and_bottom_right(comp, aipc):
     # foot sizes in character cells: within one cell of the request
     assert abs(win["width"] - area["width"] / 2) < 24
     assert abs(win["height"] - area["height"] / 2) < 40
-    # Anchored to the corner using the size asked for
-    assert win["x"] == area["x"] + area["width"] - round(area["width"] / 2)
-    assert win["y"] == area["y"] + area["height"] - round(area["height"] / 2)
+    # Anchored to the corner using the size asked for, 50% rounded as
+    # Fluxbox rounds it (RelCalcHelper: half up, not Python's to even)
+    half = lambda n: math.floor(n / 2 + 0.5)
+    assert win["x"] == area["x"] + area["width"] - half(area["width"])
+    assert win["y"] == area["y"] + area["height"] - half(area["height"])
 
 
 def test_layer_number_and_workspace(comp, aipc):

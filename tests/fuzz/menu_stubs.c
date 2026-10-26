@@ -85,3 +85,32 @@ void wm_command_destroy(struct wm_command *cmd) { free(cmd); }
 bool wm_command_execute(struct wm_server *s, struct wm_command *cmd,
 	struct wm_view *target)
 	{ (void)s; (void)cmd; (void)target; stub_command_run_count++; return true; }
+
+/* render.c: menus' round corners and item pixmaps */
+void wm_cut_corners(cairo_surface_t *surface, int x, int y, int frame_w,
+	int frame_h, uint8_t corners)
+	{ (void)surface; (void)x; (void)y; (void)frame_w; (void)frame_h;
+	  (void)corners; }
+cairo_surface_t *wm_load_pixmap(const char *path, int width, int height)
+	{ (void)path; (void)width; (void)height; return NULL; }
+
+/* What the menus use since Fluxbox's menus (config, style, Remember) */
+#include "config.h"
+#include "rules.h"
+#include "slit.h"
+int config_set_resource(struct wm_config *config, const char *key,
+	const char *value)
+	{ (void)config; (void)key; (void)value; return 0; }
+void wm_server_set_style(struct wm_server *server, const char *path)
+	{ (void)server; (void)path; }
+bool wm_rules_is_remembered(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr)
+	{ (void)view; (void)apps_path; (void)attr; return false; }
+int wm_rules_toggle_remembered(struct wm_view *view, const char *apps_path,
+	enum wm_remember_attr attr)
+	{ (void)view; (void)apps_path; (void)attr; return 0; }
+void wm_slit_relayout(struct wm_slit *slit) { (void)slit; }
+int wm_font_height(const struct wm_font *font, float scale)
+	{ (void)font; (void)scale; return 12; }
+cairo_surface_t *wm_load_image(const char *path) { (void)path; return NULL; }
+
