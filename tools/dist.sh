@@ -4,7 +4,8 @@
 # library it can bundle (subprojects/: wlroots and the libraries newer
 # than distributions ship), so packages build from it offline.
 #
-# Usage: tools/dist.sh   -> dist-build/meson-dist/fluxland-VERSION.tar.xz
+# Usage: tools/dist.sh [meson dist options, e.g. --allow-dirty]
+#        -> dist-build/meson-dist/fluxland-VERSION.tar.xz
 #
 # It is made from the committed tree (meson dist), with each subproject
 # at the revision its wrap pins.
@@ -16,5 +17,5 @@ cd "$(dirname "$0")/.."
 # (meson dist includes the subprojects a build used)
 meson setup dist-build --wipe -Dwerror=false \
 	--force-fallback-for=wayland-server,wayland-client,wayland-protocols,pixman-1,wlroots-0.20,xkbcommon,libdrm,libdisplay-info,libliftoff
-meson dist -C dist-build --include-subprojects --no-tests --formats xztar
+meson dist -C dist-build --include-subprojects --no-tests --formats xztar "$@"
 ls -l dist-build/meson-dist/

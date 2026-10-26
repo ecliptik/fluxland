@@ -2,24 +2,46 @@ Source: fluxland
 Section: x11
 Priority: optional
 Maintainer: fluxland contributors <fluxland@example.com>
+# wlroots 0.20 and the libraries newer than the distribution's come in
+# the source tarball (tools/dist.sh) and are linked in statically; these
+# are what they and fluxland build against. (libxcb-errors-dev, for
+# wlroots' X11 error messages, isn't in Ubuntu 24.04; Debian can add it.)
 Build-Depends:
  debhelper-compat (= 13),
- meson (>= 0.60.0),
+ meson (>= 1.3.0),
  ninja-build,
- pkg-config,
- libwlroots-dev (>= 0.18.0),
- wayland-protocols (>= 1.32),
- libwayland-dev (>= 1.22.0),
- libxkbcommon-dev,
- libpango1.0-dev,
+ pkgconf | pkg-config,
+ bison,
+ hwdata,
  libcairo2-dev,
- libinput-dev (>= 1.14),
+ libdisplay-info-dev,
  libdrm-dev,
+ libegl-dev,
+ libexpat1-dev,
+ libffi-dev,
+ libgbm-dev,
+ libgdk-pixbuf-2.0-dev,
+ libgles-dev,
+ libinput-dev (>= 1.14),
+ liblcms2-dev,
+ libliftoff-dev,
+ libpango1.0-dev,
  libpixman-1-dev,
+ libseat-dev,
+ libsystemd-dev,
+ libudev-dev,
+ libwayland-dev,
  libxcb1-dev,
+ libxcb-composite0-dev,
  libxcb-ewmh-dev,
  libxcb-icccm4-dev,
- libsystemd-dev,
+ libxcb-render0-dev,
+ libxcb-res0-dev,
+ libxcb-xfixes0-dev,
+ libxkbcommon-dev,
+ libxml2-dev,
+ wayland-protocols,
+ xwayland,
 Standards-Version: 4.6.2
 Homepage: https://github.com/ecliptik/fluxland
 Rules-Requires-Root: no
@@ -30,8 +52,10 @@ Depends: ${shlibs:Depends}, ${misc:Depends}
 Recommends: xwayland, foot, xdg-desktop-portal-wlr, xdg-desktop-portal-gtk
 Suggests: grim, slurp, wl-clipboard, swaylock
 Description: Fluxbox-inspired Wayland compositor
- Fluxland is a lightweight Wayland compositor inspired by Fluxbox.
- It provides a familiar stacking window manager experience on Wayland
- using the wlroots library, with features including configurable
- keybindings, window decorations, workspaces, a toolbar, menus, and
- bundled Fluxbox-compatible styles.
+ Fluxland is a Wayland compositor that works the way Fluxbox does: an
+ existing ~/.fluxbox (init, keys, apps, menu, styles) works unchanged,
+ or is imported with fluxland --import-fluxbox. It has Fluxbox's
+ toolbar, slit, tabs, menus, key chains and modes, window rules and
+ styles, and runs X11 programs through Xwayland.
+ .
+ It is built on wlroots 0.20, which is linked in statically.

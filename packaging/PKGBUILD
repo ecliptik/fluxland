@@ -1,54 +1,70 @@
 # Maintainer: fluxland contributors <fluxland@example.com>
+#
+# Built from the release tarball (tools/dist.sh): it carries wlroots 0.20
+# and the libraries fluxland needs newer than a distribution may have,
+# under subprojects/, and fluxland links them in statically.
 pkgname=fluxland
-pkgver=1.1.0
+pkgver=2.0.0
 pkgrel=1
-pkgdesc='A Fluxbox-inspired Wayland compositor'
+pkgdesc='A Wayland compositor that works the way Fluxbox does'
 arch=('x86_64' 'aarch64')
 url='https://github.com/ecliptik/fluxland'
 license=('MIT')
 depends=(
-  'wlroots0.18'
-  'wayland'
-  'libxkbcommon'
-  'pango'
   'cairo'
-  'libinput'
+  'gdk-pixbuf2'
+  'lcms2'
+  'libdisplay-info'
   'libdrm'
+  'libinput'
+  'libliftoff'
+  'libxkbcommon'
+  'mesa'
+  'pango'
   'pixman'
+  'seatd'
+  'systemd-libs'
+  'wayland'
+  'xcb-util-errors'
+  'xcb-util-renderutil'
+  'xcb-util-wm'
 )
 makedepends=(
+  'hwdata'
   'meson'
   'ninja'
   'wayland-protocols'
-  'git'
+  'xorg-xwayland'
 )
 optdepends=(
-  'xorg-xwayland: X11 application support'
-  'foot: default terminal emulator'
-  'xdg-desktop-portal-wlr: screen sharing and screenshots in apps'
+  'xorg-xwayland: X11 programs'
+  'foot: the default terminal'
+  'xdg-desktop-portal-wlr: screen sharing and screenshots in programs'
   'xdg-desktop-portal-gtk: file chooser and other desktop portals'
-  'grim: screenshot utility'
-  'slurp: region selection'
-  'wl-clipboard: clipboard support'
+  'grim: screenshots'
+  'slurp: choosing a region'
+  'wl-clipboard: clipboard on the command line'
   'swaylock: screen locker'
 )
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+source=("$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.xz")
 sha256sums=('SKIP')
 
 build() {
-  cd "$pkgname-$pkgver"
-  arch-meson build \
-    -Dxwayland=auto
+  # arch-meson turns every optional feature on, the bundled wlroots' too
+  # (its Vulkan renderer...): let them find what's there instead
+  arch-meson "$pkgname-$pkgver" build --auto-features=auto \
+    -Dxwayland=enabled -Dwerror=false
   meson compile -C build
 }
 
 check() {
-  cd "$pkgname-$pkgver"
-  meson test -C build --print-errorlogs || true
+  # The unit tests (the integration ones start a compositor)
+  meson test -C build --suite fluxland --no-suite integration --print-errorlogs
 }
 
 package() {
-  cd "$pkgname-$pkgver"
+  # fluxland only: nothing of the bundled libraries is installed
   meson install -C build --skip-subprojects --destdir "$pkgdir"
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$pkgname-$pkgver/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

@@ -44,3 +44,4 @@ subprojects/*/
 subprojects/packagecache/
 # Redirects meson writes for subprojects' own subprojects
 subprojects/edid-decode.wrap
+packaging/out/

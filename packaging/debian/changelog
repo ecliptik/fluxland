@@ -1,3 +1,13 @@
+fluxland (2.0.0-1) UNRELEASED; urgency=medium
+
+  * fluxland 2.0, for Fluxbox users: an existing ~/.fluxbox works
+    unchanged (init, keys, apps, menu, styles), fluxland --import-fluxbox.
+  * wlroots 0.20, bundled and linked statically.
+  * X11 programs are ordinary windows; libinput and output settings in
+    init; portals; WLCS in CI.
+
+ -- fluxland contributors <fluxland@example.com>  Sun, 25 Oct 2026 00:00:00 +0000
+
 fluxland (1.1.0-1) unstable; urgency=medium
 
   * Fluxbox style compatibility with 37 bundled styles
