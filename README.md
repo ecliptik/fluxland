@@ -14,14 +14,9 @@ A lightweight, highly configurable Wayland compositor inspired by [Fluxbox](http
 
 ## About
 
-fluxland brings the Fluxbox experience to the [Wayland](https://wayland.freedesktop.org/) display protocol. For
-years, Fluxbox has been the window manager of choice for users who value
-simplicity, speed, and deep configurability. As the Linux desktop ecosystem
-transitions from X11 to Wayland, fluxland provides a familiar home for
-Fluxbox users while embracing modern display server capabilities.
+fluxland brings the Fluxbox experience to the [Wayland](https://wayland.freedesktop.org/) display protocol.
 
-This project was 100% vibe coded using [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-with [Claude Code Teams](https://docs.anthropic.com/en/docs/claude-code/teams) orchestration.
+This project is built agentically with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 [Read about how it was built](docs/DEBRIEF.md) — agentic development, team orchestration, and
 what I learned building a 35,000-line compositor without writing a single line of code.
 
