@@ -16,6 +16,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/log.h>
 
+#include "wallpaper.h"
 #include "config.h"
 #include "drm_lease.h"
 #include "foreign_toplevel.h"
@@ -116,6 +117,10 @@ handle_layout_change(struct wl_listener *listener, void *data)
 		wm_toolbar_relayout(server->toolbar);
 	if (server->slit)
 		wm_slit_reconfigure(server->slit);
+	/* The desktop fitted to the outputs as they are now (a new mode,
+	 * a monitor plugged in) */
+	if (server->wallpaper)
+		wm_wallpaper_reload(server->wallpaper);
 	wm_output_arrange_all(server);
 
 	struct wm_view *view;

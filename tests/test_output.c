@@ -40,6 +40,7 @@
 #define WM_WORKSPACE_H
 #define WM_OUTPUT_CONFIG_H
 #define WM_SLIT_H
+#define WM_WALLPAPER_H
 #define WM_VIEW_GEOMETRY_H
 #define WM_FOREIGN_TOPLEVEL_H
 #define WM_EXT_WORKSPACE_H
@@ -445,6 +446,7 @@ struct wm_server {
 	struct wm_ipc_server ipc;
 	struct wm_toolbar *toolbar;
 	struct wm_slit *slit;
+	struct wm_wallpaper *wallpaper;
 	struct wm_config *config;
 	struct wl_list views;
 };
@@ -570,6 +572,11 @@ static int g_toolbar_relayout_count, g_slit_reconfigure_count;
 static void
 wm_toolbar_relayout(struct wm_toolbar *t)
 { (void)t; g_toolbar_relayout_count++; }
+static int g_wallpaper_reloads;
+struct wm_wallpaper;
+static void wm_wallpaper_reload(struct wm_wallpaper *wp)
+	{ (void)wp; g_wallpaper_reloads++; }
+
 static void
 wm_slit_reconfigure(struct wm_slit *sl)
 { (void)sl; g_slit_reconfigure_count++; }
