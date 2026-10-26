@@ -132,6 +132,7 @@ struct wm_toolbar {
 
 	/* Cached iconbar state for dirty-checking */
 	struct wm_iconbar_entry *ib_cached_entries;
+	char **ib_cached_titles; /* copies: a view's title is freed on change */
 	int ib_cached_count;
 
 	/* Clock timer */

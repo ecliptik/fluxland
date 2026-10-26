@@ -3263,6 +3263,56 @@ test_turned_toolbar(void)
 	printf("  PASS: turned_toolbar\n");
 }
 
+/* A window's new title redraws the iconbar: the cache keeps the title
+ * as drawn, since the view's string is freed and replaced */
+static void
+test_iconbar_cache_sees_title_change(void)
+{
+	reset_globals();
+	setup_test_server();
+
+	struct wm_workspace ws1 = {.name = "1", .index = 0};
+	wl_list_init(&ws1.link);
+	test_server.current_workspace = &ws1;
+
+	char *title = strdup("1. Massive Attack - Future Proof");
+	struct wm_view v1 = make_test_view(0, title, &ws1, false);
+	wl_list_insert(&test_server.views, &v1.link);
+
+	struct wm_toolbar toolbar;
+	memset(&toolbar, 0, sizeof(toolbar));
+	toolbar.server = &test_server;
+	toolbar.cached_ws_name_max_width = -1;
+	toolbar.ib_cached_count = -1;
+	set_iconbar_list(&toolbar, "{static groups} (workspace)");
+
+	collect_iconbar_entries(&toolbar);
+	assert(!iconbar_entries_match_cache(&toolbar));
+	iconbar_snapshot_cache(&toolbar);
+	collect_iconbar_entries(&toolbar);
+	assert(iconbar_entries_match_cache(&toolbar));
+
+	/* As wm_view_set_title does it: a new string, maybe at the old
+	 * address */
+	free(title);
+	title = strdup("51. Thievery Corporation - Heaven's Gonna Burn");
+	v1.title = title;
+	collect_iconbar_entries(&toolbar);
+	assert(!iconbar_entries_match_cache(&toolbar));
+	iconbar_snapshot_cache(&toolbar);
+	collect_iconbar_entries(&toolbar);
+	assert(iconbar_entries_match_cache(&toolbar));
+
+	wl_list_remove(&v1.link);
+	free(title);
+	for (int i = 0; i < WM_TOOLBAR_ICONBAR_MAX; i++)
+		free(toolbar.ib_cached_titles[i]);
+	free(toolbar.ib_cached_titles);
+	free(toolbar.ib_cached_entries);
+	free(toolbar.ib_entries);
+	printf("  PASS: iconbar_cache_sees_title_change\n");
+}
+
 int
 main(void)
 {
@@ -3333,6 +3383,7 @@ main(void)
 
 	/* additional coverage */
 	test_collect_iconbar_workspace_icons_mode();
+	test_iconbar_cache_sees_title_change();
 	test_compute_tool_layout_custom_clock_fmt();
 	test_compute_tool_layout_bevel_borders();
 	test_button_press_release();

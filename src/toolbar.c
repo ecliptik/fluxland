@@ -1303,6 +1303,8 @@ wm_toolbar_create(struct wm_server *server)
 		sizeof(struct wlr_box));
 	toolbar->ib_cached_entries = calloc(WM_TOOLBAR_ICONBAR_MAX,
 		sizeof(struct wm_iconbar_entry));
+	toolbar->ib_cached_titles = calloc(WM_TOOLBAR_ICONBAR_MAX,
+		sizeof(char *));
 	toolbar->ib_cached_count = -1;
 
 	/* Read placement config */
@@ -1407,6 +1409,11 @@ wm_toolbar_destroy(struct wm_toolbar *toolbar)
 	free(toolbar->ib_boxes);
 	free(toolbar->ib_entries);
 	free(toolbar->ib_cached_entries);
+	if (toolbar->ib_cached_titles) {
+		for (int i = 0; i < WM_TOOLBAR_ICONBAR_MAX; i++)
+			free(toolbar->ib_cached_titles[i]);
+		free(toolbar->ib_cached_titles);
+	}
 	free(toolbar->cached_title);
 	free(toolbar);
 }
@@ -1447,14 +1454,14 @@ iconbar_entries_match_cache(struct wm_toolbar *toolbar)
 		    cur->icon != cached->icon) {
 			return false;
 		}
-		/* Compare titles: pointer match is fast path */
+		/* Against the title as it was drawn (the view's own string
+		 * is replaced when the title changes) */
 		const char *cur_title = cur->view ? cur->view->title : NULL;
-		const char *cached_title = cached->view ? cached->view->title : NULL;
-		if (cur_title != cached_title) {
-			if (!cur_title || !cached_title ||
-			    strcmp(cur_title, cached_title) != 0) {
-				return false;
-			}
+		const char *cached_title = toolbar->ib_cached_titles ?
+			toolbar->ib_cached_titles[i] : NULL;
+		if (!cur_title != !cached_title ||
+		    (cur_title && strcmp(cur_title, cached_title) != 0)) {
+			return false;
 		}
 	}
 	return true;
@@ -1473,6 +1480,23 @@ iconbar_snapshot_cache(struct wm_toolbar *toolbar)
 	}
 	memcpy(toolbar->ib_cached_entries, toolbar->ib_entries,
 		toolbar->ib_count * sizeof(struct wm_iconbar_entry));
+	if (!toolbar->ib_cached_titles) {
+		toolbar->ib_cached_titles = calloc(WM_TOOLBAR_ICONBAR_MAX,
+			sizeof(char *));
+		if (!toolbar->ib_cached_titles) {
+			toolbar->ib_cached_count = -1;
+			return;
+		}
+	}
+	for (int i = 0; i < WM_TOOLBAR_ICONBAR_MAX; i++) {
+		free(toolbar->ib_cached_titles[i]);
+		toolbar->ib_cached_titles[i] = NULL;
+		const char *t = i < toolbar->ib_count &&
+			toolbar->ib_entries[i].view ?
+			toolbar->ib_entries[i].view->title : NULL;
+		if (t)
+			toolbar->ib_cached_titles[i] = strdup(t);
+	}
 	toolbar->ib_cached_count = toolbar->ib_count;
 }
 
