@@ -386,23 +386,16 @@ wm_import_startup_line(const char *line, const char **why)
 	return out;
 }
 
-/* The startup script: something fluxland runs once it has started */
-static void
-import_startup(struct import *im)
+char *
+wm_import_startup_script(const char *script, FILE *report)
 {
-	char from[PATH_MAX + 8], path[PATH_MAX + 8];
-	snprintf(from, sizeof(from), "%s/startup", im->src);
-	char *content = read_file(from);
-	if (!content || !target(im, "startup", path, sizeof(path))) {
-		free(content);
-		return;
-	}
-	char *fixed = rewrite_paths(im, content);
+	char *copy = strdup(script ? script : "");
+	if (!copy)
+		return NULL;
 	struct text out = { 0 };
-	bool shebang = strncmp(fixed, "#!", 2) == 0;
-	if (!shebang)
+	if (strncmp(copy, "#!", 2) != 0)
 		text_str(&out, "#!/bin/sh\n");
-	char *cursor = fixed;
+	char *cursor = copy;
 	bool ended = false;
 	for (char *line; (line = next_line(&cursor));) {
 		const char *t = line + strspn(line, " \t");
@@ -421,8 +414,10 @@ import_startup(struct import *im)
 		const char *why;
 		char *l = wm_import_startup_line(line, &why);
 		if (!l) {
-			fprintf(im->out, "  startup:  \"%s\" left out (fluxland "
-				"runs this once it has started)\n", line);
+			if (report)
+				fprintf(report, "  startup:  \"%s\" left out "
+					"(fluxland runs this once it has "
+					"started)\n", line);
 			text_str(&out, "# fluxland runs this once it has "
 				"started: ");
 			text_str(&out, line);
@@ -430,15 +425,32 @@ import_startup(struct import *im)
 			ended = true;
 			continue;
 		}
-		if (why)
-			fprintf(im->out, "  startup:  \"%s\" commented out: %s\n",
+		if (why && report)
+			fprintf(report, "  startup:  \"%s\" commented out: %s\n",
 				line, why);
 		text_str(&out, l);
 		text_str(&out, "\n");
 		free(l);
 	}
-	put(im, "startup", path, out.s ? out.s : "", 0755, "converted");
-	free(out.s);
+	free(copy);
+	return out.s ? out.s : strdup("");
+}
+
+/* The startup script: something fluxland runs once it has started */
+static void
+import_startup(struct import *im)
+{
+	char from[PATH_MAX + 8], path[PATH_MAX + 8];
+	snprintf(from, sizeof(from), "%s/startup", im->src);
+	char *content = read_file(from);
+	if (!content || !target(im, "startup", path, sizeof(path))) {
+		free(content);
+		return;
+	}
+	char *fixed = rewrite_paths(im, content);
+	char *out = wm_import_startup_script(fixed, im->out);
+	put(im, "startup", path, out ? out : "", 0755, "converted");
+	free(out);
 	free(fixed);
 	free(content);
 }

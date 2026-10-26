@@ -1,4 +1,4 @@
-.TH FLUXLAND-STARTUP 5 "2026-03-03" "fluxland 1.1.0" "File Formats Manual"
+.TH FLUXLAND-STARTUP 5 "2026-10-25" "fluxland 2.0.0" "File Formats Manual"
 .SH NAME
 fluxland-startup \- autostart script for fluxland
 .SH DESCRIPTION
@@ -30,6 +30,20 @@ processes.
 Long-running programs started from the script are inherited by the
 init process.
 .PP
+When fluxland reads a Fluxbox directory itself
+.RI ( ~/.fluxbox ,
+having none of its own), its
+.I startup
+runs as
+.B fluxland \-\-import\-fluxbox
+would make it: up to its
+.B exec fluxbox
+(which would start Fluxbox on Xwayland), with the programs that only work
+on an X display commented out, each with the reason.
+That copy is written to
+.IR $XDG_RUNTIME_DIR/fluxland\-fluxbox\-startup ;
+what it leaves out is logged.
+.PP
 In addition to the startup file, a command can be passed via the
 .B \-s
 option on the
@@ -49,40 +63,31 @@ The name of the Wayland socket (e.g.\&
 Path to the IPC socket for
 .BR fluxland-ctl (1).
 .TP
+.B DISPLAY
+Xwayland's display, for X11 programs (Xwayland starts when the first
+one connects).
+.TP
 .B XDG_RUNTIME_DIR
 The XDG runtime directory.
 .SH EXAMPLES
-Simple startup script:
+The desktop is fluxland's to draw (the style's
+.BR background ,
+or the
+.B SetWallpaper
+command) and outputs are set in the init
+.RB ( session.output.* );
+the script starts programs:
 .PP
 .RS 4
 .nf
 #!/bin/sh
-# Set wallpaper
-swaybg -i ~/wallpaper.png -m fill &
-
-# Start notification daemon
+# Notifications, a panel and a terminal
 mako &
-
-# Launch a terminal
-foot &
-.fi
-.RE
-.PP
-Startup script with display configuration:
-.PP
-.RS 4
-.nf
-#!/bin/sh
-# Configure displays
-wlr-randr --output HDMI-A-1 --pos 0,0 \\
-           --output eDP-1 --pos 1920,0
-
-# Set wallpaper
-swaybg -i ~/wallpaper.png -m fill &
-
-# Start panel and notification daemon
 waybar &
-mako &
+foot &
+
+# Lock the screen after ten minutes
+swayidle -w timeout 600 'swaylock -f' &
 .fi
 .RE
 .PP

@@ -29,4 +29,12 @@ int wm_import_fluxbox(const char *src, const char *dst, bool force,
  * the reason when *why is set */
 char *wm_import_startup_line(const char *line, const char **why);
 
+/*
+ * A Fluxbox startup script as fluxland runs it: "exec fluxbox" and what
+ * follows it left out, the programs only X can run commented out with
+ * their reasons, a #!/bin/sh first when it has none. Each change is
+ * written to report when it isn't NULL. A new string.
+ */
+char *wm_import_startup_script(const char *script, FILE *report);
+
 #endif /* WM_IMPORT_H */

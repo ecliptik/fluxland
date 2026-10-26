@@ -236,7 +236,7 @@ test('session_lock_logic', test_session_lock_logic)
 # --- test_autostart: autostart module tests ---
 test_autostart = executable(
   'test_autostart',
-  files('test_autostart.c', '../src/autostart.c'),
+  files('test_autostart.c', '../src/autostart.c', '../src/import.c'),
   include_directories: test_inc,
   dependencies: [wlroots],
   install: false,

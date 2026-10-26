@@ -12,7 +12,9 @@ manager (or run `fluxland` from a text console).
 
 With no `~/.config/fluxland` of its own, fluxland reads `~/.fluxbox`
 directly, so you can try it without changing anything. Fluxbox keeps
-working as before.
+working as before. Your `startup` script runs as the import below would
+make it: up to its `exec fluxbox`, and without the programs that only
+work on an X display (the log says which).
 
 `fluxland -c` checks every file and reports anything it doesn't
 understand, with the line.

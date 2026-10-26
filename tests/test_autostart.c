@@ -116,6 +116,54 @@ test_executable_startup(void)
 	printf("  PASS: test_executable_startup\n");
 }
 
+/* Test: read from ~/.fluxbox itself, Fluxbox's startup runs as
+ * --import-fluxbox makes it: what's before exec fluxbox, not fluxbox */
+static void
+test_fluxbox_startup_converted(void)
+{
+	const char *dir = TEST_DIR "/.fluxbox";
+	const char *runtime = TEST_DIR "/run";
+	mkdir(dir, 0755);
+	mkdir(runtime, 0700);
+	char script[256], marker[256], after[256], made[256];
+	snprintf(script, sizeof(script), "%s/startup", dir);
+	snprintf(marker, sizeof(marker), "%s/ran", TEST_DIR);
+	snprintf(after, sizeof(after), "%s/after", TEST_DIR);
+	snprintf(made, sizeof(made), "%s/fluxland-fluxbox-startup", runtime);
+	char text[1024];
+	snprintf(text, sizeof(text), "touch %s\nxsetroot -solid black\n"
+		"exec fluxbox\ntouch %s\n", marker, after);
+	write_script(script, text, 0644);
+	unlink(marker);
+	unlink(after);
+	setenv("XDG_RUNTIME_DIR", runtime, 1);
+
+	assert(wm_autostart_run(dir, "wayland-0") == 0);
+	for (int i = 0; i < 100 && access(marker, F_OK) != 0; i++)
+		usleep(20000);
+	assert(access(marker, F_OK) == 0);	/* ran */
+	usleep(50000);
+	assert(access(after, F_OK) != 0);	/* nothing after exec fluxbox */
+
+	FILE *f = fopen(made, "r");
+	assert(f);
+	char buf[2048] = { 0 };
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+	assert(strncmp(buf, "#!/bin/sh\n", 10) == 0);
+	assert(strstr(buf, "# fluxland runs this once it has started: "
+		"exec fluxbox"));
+	assert(strstr(buf, "# fluxland: fluxland draws the desktop"));
+
+	unlink(made);
+	unlink(marker);
+	unlink(script);
+	rmdir(dir);
+	rmdir(runtime);
+	printf("  PASS: test_fluxbox_startup_converted\n");
+}
+
 /* Test: NULL wayland_display is handled gracefully */
 static void
 test_null_wayland_display(void)
@@ -362,6 +410,7 @@ main(void)
 	test_non_executable_startup();
 	test_executable_startup();
 	test_null_wayland_display();
+	test_fluxbox_startup_converted();
 	test_comment_only_script();
 	test_symlinked_startup();
 
