@@ -63,12 +63,17 @@ journalctl --user -b | grep fluxland
 ## Programs
 
 - [ ] **fcitx5**: its candidate window appears next to the text being
-  typed in a Wayland program (foot, GTK) and in an X11 one. (fcitx5
-  isn't on the VM)
+  typed in a Wayland program (foot, GTK) and in an X11 one. Checked on
+  the VM: fcitx5 gets the keys and its preedit reaches foot; the
+  candidate window wasn't (fcitx5 there wouldn't load pinyin).
 - [ ] **Screen sharing**: in Firefox, share a window and the whole
   screen (meet.jit.si or a WebRTC test page) through
   xdg-desktop-portal-wlr: the picture moves, the right thing is shared.
-  (portal-wlr isn't on the VM)
+  It needs the GPU: portal-wlr 0.7 asks screencopy for dmabufs, which
+  software rendering (a VM without 3D, `WLR_RENDERER=pixman`) has none
+  of, and it gives up ("unable to receive a valid format"). Checked on
+  the VM: fluxland-portals.conf routes ScreenCast to wlr, and the
+  session gets as far as that.
 - [ ] Screenshots: `grim`, and `grim -g "$(slurp)"`.
 - [ ] An X11 program (xterm, or a game through Steam/Wine) gets
   decorations, can be moved, tabbed and fullscreened.
