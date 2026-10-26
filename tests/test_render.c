@@ -632,6 +632,42 @@ test_load_image(void)
 	printf("  PASS: test_load_image\n");
 }
 
+/* A pixmap stretched to a texture's size stays opaque: Magraxx's 1x22
+ * menu.xpm across a toolbar let the wallpaper show through */
+static void
+test_load_pixmap_scaled_opaque(void)
+{
+	char dir[] = "/tmp/fluxland-test/render-XXXXXX";
+	mkdir("/tmp/fluxland-test", 0755);
+	assert(mkdtemp(dir));
+	char png[256];
+	snprintf(png, sizeof(png), "%s/strip.png", dir);
+	cairo_surface_t *src =
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 22);
+	cairo_t *cr = cairo_create(src);
+	cairo_set_source_rgb(cr, 0.5, 0.6, 0.7);
+	cairo_paint(cr);
+	cairo_destroy(cr);
+	assert(cairo_surface_write_to_png(src, png) == CAIRO_STATUS_SUCCESS);
+	cairo_surface_destroy(src);
+
+	cairo_surface_t *img = wm_load_pixmap(png, 160, 15);
+	assert(img && cairo_image_surface_get_width(img) == 160 &&
+		cairo_image_surface_get_height(img) == 15);
+	cairo_surface_flush(img);
+	const unsigned char *data = cairo_image_surface_get_data(img);
+	int stride = cairo_image_surface_get_stride(img);
+	for (int y = 0; y < 15; y++) {
+		const uint32_t *row = (const uint32_t *)(data + y * stride);
+		for (int x = 0; x < 160; x++)
+			assert((row[x] >> 24) == 0xff);
+	}
+	cairo_surface_destroy(img);
+	unlink(png);
+	rmdir(dir);
+	printf("  PASS: test_load_pixmap_scaled_opaque\n");
+}
+
 /* Fluxbox's 8x8 corner masks, cut where a surface lies in its frame */
 static void
 test_cut_corners(void)
@@ -687,6 +723,7 @@ main(void)
 	test_render_texture_alpha_fixup();
 
 	test_load_image();
+	test_load_pixmap_scaled_opaque();
 
 	/* Text rendering */
 	test_render_text_null_args();

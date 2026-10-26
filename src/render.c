@@ -577,6 +577,9 @@ wm_load_pixmap(const char *path, int width, int height)
 	cairo_t *cr = cairo_create(scaled);
 	cairo_scale(cr, (double)width / img_w, (double)height / img_h);
 	cairo_set_source_surface(cr, img, 0, 0);
+	/* The edges repeat, not fade into nothing: a stretched 1-pixel
+	 * strip (a gradient pixmap) stays opaque, as Fluxbox scales it */
+	cairo_pattern_set_extend(cairo_get_source(cr), CAIRO_EXTEND_PAD);
 	cairo_paint(cr);
 	cairo_destroy(cr);
 	cairo_surface_destroy(img);
