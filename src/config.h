@@ -397,6 +397,15 @@ struct wm_config {
 /* Create a config struct with sensible defaults */
 struct wm_config *config_create(void);
 
+/*
+ * Give a new user the default configuration, as Fluxbox's
+ * setupConfigFiles does: make ~/.config/fluxland (or
+ * $XDG_CONFIG_HOME/fluxland) and copy each default file it is missing
+ * from datadir/examples.  Leaves alone a FLUXLAND_CONFIG_DIR and a
+ * ~/.fluxbox that is used instead.  Returns the number of files copied.
+ */
+int wm_config_setup_files(const char *datadir);
+
 /* Load configuration from init file. Returns 0 on success, -1 on error.
  * If path is NULL, searches standard locations for init file. */
 int config_load(struct wm_config *config, const char *path);

@@ -135,6 +135,8 @@ class CompositorManager:
         env["XDG_RUNTIME_DIR"] = self._runtime_dir
         env["XDG_CONFIG_HOME"] = os.path.join(self._tmp_dir, "config")
         env["HOME"] = self._tmp_dir
+        # Only the test's files: no defaults copied in on first start
+        env["FLUXLAND_CONFIG_DIR"] = self._config_dir
         env["WLR_HEADLESS_OUTPUTS"] = str(outputs)
         env.update(extra_env or {})
 

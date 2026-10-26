@@ -953,6 +953,8 @@ static void config_reload(struct wm_config *config)
 	g_config_reload_count++;
 }
 
+static int wm_config_setup_files(const char *datadir)
+{ (void)datadir; return 0; }
 static struct wm_config *config_create(void)
 {
 	struct wm_config *c = calloc(1, sizeof(*c));

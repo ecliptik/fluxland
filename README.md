@@ -74,20 +74,17 @@ See [`examples/`](examples/) for styles and complete configuration examples, and
 
    For distro-specific instructions, see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
-2. **Copy the example configuration:**
-
-   ```sh
-   mkdir -p ~/.config/fluxland
-   cp /path/to/fluxland/data/* ~/.config/fluxland/
-   chmod +x ~/.config/fluxland/startup
-   ```
+2. **Configuration.** On its first start fluxland copies its default
+   configuration to `~/.config/fluxland/` (if you have a `~/.fluxbox`
+   and no `~/.config/fluxland`, it uses `~/.fluxbox` as it is; see
+   [Migration from Fluxbox](#migration-from-fluxbox)). A file you delete
+   comes back as the default next time.
 
    Or start from a themed example (see [`examples/`](examples/)):
 
    ```sh
-   cp /path/to/fluxland/data/* ~/.config/fluxland/
+   mkdir -p ~/.config/fluxland
    cp /path/to/fluxland/examples/wave-desktop/* ~/.config/fluxland/
-   chmod +x ~/.config/fluxland/startup
    ```
 
 3. **Start the compositor** from a TTY or from within another compositor:

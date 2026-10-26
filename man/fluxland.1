@@ -137,6 +137,19 @@ $XDG_CONFIG_HOME/fluxland/
 .fi
 .RE
 .PP
+On its first start fluxland makes
+.I ~/.config/fluxland/
+(or
+.IR $XDG_CONFIG_HOME/fluxland/ )
+and copies into it each default file it is missing
+.RB ( init ", " keys ", " apps ", " menu ", " windowmenu ", " startup )
+from the installed examples.
+It never overwrites a file, and leaves alone a
+.I $FLUXLAND_CONFIG_DIR
+and a
+.I ~/.fluxbox
+it uses instead.
+.PP
 Within the configuration directory, the following files are used:
 .TP
 .B init

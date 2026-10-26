@@ -1752,6 +1752,91 @@ test_slit_layer_fallback_to_int(void)
 	printf("  PASS: test_slit_layer_fallback_to_int\n");
 }
 
+/* Test: a new user gets the default files; nothing is overwritten, and a
+ * ~/.fluxbox or FLUXLAND_CONFIG_DIR is left alone */
+static void
+test_setup_files(void)
+{
+	char root[] = "/tmp/fluxland-setup-XXXXXX";
+	assert(mkdtemp(root));
+	char data[256], home[256], path[512];
+	snprintf(data, sizeof(data), "%s/data", root);
+	snprintf(home, sizeof(home), "%s/home", root);
+	mkdir(data, 0755);
+	mkdir(home, 0755);
+	snprintf(path, sizeof(path), "%s/examples", data);
+	mkdir(path, 0755);
+	const char *names[] = { "init", "keys", "apps", "menu",
+		"windowmenu", "startup" };
+	for (int i = 0; i < 6; i++) {
+		snprintf(path, sizeof(path), "%s/examples/%s", data, names[i]);
+		write_file(path, names[i]);
+	}
+
+	char *old_home = getenv("HOME") ? strdup(getenv("HOME")) : NULL;
+	char *old_xdg = getenv("XDG_CONFIG_HOME") ?
+		strdup(getenv("XDG_CONFIG_HOME")) : NULL;
+	char *old_dir = getenv("FLUXLAND_CONFIG_DIR") ?
+		strdup(getenv("FLUXLAND_CONFIG_DIR")) : NULL;
+	setenv("HOME", home, 1);
+	unsetenv("XDG_CONFIG_HOME");
+
+	/* FLUXLAND_CONFIG_DIR: not ours to fill */
+	setenv("FLUXLAND_CONFIG_DIR", root, 1);
+	assert(wm_config_setup_files(data) == 0);
+	unsetenv("FLUXLAND_CONFIG_DIR");
+
+	/* A Fluxbox user without ~/.config/fluxland: ~/.fluxbox is used */
+	snprintf(path, sizeof(path), "%s/.fluxbox", home);
+	mkdir(path, 0755);
+	assert(wm_config_setup_files(data) == 0);
+	snprintf(path, sizeof(path), "%s/.config", home);
+	assert(access(path, F_OK) != 0);
+	snprintf(path, sizeof(path), "%s/.fluxbox", home);
+	rmdir(path);
+
+	/* A new user: ~/.config/fluxland made and filled */
+	assert(wm_config_setup_files(data) == 6);
+	snprintf(path, sizeof(path), "%s/.config/fluxland/menu", home);
+	FILE *f = fopen(path, "r");
+	assert(f);
+	char buf[32] = "";
+	assert(fgets(buf, sizeof(buf), f));
+	fclose(f);
+	assert(strcmp(buf, "menu") == 0);
+
+	/* A file of the user's own stays; only a missing one comes back */
+	snprintf(path, sizeof(path), "%s/.config/fluxland/keys", home);
+	write_file(path, "mine");
+	snprintf(path, sizeof(path), "%s/.config/fluxland/apps", home);
+	unlink(path);
+	assert(wm_config_setup_files(data) == 1);
+	snprintf(path, sizeof(path), "%s/.config/fluxland/keys", home);
+	f = fopen(path, "r");
+	assert(f && fgets(buf, sizeof(buf), f));
+	fclose(f);
+	assert(strcmp(buf, "mine") == 0);
+
+	/* XDG_CONFIG_HOME is where it goes when set */
+	snprintf(path, sizeof(path), "%s/xdg", root);
+	setenv("XDG_CONFIG_HOME", path, 1);
+	assert(wm_config_setup_files(data) == 6);
+	snprintf(path, sizeof(path), "%s/xdg/fluxland/init", root);
+	assert(access(path, F_OK) == 0);
+
+	if (old_home) setenv("HOME", old_home, 1);
+	if (old_xdg) setenv("XDG_CONFIG_HOME", old_xdg, 1);
+	else unsetenv("XDG_CONFIG_HOME");
+	if (old_dir) setenv("FLUXLAND_CONFIG_DIR", old_dir, 1);
+	free(old_home);
+	free(old_xdg);
+	free(old_dir);
+	char cmd[300];
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", root);
+	assert(system(cmd) == 0);
+	printf("  PASS: test_setup_files\n");
+}
+
 int
 main(void)
 {
@@ -1822,6 +1907,7 @@ main(void)
 	test_iconbar_icon_width_clamp();
 	test_tab_width_and_padding_clamp();
 	test_slit_layer_fallback_to_int();
+	test_setup_files();
 
 	cleanup();
 	printf("All config tests passed.\n");

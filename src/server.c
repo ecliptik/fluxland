@@ -536,7 +536,8 @@ wm_server_init(struct wm_server *server)
 	/* Explicit sync (linux-drm-syncobj-v1) */
 	wm_drm_syncobj_init(server);
 
-	/* Load configuration */
+	/* Load configuration (a new user's from the defaults) */
+	wm_config_setup_files(FLUXLAND_DATADIR);
 	server->config = config_create();
 	if (server->config) {
 		config_load(server->config, NULL);

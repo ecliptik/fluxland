@@ -133,21 +133,13 @@ This installs:
 
 ## 5. Configure
 
-Copy the example configuration to your home directory:
-
-```sh
-mkdir -p ~/.config/fluxland
-cp /usr/local/share/fluxland/examples/* ~/.config/fluxland/
-chmod +x ~/.config/fluxland/startup
-```
-
-If you built without installing, copy from the source tree instead:
-
-```sh
-mkdir -p ~/.config/fluxland
-cp data/* ~/.config/fluxland/
-chmod +x ~/.config/fluxland/startup
-```
+On its first start fluxland copies the example configuration
+(`init`, `keys`, `apps`, `menu`, `windowmenu`, `startup`) from
+`/usr/local/share/fluxland/examples/` (`/usr/share/fluxland/examples/`
+from a package) to `~/.config/fluxland/`, the way Fluxbox fills
+`~/.fluxbox`. It never overwrites a file, and a file you delete comes
+back as the default next time. With a `~/.fluxbox` and no
+`~/.config/fluxland`, it uses `~/.fluxbox` as it is.
 
 ### Key config files
 

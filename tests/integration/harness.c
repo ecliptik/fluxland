@@ -168,6 +168,8 @@ harness_start_compositor(const char **out_socket)
 		setenv("XDG_RUNTIME_DIR", test_runtime, 1);
 		setenv("XDG_CONFIG_HOME", test_config_home, 1);
 		setenv("HOME", test_base, 1);
+		/* Only the test's files: no defaults copied in */
+		setenv("FLUXLAND_CONFIG_DIR", test_config_dir, 1);
 
 		/* Keep the log for diagnosing skips and failures */
 		char log_path[512];

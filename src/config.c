@@ -465,6 +465,104 @@ find_config_dir(void)
 	return strdup(path);
 }
 
+/* Copy src to a new file dst (never over an existing file or link) */
+static bool
+copy_new_file(const char *src, const char *dst, mode_t mode)
+{
+	FILE *in = fopen(src, "r");
+	if (!in)
+		return false;
+	int fd = open(dst, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+		mode);
+	if (fd < 0) {
+		fclose(in);
+		return false;
+	}
+	FILE *out = fdopen(fd, "w");
+	if (!out) {
+		close(fd);
+		fclose(in);
+		return false;
+	}
+	char buf[8192];
+	size_t n;
+	bool ok = true;
+	while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+		if (fwrite(buf, 1, n, out) != n) {
+			ok = false;
+			break;
+		}
+	}
+	if (ferror(in))
+		ok = false;
+	fclose(in);
+	if (fclose(out) != 0)
+		ok = false;
+	if (!ok)
+		unlink(dst);
+	return ok;
+}
+
+int
+wm_config_setup_files(const char *datadir)
+{
+	static const char *const files[] = {
+		"init", "keys", "apps", "menu", "windowmenu", "startup",
+	};
+	char dir[4096], path[4096], src[4096];
+
+	if (!datadir || getenv("FLUXLAND_CONFIG_DIR"))
+		return 0;
+
+	const char *home = getenv("HOME");
+	const char *xdg = getenv("XDG_CONFIG_HOME");
+	int len;
+	if (xdg && *xdg)
+		len = snprintf(dir, sizeof(dir), "%s/fluxland", xdg);
+	else if (home)
+		len = snprintf(dir, sizeof(dir), "%s/.config/fluxland", home);
+	else
+		return 0;
+	if (len < 0 || (size_t)len >= sizeof(dir))
+		return 0;
+
+	if (!dir_exists(dir)) {
+		/* A Fluxbox user's ~/.fluxbox is used as it is */
+		int n = home ? snprintf(path, sizeof(path), "%s/.fluxbox",
+			home) : -1;
+		if (n > 0 && (size_t)n < sizeof(path) && dir_exists(path))
+			return 0;
+		/* Its parents (~/.config) too */
+		for (char *p = dir + 1; *p; p++) {
+			if (*p != '/')
+				continue;
+			*p = '\0';
+			mkdir(dir, 0755);
+			*p = '/';
+		}
+		if (mkdir(dir, 0700) != 0 && !dir_exists(dir))
+			return 0;
+	}
+
+	int copied = 0;
+	for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+		int n = snprintf(path, sizeof(path), "%s/%s", dir, files[i]);
+		int m = snprintf(src, sizeof(src), "%s/examples/%s", datadir,
+			files[i]);
+		if (n < 0 || (size_t)n >= sizeof(path) || m < 0 ||
+		    (size_t)m >= sizeof(src) || access(path, F_OK) == 0)
+			continue;
+		/* startup is a script */
+		mode_t mode = strcmp(files[i], "startup") == 0 ? 0755 : 0644;
+		if (copy_new_file(src, path, mode))
+			copied++;
+	}
+	if (copied)
+		fprintf(stderr, "[fluxland] default configuration copied to %s\n",
+			dir);
+	return copied;
+}
+
 static char *
 resolve_path(const char *config_dir, const char *value,
 	     const char *default_name)
