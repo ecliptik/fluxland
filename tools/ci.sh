@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT
 # ci.sh - Build and test fluxland the way CI does.
 #
-# Usage: tools/ci.sh deps|build|sanitize|fuzz|ui
+# Usage: tools/ci.sh deps|build|sanitize|fuzz|ui|wlcs
 #   deps      install build/test dependencies (Debian 13, as root)
 #   build     gcc build + C unit tests
 #   sanitize  ASan + UBSan build + C unit tests
 #   fuzz      clang build of the fuzz targets + a short run of each
 #   ui        headless end-to-end UI tests (pytest)
+#   wlcs      the Wayland Conformance Test Suite against fluxland, less
+#             the failures tests/wlcs/known-failures explains
 #
 # Each step uses its own build directory (ci-<step>) so they can run
 # side by side and never clobber a developer's build/.
@@ -50,7 +52,8 @@ deps)
 		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev xwayland \
 		libsystemd-dev \
 		python3 python3-pytest python3-pytest-timeout python3-pil \
-		foot grim wtype wlrctl xterm x11-utils wlr-randr wayland-utils fonts-dejavu-core
+		foot grim wtype wlrctl xterm x11-utils wlr-randr wayland-utils fonts-dejavu-core \
+		wlcs
 	;;
 build)
 	meson setup ci-build --wipe -Dwerror=false
@@ -94,8 +97,26 @@ ui)
 	FLUXLAND_BINARY="$PWD/ci-build/fluxland" FLUXLAND_TEST_HEADLESS=1 \
 		python3 -m pytest tests/ui/ --timeout=30 -q -p no:cacheprovider
 	;;
+wlcs)
+	meson setup ci-wlcs --wipe -Dwlcs=true -Dwerror=false
+	ninja -C ci-wlcs
+	# Every known failure, with its reason, in one negative filter
+	skip=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' \
+		tests/wlcs/known-failures | paste -sd: -)
+	wlcs=${WLCS:-/usr/lib/$(gcc -print-multiarch)/wlcs/wlcs}
+	# Its own runtime dir and no session bus: a thousand compositors
+	# stay off the developer's desktop (sockets, the systray)
+	runtime=$(mktemp -d)
+	status=0
+	env -u DBUS_SESSION_BUS_ADDRESS -u WAYLAND_DISPLAY -u DISPLAY \
+		XDG_RUNTIME_DIR="$runtime" \
+		"$wlcs" ci-wlcs/libfluxland-wlcs.so \
+		--gtest_filter="*${skip:+-$skip}" --gtest_brief=1 || status=$?
+	rm -rf "$runtime"
+	exit $status
+	;;
 *)
-	echo "usage: $0 deps|build|sanitize|fuzz|ui" >&2
+	echo "usage: $0 deps|build|sanitize|fuzz|ui|wlcs" >&2
 	exit 2
 	;;
 esac

@@ -242,8 +242,8 @@ if have_gettext and intl_dep.found()
   wm_deps += [intl_dep]
 endif
 
+# Everything but main.c: the compositor and the WLCS module share it
 wm_sources = files(
-  'src/main.c',
   'src/import.c',
   'src/dialog.c',
   'src/tooltip.c',
@@ -337,7 +337,7 @@ endif
 
 fluxland_exe = executable(
   meson.project_name(),
-  wm_sources,
+  files('src/main.c') + wm_sources,
   include_directories: [wm_inc],
   dependencies: wm_deps,
   install: true,
@@ -346,87 +346,12 @@ fluxland_exe = executable(
 # --- WLCS integration module (optional) ---
 
 if get_option('wlcs')
-  # All compositor sources except main.c (rebuilt for shared library)
-  wlcs_compositor_sources = files(
-    'src/animation.c',
-    'src/atspi_bridge.c',
-    'src/autostart.c',
-  'src/client_pattern.c',
-  'src/regex_guard.c',
-  'src/command.c',
-    'src/server.c',
-    'src/output.c',
-  'src/output_config.c',
-    'src/pixel_buffer.c',
-    'src/input.c',
-  'src/input_config.c',
-    'src/keyboard.c',
-    'src/keyboard_actions.c',
-    'src/cursor.c',
-    'src/cursor_actions.c',
-    'src/cursor_snap.c',
-    'src/view.c',
-  'src/view_xdg.c',
-    'src/view_focus.c',
-    'src/view_geometry.c',
-    'src/workspace.c',
-    'src/config.c',
-    'src/rcparser.c',
-    'src/keybind.c',
-    'src/mousebind.c',
-    'src/style.c',
-    'src/render.c',
-    'src/decoration.c',
-    'src/focus_nav.c',
-    'src/fractional_scale.c',
-    'src/gamma_control.c',
-    'src/foreign_toplevel.c',
-    'src/tabgroup.c',
-    'src/ipc.c',
-    'src/ipc_commands.c',
-  'src/ipc_json.c',
-    'src/rules.c',
-    'src/rules_parse.c',
-    'src/fbcompat.c',
-    'src/placement.c',
-    'src/idle.c',
-    'src/layer_shell.c',
-    'src/output_management.c',
-    'src/protocols.c',
-    'src/presentation.c',
-    'src/screencopy.c',
-      'src/session_lock.c',
-    'src/text_input.c',
-    'src/transient_seat.c',
-    'src/drm_lease.c',
-    'src/drm_syncobj.c',
-    'src/viewporter.c',
-    'src/menu.c',
-    'src/menu_parse.c',
-    'src/menu_render.c',
-    'src/slit.c',
-    'src/tablet.c',
-    'src/toolbar.c',
-    'src/util.c',
-    'src/perf.c',
-    'src/validate.c',
-    'src/wallpaper.c',
-    'src/xwayland.c',
-    'src/icon.c',
-    'src/ext_workspace.c',
-    'src/session_env.c',
-  )
-
-  if have_systray
-    wlcs_compositor_sources += files('src/systray.c')
-  endif
-
   threads = dependency('threads')
   wayland_client_dep = dependency('wayland-client')
 
   shared_library(
     'fluxland-wlcs',
-    wlcs_compositor_sources + files('src/wlcs_shim.c'),
+    wm_sources + files('src/wlcs_shim.c'),
     include_directories: [wm_inc],
     dependencies: wm_deps + [threads, wayland_client_dep],
     gnu_symbol_visibility: 'hidden',

@@ -2,7 +2,7 @@
 #
 # Build and test fluxland. Runs on GitHub Actions and Forgejo Actions
 # (Forgejo also reads .github/workflows). Every job calls tools/ci.sh,
-# so the same steps run locally: tools/ci.sh build|sanitize|fuzz|ui.
+# so the same steps run locally: tools/ci.sh build|sanitize|fuzz|ui|wlcs.
 
 name: ci
 
@@ -55,3 +55,12 @@ jobs:
         with:
           name: ui-results
           path: tests/ui/results/
+
+  wlcs:
+    name: Wayland conformance (wlcs)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/ci.sh deps
+      - run: tools/ci.sh wlcs
