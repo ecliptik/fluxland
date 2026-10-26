@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - Unreleased
+
+fluxland 2.0 is for Fluxbox users: an existing `~/.fluxbox` works
+unchanged, read and drawn the way Fluxbox reads and draws it, and the
+session is a complete Wayland desktop. See
+[docs/MIGRATING.md](docs/MIGRATING.md) and
+[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+
+### Added
+- Every Fluxbox command (132), init resource (90), apps attribute (25)
+  and menu tag (36), checked by a parity test (`tests/compat.py`) that
+  generates docs/COMPATIBILITY.md
+- One Fluxbox command language for keys, mouse, menus and IPC:
+  nestable MacroCmd, ToggleCmd, If/Cond, ForEach/Map, Delay; Fluxbox
+  client patterns (`(name=...) (title!=...) (workspace=[current]) {N}`)
+- `fluxland --import-fluxbox`: makes `~/.config/fluxland` from
+  `~/.fluxbox`, startup script and wallpaper included
+- Fluxbox's text dialogs (CommandDialog, SetTitleDialog...), the
+  Remember... menu, menu columns and round corners, the toolbar up a
+  side, tooltips, attention flashing, tab dragging, workspace warping,
+  snapping, size hints
+- X11 programs as ordinary windows (decorations, tabs, rules, commands)
+- libinput (`session.input.*`), output (`session.output.*`) and
+  lid/tablet switch (`session.switch.*`) settings in init; output
+  hotplug
+- Portals and the session environment (screen sharing through
+  xdg-desktop-portal-wlr), activation, IME candidate popups
+- Protocols of wlroots 0.19/0.20: ext-image-copy-capture and window
+  capture, ext-data-control, xdg-system-bell, xdg-dialog,
+  xdg-toplevel-icon, ext-workspace, xdg-toplevel-tag, KDE
+  server-decoration, ext-foreign-toplevel-list
+- WLCS (the Wayland Conformance Test Suite) in CI, and build, sanitizer,
+  fuzz and UI jobs (`tools/ci.sh`)
+- Packages for Debian, Ubuntu (and Linux Mint), Arch and Fedora with
+  wlroots bundled (`tools/dist.sh`, `packaging/build.sh`)
+
+### Changed
+- wlroots 0.20, bundled as a pinned subproject and linked statically,
+  as are the libraries newer than distributions ship
+- Styles, decorations, menus, fonts and the toolbar are drawn as Fluxbox
+  draws them (FbWinFrame, FbTk::Menu, FbTk::Font, its textures)
+
+### Changed, needing fluxland 1.x configuration updates
+- apps: Fluxbox's anchored patterns instead of substrings; `[app]` no
+  longer matches dialogs (`[transient]` does); `[Layer]` numbers are
+  Fluxbox's (see COMPATIBILITY in fluxland-apps(5))
+- keys: a mouse binding without `On*` is for the desktop only;
+  `OnWindow` no longer covers the decorations; buttons 4 and 5 are the
+  wheel; ResizeTo sizes the whole window
+- init: `iconbar.alignment` defaults to Relative; numeric
+  `toolbar.layer` values are Fluxbox's layers; `doubleClickInterval`
+  defaults to 250; `autoRaise` is on (with MouseFocus); dragging a
+  window to the top or bottom edge warps workspaces
+- menus: `[wallpapers]` and `[stylesmenu]` list their entries in place;
+  type-ahead search is on
+- styles: textures without a level are Flat, gradients without a type
+  Diagonal, missing colours darkgray and white; frames are two border
+  lines taller; no Shade button by default; `tab.placement` takes
+  Fluxbox's twelve names; no submenu bullet unless the style has one
+- `SetWallpaper -a` fits the image inside the output; ArrangeWindows and
+  Unclutter work as in Fluxbox
+
+### Fixed
+- X11 windows found by the pointer as views (type confusion), toggled
+  maximize/fullscreen requests, focus after minimizing, session lock
+  showing the desktop, a duplicate data-control global
+- Bugs WLCS found: pointer enter/leave when the scene changes under a
+  still pointer, pointer constraints, implicit grabs, touch drags,
+  layer-shell layout and keyboard focus, the first configure of windows
+  that start maximized, the text-input relay
+- Run from `~/.fluxbox`, its startup script's `exec fluxbox` no longer
+  starts Fluxbox on Xwayland
+
+### Removed
+- The PipeWire screen cast module that sent no frames (screen sharing
+  goes through xdg-desktop-portal-wlr)
+
 ## [1.1.0] - 2026-03-03
 
 ### Added
