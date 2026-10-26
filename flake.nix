@@ -16,7 +16,7 @@
         in {
           default = pkgs.stdenv.mkDerivation {
             pname = "fluxland";
-            version = "1.1.0";
+            version = "2.0.0";
 
             src = self;
 
@@ -27,22 +27,28 @@
               wayland-scanner
             ];
 
+            # nixpkgs' wlroots 0.20 (the Nix sandbox can't fetch the
+            # subprojects a plain meson build would bundle)
             buildInputs = with pkgs; [
-              wlroots_0_18
+              wlroots_0_20
               wayland
               wayland-protocols
               libxkbcommon
               pango
               cairo
+              gdk-pixbuf
               libinput
               libdrm
               pixman
+              systemd
               libxcb
-              xcb-util-wm
+              xorg.xcbutilwm
+              xwayland
             ];
 
             mesonFlags = [
-              "-Dxwayland=auto"
+              "-Dxwayland=enabled"
+              "-Dwerror=false"
             ];
 
             meta = with pkgs.lib; {
