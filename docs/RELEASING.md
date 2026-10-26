@@ -22,5 +22,3 @@
    download the tarball from it).
 7. **Checksums.** The tarball's sha256 in `packaging/PKGBUILD`
    (`sha256sums`) and `packaging/com.fluxland.Fluxland.yml` (`sha256`).
-8. **Distributions.** The PKGBUILD to the AUR; the spec and tarball to
-   COPR.
