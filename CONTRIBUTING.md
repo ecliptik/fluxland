@@ -363,17 +363,26 @@ ninja -C build-fuzz
 
 ## WLCS integration testing
 
-WLCS (Wayland Conformance Test Suite) integration is available via
-`src/wlcs_shim.c`. This is a Google Test-based test suite that
-validates Wayland protocol conformance.
-
-To build and run WLCS tests:
+[WLCS](https://github.com/canonical/wlcs) (the Wayland Conformance Test
+Suite) runs against fluxland through `src/wlcs_shim.c`, in CI and locally
+(Debian: `apt install wlcs`):
 
 ```sh
-meson setup build_wlcs -Dwlcs=enabled
-ninja -C build_wlcs
-# Run via the WLCS test runner
+tools/ci.sh wlcs
 ```
+
+It builds `ci-wlcs/libfluxland-wlcs.so` (`-Dwlcs=true`) and runs every
+test except those in `tests/wlcs/known-failures`, which lists each known
+failure under its reason. A new failure fails the step; a test you fix
+comes off the list. To run a few tests by hand:
+
+```sh
+meson setup build-wlcs -Dwlcs=true && ninja -C build-wlcs
+/usr/lib/$(gcc -print-multiarch)/wlcs/wlcs build-wlcs/libfluxland-wlcs.so \
+	--gtest_filter='ClientSurfaceEventsTest.*'
+```
+
+`FLUXLAND_WLCS_DEBUG=1` turns on fluxland's debug log.
 
 ## Commit message convention
 
