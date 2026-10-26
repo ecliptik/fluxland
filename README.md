@@ -34,12 +34,24 @@ the benefits of a modern Wayland session.
 
 *[Great Wave](https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa) style with ocean blue decorations.*
 
-| | |
-|---|---|
-| ![Desktop](docs/screenshots/desktop.png) | ![Tabs](docs/screenshots/window_slit.png) |
-| Desktop with wallpaper | Three terminals tabbed in one frame (an apps file `[group]`), [gkrellm](http://gkrellm.srcbox.net/) in the slit (XWayland) |
-| ![Menu](docs/screenshots/menu.png) | ![Grid](docs/screenshots/grid.png) |
-| Root menu | `ArrangeWindows` (4 windows) |
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/desktop.png" alt="Desktop" width="100%"></td>
+<td width="50%" align="center"><img src="docs/screenshots/window_slit.png" alt="Tabs" width="100%"></td>
+</tr>
+<tr>
+<td width="50%" valign="top">Desktop with wallpaper</td>
+<td width="50%" valign="top">Three terminals tabbed in one frame (an apps file <code>[group]</code>), <a href="http://gkrellm.srcbox.net/">gkrellm</a> in the slit (XWayland)</td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/menu.png" alt="Menu" width="100%"></td>
+<td width="50%" align="center"><img src="docs/screenshots/grid.png" alt="Grid" width="100%"></td>
+</tr>
+<tr>
+<td width="50%" valign="top">Root menu</td>
+<td width="50%" valign="top"><code>ArrangeWindows</code> (4 windows)</td>
+</tr>
+</table>
 
 ### Fluxbox desktops, recreated
 
@@ -49,12 +61,24 @@ and fluxland running the same Fluxbox styles today (right). Programs
 that don't run on Wayland have modern stand-ins: foot for Eterm and
 aterm, Audacious with the same Winamp skins for XMMS.
 
-| | |
-|---|---|
-| ![2002, Fluxarnation](docs/screenshots/fluxbox-desktops/2002-fluxarnation.png) | ![2002, Eterm](docs/screenshots/fluxbox-desktops/2002-eterm.png) |
-| 2002: [*Fluxarnation*](https://web.archive.org/web/2003id_/http://fluxbox.sourceforge.net:80/download/themes/sid/aleczapka_fluxcarnation.tar.bz2) by aLEczapKA, [*sid_fluxbox*](https://web.archive.org/web/2003id_/http://fluxbox.sourceforge.net:80/download/themes/sid/aleczapka_fluxcarnation.tar.bz2) by aLEczapKA, gkrellm's [*CoplandOS*](https://web.archive.org/web/20060113185908id_/http://www.muhri.net:80/gkrellm/CoplandOS.gkrellm.tar.gz) by an unknown author | 2002: style unknown, [*Kernel Destruction*](https://web.archive.org/web/20090131104840/http://comp.dpics.org:80/12__Kernel_Destruction.htm) by an unknown artist, [*LCD screen: titanium*](https://skins.webamp.org/skin/c04758885478077f72708a5d6ef1940f) by Philipp RW Urech |
-| ![2004, Magraxx](docs/screenshots/fluxbox-desktops/2004-magraxx.png) | ![2005, Meta](docs/screenshots/fluxbox-desktops/2005-meta.png) |
-| 2004: [*Magraxx*](https://web.archive.org/web/20221025152713/http://tenr.de/styles/archives/fluxmod-styles-pkg.tar.bz2) by ikaro, [*Debian Style*](https://web.archive.org/web/2008id_/http://peoples.mandriva.com/~ayo/distant_file/dessins/wallpaper/03_debian_expo_1280_1024.png) by ayo | 2005: [*Meta*](https://github.com/fluxbox/fluxbox/tree/master/data/styles/Meta) from Fluxbox, *Winter's Eve* by lisyria over [*Winter Eve*](https://visualparadox.com/wallpapers/wintereve.htm) by Visual Paradox, [*ArcticAMP*](https://skins.webamp.org/skin/9c7804f8c6b3ec79e1f4757832c487d9) by Zarko Jovic |
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/fluxbox-desktops/2002-fluxarnation.png" alt="2002, Fluxarnation" width="100%"></td>
+<td width="50%" align="center"><img src="docs/screenshots/fluxbox-desktops/2002-eterm.png" alt="2002, Eterm" width="100%"></td>
+</tr>
+<tr>
+<td width="50%" valign="top">2002: <a href="https://web.archive.org/web/2003id_/http://fluxbox.sourceforge.net:80/download/themes/sid/aleczapka_fluxcarnation.tar.bz2"><em>Fluxarnation</em></a> by aLEczapKA, <a href="https://web.archive.org/web/2003id_/http://fluxbox.sourceforge.net:80/download/themes/sid/aleczapka_fluxcarnation.tar.bz2"><em>sid_fluxbox</em></a> by aLEczapKA, gkrellm's <a href="https://web.archive.org/web/20060113185908id_/http://www.muhri.net:80/gkrellm/CoplandOS.gkrellm.tar.gz"><em>CoplandOS</em></a> by an unknown author</td>
+<td width="50%" valign="top">2002: style unknown, <a href="https://web.archive.org/web/20090131104840/http://comp.dpics.org:80/12__Kernel_Destruction.htm"><em>Kernel Destruction</em></a> by an unknown artist, <a href="https://skins.webamp.org/skin/c04758885478077f72708a5d6ef1940f"><em>LCD screen: titanium</em></a> by Philipp RW Urech</td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/fluxbox-desktops/2004-magraxx.png" alt="2004, Magraxx" width="100%"></td>
+<td width="50%" align="center"><img src="docs/screenshots/fluxbox-desktops/2005-meta.png" alt="2005, Meta" width="100%"></td>
+</tr>
+<tr>
+<td width="50%" valign="top">2004: <a href="https://web.archive.org/web/20221025152713/http://tenr.de/styles/archives/fluxmod-styles-pkg.tar.bz2"><em>Magraxx</em></a> by ikaro, <a href="https://web.archive.org/web/2008id_/http://peoples.mandriva.com/~ayo/distant_file/dessins/wallpaper/03_debian_expo_1280_1024.png"><em>Debian Style</em></a> by ayo</td>
+<td width="50%" valign="top">2005: <a href="https://github.com/fluxbox/fluxbox/tree/master/data/styles/Meta"><em>Meta</em></a> from Fluxbox, <em>Winter's Eve</em> by lisyria over <a href="https://visualparadox.com/wallpapers/wintereve.htm"><em>Winter Eve</em></a> by Visual Paradox, <a href="https://skins.webamp.org/skin/9c7804f8c6b3ec79e1f4757832c487d9"><em>ArcticAMP</em></a> by Zarko Jovic</td>
+</tr>
+</table>
 
 See [`examples/`](examples/) for styles and complete configuration examples, and the [style gallery](docs/STYLES.md) for Fluxbox style compatibility screenshots.
 
