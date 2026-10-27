@@ -1,6 +1,6 @@
 # fluxland
 
-A lightweight, highly configurable Wayland compositor inspired by [Fluxbox](http://fluxbox.org/).
+A lightweight, highly configurable Wayland compositor inspired by, and compatible with, [Fluxbox](http://fluxbox.org/).
 
 [![Build](https://img.shields.io/github/actions/workflow/status/ecliptik/fluxland/ci.yml?branch=main)](https://github.com/ecliptik/fluxland/actions)
 [![License](https://img.shields.io/github/license/ecliptik/fluxland)](LICENSE)
