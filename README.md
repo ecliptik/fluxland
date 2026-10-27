@@ -68,7 +68,7 @@ aterm, Audacious with the same Winamp skins for XMMS.
 </tr>
 <tr>
 <td width="50%" valign="top">2002: <a href="https://web.archive.org/web/2003id_/http://fluxbox.sourceforge.net:80/download/themes/sid/aleczapka_fluxcarnation.tar.bz2"><em>Fluxarnation</em></a> by aLEczapKA, <a href="https://web.archive.org/web/2003id_/http://fluxbox.sourceforge.net:80/download/themes/sid/aleczapka_fluxcarnation.tar.bz2"><em>sid_fluxbox</em></a> by aLEczapKA, gkrellm's <a href="https://web.archive.org/web/20060113185908id_/http://www.muhri.net:80/gkrellm/CoplandOS.gkrellm.tar.gz"><em>CoplandOS</em></a> by an unknown author</td>
-<td width="50%" valign="top">2002: style unknown, <a href="https://web.archive.org/web/20090131104840/http://comp.dpics.org:80/12__Kernel_Destruction.htm"><em>Kernel Destruction</em></a> by an unknown artist, <a href="https://skins.webamp.org/skin/c04758885478077f72708a5d6ef1940f"><em>LCD screen: titanium</em></a> by Philipp RW Urech</td>
+<td width="50%" valign="top">2002: style unknown, <a href="https://web.archive.org/web/20030403195204/http://pixelcatalyst.plastiqueweb.com/wallpapers/infestedpixels/pixelcatalyst-depthcore-kernel7025.jpg"><em>KERNEL 7025</em></a> by <a href="https://web.archive.org/web/20011208035841/http://www.pixelcatalyst.plastiqueweb.com:80/">pixelcatalyst</a>, <a href="https://skins.webamp.org/skin/c04758885478077f72708a5d6ef1940f"><em>LCD screen: titanium</em></a> by Philipp RW Urech</td>
 </tr>
 <tr>
 <td width="50%" align="center"><img src="docs/screenshots/fluxbox-desktops/2004-magraxx.png" alt="2004, Magraxx" width="100%"></td>
