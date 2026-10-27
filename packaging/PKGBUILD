@@ -47,7 +47,7 @@ optdepends=(
   'swaylock: screen locker'
 )
 source=("$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.xz")
-sha256sums=('SKIP')
+sha256sums=('26138ed22eb980fbf40b690a679fbd83c446d77fdbcc3a7a6ed095d4369f1cf2')
 
 build() {
   # arch-meson turns every optional feature on, the bundled wlroots' too

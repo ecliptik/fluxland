@@ -36,5 +36,5 @@ modules:
     sources:
       - type: archive
         url: https://github.com/ecliptik/fluxland/releases/download/v2.0.0/fluxland-2.0.0.tar.xz
-        # Set from the release's fluxland-2.0.0.tar.xz.sha256sum
-        sha256: FIXME
+        # The release's fluxland-2.0.0.tar.xz (SHA256SUMS on the release)
+        sha256: 26138ed22eb980fbf40b690a679fbd83c446d77fdbcc3a7a6ed095d4369f1cf2
