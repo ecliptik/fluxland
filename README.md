@@ -84,7 +84,7 @@ See [`examples/`](examples/) for styles and complete configuration examples, and
 
 ## Install
 
-Packages for each [release](https://github.com/ecliptik/fluxland/releases/latest) bundle wlroots 0.20 and the other libraries newer than distributions ship, so there is nothing else to install:
+Packages for each [release](https://github.com/ecliptik/fluxland/releases/latest) bundle wlroots 0.20 and other dependencies:
 
 | Distribution | Install |
 |---|---|
