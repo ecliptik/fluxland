@@ -1,6 +1,6 @@
 # Fluxland
 
-Fluxbox-inspired Wayland compositor built on wlroots 0.20 (pinned subproject, `subprojects/wlroots.wrap`; a system wlroots-0.20 is used if present; libraries newer than the distribution's come from `subprojects/` too, all static). C17, Meson, MIT license. Version 2.0.0 (unreleased).
+Fluxbox-inspired Wayland compositor built on wlroots 0.20 (pinned subproject, `subprojects/wlroots.wrap`; a system wlroots-0.20 is used if present; libraries newer than the distribution's come from `subprojects/` too, all static). C17, Meson, MIT license. Version 2.0.0.
 
 ## Build & Test
 

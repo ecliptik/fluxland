@@ -95,7 +95,7 @@ DESTDIR=%{buildroot} meson install -C %{_vpath_builddir} --no-rebuild \
 %{_mandir}/man5/fluxland-style.5*
 
 %changelog
-* Sun Oct 25 2026 Micheal Waltz <social.github@accounts.ecliptik.com> - 2.0.0-1
+* Mon Oct 26 2026 Micheal Waltz <social.github@accounts.ecliptik.com> - 2.0.0-1
 - fluxland 2.0, for Fluxbox users: an existing ~/.fluxbox works
   unchanged (init, keys, apps, menu, styles), fluxland --import-fluxbox
 - wlroots 0.20, bundled and linked statically

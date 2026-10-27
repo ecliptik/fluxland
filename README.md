@@ -8,7 +8,7 @@ A lightweight, highly configurable Wayland compositor inspired by [Fluxbox](http
 
 ---
 
-[About](#about) | [Screenshots](#screenshots) | [Quick Start](#quick-start) | [Features](#features) | [Dependencies](#dependencies) | [Building](#building) | [Configuration](#configuration) | [Migration from Fluxbox](#migration-from-fluxbox) | [IPC](#ipc) | [Man Pages](#man-pages) | [Contributing](#contributing) | [License](#license)
+[About](#about) | [Screenshots](#screenshots) | [Install](#install) | [Quick Start](#quick-start) | [Features](#features) | [Dependencies](#dependencies) | [Building](#building) | [Configuration](#configuration) | [Migration from Fluxbox](#migration-from-fluxbox) | [IPC](#ipc) | [Man Pages](#man-pages) | [Contributing](#contributing) | [License](#license)
 
 ---
 
@@ -82,9 +82,23 @@ aterm, Audacious with the same Winamp skins for XMMS.
 
 See [`examples/`](examples/) for styles and complete configuration examples, and the [style gallery](docs/STYLES.md) for Fluxbox style compatibility screenshots.
 
+## Install
+
+Packages for each [release](https://github.com/ecliptik/fluxland/releases/latest) bundle wlroots 0.20 and the other libraries newer than distributions ship, so there is nothing else to install:
+
+| Distribution | Install |
+|---|---|
+| Debian 13 (trixie) | `sudo apt install ./fluxland_2.0.0-1_amd64_debian-13.deb` |
+| Ubuntu 24.04, Linux Mint 22 | `sudo apt install ./fluxland_2.0.0-1_amd64_ubuntu-24.04.deb` |
+| Arch Linux | `sudo pacman -U fluxland-2.0.0-1-x86_64.pkg.tar.zst` |
+| Fedora 44 | `sudo dnf install ./fluxland-2.0.0-1.fc44.x86_64.rpm` |
+| Anything else | build the source tarball, or [from a clone](#building) |
+
+Choose **Fluxland** in your display manager, or run `fluxland` from a text console. `SHA256SUMS` on the release lists each file's checksum.
+
 ## Quick Start
 
-1. **Install dependencies** (see [Dependencies](#dependencies) below) and build:
+1. **Build from source** (or [install a package](#install)): install the dependencies (see [Dependencies](#dependencies) below), then:
 
    ```sh
    meson setup build && ninja -C build
@@ -131,6 +145,7 @@ See [`examples/`](examples/) for styles and complete configuration examples, and
 
 ## Features
 
+- **Fluxbox compatible** -- an existing `~/.fluxbox` works unchanged: every Fluxbox command (132), init resource (90), apps attribute (25) and menu tag (36), checked by a parity test; see [Migration from Fluxbox](#migration-from-fluxbox)
 - **Server-side decorations** with full [Fluxbox style support](docs/STYLES.md) (gradients, textures, fonts, colors)
 - **Key chains** -- multi-key sequences (e.g. `Mod4+x Mod4+t` to launch a terminal)
 - **Keymodes** -- modal keybinding sets (e.g. a resize mode with vim-style movement keys)
