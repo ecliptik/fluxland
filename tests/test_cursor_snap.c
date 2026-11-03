@@ -1631,8 +1631,10 @@ static struct wm_mousebind *mousebind_find(struct wl_list *bindings,
 static bool mousebind_has_move(struct wl_list *bindings, uint32_t ctx,
 	uint32_t button, uint32_t mods)
 	{ (void)bindings; (void)ctx; (void)button; (void)mods; return false; }
+/* Whether the pointer is in the toolbar's rectangle */
+static bool g_toolbar_contains;
 static bool wm_toolbar_contains(struct wm_toolbar *tb, double x, double y)
-	{ (void)tb; (void)x; (void)y; return false; }
+	{ (void)tb; (void)x; (void)y; return g_toolbar_contains; }
 static void wm_toolbar_set_hovered(struct wm_toolbar *tb, bool h)
 	{ (void)tb; (void)h; }
 static void wm_tooltip_update(struct wm_server *s) { (void)s; }
@@ -3571,6 +3573,52 @@ test_get_cursor_context_popup_surface(void)
 }
 
 /*
+ * The toolbar (and its tray, tooltips and wheel) is not under the pointer
+ * when a fullscreen window is drawn over it: that window's clicks are its.
+ */
+static void
+test_pointer_on_toolbar_not_under_fullscreen(void)
+{
+	setup();
+	g_toolbar_contains = true;
+
+	/* Nothing over it, or the toolbar's own node: it is */
+	g_node_at = NULL;
+	assert(wm_pointer_on_toolbar(&test_server, 10, 10));
+	struct wlr_scene_tree own_tree = {0};
+	struct wlr_scene_buffer own = {0};
+	own.node.type = WLR_SCENE_NODE_BUFFER;
+	own.node.parent = &own_tree;
+	g_node_at = &own.node;
+	assert(wm_pointer_on_toolbar(&test_server, 10, 10));
+
+	/* A window over it: only a fullscreen one covers it */
+	struct wm_view view = {0};
+	view.server = &test_server;
+	wl_list_insert(&test_server.views, &view.link);
+	struct wlr_scene_tree tree = {0};
+	tree.node.data = &view;
+	struct wlr_scene_buffer buffer = {0};
+	buffer.node.type = WLR_SCENE_NODE_BUFFER;
+	buffer.node.parent = &tree;
+	g_node_at = &buffer.node;
+
+	view.fullscreen = false;
+	assert(wm_pointer_on_toolbar(&test_server, 10, 10));
+	view.fullscreen = true;
+	assert(!wm_pointer_on_toolbar(&test_server, 10, 10));
+
+	/* Outside the toolbar's rectangle it never is */
+	view.fullscreen = false;
+	g_toolbar_contains = false;
+	assert(!wm_pointer_on_toolbar(&test_server, 10, 10));
+
+	wl_list_remove(&view.link);
+	g_node_at = NULL;
+	printf("  PASS: pointer_on_toolbar_not_under_fullscreen\n");
+}
+
+/*
  * Test 77: get_cursor_context returns SLIT when cursor over slit.
  */
 static void
@@ -4134,6 +4182,7 @@ main(void)
 	test_get_cursor_context_slit();
 	test_get_cursor_context_slit_hidden();
 	test_get_cursor_context_popup_surface();
+	test_pointer_on_toolbar_not_under_fullscreen();
 	test_get_cursor_context_slit_outside();
 
 	/* passthrough motion tests */

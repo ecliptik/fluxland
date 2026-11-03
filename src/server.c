@@ -41,6 +41,7 @@
 #include "output_management.h"
 #include "protocols.h"
 #include "gamma_control.h"
+#include "frame_pacing.h"
 #include "presentation.h"
 #include "screencopy.h"
 #include "session_lock.h"
@@ -530,6 +531,7 @@ wm_server_init(struct wm_server *server)
 
 	/* Presentation time for frame timing feedback */
 	wm_presentation_init(server);
+	wm_frame_pacing_init(server);
 
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");

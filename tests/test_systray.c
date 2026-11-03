@@ -508,6 +508,33 @@ static char g_last_async_member[32];
 static char g_async_members[8][40];
 static char g_async_token[8][16];
 static int g_async_members_count;
+/* The format string of the last call: "(null)", or "(bad)" for a number
+ * that was passed in its place (a shifted argument list) */
+static char g_last_async_types[16];
+/* The process the bus says an item belongs to; 0: none known */
+static int g_creds_pid;
+
+int sd_bus_get_name_creds(sd_bus *bus, const char *name, uint64_t mask,
+	sd_bus_creds **creds)
+{
+	(void)bus; (void)name; (void)mask;
+	if (g_creds_pid <= 0)
+		return -2;
+	*creds = (sd_bus_creds *)&g_creds_pid;
+	return 0;
+}
+
+int sd_bus_creds_get_pid(sd_bus_creds *creds, pid_t *pid)
+{
+	*pid = *(int *)creds;
+	return 0;
+}
+
+sd_bus_creds *sd_bus_creds_unref(sd_bus_creds *creds)
+{
+	(void)creds;
+	return NULL;
+}
 
 int sd_bus_call_method_async(sd_bus *bus, sd_bus_slot **slot,
 	const char *destination, const char *path,
@@ -522,6 +549,15 @@ int sd_bus_call_method_async(sd_bus *bus, sd_bus_slot **slot,
 	g_last_async_userdata = userdata;
 	snprintf(g_last_async_member, sizeof(g_last_async_member), "%s",
 		member);
+	if (types == NULL)
+		snprintf(g_last_async_types, sizeof(g_last_async_types),
+			"(null)");
+	else if ((uintptr_t)types < 4096)
+		snprintf(g_last_async_types, sizeof(g_last_async_types),
+			"(bad)");
+	else
+		snprintf(g_last_async_types, sizeof(g_last_async_types), "%s",
+			types);
 	if (g_async_members_count < 8) {
 		snprintf(g_async_members[g_async_members_count],
 			sizeof(g_async_members[0]), "%s", member);
@@ -851,6 +887,10 @@ reset_globals(void)
 	g_sdbus_emit_signal_count = 0;
 	g_sdbus_call_method_async_count = 0;
 	g_async_members_count = 0;
+	g_creds_pid = 0;
+	g_last_async_callback = NULL;
+	g_last_async_userdata = NULL;
+	g_last_async_types[0] = '\0';
 	g_token_name = NULL;
 	g_sdbus_reply_method_return_count = 0;
 	g_sdbus_reply_method_errorf_count = 0;
@@ -2653,6 +2693,45 @@ test_click_provides_an_activation_token(void)
 }
 
 /*
+ * Test: a call on the item (SecondaryActivate here) carries its x and y, and
+ * with activationGrace its reply ends the grant. The arguments of the call
+ * once slipped by one place, which made the format string the grant's id (a
+ * small number the bus library then read as a pointer: a crash when a tray
+ * menu was closed).
+ */
+static void
+test_item_method_call_arguments(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.f0", true);
+	wm_systray_layout(systray, 100, 50, 200, 24);
+
+	/* No grace: no reply to wait for, and the coordinates are there */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x112));
+	assert(strcmp(g_last_async_member, "SecondaryActivate") == 0);
+	assert(strcmp(g_last_async_types, "ii") == 0);
+	assert(g_last_async_callback == NULL);
+	assert(g_last_async_userdata == NULL);
+
+	/* The grace on, and the item's process known: the grant's id goes
+	 * back to the reply, and the format string is still the format */
+	struct wm_config config = {0};
+	config.systray_activation_grace_ms = 1000;
+	test_server.config = &config;
+	g_creds_pid = 4242;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x112));
+	assert(strcmp(g_last_async_member, "SecondaryActivate") == 0);
+	assert(strcmp(g_last_async_types, "ii") == 0);
+	assert(g_last_async_callback == wm_systray_grant_reply);
+	assert(g_last_async_userdata != NULL);
+
+	test_server.config = NULL;
+	destroy_test_systray(systray);
+	printf("  PASS: test_item_method_call_arguments\n");
+}
+
+/*
  * Test: a menu entry's item gets the token, found by its menu.
  */
 static void
@@ -2751,6 +2830,7 @@ main(void)
 	test_pixmap_to_surface();
 	test_click_routing_with_menu();
 	test_click_provides_an_activation_token();
+	test_item_method_call_arguments();
 	test_menu_token_goes_to_the_item_of_the_menu();
 	test_handle_get_menu();
 	test_register_item_bus_name();

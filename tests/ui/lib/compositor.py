@@ -146,6 +146,14 @@ class CompositorManager:
         # Only the test's files: no defaults copied in on first start
         env["FLUXLAND_CONFIG_DIR"] = self._config_dir
         env["WLR_HEADLESS_OUTPUTS"] = str(outputs)
+        # Terminals the tests start (foot, xterm) run a shell, and the
+        # system's bashrc (Arch's /etc/bash.bashrc, systemd's OSC context)
+        # retitles its window to user@host:cwd at the first prompt, so a
+        # window opened with --title no longer has it by the time the test
+        # looks. A plain sh reads none of that.
+        env["SHELL"] = "/bin/sh"
+        for name in ("PROMPT_COMMAND", "BASH_ENV", "ENV", "PS1"):
+            env.pop(name, None)
         env.update(extra_env or {})
 
         # Launch compositor. Log to a file: an unread stderr pipe fills

@@ -32,6 +32,8 @@ server_protocols = [
   wl_protocol_dir / 'staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml',
   wl_protocol_dir / 'staging/color-representation/color-representation-v1.xml',
   wl_protocol_dir / 'staging/ext-workspace/ext-workspace-v1.xml',
+  wl_protocol_dir / 'staging/fifo/fifo-v1.xml',
+  wl_protocol_dir / 'staging/commit-timing/commit-timing-v1.xml',
   'wlr-layer-shell-unstable-v1.xml',
   'wlr-output-power-management-unstable-v1.xml',
 ]

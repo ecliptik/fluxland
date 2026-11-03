@@ -1228,6 +1228,7 @@ static void wm_fractional_scale_init(struct wm_server *s) { (void)s; }
 static void wm_foreign_toplevel_init(struct wm_server *s) { (void)s; }
 static void wm_viewporter_init(struct wm_server *s) { (void)s; }
 static void wm_presentation_init(struct wm_server *s) { (void)s; }
+static void wm_frame_pacing_init(struct wm_server *s) { (void)s; }
 static void wm_input_init(struct wm_server *s) { (void)s; }
 static void wm_input_finish(struct wm_server *s) { (void)s; }
 static void wm_protocols_init(struct wm_server *s) { (void)s; }

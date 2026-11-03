@@ -726,6 +726,10 @@ test_phase5c_config_options(void)
 	/* Test defaults (no config set): Fluxbox searches from item starts */
 	write_file(TEST_INIT, "\n");
 	c = config_create();
+	/* Not the user's own config directory: a windowmenu file there is
+	 * found, and would not be the default */
+	free(c->config_dir);
+	c->config_dir = strdup(TEST_DIR);
 	config_load(c, TEST_INIT);
 	assert(c->menu_search == WM_MENU_SEARCH_ITEMSTART);
 	assert(c->menu_delay == 200);

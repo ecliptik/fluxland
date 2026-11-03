@@ -1406,7 +1406,7 @@ wm_systray_call_item_method(struct wm_systray *systray, const char *bus_name,
 	wm_systray_provide_token(systray, bus_name, object_path);
 	uint64_t grant = wm_systray_grant_begin(systray, bus_name);
 	sd_bus_call_method_async(systray->bus, NULL, bus_name, object_path,
-		"org.kde.StatusNotifierItem", method, NULL,
+		"org.kde.StatusNotifierItem", method,
 		grant ? wm_systray_grant_reply : NULL,
 		grant ? (void *)(uintptr_t)grant : NULL,
 		"ii", (int32_t)x, (int32_t)y);

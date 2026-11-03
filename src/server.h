@@ -69,6 +69,7 @@ struct wlr_single_pixel_buffer_manager_v1;
 struct wlr_gamma_control_manager_v1;
 struct wlr_data_control_manager_v1;
 struct wlr_presentation;
+struct wm_frame_pacing;
 struct wlr_virtual_keyboard_manager_v1;
 struct wlr_virtual_pointer_manager_v1;
 struct wlr_keyboard_shortcuts_inhibit_manager_v1;
@@ -394,6 +395,9 @@ struct wm_server {
 
 	/* Presentation time (wp-presentation-time for frame timing) */
 	struct wlr_presentation *presentation;
+
+	/* fifo-v1 and commit-timing-v1 (held content updates) */
+	struct wm_frame_pacing *frame_pacing;
 
 	/* Text input / input method relay (IME support) */
 	struct wm_text_input_relay text_input_relay;

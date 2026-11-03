@@ -647,6 +647,49 @@ if wayland_client.found()
   )
   test('xdg_shell', test_xdg_shell, env: test_main_env, depends: fluxland_exe, timeout: 30, suite: 'integration')
 
+  # --- fifo-v1 and commit-timing-v1 client protocols (for test_frame_pacing) ---
+  fifo_xml = wl_protocol_dir / 'staging/fifo/fifo-v1.xml'
+  commit_timing_xml = wl_protocol_dir / 'staging/commit-timing/commit-timing-v1.xml'
+  fifo_client_h = custom_target(
+    'fifo-v1-client-protocol.h',
+    input: fifo_xml,
+    output: 'fifo-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  fifo_code = custom_target(
+    'fifo-v1-client-protocol.c',
+    input: fifo_xml,
+    output: 'fifo-v1-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+  commit_timing_client_h = custom_target(
+    'commit-timing-v1-client-protocol.h',
+    input: commit_timing_xml,
+    output: 'commit-timing-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  commit_timing_code = custom_target(
+    'commit-timing-v1-client-protocol.c',
+    input: commit_timing_xml,
+    output: 'commit-timing-v1-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- test_frame_pacing: fifo and commit timing against the compositor ---
+  test_frame_pacing = executable(
+    'test_frame_pacing',
+    files('test_frame_pacing.c'),
+    xdg_shell_client_h,
+    fifo_client_h,
+    fifo_code,
+    commit_timing_client_h,
+    commit_timing_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('frame_pacing', test_frame_pacing, env: test_main_env, depends: fluxland_exe, timeout: 60, suite: 'integration')
+
   # --- test_multi_client: multi-client integration tests ---
   test_multi_client = executable(
     'test_multi_client',

@@ -301,13 +301,15 @@ wm_tooltip_update(struct wm_server *server)
 	struct wm_view *view = NULL;
 	const char *text = NULL;
 	bool tray = false;
+	/* Not the toolbar's when a fullscreen window is drawn over it */
+	bool on_toolbar = wm_pointer_on_toolbar(server, lx, ly);
 #ifdef WM_HAS_SYSTRAY
-	if (server->systray && wm_pointer_on_toolbar(server, lx, ly)) {
+	if (server->systray && on_toolbar) {
 		text = wm_systray_tooltip_at(server->systray, lx, ly);
 		tray = text != NULL;
 	}
 #endif
-	if (!text)
+	if (!text && on_toolbar)
 		text = wm_toolbar_tooltip_at(server->toolbar, lx, ly, &view);
 	if (!text && !view) {
 		double sx, sy;

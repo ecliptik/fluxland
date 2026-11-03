@@ -317,6 +317,7 @@ wm_sources = files(
   'src/output_buffer.c',
   'src/output_management.c',
   'src/protocols.c',
+  'src/frame_pacing.c',
   'src/presentation.c',
   'src/screencopy.c',
   'src/session_lock.c',

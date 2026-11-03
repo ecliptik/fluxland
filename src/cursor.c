@@ -955,7 +955,9 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 				NULL, server->style);
 
 		/* An arrow button of the toolbar acts on release */
-		if (wm_toolbar_handle_release(server->toolbar,
+		if (wm_pointer_on_toolbar(server, server->cursor->x,
+				server->cursor->y) &&
+		    wm_toolbar_handle_release(server->toolbar,
 				server->cursor->x, server->cursor->y,
 				event->button)) {
 			ms->button_pressed = false;
@@ -1567,6 +1569,8 @@ handle_cursor_axis(struct wl_listener *listener, void *data)
 
 	/* Check if toolbar consumes this scroll event */
 	if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL &&
+	    wm_pointer_on_toolbar(server, server->cursor->x,
+		    server->cursor->y) &&
 	    wm_toolbar_handle_scroll(server->toolbar,
 		    server->cursor->x, server->cursor->y, event->delta)) {
 		return;

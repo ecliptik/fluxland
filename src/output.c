@@ -28,6 +28,7 @@
 #include "slit.h"
 #include "session_lock.h"
 #include "ext_workspace.h"
+#include "frame_pacing.h"
 #include "output_memory.h"
 #include "server.h"
 #include "toolbar.h"
@@ -47,6 +48,7 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	wm_xwayland_sync_positions(output->server);
 	wm_pseudo_sync(output->server);
 	wm_foreign_toplevel_sync_outputs(output->server);
+	wm_frame_pacing_output_frame(output->server, output->wlr_output);
 	wlr_scene_output_commit(scene_output, NULL);
 	wm_session_lock_output_frame(output->server, output);
 
