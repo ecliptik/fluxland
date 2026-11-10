@@ -376,6 +376,7 @@ struct wm_output {
 	struct wlr_box full_area;
 	struct wlr_box usable_area;
 	struct wm_workspace *active_workspace;
+	bool rejoined;
 	bool lock_blanked;
 	struct wl_listener frame;
 	struct wl_listener request_state;
@@ -520,6 +521,23 @@ static void
 wm_drm_lease_offer_output(struct wm_server *s, struct wlr_output *o)
 { (void)s; (void)o; }
 
+/* output_memory.c has its own tests (UI: test_output_memory.py) */
+void wm_output_memory_depart(struct wm_server *s, struct wlr_output *o)
+{ (void)s; (void)o; }
+void wm_output_memory_departed(struct wm_server *s, struct wlr_output *o)
+{ (void)s; (void)o; }
+void wm_output_memory_return(struct wm_server *s, struct wlr_output *o)
+{ (void)s; (void)o; }
+void wm_output_memory_finish(void)
+{
+}
+
+void
+wm_pseudo_sync(struct wm_server *s)
+{
+	(void)s;
+}
+
 void
 wm_xwayland_sync_positions(struct wm_server *s)
 { (void)s; }
@@ -539,6 +557,7 @@ wm_layer_shell_configure(struct wm_output *o, const struct wlr_box *full,
 }
 
 void wm_foreign_toplevel_sync_outputs(struct wm_server *s) { (void)s; }
+void wm_frame_pacing_output_frame(struct wm_server *s, struct wlr_output *o) { (void)s; (void)o; }
 static int g_ext_ws_enter, g_ext_ws_leave;
 static void wm_ext_workspace_output_enter(struct wm_server *s, struct wlr_output *o) { (void)s; (void)o; g_ext_ws_enter++; }
 static void wm_ext_workspace_output_leave(struct wm_server *s, struct wlr_output *o) { (void)s; (void)o; g_ext_ws_leave++; }
@@ -572,6 +591,8 @@ static int g_toolbar_relayout_count, g_slit_reconfigure_count;
 static void
 wm_toolbar_relayout(struct wm_toolbar *t)
 { (void)t; g_toolbar_relayout_count++; }
+struct wm_server;
+static void wm_eis_layout_changed(struct wm_server *server) { (void)server; }
 static int g_wallpaper_reloads;
 struct wm_wallpaper;
 static void wm_wallpaper_reload(struct wm_wallpaper *wp)

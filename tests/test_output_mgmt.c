@@ -28,6 +28,7 @@
 #define WM_SERVER_H
 #define WM_OUTPUT_H
 #define WM_OUTPUT_MANAGEMENT_H
+#define WM_OUTPUT_BUFFER_H
 #define WM_LAYER_SHELL_H
 
 /* --- Stub wayland types --- */
@@ -196,6 +197,8 @@ static bool g_config_create_fail;
 static bool g_head_create_fail;
 static bool g_backend_test_result;
 static bool g_backend_commit_result;
+static bool g_add_buffers_result;
+static int g_add_buffers_count;
 static struct wlr_backend_output_state *g_build_state_result;
 static size_t g_build_state_len;
 
@@ -294,6 +297,15 @@ wlr_output_configuration_v1_build_state(
 	if (ret)
 		memcpy(ret, g_build_state_result, sz);
 	return ret;
+}
+
+static bool
+wm_output_states_add_buffers(struct wlr_backend_output_state *states,
+	size_t len)
+{
+	(void)states; (void)len;
+	g_add_buffers_count++;
+	return g_add_buffers_result;
 }
 
 static bool
@@ -418,6 +430,8 @@ reset_globals(void)
 	g_head_create_fail = false;
 	g_backend_test_result = true;
 	g_backend_commit_result = true;
+	g_add_buffers_result = true;
+	g_add_buffers_count = 0;
 	g_build_state_result = NULL;
 	g_build_state_len = 0;
 	g_stub_config_idx = 0;
@@ -987,6 +1001,47 @@ test_handle_config_commit_success_with_output(void)
 	printf("  PASS: test_handle_config_commit_success_with_output\n");
 }
 
+/* Outputs a configuration turns on get a frame before the test: the DRM
+ * backend refuses to test (and so to turn the output back on) without one */
+static void
+test_handle_config_adds_buffers_before_testing(void)
+{
+	reset_globals();
+
+	struct wm_server server;
+	memset(&server, 0, sizeof(server));
+	wl_list_init(&server.outputs);
+	struct wlr_backend backend;
+	memset(&backend, 0, sizeof(backend));
+	server.backend = &backend;
+
+	struct wlr_output_configuration_v1 *config =
+		wlr_output_configuration_v1_create();
+	struct wlr_backend_output_state states[1];
+	memset(states, 0, sizeof(states));
+	g_build_state_result = states;
+	g_build_state_len = 1;
+
+	handle_output_configuration(&server, config, true);
+	assert(g_add_buffers_count == 1);
+	assert(g_backend_test_count == 1);
+	assert(g_config_send_failed_count == 0);
+
+	/* No frame to be had: refused, and nothing is tested or committed */
+	reset_globals();
+	config = wlr_output_configuration_v1_create();
+	g_build_state_result = states;
+	g_build_state_len = 1;
+	g_add_buffers_result = false;
+	handle_output_configuration(&server, config, false);
+	assert(g_add_buffers_count == 1);
+	assert(g_backend_test_count == 0 && g_backend_commit_count == 0);
+	assert(g_config_send_failed_count == 1);
+	assert(g_config_destroy_count == 1);
+
+	printf("  PASS: test_handle_config_adds_buffers_before_testing\n");
+}
+
 int
 main(void)
 {
@@ -1009,6 +1064,7 @@ main(void)
 	test_handle_test();
 	test_handle_layout_change();
 	test_handle_config_commit_success_with_output();
+	test_handle_config_adds_buffers_before_testing();
 
 	printf("All output_mgmt tests passed.\n");
 	return 0;

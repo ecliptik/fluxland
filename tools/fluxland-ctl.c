@@ -35,6 +35,7 @@ static const char usage[] =
 	"Commands:\n"
 	"  action <name> [arg]    Execute a compositor action\n"
 	"  get_windows            List all managed windows (JSON)\n"
+	"  get_views              List every window, mapped or not (JSON)\n"
 	"  get_workspaces         List workspaces and current workspace (JSON)\n"
 	"  get_outputs            List outputs/monitors (JSON)\n"
 	"  get_config             Dump current configuration (JSON)\n"
@@ -126,7 +127,8 @@ static const struct action_info actions[] = {
 
 /* List of known IPC commands for validation */
 static const char *known_commands[] = {
-	"action", "command", "get_windows", "get_workspaces", "get_outputs",
+	"action", "command", "get_windows", "get_views", "get_workspaces",
+	"get_outputs",
 	"get_config", "subscribe", "list-actions", "ping", NULL,
 };
 

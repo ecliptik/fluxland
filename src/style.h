@@ -211,6 +211,22 @@ struct wm_style {
 	int menu_border_width;
 	uint8_t menu_round_corners;	/* menu.roundCorners: WM_CORNER_* */
 
+	/* The line of the text dialogs (CommandDialog...): dialog.font,
+	 * not a part of the window's frame */
+	struct wm_font dialog_font;
+
+	/* A tray icon's tooltip (systray.tooltip.*) */
+	struct wm_font systray_tooltip_font;
+	struct wm_color systray_tooltip_color;
+	struct wm_color systray_tooltip_border_color;
+	struct wm_color systray_tooltip_text_color;
+	int systray_tooltip_padding_left;
+	int systray_tooltip_padding_right;
+	int systray_tooltip_padding_top;
+	int systray_tooltip_padding_bottom;
+	int systray_tooltip_radius;
+	int systray_tooltip_alpha;	/* 0 to 255 */
+
 	/* Menu bullet (submenu indicator) */
 	char *menu_bullet;		/* "triangle", "square", "diamond", "empty" */
 	enum wm_justify menu_bullet_position;	/* LEFT or RIGHT (default) */
@@ -252,6 +268,7 @@ struct wm_style {
 	int toolbar_border_width;
 	struct wm_color toolbar_border_color;
 	int toolbar_height;		/* toolbar.height; 0 = from the fonts */
+	int dpi;			/* dpi; 0 = the init's, else 96 */
 	/* fluxland 1.x's toolbar.font and toolbar.textColor, which the
 	 * tools fall back to before the defaults */
 	struct wm_font toolbar_font;

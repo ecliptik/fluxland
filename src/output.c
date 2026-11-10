@@ -19,6 +19,7 @@
 #include "wallpaper.h"
 #include "config.h"
 #include "drm_lease.h"
+#include "eis.h"
 #include "foreign_toplevel.h"
 #include "ipc.h"
 #include "layer_shell.h"
@@ -27,9 +28,12 @@
 #include "slit.h"
 #include "session_lock.h"
 #include "ext_workspace.h"
+#include "frame_pacing.h"
+#include "output_memory.h"
 #include "server.h"
 #include "toolbar.h"
 #include "util.h"
+#include "pseudo_transparency.h"
 #include "view.h"
 #include "view_geometry.h"
 #include "workspace.h"
@@ -42,7 +46,9 @@ handle_output_frame(struct wl_listener *listener, void *data)
 	struct wlr_scene_output *scene_output = output->scene_output;
 
 	wm_xwayland_sync_positions(output->server);
+	wm_pseudo_sync(output->server);
 	wm_foreign_toplevel_sync_outputs(output->server);
+	wm_frame_pacing_output_frame(output->server, output->wlr_output);
 	wlr_scene_output_commit(scene_output, NULL);
 	wm_session_lock_output_frame(output->server, output);
 
@@ -94,9 +100,12 @@ handle_output_destroy(struct wl_listener *listener, void *data)
 
 	/*
 	 * Leaving the layout moves windows, the toolbar and the slit to
-	 * the remaining outputs (handle_layout_change).
+	 * the remaining outputs (handle_layout_change).  Those that were on
+	 * it are noted, to go back if the monitor does.
 	 */
+	wm_output_memory_depart(server, wlr_output);
 	wlr_output_layout_remove(server->output_layout, wlr_output);
+	wm_output_memory_departed(server, wlr_output);
 
 	wm_session_lock_output_changed(server);
 }
@@ -122,6 +131,7 @@ handle_layout_change(struct wl_listener *listener, void *data)
 	if (server->wallpaper)
 		wm_wallpaper_reload(server->wallpaper);
 	wm_output_arrange_all(server);
+	wm_eis_layout_changed(server);
 
 	struct wm_view *view;
 	wl_list_for_each(view, &server->views, link) {
@@ -149,9 +159,12 @@ wm_output_place(struct wm_output *output, bool has_position, int x, int y)
 
 	if (!wlr_output->enabled) {
 		/* Disabled outputs have no place in the layout */
-		if (present)
+		if (present) {
+			wm_output_memory_depart(server, wlr_output);
 			wlr_output_layout_remove(server->output_layout,
 				wlr_output);
+			wm_output_memory_departed(server, wlr_output);
+		}
 		return;
 	}
 
@@ -169,6 +182,11 @@ wm_output_place(struct wm_output *output, bool has_position, int x, int y)
 	if (lo && !present && output->scene_output)
 		wlr_scene_output_layout_add_output(server->scene_layout, lo,
 			output->scene_output);
+
+	/* A monitor that was here before: its windows go back to it, when
+	 * the usable areas are known (wm_output_arrange_all) */
+	if (lo && !present)
+		output->rejoined = true;
 }
 
 /* session.screen0.struts / struts.N: space kept free at the edges */
@@ -231,6 +249,21 @@ wm_output_arrange_all(struct wm_server *server)
 	struct wm_output *output;
 	wl_list_for_each(output, &server->outputs, link)
 		wm_output_arrange(output);
+
+	/* Monitors that came back: their windows go back, now that there is a
+	 * usable area to fit them in (they may move windows: not mid-walk) */
+	bool any;
+	do {
+		any = false;
+		wl_list_for_each(output, &server->outputs, link) {
+			if (!output->rejoined)
+				continue;
+			output->rejoined = false;
+			wm_output_memory_return(server, output->wlr_output);
+			any = true;
+			break;
+		}
+	} while (any);
 }
 
 void
@@ -263,13 +296,59 @@ is_head(struct wm_output *output)
 		output->wlr_output) != NULL;
 }
 
+/*
+ * Head order: left to right, then top to bottom, by where the outputs are in
+ * the layout (the port name settles two in one place).  Not the order they
+ * connected in, which changes when a monitor is unplugged and plugged again.
+ */
+static bool
+head_before(struct wm_output *a, struct wm_output *b)
+{
+	struct wlr_box ba, bb;
+	wm_output_layout_box(a, &ba);
+	wm_output_layout_box(b, &bb);
+	if (ba.x != bb.x)
+		return ba.x < bb.x;
+	if (ba.y != bb.y)
+		return ba.y < bb.y;
+	return strcmp(a->wlr_output->name, b->wlr_output->name) < 0;
+}
+
+/* The place of the head in that order, from 1; 0 if it is not a head */
+static int
+head_rank(struct wm_output *output)
+{
+	if (!is_head(output))
+		return 0;
+	int rank = 1;
+	struct wm_output *other;
+	wl_list_for_each(other, &output->server->outputs, link) {
+		if (other != output && is_head(other) &&
+		    head_before(other, output))
+			rank++;
+	}
+	return rank;
+}
+
 struct wm_output *
 wm_output_head(struct wm_server *server, int head)
 {
-	int n = 1;
 	struct wm_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
-		if (is_head(output) && n++ == head)
+		if (head_rank(output) == head)
+			return output;
+	}
+	return NULL;
+}
+
+struct wm_output *
+wm_output_by_name(struct wm_server *server, const char *name)
+{
+	if (!name || !*name)
+		return NULL;
+	struct wm_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (is_head(output) && !strcmp(output->wlr_output->name, name))
 			return output;
 	}
 	return NULL;
@@ -298,15 +377,7 @@ wm_output_head_count(struct wm_server *server)
 int
 wm_output_head_number(struct wm_output *output)
 {
-	int n = 1;
-	struct wm_output *o;
-	wl_list_for_each(o, &output->server->outputs, link) {
-		if (o == output)
-			return is_head(o) ? n : 0;
-		if (is_head(o))
-			n++;
-	}
-	return 0;
+	return head_rank(output);
 }
 
 struct wm_output *
@@ -461,6 +532,7 @@ wm_output_finish(struct wm_server *server)
 {
 	wl_list_remove(&server->new_output.link);
 	wl_list_remove(&server->output_layout_change.link);
+	wm_output_memory_finish();
 
 	/*
 	 * The backend destroys the outputs later, after the toolbar, slit

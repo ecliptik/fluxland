@@ -34,6 +34,10 @@ struct wm_output {
 	/* Per-output workspace state (used in per-output workspace mode) */
 	struct wm_workspace *active_workspace;
 
+	/* Just joined the layout again: the windows it had go back to it once
+	 * the usable areas are worked out (output_memory.c) */
+	bool rejoined;
+
 	/* Rendered a blanked frame since the session was locked */
 	bool lock_blanked;
 
@@ -83,11 +87,16 @@ void wm_output_apply_config(struct wm_server *server);
 
 /*
  * Fluxbox head numbering (toolbar.onhead, slit.onhead, SetHead, [Head]):
- * heads are the enabled outputs in connection order, from 1.
+ * heads are the enabled outputs by position, from 1: left to right, then top
+ * to bottom, so a number means the same monitor whenever monitors come and go
+ * (and next/previous head go the way they are laid out).
  * wm_output_head() is NULL for a head that doesn't exist;
  * wm_output_by_head() falls back to head 1.
  */
 struct wm_output *wm_output_head(struct wm_server *server, int head);
+/* The head with this connector name (HDMI-A-1), or NULL */
+struct wm_output *wm_output_by_name(struct wm_server *server,
+	const char *name);
 struct wm_output *wm_output_by_head(struct wm_server *server, int head);
 int wm_output_head_count(struct wm_server *server);
 /* The output's head number, 0 if it is disabled */

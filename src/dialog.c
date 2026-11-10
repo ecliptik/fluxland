@@ -5,11 +5,11 @@
  *
  * dialog.c - Fluxbox's text dialogs (TextDialog, CommandDialog)
  *
- * A title in the focused window's label style over a white line with
- * black text in window.font, in the window's border; 200 pixels wide
- * or as wide as the title, in the middle of the head.  Return runs the
- * line as a command (after the dialog's precommand, "SetTitle " for
- * SetTitleDialog...), Escape closes it, Tab completes a command name.
+ * A window of the compositor's own (view_internal.c): the
+ * style's frame and title, over a white line with black text in
+ * dialog.font, 200 pixels wide, in the middle of the head.  Return
+ * runs the line as a command (after the dialog's precommand, "SetTitle "
+ * for SetTitleDialog...), Escape closes it, Tab completes a command name.
  */
 
 #define _GNU_SOURCE
@@ -31,58 +31,28 @@
 #include "keybind.h"
 #include "output.h"
 #include "pixel_buffer.h"
+#include "i18n.h"
 #include "render.h"
 #include "server.h"
 #include "style.h"
+#include "util.h"
 #include "view.h"
+#include "view_internal.h"
 
 #define DIALOG_MIN_WIDTH 200
 #define DIALOG_TEXT_MAX 1024
 
 struct wm_dialog {
 	struct wm_server *server;
-	struct wlr_scene_tree *tree;
-	struct wlr_scene_buffer *buf;
-	char *title;
+	struct wm_view *view;	/* its window */
 	char *precommand;
 	struct wm_view *target;
+	struct wm_view *prev_focus;	/* the window it was opened over */
 	char text[DIALOG_TEXT_MAX];
 	size_t len, cursor;	/* bytes */
-	int x, y, width, height, label_h, bw;
-	bool dragging;
-	double drag_dx, drag_dy;
-};
+	int width, height;	/* of the line */
 
-/* The width of text as it is laid out (spaces too), for the cursor */
-static int
-text_advance(const struct wm_font *font, const char *text, size_t len)
-{
-	cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-		1, 1);
-	cairo_t *cr = cairo_create(s);
-	PangoLayout *layout = pango_cairo_create_layout(cr);
-	PangoFontDescription *desc = pango_font_description_new();
-	pango_font_description_set_family(desc,
-		font->family ? font->family : "sans");
-	if (font->pixel_size)
-		pango_font_description_set_absolute_size(desc,
-			font->size * PANGO_SCALE);
-	else
-		pango_font_description_set_size(desc, font->size * PANGO_SCALE);
-	if (font->bold)
-		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
-	if (font->italic)
-		pango_font_description_set_style(desc, PANGO_STYLE_ITALIC);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
-	pango_layout_set_text(layout, text, (int)len);
-	PangoRectangle logical;
-	pango_layout_get_pixel_extents(layout, NULL, &logical);
-	g_object_unref(layout);
-	cairo_destroy(cr);
-	cairo_surface_destroy(s);
-	return logical.width;
-}
+};
 
 static void
 render(struct wm_dialog *d)
@@ -90,83 +60,54 @@ render(struct wm_dialog *d)
 	struct wm_style *style = d->server->style;
 	if (!style)
 		return;
-	int bw = d->bw, w = d->width, lh = d->label_h;
-	int th = wm_font_height(&style->window_font, 1.0f) + 2;
-	d->height = lh + th + 2 * bw;
-	int ow = w + 2 * bw;
+	struct wm_font lf = style->dialog_font;
+	int w = d->width, th = d->height;
 
 	cairo_surface_t *surface =
-		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ow, d->height);
+		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, th);
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
 		cairo_surface_destroy(surface);
 		return;
 	}
 	cairo_t *cr = cairo_create(surface);
-	const struct wm_color *bc = &style->window_border_color;
-	cairo_set_source_rgb(cr, bc->r / 255.0, bc->g / 255.0, bc->b / 255.0);
-	cairo_paint(cr);
-
-	/* The title: the label texture, the titlebar's when that is
-	 * ParentRelative (TextDialog::render) */
-	const struct wm_texture *tex = &style->window_label_focus;
-	if (tex->fill == WM_TEX_PARENT_RELATIVE)
-		tex = &style->window_title_focus;
-	cairo_surface_t *bg = wm_render_texture(tex, w, lh, 1.0f);
-	if (bg) {
-		cairo_set_source_surface(cr, bg, bw, bw);
-		cairo_paint(cr);
-		cairo_surface_destroy(bg);
-	}
-	int tw, tth;
-	cairo_surface_t *ts = wm_render_text(d->title,
-		&style->window_label_focus_font,
-		&style->window_label_focus_text_color, w - 4, &tw, &tth,
-		style->window_justify, 1.0f);
-	if (ts) {
-		int tx = bw + 2;
-		if (style->window_justify == WM_JUSTIFY_CENTER)
-			tx = bw + (w - tw) / 2;
-		else if (style->window_justify == WM_JUSTIFY_RIGHT)
-			tx = bw + w - tw - 2;
-		cairo_set_source_surface(cr, ts, tx, bw + (lh - tth) / 2);
-		cairo_paint(cr);
-		cairo_surface_destroy(ts);
-	}
 
 	/* The line: white, black text, scrolled to keep the cursor in */
-	int by = bw + lh;
 	cairo_set_source_rgb(cr, 1, 1, 1);
-	cairo_rectangle(cr, bw, by, w, th);
-	cairo_fill(cr);
+	cairo_paint(cr);
 	const struct wm_color black = { 0, 0, 0, 255 };
-	int cursor_x = text_advance(&style->window_font, d->text, d->cursor);
+	int tw, tth;
+	int cursor_x = wm_text_advance(d->text, d->cursor, &lf, 1.0f);
 	int scroll = cursor_x > w - 4 ? cursor_x - (w - 4) : 0;
-	cairo_save(cr);
-	cairo_rectangle(cr, bw, by, w, th);
-	cairo_clip(cr);
 	if (d->len) {
 		cairo_surface_t *text = wm_render_text(d->text,
-			&style->window_font, &black, 1 << 15, &tw, &tth,
+			&lf, &black, 1 << 15, &tw, &tth,
 			WM_JUSTIFY_LEFT, 1.0f);
 		if (text) {
-			cairo_set_source_surface(cr, text, bw + 2 - scroll,
-				by + (th - tth) / 2);
+			cairo_set_source_surface(cr, text, 2 - scroll,
+				(th - tth) / 2);
 			cairo_paint(cr);
 			cairo_surface_destroy(text);
 		}
 	}
 	cairo_set_source_rgb(cr, 0, 0, 0);
-	cairo_rectangle(cr, bw + 2 + cursor_x - scroll, by + 1, 1, th - 2);
+	cairo_rectangle(cr, 2 + cursor_x - scroll, 1, 1, th - 2);
 	cairo_fill(cr);
-	cairo_restore(cr);
 	cairo_destroy(cr);
 
 	struct wlr_buffer *buf = wlr_buffer_from_cairo(surface);
-	wlr_scene_buffer_set_buffer(d->buf, buf);
+	wm_internal_view_set_buffer(d->view, buf);
 	if (buf)
 		wlr_buffer_drop(buf);
-	wlr_scene_node_set_position(&d->tree->node, d->x, d->y);
 }
+
+static bool dialog_key(void *data, xkb_keysym_t sym, const char *utf8,
+	uint32_t modifiers);
+static void dialog_closed(void *data);
+
+static const struct wm_internal_ops dialog_ops = {
+	.key = dialog_key,
+	.closed = dialog_closed,
+};
 
 void
 wm_dialog_open(struct wm_server *server, const char *title,
@@ -179,66 +120,55 @@ wm_dialog_open(struct wm_server *server, const char *title,
 	if (!d)
 		return;
 	d->server = server;
-	d->title = strdup(title ? title : "");
 	d->precommand = strdup(precommand ? precommand : "");
 	d->target = target;
+	d->prev_focus = server->focused_view;
 	if (text) {
 		snprintf(d->text, sizeof(d->text), "%s", text);
 		d->len = d->cursor = strlen(d->text);
 	}
-	d->tree = wlr_scene_tree_create(server->layer_overlay);
-	d->buf = d->tree ? wlr_scene_buffer_create(d->tree, NULL) : NULL;
-	if (!d->buf) {
-		if (d->tree)
-			wlr_scene_node_destroy(&d->tree->node);
-		free(d->title);
+
+	struct wm_font lf = server->style->dialog_font;
+	d->width = DIALOG_MIN_WIDTH;
+	d->height = wm_font_height(&lf, 1.0f) + 2;
+	d->view = wm_internal_view_create(server, title, "fluxland-dialog",
+		d->width, d->height, &dialog_ops, d);
+	if (!d->view) {
 		free(d->precommand);
 		free(d);
 		return;
 	}
-
-	struct wm_style *style = server->style;
-	d->bw = style->window_border_width;
-	d->label_h = wm_font_height(&style->window_label_focus_font, 1.0f) + 2;
-	int title_w = wm_measure_text_width(d->title,
-		&style->window_label_focus_font, 1.0f) + 4;
-	d->width = title_w > DIALOG_MIN_WIDTH ? title_w : DIALOG_MIN_WIDTH;
-
-	/* The middle of the head under the pointer */
-	struct wlr_box box = { 0, 0, 1024, 768 };
-	struct wlr_output *wo = wlr_output_layout_output_at(
-		server->output_layout, server->cursor->x, server->cursor->y);
-	struct wm_output *o;
-	wl_list_for_each(o, &server->outputs, link) {
-		if (o->wlr_output == wo || !wo) {
-			box = o->usable_area;
-			break;
-		}
-	}
-	render(d);
-	d->x = box.x + (box.width - d->width - 2 * d->bw) / 2;
-	d->y = box.y + (box.height - d->height) / 2;
-	wlr_scene_node_set_position(&d->tree->node, d->x, d->y);
 	server->dialog = d;
+	render(d);
+}
+
+/* The dialog lets go of its window (which goes on its own, or is
+ * destroyed by the caller) */
+static struct wm_view *
+detach(struct wm_server *server)
+{
+	struct wm_dialog *d = server->dialog;
+	struct wm_view *view = d->view;
+	server->dialog = NULL;
+	free(d->precommand);
+	free(d);
+	return view;
 }
 
 void
 wm_dialog_close(struct wm_server *server)
 {
-	struct wm_dialog *d = server ? server->dialog : NULL;
-	if (!d)
+	if (!server || !server->dialog)
 		return;
-	server->dialog = NULL;
-	wlr_scene_node_destroy(&d->tree->node);
-	free(d->title);
-	free(d->precommand);
-	free(d);
+	wm_internal_view_destroy(detach(server));
 }
 
-bool
-wm_dialog_is_open(struct wm_server *server)
+static void
+dialog_closed(void *data)
 {
-	return server && server->dialog;
+	struct wm_dialog *d = data;
+	if (d->server->dialog == d)
+		detach(d->server);
 }
 
 /* The start of the UTF-8 character before i, or after it */
@@ -301,7 +231,7 @@ run(struct wm_server *server, struct wm_dialog *d)
 	if (!line)
 		return;
 	snprintf(line, n, "%s%s", d->precommand, d->text);
-	struct wm_view *target = d->target ? d->target : server->focused_view;
+	struct wm_view *target = d->target ? d->target : d->prev_focus;
 	wm_dialog_close(server);
 	struct wm_command *cmd = wm_command_parse(line);
 	if (cmd) {
@@ -313,13 +243,12 @@ run(struct wm_server *server, struct wm_dialog *d)
 	free(line);
 }
 
-bool
-wm_dialog_handle_key(struct wm_server *server, xkb_keysym_t sym,
-	const char *utf8, uint32_t modifiers)
+static bool
+dialog_key(void *data, xkb_keysym_t sym, const char *utf8,
+	uint32_t modifiers)
 {
-	struct wm_dialog *d = server ? server->dialog : NULL;
-	if (!d)
-		return false;
+	struct wm_dialog *d = data;
+	struct wm_server *server = d->server;
 	bool ctrl = modifiers & WLR_MODIFIER_CTRL;
 	switch (sym) {
 	case XKB_KEY_Return:
@@ -388,47 +317,13 @@ wm_dialog_handle_key(struct wm_server *server, xkb_keysym_t sym,
 	return true;
 }
 
-bool
-wm_dialog_handle_button(struct wm_server *server, double lx, double ly,
-	bool pressed)
-{
-	struct wm_dialog *d = server ? server->dialog : NULL;
-	if (!d)
-		return false;
-	if (!pressed) {
-		bool was = d->dragging;
-		d->dragging = false;
-		return was;
-	}
-	int ow = d->width + 2 * d->bw;
-	if (lx < d->x || ly < d->y || lx >= d->x + ow || ly >= d->y + d->height) {
-		/* A click elsewhere: the dialog is done */
-		wm_dialog_close(server);
-		return false;
-	}
-	if (ly < d->y + d->bw + d->label_h) {
-		d->dragging = true;
-		d->drag_dx = lx - d->x;
-		d->drag_dy = ly - d->y;
-	}
-	return true;
-}
-
-bool
-wm_dialog_handle_motion(struct wm_server *server, double lx, double ly)
-{
-	struct wm_dialog *d = server ? server->dialog : NULL;
-	if (!d || !d->dragging)
-		return false;
-	d->x = (int)(lx - d->drag_dx);
-	d->y = (int)(ly - d->drag_dy);
-	wlr_scene_node_set_position(&d->tree->node, d->x, d->y);
-	return true;
-}
-
 void
 wm_dialog_view_destroyed(struct wm_server *server, struct wm_view *view)
 {
-	if (server && server->dialog && server->dialog->target == view)
+	if (!server || !server->dialog)
+		return;
+	if (server->dialog->prev_focus == view)
+		server->dialog->prev_focus = NULL;
+	if (server->dialog->target == view)
 		wm_dialog_close(server);
 }

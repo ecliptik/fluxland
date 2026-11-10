@@ -193,6 +193,33 @@ handle_xdg_activation_request(struct wl_listener *listener, void *data)
 		view->title ? view->title : "(untitled)");
 }
 
+const char *
+wm_activation_token_create(struct wm_server *server)
+{
+	if (!server->xdg_activation || !server->seat)
+		return NULL;
+	struct wlr_xdg_activation_token_v1 *token =
+		wlr_xdg_activation_token_v1_create(server->xdg_activation);
+	if (!token)
+		return NULL;
+	token->seat = server->seat;
+	return wlr_xdg_activation_token_v1_get_name(token);
+}
+
+bool
+wm_activation_token_consume(struct wm_server *server, const char *name)
+{
+	if (!name || !*name || !server->xdg_activation)
+		return false;
+	struct wlr_xdg_activation_token_v1 *token =
+		wlr_xdg_activation_v1_find_token(server->xdg_activation, name);
+	if (!token)
+		return false;
+	bool user = token->seat != NULL;
+	wlr_xdg_activation_token_v1_destroy(token);
+	return user;
+}
+
 /* --- System bell (xdg-system-bell-v1) --- */
 
 static void
@@ -374,27 +401,38 @@ handle_set_toplevel_tag(struct wl_listener *listener, void *data)
 
 /* --- Tearing control --- */
 
+/* The listeners of one surface's tearing control, and the control itself */
+struct wm_tearing_object {
+	struct wlr_tearing_control_v1 *control;
+	struct wl_listener set_hint;
+	struct wl_listener destroy;
+};
+
 static void
 handle_tearing_set_hint(struct wl_listener *listener, void *data)
 {
-	(void)listener;
-	struct wlr_tearing_control_v1 *control = data;
+	/*
+	 * wlroots emits set_hint with no data (NULL): the control is found
+	 * through the listener, not through what the signal brings
+	 */
+	(void)data;
+	struct wm_tearing_object *tearing =
+		wl_container_of(listener, tearing, set_hint);
 
 	wlr_log(WLR_DEBUG, "tearing control: surface hint = %d",
-		control->current);
+		tearing->control->current);
 }
 
 static void
 handle_tearing_ctrl_destroy(struct wl_listener *listener, void *data)
 {
 	(void)data;
-	wl_list_remove(&listener->link);
-	/* listener is part of a heap allocation, free the container */
-	struct wl_listener *set_hint_listener =
-		(struct wl_listener *)((char *)listener -
-		sizeof(struct wl_listener));
-	wl_list_remove(&set_hint_listener->link);
-	free(set_hint_listener);
+	struct wm_tearing_object *tearing =
+		wl_container_of(listener, tearing, destroy);
+
+	wl_list_remove(&tearing->set_hint.link);
+	wl_list_remove(&tearing->destroy.link);
+	free(tearing);
 }
 
 static void
@@ -403,21 +441,18 @@ handle_tearing_new_object(struct wl_listener *listener, void *data)
 	(void)listener;
 	struct wlr_tearing_control_v1 *control = data;
 
-	/*
-	 * Allocate listeners for per-surface tearing hints.
-	 * Two listeners packed together: [set_hint, destroy].
-	 */
-	struct wl_listener *listeners =
-		calloc(2, sizeof(struct wl_listener));
-	if (!listeners) {
+	/* Per-surface tearing hints: freed when the control is destroyed */
+	struct wm_tearing_object *tearing = calloc(1, sizeof(*tearing));
+	if (!tearing) {
 		return;
 	}
+	tearing->control = control;
 
-	listeners[0].notify = handle_tearing_set_hint;
-	wl_signal_add(&control->events.set_hint, &listeners[0]);
+	tearing->set_hint.notify = handle_tearing_set_hint;
+	wl_signal_add(&control->events.set_hint, &tearing->set_hint);
 
-	listeners[1].notify = handle_tearing_ctrl_destroy;
-	wl_signal_add(&control->events.destroy, &listeners[1]);
+	tearing->destroy.notify = handle_tearing_ctrl_destroy;
+	wl_signal_add(&control->events.destroy, &tearing->destroy);
 
 	wlr_log(WLR_INFO, "%s", "tearing control: new object for surface");
 }

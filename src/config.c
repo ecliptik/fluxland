@@ -563,6 +563,70 @@ wm_config_setup_files(const char *datadir)
 	return copied;
 }
 
+/*
+ * In two rows of four (snapLayoutPickerColumns): the splits in two, left
+ * heavy, even, right heavy, and top and bottom; then three or more panes,
+ * a wide middle, three columns, a big cell with two beside it, four quarters.
+ * The even splits are above each other in the second column.
+ */
+#define WM_SNAP_LAYOUTS_DEFAULT \
+	"0,0,66.7,100 66.7,0,33.3,100;" \
+	"0,0,50,100 50,0,50,100;" \
+	"0,0,33.3,100 33.3,0,66.7,100;" \
+	"0,0,100,50 0,50,100,50;" \
+	"0,0,25,100 25,0,50,100 75,0,25,100;" \
+	"0,0,33.3,100 33.3,0,33.4,100 66.7,0,33.3,100;" \
+	"0,0,50,100 50,0,50,50 50,50,50,50;" \
+	"0,0,50,50 50,0,50,50 0,50,50,50 50,50,50,50"
+
+int
+wm_snap_layouts_parse(const char *text, struct wm_snap_layout *out, int max)
+{
+	int count = 0;
+	if (!text || !out)
+		return 0;
+	char *copy = strdup(text);
+	if (!copy)
+		return 0;
+
+	char *layout_save = NULL;
+	for (char *layout = strtok_r(copy, ";", &layout_save);
+	     layout && count < max;
+	     layout = strtok_r(NULL, ";", &layout_save)) {
+		struct wm_snap_layout *l = &out[count];
+		l->cell_count = 0;
+		char *cell_save = NULL;
+		for (char *cell = strtok_r(layout, " \t\n", &cell_save);
+		     cell && l->cell_count < WM_SNAP_CELLS_MAX;
+		     cell = strtok_r(NULL, " \t\n", &cell_save)) {
+			double v[4];
+			int n = 0;
+			char *end = cell;
+			while (n < 4) {
+				v[n] = strtod(end, &end);
+				n++;
+				if (n < 4 && *end++ != ',')
+					break;
+			}
+			/* Percent to permille, inside the head, not empty */
+			int x = (int)(v[0] * 10 + 0.5), y = (int)(v[1] * 10 + 0.5);
+			int w = (int)(v[2] * 10 + 0.5), h = (int)(v[3] * 10 + 0.5);
+			if (n != 4 || *end || x < 0 || y < 0 || w < 1 || h < 1 ||
+			    x + w > 1000 || y + h > 1000) {
+				fprintf(stderr, "fluxland: snapLayouts: not a cell: %s\n",
+					cell);
+				continue;
+			}
+			l->cells[l->cell_count++] =
+				(struct wm_snap_cell){ x, y, w, h };
+		}
+		if (l->cell_count > 0)
+			count++;
+	}
+	free(copy);
+	return count;
+}
+
 static char *
 resolve_path(const char *config_dir, const char *value,
 	     const char *default_name)
@@ -608,6 +672,7 @@ config_create(void)
 	config->focus_same_head = false;
 	config->max_ignore_increment = true;
 	config->no_focus_while_typing_ms = 0;
+	config->key_repeat_rate = 10;
 	config->demands_attention_ms = 500;
 	config->ignore_border = false;
 	config->tabs_attach_titlebar = false;
@@ -622,6 +687,7 @@ config_create(void)
 	config->toolbar_auto_hide_delay_ms = 500;
 	config->toolbar_width_percent = 72;
 	config->toolbar_height = 0;
+	config->dpi = 0;
 	config->toolbar_layer = 4; /* Dock */
 	config->toolbar_alpha = 255;
 	config->update_activation_env = -1;
@@ -784,6 +850,10 @@ apply_focus_config(struct wm_config *config, struct rc_database *db)
 		"session.screen0.maxIgnoreIncrement", true);
 	config->no_focus_while_typing_ms = rc_get_int(db,
 		"session.screen0.noFocusWhileTypingDelay", 0);
+	config->key_repeat_rate = rc_get_int(db,
+		"session.keyRepeatRate", 10);
+	if (config->key_repeat_rate < 1 || config->key_repeat_rate > 100)
+		config->key_repeat_rate = 10;
 	config->demands_attention_ms = rc_get_int(db,
 		"session.screen0.demandsAttentionTimeout", 500);
 	config->ignore_border =
@@ -829,6 +899,10 @@ apply_window_config(struct wm_config *config, struct rc_database *db)
 		rc_get_bool(db, "session.screen0.maxDisableMove", false);
 	config->max_disable_resize =
 		rc_get_bool(db, "session.screen0.maxDisableResize", false);
+	config->max_pull_threshold =
+		rc_get_int(db, "session.screen0.maxPullThreshold", 40);
+	if (config->max_pull_threshold < 0 || config->max_pull_threshold > 2000)
+		config->max_pull_threshold = 40;
 
 	/* Opacity */
 	config->window_focus_alpha =
@@ -863,6 +937,31 @@ apply_window_config(struct wm_config *config, struct rc_database *db)
 		config->snap_zone_threshold = 1;
 	if (config->snap_zone_threshold > 100)
 		config->snap_zone_threshold = 100;
+
+	/* The layout picker, and its layouts: the init's, else the usual ones */
+	config->snap_layout_picker =
+		rc_get_bool(db, "session.screen0.snapLayoutPicker", false);
+	config->snap_layout_picker_size =
+		rc_get_int(db, "session.screen0.snapLayoutPickerSize", 120);
+	if (config->snap_layout_picker_size < 60)
+		config->snap_layout_picker_size = 60;
+	if (config->snap_layout_picker_size > 300)
+		config->snap_layout_picker_size = 300;
+	config->snap_layout_picker_columns =
+		rc_get_int(db, "session.screen0.snapLayoutPickerColumns", 4);
+	if (config->snap_layout_picker_columns < 0)
+		config->snap_layout_picker_columns = 0;
+	if (config->snap_layout_picker_columns > WM_SNAP_LAYOUTS_MAX)
+		config->snap_layout_picker_columns = WM_SNAP_LAYOUTS_MAX;
+	config->snap_layout_count = 0;
+	const char *layouts = rc_get_string(db, "session.screen0.snapLayouts");
+	if (layouts)
+		config->snap_layout_count = wm_snap_layouts_parse(layouts,
+			config->snap_layouts, WM_SNAP_LAYOUTS_MAX);
+	if (config->snap_layout_count == 0)
+		config->snap_layout_count = wm_snap_layouts_parse(
+			WM_SNAP_LAYOUTS_DEFAULT, config->snap_layouts,
+			WM_SNAP_LAYOUTS_MAX);
 
 	/* Edge resize snap */
 	config->edge_resize_snap_threshold =
@@ -918,6 +1017,9 @@ apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 
 	config->toolbar_height =
 		rc_get_int(db, "session.screen0.toolbar.height", 0);
+	config->dpi = rc_get_int(db, "session.dpi", 0);
+	if (config->dpi < 0 || config->dpi > 960)
+		config->dpi = 0;
 	config->toolbar_layer = parse_dock_layer(
 		rc_get_string(db, "session.screen0.toolbar.layer"));
 	config->toolbar_alpha =
@@ -926,6 +1028,9 @@ apply_toolbar_config(struct wm_config *config, struct rc_database *db)
 	if (config->toolbar_alpha > 255) config->toolbar_alpha = 255;
 	config->toolbar_on_head =
 		rc_get_int(db, "session.screen0.toolbar.onhead", 0);
+	free(config->toolbar_on_output);
+	val = rc_get_string(db, "session.screen0.toolbar.onoutput");
+	config->toolbar_on_output = val && *val ? strdup(val) : NULL;
 
 	/* Toolbar tools layout */
 	val = rc_get_string(db, "session.screen0.toolbar.tools");
@@ -1074,6 +1179,29 @@ apply_tab_config(struct wm_config *config, struct rc_database *db)
 	config->systray_pin_left = pins ? strdup(pins) : NULL;
 	pins = rc_get_string(db, "session.screen0.systray.pinRight");
 	config->systray_pin_right = pins ? strdup(pins) : NULL;
+	config->systray_activation_grace_ms = rc_get_int(db,
+		"session.screen0.systray.activationGrace", 0);
+	if (config->systray_activation_grace_ms < 0)
+		config->systray_activation_grace_ms = 0;
+	else if (config->systray_activation_grace_ms > 10000)
+		config->systray_activation_grace_ms = 10000;
+	{
+		const char *mode = rc_get_string(db,
+			"session.xwayland.inputEmulation");
+		config->eis_policy = WM_EIS_ASK;
+		if (mode && !strcasecmp(mode, "allow"))
+			config->eis_policy = WM_EIS_ALLOW;
+		else if (mode && !strcasecmp(mode, "deny"))
+			config->eis_policy = WM_EIS_DENY;
+		free(config->eis_allow);
+		free(config->eis_deny);
+		const char *names = rc_get_string(db,
+			"session.xwayland.inputEmulation.allow");
+		config->eis_allow = names ? strdup(names) : NULL;
+		names = rc_get_string(db,
+			"session.xwayland.inputEmulation.deny");
+		config->eis_deny = names ? strdup(names) : NULL;
+	}
 	config->tab_placement = parse_tab_placement(
 		rc_get_string(db, "session.screen0.tab.placement"));
 	config->tab_width =
@@ -1104,6 +1232,9 @@ apply_slit_config(struct wm_config *config, struct rc_database *db)
 		rc_get_string(db, "session.screen0.slit.layer"));
 	config->slit_on_head =
 		rc_get_int(db, "session.screen0.slit.onhead", 0);
+	free(config->slit_on_output);
+	val = rc_get_string(db, "session.screen0.slit.onoutput");
+	config->slit_on_output = val && *val ? strdup(val) : NULL;
 	config->slit_alpha =
 		rc_get_int(db, "session.screen0.slit.alpha", 255);
 	if (config->slit_alpha < 0) config->slit_alpha = 0;
@@ -1173,6 +1304,17 @@ apply_menu_config(struct wm_config *config, struct rc_database *db)
 	/* Window menu file: the init's, else a windowmenu file in the
 	 * config directory (Fluxbox's ~/.fluxbox/windowmenu), else the
 	 * built-in copy of Fluxbox's */
+	config->xwayland_keyboard_grab =
+		rc_get_bool(db, "session.xwayland.keyboardGrab", true);
+	config->pseudo_transparency =
+		rc_get_bool(db, "session.screen0.pseudoTransparency", false);
+	free(config->xwayland_resources);
+	config->xwayland_resources = NULL;
+	val = rc_get_string(db, "session.xwayland.resources");
+	if (val && *val)
+		config->xwayland_resources = resolve_path(config->config_dir,
+			val, "Xresources");
+
 	free(config->window_menu_file);
 	config->window_menu_file = NULL;
 	val = rc_get_string(db, "session.screen0.windowMenu");
@@ -1937,10 +2079,15 @@ config_destroy(struct wm_config *config)
 	free(config->xkb_variant);
 	free(config->xkb_options);
 	free(config->toolbar_tools);
+	free(config->toolbar_on_output);
+	free(config->slit_on_output);
 	free(config->root_command);
 	free(config->default_deco);
 	free(config->systray_pin_left);
 	free(config->systray_pin_right);
+	free(config->eis_allow);
+	free(config->eis_deny);
+	free(config->xwayland_resources);
 	free(config->window_menu_file);
 	free(config->iconbar_iconified_pattern);
 	free(config->iconbar_mode_spec);

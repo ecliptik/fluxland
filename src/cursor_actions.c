@@ -53,6 +53,26 @@ validate_view_data(struct wm_server *server, void *data)
 }
 
 /*
+ * Whether the toolbar (and the tray in it) is under the pointer: not when
+ * a fullscreen window is drawn over it, whose clicks are the window's
+ */
+bool
+wm_pointer_on_toolbar(struct wm_server *server, double lx, double ly)
+{
+	if (!wm_toolbar_contains(server->toolbar, lx, ly))
+		return false;
+	double sx, sy;
+	struct wlr_scene_node *node =
+		wlr_scene_node_at(&server->scene->tree.node, lx, ly, &sx, &sy);
+	struct wlr_scene_tree *tree = node ? node->parent : NULL;
+	while (tree && !tree->node.data)
+		tree = tree->node.parent;
+	struct wm_view *view = tree ?
+		validate_view_data(server, tree->node.data) : NULL;
+	return !(view && view->fullscreen);
+}
+
+/*
  * Find the view under the cursor, returning the surface and
  * surface-local coordinates. Returns NULL if no view is found.
  */
@@ -62,8 +82,25 @@ view_at(struct wm_server *server, double lx, double ly,
 {
 	struct wlr_scene_node *node =
 		wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
-	if (!node || node->type != WLR_SCENE_NODE_BUFFER) {
+	if (!node || (node->type != WLR_SCENE_NODE_BUFFER &&
+	    node->type != WLR_SCENE_NODE_RECT)) {
 		return NULL;
+	}
+
+	/*
+	 * A rectangle is a decoration's border (the titlebar, labels and
+	 * buttons are buffers): it is the window's, so that a border can be
+	 * dragged, and the top pixel of a window at the top of the screen,
+	 * which is border, can grab it
+	 */
+	if (node->type == WLR_SCENE_NODE_RECT) {
+		struct wlr_scene_tree *tree = node->parent;
+		while (tree && !tree->node.data)
+			tree = tree->node.parent;
+		if (surface)
+			*surface = NULL;
+		return tree ? validate_view_data(server,
+			tree->node.data) : NULL;
 	}
 
 	struct wlr_scene_buffer *scene_buffer =
@@ -142,6 +179,16 @@ get_cursor_context(struct wm_server *server, struct wm_view **out_view)
 		*out_view = view;
 
 	if (!view) {
+		/*
+		 * A surface that belongs to no managed window (a popup menu
+		 * of an X11 or xdg application, a layer-shell panel) is the
+		 * application's, not the desktop's: no binding is for it
+		 * (OnDesktop Mouse1 :HideMenus must not eat the click on its
+		 * menu entry, nor the wheel switch workspaces over it)
+		 */
+		if (surface)
+			return 0;
+
 		/* Check if cursor is over the slit */
 		if (server->slit && server->slit->visible &&
 		    !server->slit->hidden) {
@@ -164,6 +211,11 @@ get_cursor_context(struct wm_server *server, struct wm_view **out_view)
 		double dy = server->cursor->y - view->y;
 		enum wm_decor_region region =
 			wm_decoration_region_at(view->decoration, dx, dy);
+		/* The border above a titlebar is part of it: a window at the
+		 * top of the screen is taken by its topmost pixel */
+		if (region == WM_DECOR_REGION_BORDER_TOP &&
+		    wm_decoration_has_titlebar(view->decoration))
+			region = WM_DECOR_REGION_TITLEBAR;
 		if (region != WM_DECOR_REGION_NONE &&
 		    region != WM_DECOR_REGION_CLIENT) {
 			return region_to_context(region);
@@ -236,7 +288,7 @@ update_pointer_crossing(struct wm_server *server, struct wm_view *view)
 	struct wm_mouse_state *ms = &server->mouse_state;
 	double cx = server->cursor->x, cy = server->cursor->y;
 	uint32_t ctx = 0;
-	if (wm_toolbar_contains(server->toolbar, cx, cy)) {
+	if (wm_pointer_on_toolbar(server, cx, cy)) {
 		ctx = WM_MOUSE_CTX_TOOLBAR;
 		view = NULL;
 	} else if (view) {

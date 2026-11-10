@@ -192,6 +192,83 @@ test_focus_models(void)
 	printf("  PASS: test_focus_models\n");
 }
 
+/* Test: session.dpi (0 = the style's, else 96) */
+static void
+test_dpi(void)
+{
+	write_file(TEST_INIT, "session.screen0.workspaces: 4\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->dpi == 0);
+
+	write_file(TEST_INIT, "session.dpi: 120\n");
+	config_load(c, TEST_INIT);
+	assert(c->dpi == 120);
+
+	write_file(TEST_INIT, "session.dpi: 99999\n");
+	config_load(c, TEST_INIT);
+	assert(c->dpi == 0);
+	write_file(TEST_INIT, "session.dpi: -1\n");
+	config_load(c, TEST_INIT);
+	assert(c->dpi == 0);
+	config_destroy(c);
+	printf("  PASS: test_dpi\n");
+}
+
+/* Test: session.xwayland.keyboardGrab (default on) */
+static void
+test_xwayland_keyboard_grab(void)
+{
+	write_file(TEST_INIT, "session.screen0.workspaces: 4\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->xwayland_keyboard_grab == true);
+
+	write_file(TEST_INIT, "session.xwayland.keyboardGrab: false\n");
+	config_load(c, TEST_INIT);
+	assert(c->xwayland_keyboard_grab == false);
+
+	write_file(TEST_INIT, "session.xwayland.keyboardGrab: true\n");
+	config_load(c, TEST_INIT);
+	assert(c->xwayland_keyboard_grab == true);
+	config_destroy(c);
+	printf("  PASS: test_xwayland_keyboard_grab\n");
+}
+
+/* Test: xwayland.inputEmulation, who may inject input through XTest */
+static void
+test_input_emulation(void)
+{
+	/* Ask, with no lists, is what there is when it is not set */
+	write_file(TEST_INIT, "session.screen0.workspaces: 4\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->eis_policy == WM_EIS_ASK);
+	assert(c->eis_allow == NULL && c->eis_deny == NULL);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.xwayland.inputEmulation: allow\n"
+		"session.xwayland.inputEmulation.allow: steam xdotool\n"
+		"session.xwayland.inputEmulation.deny: x11vnc\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->eis_policy == WM_EIS_ALLOW);
+	assert(strcmp(c->eis_allow, "steam xdotool") == 0);
+	assert(strcmp(c->eis_deny, "x11vnc") == 0);
+	/* Loaded again: the lists are the new ones, not added to */
+	write_file(TEST_INIT,
+		"session.xwayland.inputEmulation: Deny\n"
+		"session.xwayland.inputEmulation.allow: steam\n");
+	config_load(c, TEST_INIT);
+	assert(c->eis_policy == WM_EIS_DENY);
+	assert(strcmp(c->eis_allow, "steam") == 0);
+	assert(c->eis_deny == NULL);
+	config_destroy(c);
+
+	printf("  PASS: test_input_emulation\n");
+}
+
 /* Test: placement policy parsing */
 static void
 test_placement_policies(void)
@@ -477,6 +554,7 @@ test_fluxbox_init_keys(void)
 		"session.screen0.struts.2:	0,0,30,0\n"
 		"session.screen0.focusSameHead:	true\n"
 		"session.screen0.noFocusWhileTypingDelay:	750\n"
+		"session.keyRepeatRate:	20\n"
 		"session.ignoreBorder:	true\n"
 		"session.tabsAttachArea:	Titlebar\n"
 		"session.screen0.toolbar.autoRaise:	true\n"
@@ -487,12 +565,14 @@ test_fluxbox_init_keys(void)
 	struct wm_config *c = config_create();
 	/* Fluxbox's defaults */
 	assert(!c->focus_same_head && c->no_focus_while_typing_ms == 0);
+	assert(c->key_repeat_rate == 10);
 	assert(!c->ignore_border && !c->tabs_attach_titlebar);
 	assert(c->workspace_warping_vertical &&
 		c->workspace_warping_vertical_offset == 1);
 	config_load(c, TEST_INIT);
 
 	assert(c->focus_same_head && c->no_focus_while_typing_ms == 750);
+	assert(c->key_repeat_rate == 20);
 	assert(c->ignore_border && c->tabs_attach_titlebar);
 	assert(c->toolbar_auto_raise && c->slit_auto_raise);
 	assert(!c->workspace_warping_vertical &&
@@ -649,6 +729,10 @@ test_phase5c_config_options(void)
 	/* Test defaults (no config set): Fluxbox searches from item starts */
 	write_file(TEST_INIT, "\n");
 	c = config_create();
+	/* Not the user's own config directory: a windowmenu file there is
+	 * found, and would not be the default */
+	free(c->config_dir);
+	c->config_dir = strdup(TEST_DIR);
 	config_load(c, TEST_INIT);
 	assert(c->menu_search == WM_MENU_SEARCH_ITEMSTART);
 	assert(c->menu_delay == 200);
@@ -1752,6 +1836,156 @@ test_slit_layer_fallback_to_int(void)
 	printf("  PASS: test_slit_layer_fallback_to_int\n");
 }
 
+/* Test: session.screen0.pseudoTransparency (default off) */
+static void
+test_pseudo_transparency(void)
+{
+	write_file(TEST_INIT, "\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->pseudo_transparency == false);
+	config_destroy(c);
+
+	write_file(TEST_INIT, "session.screen0.pseudoTransparency: true\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->pseudo_transparency == true);
+	config_destroy(c);
+	printf("  PASS: test_pseudo_transparency\n");
+}
+
+/* Test: toolbar.onoutput and slit.onoutput (a connector name, or none) */
+static void
+test_on_output(void)
+{
+	write_file(TEST_INIT, "\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->toolbar_on_output == NULL);
+	assert(c->slit_on_output == NULL);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.toolbar.onoutput: HDMI-A-1\n"
+		"session.screen0.slit.onoutput: DP-2\n"
+		"session.screen0.toolbar.onhead: 2\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->toolbar_on_output && !strcmp(c->toolbar_on_output, "HDMI-A-1"));
+	assert(c->slit_on_output && !strcmp(c->slit_on_output, "DP-2"));
+	assert(c->toolbar_on_head == 2);
+	/* reloaded without it: none again, nothing left over */
+	write_file(TEST_INIT, "\n");
+	config_load(c, TEST_INIT);
+	assert(c->toolbar_on_output == NULL);
+	config_destroy(c);
+	printf("  PASS: test_on_output\n");
+}
+
+/* Test: systray.activationGrace: off by default, in ms, kept in range */
+static void
+test_systray_activation_grace(void)
+{
+	write_file(TEST_INIT, "\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->systray_activation_grace_ms == 0);
+
+	write_file(TEST_INIT, "session.screen0.systray.activationGrace: 500\n");
+	config_load(c, TEST_INIT);
+	assert(c->systray_activation_grace_ms == 500);
+
+	write_file(TEST_INIT, "session.screen0.systray.activationGrace: -3\n");
+	config_load(c, TEST_INIT);
+	assert(c->systray_activation_grace_ms == 0);
+
+	write_file(TEST_INIT, "session.screen0.systray.activationGrace: 99999\n");
+	config_load(c, TEST_INIT);
+	assert(c->systray_activation_grace_ms == 10000);
+
+	/* reloaded without it: off again */
+	write_file(TEST_INIT, "\n");
+	config_load(c, TEST_INIT);
+	assert(c->systray_activation_grace_ms == 0);
+	config_destroy(c);
+	printf("  PASS: test_systray_activation_grace\n");
+}
+
+/* Test: the snap layout picker's keys, layouts, and their defaults */
+static void
+test_snap_layouts(void)
+{
+	write_file(TEST_INIT, "\n");
+	struct wm_config *c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_layout_picker == false);
+	assert(c->snap_layout_picker_size == 120);
+	assert(c->snap_layout_picker_columns == 4);
+	assert(c->snap_layout_count == 8);
+	/* the splits in two: left heavy, even, right heavy, top and bottom */
+	assert(c->snap_layouts[0].cell_count == 2);
+	assert(c->snap_layouts[0].cells[1].x == 667);
+	assert(c->snap_layouts[1].cell_count == 2);
+	assert(c->snap_layouts[1].cells[1].x == 500);
+	assert(c->snap_layouts[2].cells[1].x == 333);
+	assert(c->snap_layouts[3].cell_count == 2);
+	assert(c->snap_layouts[3].cells[1].y == 500 &&
+		c->snap_layouts[3].cells[1].w == 1000);
+	/* then three or more panes: the even thirds are under the even halves */
+	assert(c->snap_layouts[4].cell_count == 3);
+	assert(c->snap_layouts[5].cell_count == 3);
+	assert(c->snap_layouts[7].cell_count == 4);
+	/* thirds meet with no gap and no overlap */
+	assert(c->snap_layouts[5].cells[0].x + c->snap_layouts[5].cells[0].w ==
+		c->snap_layouts[5].cells[1].x);
+	assert(c->snap_layouts[5].cells[2].x + c->snap_layouts[5].cells[2].w ==
+		1000);
+	config_destroy(c);
+
+	write_file(TEST_INIT,
+		"session.screen0.snapLayoutPicker: true\n"
+		"session.screen0.snapLayoutPickerSize: 1000\n"
+		"session.screen0.snapLayouts: 0,0,50,100 50,0,50,100;"
+		" 0,0,33.5,100 bogus 10,10,0,5 90,0,20,100 33.5,0,66.5,100;"
+		" nonsense\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_layout_picker == true);
+	assert(c->snap_layout_picker_size == 300); /* clamped */
+	assert(c->snap_layout_count == 2);	/* "nonsense" has no cell */
+	assert(c->snap_layouts[0].cell_count == 2);
+	assert(c->snap_layouts[1].cell_count == 2); /* bad cells skipped */
+	assert(c->snap_layouts[1].cells[0].w == 335);
+	assert(c->snap_layouts[1].cells[1].x == 335);
+	config_destroy(c);
+
+	/* nothing usable: the defaults */
+	write_file(TEST_INIT, "session.screen0.snapLayouts: junk\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_layout_count == 8);
+	config_destroy(c);
+
+	/* the columns of the picker: set, clamped, and 0 for as many as fit */
+	write_file(TEST_INIT, "session.screen0.snapLayoutPickerColumns: 3\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_layout_picker_columns == 3);
+	config_destroy(c);
+	write_file(TEST_INIT, "session.screen0.snapLayoutPickerColumns: 99\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_layout_picker_columns == 12);
+	config_destroy(c);
+	write_file(TEST_INIT, "session.screen0.snapLayoutPickerColumns: 0\n");
+	c = config_create();
+	config_load(c, TEST_INIT);
+	assert(c->snap_layout_picker_columns == 0);
+	config_destroy(c);
+
+	printf("  PASS: test_snap_layouts\n");
+}
+
 /* Test: a new user gets the default files; nothing is overwritten, and a
  * ~/.fluxbox or FLUXLAND_CONFIG_DIR is left alone */
 static void
@@ -1848,6 +2082,13 @@ main(void)
 	test_load_nonexistent();
 	test_load_basic();
 	test_focus_models();
+	test_input_emulation();
+	test_xwayland_keyboard_grab();
+	test_snap_layouts();
+	test_on_output();
+	test_systray_activation_grace();
+	test_pseudo_transparency();
+	test_dpi();
 	test_placement_policies();
 	test_workspace_names();
 	test_workspace_count_clamp();

@@ -37,11 +37,15 @@
 
 /* --- Helper: get output for slit --- */
 
-/* The slit's head (session.screen0.slit.onhead, from 1) */
+/* The slit's output: slit.onoutput while that monitor is there, else its
+ * head (session.screen0.slit.onhead, from 1) */
 static struct wm_output *
 get_slit_output(struct wm_slit *slit)
 {
-	return wm_output_by_head(slit->server, slit->on_head);
+	struct wm_config *config = slit->server->config;
+	struct wm_output *named = config ?
+		wm_output_by_name(slit->server, config->slit_on_output) : NULL;
+	return named ? named : wm_output_by_head(slit->server, slit->on_head);
 }
 
 /* --- Slit positioning --- */

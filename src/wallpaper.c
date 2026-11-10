@@ -27,6 +27,7 @@
 #include "style.h"
 #include "config.h"
 #include "output.h"
+#include "pseudo_transparency.h"
 #include "server.h"
 
 /* Per-workspace wallpaper entry */
@@ -579,6 +580,8 @@ wm_wallpaper_switch(struct wm_wallpaper *wp, int workspace_index)
 	}
 
 	wp->active_index = workspace_index;
+	/* Windows that show the desktop behind them show this one */
+	wm_pseudo_update_all(wp->server);
 }
 
 void
@@ -600,4 +603,5 @@ wm_wallpaper_reload(struct wm_wallpaper *wp)
 	} else {
 		server->wallpaper = NULL;
 	}
+	wm_pseudo_update_all(server);
 }

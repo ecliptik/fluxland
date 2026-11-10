@@ -37,6 +37,9 @@
 #include "style.h"
 #include "slit.h"
 #include "toolbar.h"
+#ifdef WM_HAS_SYSTRAY
+#include "systray_menu.h"
+#endif
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
@@ -989,6 +992,46 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 			menu->height - menu->items_y - bw);
 		cairo_fill(bcr);
 		cairo_destroy(bcr);
+
+		/*
+		 * Shape::update cuts the inner area by its own corners
+		 * (ShapeClip) and the whole window, border included, by
+		 * its own (ShapeBounding): what lies between the two cuts
+		 * is the border, so it follows the arc.  The pixels the
+		 * inner cut takes get the border's color, then the outer
+		 * cut takes its own.
+		 */
+		int iw = menu->width - 2 * bw, ih = menu->height - 2 * bw;
+		if (bw > 0 && iw > 0 && ih > 0) {
+			cairo_surface_flush(bs);
+			unsigned char *bd = cairo_image_surface_get_data(bs);
+			int bstride = cairo_image_surface_get_stride(bs);
+			uint32_t bpx = 0xff000000u | ((uint32_t)bc->r << 16) |
+				((uint32_t)bc->g << 8) | bc->b;
+			for (int cy = 0; cy < 2; cy++) {
+				for (int cx = 0; cx < 2; cx++) {
+					int x0 = cx ? iw - 8 : 0;
+					int y0 = cy ? ih - 8 : 0;
+					for (int py = y0; py < y0 + 8; py++) {
+						for (int px = x0; px < x0 + 8;
+						     px++) {
+							if (px < 0 || py < 0 ||
+							    px >= iw || py >= ih ||
+							    !wm_corner_cut_at(iw,
+								ih, corners,
+								px, py))
+								continue;
+							*(uint32_t *)(bd +
+								(size_t)(bw + py) *
+								bstride +
+								(size_t)(bw + px) *
+								4) = bpx;
+						}
+					}
+				}
+			}
+			cairo_surface_mark_dirty(bs);
+		}
 		wm_cut_corners(bs, 0, 0, menu->width, menu->height, corners);
 		struct wlr_buffer *bb = wlr_buffer_from_cairo(bs);
 		struct wlr_scene_buffer *border =
@@ -1022,7 +1065,9 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 
 	/* Title bar */
 	cairo_surface_t *title_surf = render_menu_title(menu, style);
-	wm_cut_corners(title_surf, bw, bw, menu->width, menu->height, corners);
+	/* The inner area's own corners (see the border above) */
+	wm_cut_corners(title_surf, 0, 0, menu->width - 2 * bw,
+		menu->height - 2 * bw, corners);
 	struct wlr_buffer *title_buf = wlr_buffer_from_cairo(title_surf);
 	menu->title_buf = wlr_scene_buffer_create(menu->scene_tree, title_buf);
 	if (title_buf) {
@@ -1032,8 +1077,8 @@ wm_menu_show(struct wm_menu *menu, int x, int y)
 
 	/* Items area */
 	cairo_surface_t *items_surf = render_menu_items(menu, style);
-	wm_cut_corners(items_surf, bw, menu->items_y, menu->width,
-		menu->height, corners);
+	wm_cut_corners(items_surf, 0, menu->items_y - bw,
+		menu->width - 2 * bw, menu->height - 2 * bw, corners);
 	struct wlr_buffer *items_buf = wlr_buffer_from_cairo(items_surf);
 	menu->items_buf = wlr_scene_buffer_create(menu->scene_tree, items_buf);
 	if (items_buf) {
@@ -1108,6 +1153,11 @@ wm_menu_hide(struct wm_menu *menu)
 	menu->hilite_rect = NULL;
 	menu->visible = false;
 	menu->selected_index = -1;
+	if (menu->on_close) {
+		void (*on_close)(struct wm_menu *, void *) = menu->on_close;
+		menu->on_close = NULL;
+		on_close(menu, menu->on_close_data);
+	}
 
 	/* Clear search buffer */
 	menu->search_len = 0;
@@ -1527,8 +1577,20 @@ execute_menu_item_now(struct wm_menu *menu, struct wm_menu_item *item,
 		}
 		break;
 
+	case WM_MENU_CALLBACK:
+		if (item->callback)
+			item->callback(server, item->callback_data);
+		break;
+
 	case WM_MENU_ICONS:
 	case WM_MENU_CONFIG:
+	case WM_MENU_DBUSMENU:
+#ifdef WM_HAS_SYSTRAY
+		/* command is "bus path id": the application is told */
+		wm_systray_menu_activate(server, item->command);
+#endif
+		break;
+
 	case WM_MENU_WORKSPACES:
 	case WM_MENU_SENDTO:
 	case WM_MENU_LAYER:

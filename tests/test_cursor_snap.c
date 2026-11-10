@@ -59,6 +59,7 @@
 
 /* fluxland */
 #define WM_ANIMATION_H
+#define WM_SNAP_PICKER_H
 #define WM_CONFIG_H
 #define WM_CURSOR_H
 #define WM_DECORATION_H
@@ -248,6 +249,7 @@ struct wlr_box {
 enum wlr_scene_node_type {
 	WLR_SCENE_NODE_TREE,
 	WLR_SCENE_NODE_BUFFER,
+	WLR_SCENE_NODE_RECT,
 };
 
 struct wlr_scene_tree;
@@ -567,12 +569,13 @@ enum wm_snap_zone {
 	WM_SNAP_ZONE_NONE = 0,
 	WM_SNAP_ZONE_LEFT_HALF,
 	WM_SNAP_ZONE_RIGHT_HALF,
-	WM_SNAP_ZONE_TOP_HALF,
+	WM_SNAP_ZONE_MAXIMIZE,
 	WM_SNAP_ZONE_BOTTOM_HALF,
 	WM_SNAP_ZONE_TOPLEFT,
 	WM_SNAP_ZONE_TOPRIGHT,
 	WM_SNAP_ZONE_BOTTOMLEFT,
 	WM_SNAP_ZONE_BOTTOMRIGHT,
+	WM_SNAP_ZONE_TILE,
 };
 
 struct wm_config {
@@ -586,7 +589,9 @@ struct wm_config {
 	bool opaque_resize;
 	int edge_snap_threshold;
 	bool enable_window_snapping;
+	bool snap_layout_picker;
 	int snap_zone_threshold;
+	int max_pull_threshold;
 	bool workspace_warping;
 	bool workspace_warping_horizontal;
 	bool workspace_warping_vertical;
@@ -773,6 +778,8 @@ struct wm_view {
 	bool maximized_horiz;
 	bool lhalf;
 	bool rhalf;
+	struct wm_tile { bool active; int x, y, w, h; } tile;
+	struct wm_tile snap_return;
 	bool show_decoration;
 	char *title;
 	char *app_id;
@@ -787,6 +794,10 @@ struct wm_view {
 	struct wm_decoration *decoration;
 	int focus_protection;
 	bool ignore_size_hints;
+	int pseudo_rule;
+	struct wlr_scene_tree *pseudo_tree;
+	struct wlr_box pseudo_box;
+	unsigned pseudo_generation;
 	struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener foreign_toplevel_request_activate;
 	struct wl_listener foreign_toplevel_request_maximize;
@@ -908,12 +919,16 @@ enum wm_cursor_mode {
 	WM_CURSOR_TABBING,
 };
 
-#define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
 
 struct wm_workspace { int index; };
 
 struct wm_server {
+	int grab_head_x, grab_head_y;
+	double grab_pointer_x, grab_pointer_y;
+	bool grab_pulled;
+	struct wlr_box grab_start;
+	bool grab_start_plain;
 	struct wl_display *wl_display;
 	struct wl_event_loop *wl_event_loop;
 
@@ -993,6 +1008,11 @@ struct wm_server {
 	int snap_zone;
 	struct wlr_box snap_preview_box;
 	struct wlr_scene_buffer *snap_preview;
+	struct wlr_scene_buffer *snap_picker;
+	bool snap_picker_shown;
+	int snap_picker_layout, snap_picker_cell;
+	struct wlr_box snap_picker_usable;
+	int snap_tile[4];
 
 	struct wlr_scene_rect *wireframe_rects[4];
 	bool wireframe_active;
@@ -1137,6 +1157,10 @@ static int g_scene_node_destroy_count;
 
 /* --- Stub wlroots functions used by cursor.c --- */
 
+/* What is under the cursor: nothing, unless a test puts something there */
+static struct wlr_scene_node *g_node_at;
+static struct wlr_scene_surface *g_scene_surface;
+
 static struct wlr_scene_node *
 wlr_scene_node_at(struct wlr_scene_node *node, double lx, double ly,
 	double *sx, double *sy)
@@ -1144,7 +1168,7 @@ wlr_scene_node_at(struct wlr_scene_node *node, double lx, double ly,
 	(void)node; (void)lx; (void)ly;
 	if (sx) *sx = 0;
 	if (sy) *sy = 0;
-	return NULL;
+	return g_node_at;
 }
 
 static struct wlr_scene_buffer *
@@ -1157,7 +1181,7 @@ static struct wlr_scene_surface *
 wlr_scene_surface_try_from_buffer(struct wlr_scene_buffer *buffer)
 {
 	(void)buffer;
-	return NULL;
+	return g_scene_surface;
 }
 
 static void
@@ -1171,6 +1195,21 @@ static void
 wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled)
 {
 	if (node) node->enabled = enabled;
+}
+
+static int g_node_place_below_count;
+static void
+wlr_scene_node_reparent(struct wlr_scene_node *node,
+	struct wlr_scene_tree *parent)
+{
+	node->parent = parent;
+}
+static void
+wlr_scene_node_place_below(struct wlr_scene_node *node,
+	struct wlr_scene_node *sibling)
+{
+	(void)node; (void)sibling;
+	g_node_place_below_count++;
 }
 
 static void
@@ -1319,6 +1358,37 @@ wlr_seat_pointer_notify_enter(struct wlr_seat *seat,
 {
 	(void)seat; (void)surf; (void)sx; (void)sy;
 }
+
+static void wm_view_clear_maximized(struct wm_view *v) { (void)v; }
+static bool
+wm_view_pull_restore(struct wm_view *v, double px, double py, double *gx,
+	double *gy)
+{
+	(void)v; (void)px; (void)py; (void)gx; (void)gy;
+	return false;
+}
+static void
+wm_view_snap_maximize(struct wm_view *v, const struct wlr_box *area,
+	const struct wlr_box *prev, int x, int y)
+{
+	(void)v; (void)area; (void)prev; (void)x; (void)y;
+}
+static int stub_snap_tile_count;
+static int stub_snap_tile_cell[4];
+static struct wlr_box stub_snap_tile_prev;
+static void
+wm_view_snap_tile(struct wm_view *v, const struct wlr_box *area,
+	const int cell[4], const struct wlr_box *prev, int x, int y)
+{
+	(void)v; (void)area; (void)x; (void)y;
+	stub_snap_tile_count++;
+	memcpy(stub_snap_tile_cell, cell, sizeof(stub_snap_tile_cell));
+	if (prev)
+		stub_snap_tile_prev = *prev;
+}
+static void
+wm_view_settle_on_head(struct wm_view *v, int x, int y)
+{ (void)v; (void)x; (void)y; }
 
 static void
 wlr_seat_pointer_notify_motion(struct wlr_seat *seat, uint32_t time,
@@ -1506,6 +1576,8 @@ static struct wm_decor_button *wm_decoration_button_at(
 static enum wm_decor_region wm_decoration_region_at(
 	struct wm_decoration *d, double x, double y)
 	{ (void)d; (void)x; (void)y; return WM_DECOR_REGION_NONE; }
+static bool wm_decoration_has_titlebar(struct wm_decoration *d)
+	{ (void)d; return true; }
 static int wm_decoration_tab_at(struct wm_decoration *d, double x, double y)
 	{ (void)d; (void)x; (void)y; return -1; }
 static bool wm_decoration_tab_size(struct wm_decoration *d, int *w, int *h)
@@ -1534,12 +1606,6 @@ static bool wm_toolbar_handle_scroll(struct wm_toolbar *tb, double x,
 static bool wm_toolbar_handle_button(struct wm_toolbar *tb, double x,
 	double y, uint32_t button) { (void)tb; (void)x; (void)y;
 	(void)button; return false; }
-/* dialog.h */
-static bool wm_dialog_handle_button(struct wm_server *s, double x, double y,
-	bool p) { (void)s; (void)x; (void)y; (void)p; return false; }
-static bool wm_dialog_is_open(struct wm_server *s) { (void)s; return false; }
-static bool wm_dialog_handle_motion(struct wm_server *s, double x, double y)
-	{ (void)s; (void)x; (void)y; return false; }
 static void wm_menu_show_slit_menu(struct wm_server *s, int x, int y)
 	{ (void)s; (void)x; (void)y; }
 static bool wm_toolbar_handle_release(struct wm_toolbar *tb, double x,
@@ -1565,8 +1631,10 @@ static struct wm_mousebind *mousebind_find(struct wl_list *bindings,
 static bool mousebind_has_move(struct wl_list *bindings, uint32_t ctx,
 	uint32_t button, uint32_t mods)
 	{ (void)bindings; (void)ctx; (void)button; (void)mods; return false; }
+/* Whether the pointer is in the toolbar's rectangle */
+static bool g_toolbar_contains;
 static bool wm_toolbar_contains(struct wm_toolbar *tb, double x, double y)
-	{ (void)tb; (void)x; (void)y; return false; }
+	{ (void)tb; (void)x; (void)y; return g_toolbar_contains; }
 static void wm_toolbar_set_hovered(struct wm_toolbar *tb, bool h)
 	{ (void)tb; (void)h; }
 static void wm_tooltip_update(struct wm_server *s) { (void)s; }
@@ -1638,6 +1706,24 @@ static void closefrom(int fd) { (void)fd; }
 #define VIEW_STUB_SET_SIZE
 #define VIEW_STUB_SET_FRAME_BOX
 #include "view_backend_stubs.c"
+
+/* The layout picker has its own tests (test_snap_picker.c) */
+struct wm_snap_picker_geom { struct wlr_box panel; int count; };
+static bool wm_snap_picker_geometry(const struct wm_config *c,
+	const struct wlr_box *u, struct wm_snap_picker_geom *g)
+{ (void)c; (void)u; (void)g; return false; }
+static bool wm_snap_picker_hit(const struct wm_snap_picker_geom *g,
+	const struct wm_config *c, double x, double y, int *l, int *k)
+{ (void)g; (void)c; (void)x; (void)y; (void)l; (void)k; return false; }
+static bool wm_snap_picker_contains(const struct wm_snap_picker_geom *g,
+	const struct wlr_box *u, double x, double y)
+{ (void)g; (void)u; (void)x; (void)y; return false; }
+static void wm_snap_picker_target(const struct wm_config *c,
+	const struct wlr_box *u, int l, int k, int out[4], struct wlr_box *b)
+{ (void)c; (void)u; (void)l; (void)k; (void)out; (void)b; }
+static void snap_picker_show(struct wm_server *s, const struct wlr_box *u,
+	int l, int c) { (void)s; (void)u; (void)l; (void)c; }
+static void snap_picker_destroy(struct wm_server *s) { (void)s; }
 
 #include "pixel_buffer.c"
 #include "cursor_snap.c"
@@ -1853,7 +1939,7 @@ test_snap_zone_detect_edges(void)
 	test_cursor.x = 960;
 	test_cursor.y = 3;
 	assert(snap_zone_detect(&test_server, &usable) ==
-		WM_SNAP_ZONE_TOP_HALF);
+		WM_SNAP_ZONE_MAXIMIZE);
 
 	/* Bottom edge */
 	test_cursor.x = 960;
@@ -2138,14 +2224,10 @@ test_snap_zone_geometry_odd_dimensions(void)
 	assert(right.width == 961);
 	assert(left.width + right.width == usable.width);
 
-	struct wlr_box top = snap_zone_geometry(WM_SNAP_ZONE_TOP_HALF,
-		&usable);
 	struct wlr_box bottom = snap_zone_geometry(WM_SNAP_ZONE_BOTTOM_HALF,
 		&usable);
 
-	assert(top.height == 540);
 	assert(bottom.height == 541);
-	assert(top.height + bottom.height == usable.height);
 
 	printf("  PASS: snap_zone_geometry_odd_dimensions\n");
 }
@@ -2174,10 +2256,11 @@ test_snap_zone_geometry_top_bottom(void)
 	struct wlr_box usable = { .x = 0, .y = 0,
 		.width = 1920, .height = 1080 };
 
-	struct wlr_box top = snap_zone_geometry(WM_SNAP_ZONE_TOP_HALF,
+	/* The top edge maximizes: the whole usable area */
+	struct wlr_box top = snap_zone_geometry(WM_SNAP_ZONE_MAXIMIZE,
 		&usable);
 	assert(top.x == 0 && top.y == 0);
-	assert(top.width == 1920 && top.height == 540);
+	assert(top.width == 1920 && top.height == 1080);
 
 	struct wlr_box bottom = snap_zone_geometry(WM_SNAP_ZONE_BOTTOM_HALF,
 		&usable);
@@ -3409,6 +3492,9 @@ test_handle_button_release_snap_zone(void)
 	test_server.grabbed_view = &view;
 	test_server.snap_zone = WM_SNAP_ZONE_LEFT_HALF;
 	test_server.snap_preview_box = (struct wlr_box){0, 0, 960, 1080};
+	test_server.grab_start_plain = true;
+	test_server.grab_start = (struct wlr_box){30, 40, 300, 200};
+	stub_snap_tile_count = 0;
 
 	struct wlr_pointer ptr = {0};
 	struct wlr_pointer_button_event event = {
@@ -3422,11 +3508,13 @@ test_handle_button_release_snap_zone(void)
 	test_server.cursor_button.notify(
 		&test_server.cursor_button, &event);
 
-	/* Snap geometry should be applied */
-	assert(view.x == 0);
-	assert(view.y == 0);
-	assert(toplevel.width == 960);
-	assert(toplevel.height == 1080);
+	/* The zone is a cell of the head, and what it is restored to is what
+	 * the drag began with, not where it took the window */
+	assert(stub_snap_tile_count == 1);
+	assert(stub_snap_tile_cell[0] == 0 && stub_snap_tile_cell[1] == 0);
+	assert(stub_snap_tile_cell[2] == 500 && stub_snap_tile_cell[3] == 1000);
+	assert(stub_snap_tile_prev.x == 30 && stub_snap_tile_prev.y == 40);
+	assert(stub_snap_tile_prev.width == 300);
 	assert(test_server.cursor_mode == WM_CURSOR_PASSTHROUGH);
 	assert(test_server.snap_zone == WM_SNAP_ZONE_NONE);
 	teardown_cursor_init();
@@ -3447,6 +3535,87 @@ test_get_cursor_context_desktop(void)
 	assert(ctx == (WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP));
 	assert(view == NULL);
 	printf("  PASS: get_cursor_context_desktop\n");
+}
+
+/*
+ * A surface that belongs to no managed window (an X11 popup menu, an xdg
+ * popup, a layer-shell panel) is the application's: no desktop binding
+ * (OnDesktop Mouse1 :HideMenus) is for it.  A buffer that is no surface (the
+ * wallpaper) is still the desktop.
+ */
+static void
+test_get_cursor_context_popup_surface(void)
+{
+	setup();
+	test_cursor.x = 500;
+	test_cursor.y = 400;
+
+	struct wlr_surface popup = {0};
+	struct wlr_scene_buffer buffer = {0};
+	buffer.node.type = WLR_SCENE_NODE_BUFFER;
+	struct wlr_scene_surface scene_surface = { .surface = &popup };
+	g_node_at = &buffer.node;
+	g_scene_surface = &scene_surface;
+
+	struct wm_view *view = (struct wm_view *)&buffer;
+	uint32_t ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == 0);
+	assert(view == NULL);
+
+	/* a buffer of no surface: the desktop */
+	g_scene_surface = NULL;
+	view = NULL;
+	ctx = get_cursor_context(&test_server, &view);
+	assert(ctx == (WM_MOUSE_CTX_GLOBAL | WM_MOUSE_CTX_DESKTOP));
+
+	g_node_at = NULL;
+	printf("  PASS: get_cursor_context_popup_surface\n");
+}
+
+/*
+ * The toolbar (and its tray, tooltips and wheel) is not under the pointer
+ * when a fullscreen window is drawn over it: that window's clicks are its.
+ */
+static void
+test_pointer_on_toolbar_not_under_fullscreen(void)
+{
+	setup();
+	g_toolbar_contains = true;
+
+	/* Nothing over it, or the toolbar's own node: it is */
+	g_node_at = NULL;
+	assert(wm_pointer_on_toolbar(&test_server, 10, 10));
+	struct wlr_scene_tree own_tree = {0};
+	struct wlr_scene_buffer own = {0};
+	own.node.type = WLR_SCENE_NODE_BUFFER;
+	own.node.parent = &own_tree;
+	g_node_at = &own.node;
+	assert(wm_pointer_on_toolbar(&test_server, 10, 10));
+
+	/* A window over it: only a fullscreen one covers it */
+	struct wm_view view = {0};
+	view.server = &test_server;
+	wl_list_insert(&test_server.views, &view.link);
+	struct wlr_scene_tree tree = {0};
+	tree.node.data = &view;
+	struct wlr_scene_buffer buffer = {0};
+	buffer.node.type = WLR_SCENE_NODE_BUFFER;
+	buffer.node.parent = &tree;
+	g_node_at = &buffer.node;
+
+	view.fullscreen = false;
+	assert(wm_pointer_on_toolbar(&test_server, 10, 10));
+	view.fullscreen = true;
+	assert(!wm_pointer_on_toolbar(&test_server, 10, 10));
+
+	/* Outside the toolbar's rectangle it never is */
+	view.fullscreen = false;
+	g_toolbar_contains = false;
+	assert(!wm_pointer_on_toolbar(&test_server, 10, 10));
+
+	wl_list_remove(&view.link);
+	g_node_at = NULL;
+	printf("  PASS: pointer_on_toolbar_not_under_fullscreen\n");
 }
 
 /*
@@ -3696,6 +3865,9 @@ test_handle_button_release_snap_saves_geometry(void)
 	test_server.grabbed_view = &view;
 	test_server.snap_zone = WM_SNAP_ZONE_RIGHT_HALF;
 	test_server.snap_preview_box = (struct wlr_box){960, 0, 960, 1080};
+	test_server.grab_start_plain = true;
+	test_server.grab_start = (struct wlr_box){100, 150, 800, 600};
+	stub_snap_tile_count = 0;
 
 	struct wlr_pointer ptr = {0};
 	struct wlr_pointer_button_event event = {
@@ -3713,9 +3885,10 @@ test_handle_button_release_snap_saves_geometry(void)
 	assert(view.saved_geometry.y == 150);
 	assert(view.saved_geometry.width == 800);
 	assert(view.saved_geometry.height == 600);
-	/* View now at snap position */
-	assert(view.x == 960);
-	assert(view.y == 0);
+	/* It is tiled to the right half, with that to go back to */
+	assert(stub_snap_tile_count == 1);
+	assert(stub_snap_tile_cell[0] == 500 && stub_snap_tile_cell[2] == 500);
+	assert(stub_snap_tile_prev.x == 100 && stub_snap_tile_prev.width == 800);
 	teardown_cursor_init();
 	printf("  PASS: handle_button_release_snap_saves_geometry\n");
 }
@@ -4008,6 +4181,8 @@ main(void)
 	test_get_cursor_context_desktop();
 	test_get_cursor_context_slit();
 	test_get_cursor_context_slit_hidden();
+	test_get_cursor_context_popup_surface();
+	test_pointer_on_toolbar_not_under_fullscreen();
 	test_get_cursor_context_slit_outside();
 
 	/* passthrough motion tests */

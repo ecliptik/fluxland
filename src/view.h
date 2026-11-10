@@ -31,6 +31,7 @@ struct wm_view;
 enum wm_view_type {
 	WM_VIEW_XDG,        /* xdg-shell toplevel (view.c) */
 	WM_VIEW_XWAYLAND,   /* managed X11 window (xwayland.c) */
+	WM_VIEW_INTERNAL,   /* drawn by the compositor (view_internal.c) */
 };
 
 /*
@@ -102,6 +103,14 @@ struct wm_view {
 	bool maximized_horiz;
 	bool lhalf;
 	bool rhalf;
+	/* Tiled to a cell of its head (TileTo, the layout picker): where, in
+	 * permille of the head's usable area */
+	struct wm_tile {
+		bool active;
+		int x, y, w, h;
+	} tile;
+	/* SnapStep maximized it from this corner: down goes back to it */
+	struct wm_tile snap_return;
 
 	/* Decoration visibility toggle */
 	bool show_decoration; /* default true */
@@ -116,6 +125,13 @@ struct wm_view {
 
 	/* Window-type hints from the backend (e.g. X11 splash/tooltip) */
 	bool no_decoration;
+	/* A frame of less than all, which the window asked for (0: all):
+	 * enum wm_decor_preset, Motif's "no title" or "no border" */
+	int deco_hint;
+	/* The Motif decoration bits it asked for, when not "all" (the buttons
+	 * it wants: minimize, maximize, menu) */
+	bool motif_buttons_set;
+	uint32_t motif_decor;
 	bool no_focus;
 	/* Set by window rules before the window is shown; realized at map */
 	bool pending_maximize, pending_fullscreen, pending_minimize;
@@ -165,6 +181,12 @@ struct wm_view {
 
 	/* Ignore size hints from xdg_toplevel min/max constraints */
 	bool ignore_size_hints;
+	/* Pseudo-transparency (pseudo_transparency.c): the window's own say
+	 * (enum wm_pseudo_rule), and the copy of the desktop under it */
+	int pseudo_rule;
+	struct wlr_scene_tree *pseudo_tree;
+	struct wlr_box pseudo_box;	/* the content it was made for */
+	unsigned pseudo_generation;	/* and which state of the desktop */
 
 	/* True if this view is docked into the slit (skip normal WM handling) */
 	bool docked;
@@ -328,6 +350,32 @@ void wm_focus_cycle(struct wm_server *server,
 void wm_focus_cycle_end(struct wm_server *server);
 
 /*
+ * SnapStep down minimized the view: if modifiers are held, remember it, so
+ * that SnapStep up (wm_snap_step_restore()) can undo it for as long as they
+ * all stay held.  The modifiers that were held are those that matter, not the
+ * ones the other binding uses.
+ */
+void wm_snap_step_minimized(struct wm_view *view);
+
+/*
+ * Whether a SnapStep minimize can still be undone: while it can, the keys
+ * are about that window and not about whichever one has focus now (the same
+ * as Windows, where nothing but up does anything until the modifier is let go)
+ */
+bool wm_snap_step_pending(struct wm_server *server);
+
+/* Restore the window SnapStep minimized, if the modifiers are still held:
+ * true when it did (and there is nothing more for the key to do) */
+bool wm_snap_step_restore(struct wm_server *server);
+
+/* Forget it: a modifier was released, the window went, or another step began */
+void wm_snap_step_forget(struct wm_server *server);
+
+/* A modifier was released: forget the minimized window if one it needed went */
+void wm_snap_step_modifiers_changed(struct wm_server *server,
+	uint32_t held);
+
+/*
  * Restore (de-iconify) the most recently minimized view on the
  * current workspace. Focuses and raises the restored view.
  */
@@ -341,6 +389,15 @@ void wm_view_free_props(struct wm_view *view);
 
 /* Make the window's server-side decoration if it has none (map does) */
 void wm_view_ensure_decoration(struct wm_view *view);
+
+/* A window that draws its own decorations gets none of ours */
+void wm_view_set_client_decorated(struct wm_view *view, bool client_side);
+
+/*
+ * An explicit wish for a frame (a [Deco] rule, ToggleDecor): the window gets
+ * one whatever it asked for
+ */
+void wm_view_force_decoration(struct wm_view *view);
 
 /*
  * The client size for the first configure of a window that asked to

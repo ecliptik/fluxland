@@ -41,6 +41,44 @@ Blank lines and lines beginning with
 or
 .B !
 are comments.
+.SH GENERAL SETTINGS
+.TP
+.B session.dpi
+Resolution of the text fluxland draws (toolbar, menus, window titles) when
+fonts are sized in points, from 24 to 960 (0 = the style's
+.B dpi
+resource, else 96; default: 0).
+At 96 a size of 8 is 10.67 pixels.  Fonts sized in pixels are not affected.
+It does not reach other programs: those take it from their own
+settings (X11 programs from
+.B Xft.dpi
+in the X resources, see
+.BR session.xwayland.resources ).
+.TP
+.B session.xwayland.keyboardGrab
+Whether X11 programs may grab the keyboard (default: true).  On X a program
+that calls \fBXGrabKeyboard\fR (xlock, a VNC viewer, a virtual machine) gets
+every key, whatever has the focus.  XWayland asks for the same through the
+xwayland\-keyboard\-grab protocol, which only it can use: the grabbing window
+gets the focus and every key, fluxland's key bindings do not run, and it ends
+when the program lets go.  The VT switch (Ctrl+Alt+F\fIn\fR) and the emergency exit
+(Mod4+Shift+E) still work.  A screen locker run this way is no session lock
+(see \fBext\-session\-lock\fR: swaylock, gtklock, ...).
+.TP
+.B session.xwayland.resources
+An X resources file (an \fI~/.Xresources\fR) to give XWayland: the
+\fBXft.dpi\fR, \fBXft.hintstyle\fR and \fBXft.rgba\fR that plain Xft
+programs (xterm, Tk, Emacs) read, and any other resource.  It is put into
+XWayland's RESOURCE_MANAGER, as \fBxrdb\fR would, each time XWayland
+starts and on a reconfigure, which \fBxrdb\fR in a startup file is not: XWayland
+is started when a program needs it and exits when none does, taking what
+\fBxrdb\fR set with it.  Programs read them as they start, so the one
+program that starts a stopped XWayland can read before they are there (a
+few milliseconds); any other started after, not.  The file is
+used as it is (no \fBcpp\fR, so no \fB#include\fR or \fB#define\fR).
+GTK and Qt programs take their font settings from XSETTINGS instead (see
+.BR xsettingsd (1)).
+Default: none.
 .SH WORKSPACE SETTINGS
 .TP
 .B session.screen0.workspaces
@@ -161,6 +199,57 @@ Resizing with the mouse always keeps to them.
 .B session.screen0.fullMaximization
 Maximize windows over the toolbar and slit (default: false).
 .TP
+.BR session.screen0.maxDisableMove ", " session.screen0.maxDisableResize
+A maximized or fullscreen window can not be moved (resized) by hand, with the
+pointer or the keyboard (default: false).
+.PP
+Without them, resizing a maximized window by hand makes it no longer maximized
+and keeps the size it has, so that maximizing it again and restoring returns to
+what was made, not to what it was before.  Moving it keeps it maximized, on the
+head it is dropped on (the one holding its centre): dropped on its own, it goes
+back; on another, it is maximized there, and restoring returns it to that head.
+The same goes for a window maximized vertically or horizontally, or tiled to a
+half.  (Fluxbox leaves a moved window flagged as maximized where it was dropped.)
+.TP
+.B session.screen0.maxPullThreshold
+How far (in pixels) a maximized window being dragged has to be pulled down,
+and more down than sideways, to come off its maximize: it goes back to the
+size it had before, under the pointer, and the drag goes on from there (0 =
+never; default: 40).  A drag more sideways than down, which carries it to
+another head, keeps it maximized.
+.TP
+.B session.screen0.pseudoTransparency
+A window that draws some transparency (a terminal with
+.B background_opacity
+below 1 in kitty, \fBalpha\fR in foot) shows the desktop behind it, the
+wallpaper, and not the windows below it, as with Fluxbox's root-pixmap
+pseudo-transparency (default: false).  Windows that are opaque are not
+affected.  A window's own say, the \fB[PseudoTransparent]\fR attribute or
+the \fBPseudoTransparent\fR action, wins.  The wallpaper can be fluxland's
+own or a layer-shell client's such as swaybg.
+.TP
+.B session.screen0.snapLayoutPicker
+With \fBenableWindowSnapping\fR, show thumbnails of layouts when a window is
+dragged to the top edge of a head, as Windows 11 does; dropping the window on
+a cell of one tiles it there, dropping it on the edge itself still maximizes
+(default: false).
+.TP
+.B session.screen0.snapLayoutPickerSize
+The width in pixels of each layout's thumbnail, 60 to 300 (default: 120).
+.TP
+.B session.screen0.snapLayoutPickerColumns
+How many layouts to a row of the picker, 0 to 12; 0 is as many as fit the
+head (default: 4, which makes two rows of the eight default layouts).
+.TP
+.B session.screen0.snapLayouts
+The layouts of the picker: layouts separated by \fB;\fR, each a list of cells
+\fIx,y,width,height\fR in percent of the head's usable area (decimals
+allowed), up to 12 layouts of 8 cells.  Cells that do not fit in the head are
+skipped.  Unset, there are eight, in two rows of four: 2/3 and 1/3, two
+columns, 1/3 and 2/3, and top and bottom; then 25/50/25, three columns, a big
+cell with two beside it, and four quarters.
+Example: \fB0,0,50,100 50,0,50,100; 0,0,100,50 0,50,100,50\fR.
+.TP
 .B session.screen0.showWindowPosition
 Show window position overlay during move/resize (default: false).
 .TP
@@ -203,7 +292,12 @@ Animation duration in milliseconds (0\-5000, default: 300).
 .SH WINDOW SNAP ZONES
 .TP
 .B session.screen0.enableWindowSnapping
-Enable edge/corner snap zones for tiling (default: false).
+Enable edge/corner snap zones for tiling (default: false).  A window dragged
+until the pointer is in a zone, with a preview of where it will go, is put
+there when it is let go: the left and right edges are the halves of the head,
+the corners its quarters, the bottom edge its bottom half and the top edge
+maximizes it there (on the head the pointer is on, as on Windows and KDE).  A
+window that was maximized keeps the size restoring goes back to.
 .TP
 .B session.screen0.snapZoneThreshold
 Pixel distance from screen edge to trigger snap zones (1\-100, default: 10).
@@ -274,6 +368,15 @@ Head (monitor) the toolbar is on, numbered from 1 as in Fluxbox;
 0 or a missing head means head 1 (default: 0). See
 .BR OUTPUTS .
 .TP
+.B session.screen0.toolbar.onoutput
+The monitor the toolbar is on, by its connector name (\fBHDMI\-A\-1\fR, as
+.B wlr\-randr
+lists them), a fluxland extension.  While that monitor is connected the toolbar
+is on it, whatever
+.B onhead
+says; when it is not, the toolbar is on its head, and goes back to it
+when it returns.  Default: none.
+.TP
 .B session.screen0.toolbar.tools
 The toolbar's tools, separated by commas (as Fluxbox writes them) or
 spaces:
@@ -314,10 +417,49 @@ menu.
 .B session.screen0.toolbar.maxOver
 Allow maximized windows to cover the toolbar (default: false).
 .TP
+.B session.xwayland.inputEmulation
+Whether X11 programs may move the pointer and press buttons and keys through
+the XTest extension (Steam Input's desktop controls, xdotool, remote
+desktop servers).  XWayland would otherwise keep it to itself, as the
+compositor never sees it.
+.B ask
+(the default) shows a menu the first time a program does: Allow (until
+fluxland exits), Always allow (adds the program to
+.BR session.xwayland.inputEmulation.allow ),
+or Deny (closing the menu is a deny).
+.B allow
+lets any program, as Xorg does;
+.B deny
+none that is not in the allow list.
+Needs libei when fluxland is built.
+.TP
+.BR session.xwayland.inputEmulation.allow ", " session.xwayland.inputEmulation.deny
+Programs, by the name XWayland gives them (the command, such as
+.BR steam ),
+separated by spaces or commas, that may or may not do it without asking.
+.TP
 .BR session.screen0.systray.pinLeft ", " session.screen0.systray.pinRight
 Tray icons to keep at the left or right of the system tray, by their
 id, separated by spaces or commas: the first of pinLeft leftmost, the
 last of pinRight rightmost.
+.TP
+.B session.screen0.systray.activationGrace
+Milliseconds (default
+.IR 0 :
+off) in which a window of the program that a tray click was passed on to
+may take the focus without having shown it was asked to.  A tray icon's
+program gets an xdg-activation token with the click, if it knows how to
+take one, and then needs nothing more; programs that do not (those whose
+tray icon comes from libappindicator, such as Steam) raise their window on
+their own and are refused as any program asking for the focus is.  With a
+grace, from the click until the call that passed it on is answered (up to
+five seconds), and for this long after, a window of that program or of a
+process it started is allowed.  A click on the program's icon or on one of
+its menu entries starts it.  500 is a reasonable value.  For single programs
+without this, see
+.B [FocusProtection] {Gain}
+in
+.BR fluxland-apps (5).
 .SH TITLEBAR SETTINGS
 .TP
 .B session.screen0.titlebar.left
@@ -497,6 +639,10 @@ Slit stacking layer, as
 Head (monitor) the slit is on, numbered from 1 as in Fluxbox;
 0 or a missing head means head 1 (default: 0).
 .TP
+.B session.screen0.slit.onoutput
+The monitor the slit is on, by connector name, as for
+.BR toolbar.onoutput .
+.TP
 .B session.screen0.slit.alpha
 Slit opacity (0\-255, default: 255).
 .TP
@@ -626,6 +772,16 @@ Layout variant (e.g.\&
 .B session.xkb.options
 XKB options (e.g.\&
 .IR grp:alt_shift_toggle,caps:escape ).
+.SH KEY BINDINGS
+.TP
+.B session.keyRepeatRate
+How many times a second a key binding written
+.BI Repeat " {command}"
+runs again while its key is held, once the keyboard's repeat delay has
+passed (1 to 100; default: 10); a binding can set its own, see
+.BR fluxland-keys (5).
+It is separate from the typing repeat rate that programs get, since each
+run may start a program.
 .SH SESSION
 .TP
 .B session.updateActivationEnvironment
@@ -674,9 +830,12 @@ or
 last until then.
 .PP
 Heads, used by \fBonhead\fR, \fBSetHead\fR and the \fB[Head]\fR window
-rule, are the enabled monitors in the order they were connected, from 1.
-When a monitor is unplugged or turned off, its windows, toolbar and slit
-move to the remaining ones.
+rule, are the enabled monitors by position, from 1: left to right, then top
+to bottom (X's order for Fluxbox was stable as monitors came and went; going by
+the order they connected in was not).  When a monitor is unplugged or turned
+off, its windows, toolbar and slit move to the remaining ones; the toolbar
+and slit go back to a monitor named for them when it returns, and so do the
+windows that were on it and have not been moved since.
 .TP
 .B enabled
 false turns the monitor off.

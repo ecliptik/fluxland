@@ -43,10 +43,28 @@
 
 /* --- Helper: get primary output --- */
 
-/* The toolbar's head (session.screen0.toolbar.onhead, from 1) */
+/*
+ * The toolbar's output: the one SetToolbarHead chose while it is there and
+ * on, else its head (session.screen0.toolbar.onhead, from 1)
+ */
 static struct wm_output *
 toolbar_output(struct wm_server *server)
 {
+	if (server->toolbar_output_name) {
+		struct wm_output *output;
+		wl_list_for_each(output, &server->outputs, link) {
+			if (!strcmp(output->wlr_output->name,
+				    server->toolbar_output_name) &&
+			    wm_output_head_number(output) > 0)
+				return output;
+		}
+	}
+	/* toolbar.onoutput while that monitor is there, else toolbar.onhead */
+	struct wm_output *named = server->config ?
+		wm_output_by_name(server, server->config->toolbar_on_output) :
+		NULL;
+	if (named)
+		return named;
 	return wm_output_by_head(server,
 		server->config ? server->config->toolbar_on_head : 0);
 }
@@ -603,7 +621,11 @@ draw_text(cairo_t *cr, const char *text, const struct wm_font *font,
 		tx = x + w - tw;
 	if (tx < x)
 		tx = x;
-	int ty = y + (h - th) / 2;
+	/*
+	 * The half pixel of an odd space goes above the text, as in Fluxbox
+	 * (its baseline is (h + ascent - descent) / 2 rounded up)
+	 */
+	int ty = y + (h - th + 1) / 2;
 	if (ty < y)
 		ty = y;
 	cairo_set_source_surface(cr, ts, tx, ty);
@@ -1540,6 +1562,14 @@ wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 		/* Collect entries and check if anything changed */
 		collect_iconbar_entries(toolbar);
 		if (iconbar_entries_match_cache(toolbar)) {
+			/*
+			 * Collecting cleared what the last render found out
+			 * (which titles didn't fit, for the tooltip), and
+			 * nothing changed to render it again
+			 */
+			for (int i = 0; i < toolbar->ib_count; i++)
+				toolbar->ib_entries[i].truncated =
+					toolbar->ib_cached_entries[i].truncated;
 			return;
 		}
 
@@ -1553,6 +1583,59 @@ wm_toolbar_update_iconbar(struct wm_toolbar *toolbar)
 
 		iconbar_snapshot_cache(toolbar);
 	}
+}
+
+/* Make name (a head's connector, or NULL for none) the toolbar's choice */
+static bool
+set_toolbar_override(struct wm_server *server, const char *name)
+{
+	char *copy = name ? strdup(name) : NULL;
+	if (name && !copy)
+		return false;
+	free(server->toolbar_output_name);
+	server->toolbar_output_name = copy;
+	wm_toolbar_relayout(server->toolbar);
+	/* Windows make room for it where it is now */
+	wm_output_arrange_all(server);
+	return true;
+}
+
+bool
+wm_toolbar_set_head(struct wm_server *server, const char *argument)
+{
+	if (!server->toolbar)
+		return false;
+	while (argument && (*argument == ' ' || *argument == '\t'))
+		argument++;
+
+	int head;
+	if (!argument || !*argument)
+		return set_toolbar_override(server, NULL);
+	if (!safe_atoi(argument, &head))
+		return false;
+	/* 0: back to the toolbar's configured place */
+	if (head == 0)
+		return set_toolbar_override(server, NULL);
+	struct wm_output *output = wm_output_head(server, head);
+	if (!output)
+		return false;
+	/* Kept as the monitor, which the number is only a way to name */
+	return set_toolbar_override(server, output->wlr_output->name);
+}
+
+bool
+wm_toolbar_set_output(struct wm_server *server, const char *argument)
+{
+	if (!server->toolbar)
+		return false;
+	while (argument && (*argument == ' ' || *argument == '\t'))
+		argument++;
+	if (!argument || !*argument)
+		return set_toolbar_override(server, NULL);
+	struct wm_output *output = wm_output_by_name(server, argument);
+	if (!output)
+		return false;
+	return set_toolbar_override(server, output->wlr_output->name);
 }
 
 void

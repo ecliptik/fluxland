@@ -587,6 +587,7 @@ test_window_management_actions(void)
 		"Mod4 Shift k :FocusUp\n"
 		"Mod4 Shift j :FocusDown\n"
 		"Mod4 o :SetHead 0\n"
+		"Mod4 Shift o :SetToolbarOutput HDMI-A-1\n"
 		"Mod4 period :SendToNextHead\n"
 		"Mod4 comma :SendToPrevHead\n"
 		"Mod4 Shift s :ArrangeWindowsStackRight\n"
@@ -659,6 +660,10 @@ test_window_management_actions(void)
 	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO, XKB_KEY_o);
 	assert(bind && bind->action == WM_ACTION_SET_HEAD);
 	assert(bind->argument && strcmp(bind->argument, "0") == 0);
+	bind = keybind_find(&dm->bindings, WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT,
+		XKB_KEY_o);
+	assert(bind && bind->action == WM_ACTION_SET_TOOLBAR_OUTPUT);
+	assert(bind->argument && strcmp(bind->argument, "HDMI-A-1") == 0);
 
 	bind = keybind_find(&dm->bindings,
 		WLR_MODIFIER_LOGO, XKB_KEY_period);

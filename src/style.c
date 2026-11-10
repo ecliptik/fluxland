@@ -277,6 +277,14 @@ style_parse_font(const char *value)
 	if (len == 0)
 		return font;
 
+	/* "pango:DejaVu Sans Semi-Condensed 11": a Pango font description
+	 * as GTK writes it, kept whole (it names a width and more) */
+	if (strncmp(buf, "pango:", 6) == 0 && buf[6]) {
+		free(font.family);
+		font.family = strdup(buf);
+		return font;
+	}
+
 	if (buf[0] == '-') {
 		parse_xlfd(buf, &font);
 		return font;
@@ -1063,6 +1071,9 @@ load_toolbar(struct wm_style *s, struct rc_database *db, const char *sd)
 		s->toolbar_border_width = 0;
 	s->toolbar_border_color = color_chain(db, KEYS("toolbar.borderColor"),
 		make_color(0, 0, 0));
+	s->dpi = int_chain(db, KEYS("dpi"), 0);
+	if (s->dpi < 0 || s->dpi > 960)
+		s->dpi = 0;
 	s->toolbar_height = int_chain(db, KEYS("toolbar.height"), 0);
 	if (s->toolbar_height < 0 || s->toolbar_height > 100)
 		s->toolbar_height = 0;
@@ -1245,6 +1256,90 @@ font_finish(struct wm_font *font)
 	font->family = NULL;
 }
 
+/*
+ * A tray icon's tooltip (systray.tooltip.*).  Not in Fluxbox, so not the
+ * label of a window: by default a dark rounded box with a thin border, as
+ * GTK drew it under Fluxbox for the tray helper (measured).  The keys are
+ * read exactly, not through the style's wildcards (*.color, *.font...), so
+ * the default holds under any style and a style changes it by setting them.
+ */
+static void
+dialog_defaults(struct wm_style *s)
+{
+	font_finish(&s->dialog_font);
+	s->dialog_font = style_parse_font("pango:Sans 12");
+}
+
+static void
+systray_tooltip_defaults(struct wm_style *s)
+{
+	font_finish(&s->systray_tooltip_font);
+	s->systray_tooltip_font = style_parse_font("pango:DejaVu Sans 11");
+	s->systray_tooltip_color = make_color(0, 0, 0);
+	s->systray_tooltip_border_color = make_color(0x19, 0x19, 0x19);
+	s->systray_tooltip_text_color = make_color(255, 255, 255);
+	s->systray_tooltip_padding_left = 13;
+	s->systray_tooltip_padding_right = 14;
+	s->systray_tooltip_padding_top = 8;
+	s->systray_tooltip_padding_bottom = 8;
+	s->systray_tooltip_radius = 5;
+	s->systray_tooltip_alpha = 255;
+}
+
+static int
+exact_int(struct rc_database *db, const char *key, int def, int min, int max)
+{
+	int v = rc_get_int(db, key, def);
+	return v < min ? min : v > max ? max : v;
+}
+
+/* dialog.font, read exactly (not through *.font) */
+static void
+load_dialog(struct wm_style *s, struct rc_database *db)
+{
+	dialog_defaults(s);
+	const char *val = rc_get_string(db, "dialog.font");
+	if (val) {
+		font_finish(&s->dialog_font);
+		s->dialog_font = style_parse_font(val);
+	}
+}
+
+static void
+load_systray_tooltip(struct wm_style *s, struct rc_database *db)
+{
+	systray_tooltip_defaults(s);
+
+	const char *val = rc_get_string(db, "systray.tooltip.font");
+	if (val) {
+		font_finish(&s->systray_tooltip_font);
+		s->systray_tooltip_font = style_parse_font(val);
+	}
+	style_try_parse_color(rc_get_string(db, "systray.tooltip.color"),
+		&s->systray_tooltip_color);
+	style_try_parse_color(rc_get_string(db,
+		"systray.tooltip.borderColor"),
+		&s->systray_tooltip_border_color);
+	style_try_parse_color(rc_get_string(db, "systray.tooltip.textColor"),
+		&s->systray_tooltip_text_color);
+	s->systray_tooltip_padding_left = exact_int(db,
+		"systray.tooltip.paddingLeft", s->systray_tooltip_padding_left,
+		0, 200);
+	s->systray_tooltip_padding_right = exact_int(db,
+		"systray.tooltip.paddingRight", s->systray_tooltip_padding_right,
+		0, 200);
+	s->systray_tooltip_padding_top = exact_int(db,
+		"systray.tooltip.paddingTop", s->systray_tooltip_padding_top,
+		0, 200);
+	s->systray_tooltip_padding_bottom = exact_int(db,
+		"systray.tooltip.paddingBottom",
+		s->systray_tooltip_padding_bottom, 0, 200);
+	s->systray_tooltip_radius = exact_int(db, "systray.tooltip.radius",
+		s->systray_tooltip_radius, 0, 100);
+	s->systray_tooltip_alpha = exact_int(db, "systray.tooltip.alpha",
+		s->systray_tooltip_alpha, 0, 255);
+}
+
 /* --- Texture cleanup helper --- */
 
 static void
@@ -1360,6 +1455,9 @@ style_create(void)
 	s->slit_border_color = color_from_argb(DEFAULT_BORDER_COLOR);
 	s->slit_border_width = DEFAULT_BORDER_WIDTH;
 
+	systray_tooltip_defaults(s);
+	dialog_defaults(s);
+
 	/* Default fonts */
 	s->window_label_focus_font = default_font();
 	s->window_label_unfocus_font = default_font();
@@ -1383,6 +1481,12 @@ style_apply_db(struct wm_style *s, struct rc_database *db)
 
 	/* --- Window frame, as FbWinFrameTheme and its label themes --- */
 	load_window(s, db, sd);
+
+	/* --- The text dialogs' line --- */
+	load_dialog(s, db);
+
+	/* --- A tray icon's tooltip --- */
+	load_systray_tooltip(s, db);
 
 	/* --- Focus border (accessibility) --- */
 	s->window_focus_border_width = style_get_int(db,
@@ -1603,6 +1707,8 @@ style_clear(struct wm_style *s)
 	font_finish(&s->menu_title_font);
 	font_finish(&s->menu_frame_font);
 	font_finish(&s->menu_hilite_font);
+	font_finish(&s->systray_tooltip_font);
+	font_finish(&s->dialog_font);
 	free(s->menu_submenu_pixmap);
 	free(s->menu_hilite_submenu_pixmap);
 	free(s->menu_selected_pixmap);

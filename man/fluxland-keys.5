@@ -238,6 +238,46 @@ negative number counts from the end.
 .TP
 .BR Minimize " (" Iconify ", " MinimizeWindow "), " Maximize " (" MaximizeWindow "), " MaximizeHorizontal ", " MaximizeVertical ", " Fullscreen
 .TP
+.BI TileTo " cols rows col row " "[\fIcolspan rowspan\fP]"
+Put the window in a cell of a grid of its head's usable area (a fluxland
+extension): all numbers from 1, the spans default to 1.
+.B TileTo 3 1 2 1
+is the middle third, \fBTileTo 2 2 1 1 2 1\fP the top half.  Cells meet
+exactly, with no gap.  The window follows its head (as with \fBLHalf\fP),
+a later maximize or resize ends it, and the same cell again puts the window
+back where it was.  Numbers outside the grid do nothing.
+.TP
+.BR PseudoTransparent " [on|off|toggle|default]"
+Whether the window shows the desktop behind it where it is translucent,
+instead of the windows below it (a fluxland extension).  Without an
+argument it toggles; \fBdefault\fR goes back to
+.BR session.screen0.pseudoTransparency .
+.TP
+.BI SnapStep " left" | right | up | down
+The window one step on its way in that direction, as the Windows key with an
+arrow does (a fluxland extension).
+.B left
+and
+.B right
+snap it to that half of its head; at that half already, it goes on to the
+next head in that direction, onto the other half, and past the last head
+round to the first (from the right of the rightmost to the left of the
+leftmost, and the other way); snapped to the other side, it is put back.
+.B up
+maximizes, or turns a half into a top quarter and a top quarter into a
+maximized window.
+.B down
+undoes that: a window maximized from a top corner goes back to the corner, any
+other maximized window is restored, a half becomes a bottom quarter and a top
+quarter a half, and a window that is not snapped, or is in a bottom corner, is
+minimized.  A window minimized so is restored by
+.B up
+as long as the modifiers held when it was minimized are still held (an
+accidental minimize), whatever the modifiers of the binding of
+.B up
+are.  Until they are let go of, the other directions do nothing: they are
+about the minimized window, not the one that has the focus now.
+.TP
 .BR Shade " (" ShadeWindow "), " ShadeOn ", " ShadeOff ", " Stick " (" StickWindow )
 .TP
 .BR Raise ", " Lower ", " RaiseLayer " [\fIn\fP], " LowerLayer " [\fIn\fP]"
@@ -355,6 +395,19 @@ A dialog to type the workspace's name in.
 .TP
 .BR SetHead " \fIN\fP, " SendToNextHead ", " SendToPrevHead " [\fIn\fP]"
 .TP
+.BR SetToolbarHead " [\fIN\fP]"
+Put the toolbar on head \fIN\fP (numbered as in
+\fBsession.screen0.toolbar.onhead\fP, from 1; by position, left to right);
+without one, or with 0, it is where the settings put it again.  Unlike changing
+the resource it does not rewrite the init or reconfigure; it lasts until
+fluxland exits, and stays with the monitor that was the head, which the
+toolbar returns to if it is unplugged and plugged in again.
+.TP
+.BR SetToolbarOutput " [\fIname\fP]"
+The same, given the monitor's connector name (\fBHDMI\-A\-1\fP), a fluxland
+extension.  Useful from a script, e.g.
+\fBfluxland\-ctl action SetToolbarOutput HDMI\-A\-1\fP.
+.TP
 .BR ShowDesktop ", " CloseAllWindows
 .TP
 .BR ArrangeWindows ", " ArrangeWindowsVertical ", " ArrangeWindowsHorizontal " [\fIpattern\fP]"
@@ -406,6 +459,24 @@ The next command each time.
 .BI Delay " {command} \fR[\fImicroseconds\fP]"
 Run it once the binding stops repeating (200 by default).
 .TP
+.BI Repeat " {command} \fR[\fIrate\fP]"
+Run it, and run the binding again while its key is held, after the keyboard's
+repeat delay, rate times a second (1 to 100; default:
+.B session.keyRepeatRate
+in
+.BR fluxland-init (5),
+10).
+A binding repeats only if it says so: Fluxbox's did, because X repeated every
+key, but a Wayland compositor is sent a key once.
+The binding is looked up each time, so letting go of a modifier, or an
+.B If
+going the other way, ends it.
+Run from a menu, a mouse binding or IPC, it is just the command.
+.nf
+XF86AudioRaiseVolume :Repeat {Exec playerctl volume 0.05+}
+Mod1 XF86AudioNext :Repeat {Exec mpris-control position 5+} 4
+.fi
+.TP
 .BI If " {condition} {then} \fR[{\fIelse\fP}]" "\fR (" Cond )
 .TP
 .BI ForEach " {command} \fR[{\fIcondition\fP}]" "\fR (" Map )
@@ -425,6 +496,19 @@ A style file, or a directory with theme.cfg or style.cfg.
 .B CommandDialog
 A dialog to type a command in, as on a key binding: Return runs it,
 Escape closes it, Tab finishes a command's name.
+.TP
+.B RunDialog
+Open \fBfluxland-run\fR, a window to type a program in, in the place of
+fbrun.  It is an ordinary window of its own, with the style's frame: it
+shows in the iconbar, takes the focus, and \fIapps\fR rules apply to it
+(its class is \fIfluxland-run\fR; the default \fIapps\fR file centers
+it).  Return runs the line as Exec does, Escape closes it.  Tab finishes
+the program name (the first word) or a file name, and again goes through
+the names there are.  Up and Down go through the lines run before, which
+are kept in
+\fI$XDG_STATE_HOME/fluxland/run_history\fR
+(\fI~/.local/state/fluxland/run_history\fR).  \fBfluxland-run -f \fIFONT\fR
+sets its Pango font (default \fISans 12\fR) when it is started by hand.
 .TP
 .BI SetTitle " title\fR, " SetTitleDialog
 The window's title (or a dialog to type it in), kept whatever the

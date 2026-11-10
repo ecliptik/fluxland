@@ -49,7 +49,7 @@ deps)
 		libxcb-render0-dev libxcb-errors-dev \
 		bison libexpat1-dev libffi-dev libxml2-dev \
 		libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev \
-		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev xwayland \
+		libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev xwayland libei-dev \
 		libsystemd-dev \
 		python3 python3-pytest python3-pytest-timeout python3-pil \
 		foot grim wtype wlrctl xterm x11-utils wlr-randr wayland-utils fonts-dejavu-core \

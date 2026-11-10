@@ -60,6 +60,7 @@ struct wm_rule_app {
 	bool has_ignore_size_hints; bool ignore_size_hints;
 	bool has_close;         bool save_on_close;  /* [Close] */
 	bool has_dock;          bool dock; /* fluxland: into the slit */
+	bool has_pseudo;        bool pseudo; /* fluxland: PseudoTransparent */
 
 	struct wl_list link;    /* wm_rules.apps */
 };

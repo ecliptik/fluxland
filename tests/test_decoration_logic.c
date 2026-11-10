@@ -174,12 +174,14 @@ struct wlr_xdg_toplevel {
 
 struct wlr_xdg_toplevel_decoration_v1 {
 	struct wlr_xdg_toplevel *toplevel;
+	int requested_mode;
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal request_mode;
 	} events;
 };
 
+#define WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE 1
 #define WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE 2
 
 struct wlr_xdg_decoration_manager_v1 {
@@ -348,7 +350,26 @@ struct wm_view {
 	struct wl_list tab_link;
 	struct wm_decoration *decoration;
 	bool sticky;
+	bool no_decoration;
+	int deco_hint;
+	bool motif_buttons_set;
+	uint32_t motif_decor;
 };
+
+/* A window's size hints, as the test sets them */
+struct wm_size_hints {
+	int min_w, min_h, max_w, max_h;
+	int base_w, base_h;
+	int inc_w, inc_h;
+	int min_aspect_x, min_aspect_y, max_aspect_x, max_aspect_y;
+};
+static struct wm_size_hints g_test_hints;
+static void
+wm_view_size_hints(struct wm_view *view, struct wm_size_hints *hints)
+{
+	(void)view;
+	*hints = g_test_hints;
+}
 
 /* --- Server --- */
 
@@ -486,11 +507,32 @@ static void wl_signal_add(struct wl_signal *signal, struct wl_listener *listener
 }
 
 static int g_deco_set_mode_count;
+static int g_deco_last_mode;
 static void wlr_xdg_toplevel_decoration_v1_set_mode(
 	struct wlr_xdg_toplevel_decoration_v1 *deco, int mode)
 {
-	(void)deco; (void)mode;
+	(void)deco;
+	g_deco_last_mode = mode;
 	g_deco_set_mode_count++;
+}
+
+/* The window the decoration is of, and what it was told about it */
+static struct wm_view *g_deco_view;
+static struct wm_view *g_deco_told_view;
+static int g_deco_told_count;
+static bool g_deco_told_client_side;
+static struct wm_view *wm_view_from_surface(struct wm_server *server,
+	struct wlr_surface *surface)
+{
+	(void)server; (void)surface;
+	return g_deco_view;
+}
+static void wm_view_set_client_decorated(struct wm_view *view,
+	bool client_side)
+{
+	g_deco_told_view = view;
+	g_deco_told_client_side = client_side;
+	g_deco_told_count++;
 }
 
 static struct wlr_xdg_decoration_manager_v1 *
@@ -931,6 +973,88 @@ test_configure_buttons(void)
 
 	free_test_decoration(deco);
 	printf("  PASS: configure_buttons\n");
+}
+
+/*
+ * Buttons a window can't use are left off, as Fluxbox does: a window of one
+ * size has no maximize; one whose Motif decorations name the buttons it
+ * wants has those.
+ */
+static void
+test_configure_buttons_fixed_size_and_motif(void)
+{
+	setup();
+	struct wm_decoration *deco =
+		make_test_decoration(WM_DECOR_NORMAL, 800, 600);
+
+	/* One size: no maximize */
+	deco->fixed_size = true;
+	wm_decoration_configure_buttons(deco, "Stick",
+		"Shade Minimize Maximize Close");
+	assert(deco->buttons_left_count == 1);
+	assert(deco->buttons_right_count == 3);
+	assert(deco->buttons_right[0].type == WM_BUTTON_SHADE);
+	assert(deco->buttons_right[1].type == WM_BUTTON_ICONIFY);
+	assert(deco->buttons_right[2].type == WM_BUTTON_CLOSE);
+
+	/* Resizable again: it is back */
+	deco->fixed_size = false;
+	wm_decoration_configure_buttons(deco, "Stick",
+		"Shade Minimize Maximize Close");
+	assert(deco->buttons_right_count == 4);
+
+	/* Motif's title only: no minimize, no maximize */
+	test_view.motif_buttons_set = true;
+	test_view.motif_decor = 8;
+	wm_decoration_configure_buttons(deco, "Stick",
+		"Shade Minimize Maximize Close");
+	assert(deco->buttons_right_count == 2);
+	assert(deco->buttons_right[0].type == WM_BUTTON_SHADE);
+	assert(deco->buttons_right[1].type == WM_BUTTON_CLOSE);
+
+	/* ...and a title with minimize (32) and maximize (64) */
+	test_view.motif_decor = 8 | 32;
+	wm_decoration_configure_buttons(deco, "Stick",
+		"Shade Minimize Maximize Close");
+	assert(deco->buttons_right_count == 3);
+	assert(deco->buttons_right[1].type == WM_BUTTON_ICONIFY);
+	test_view.motif_decor = 8 | 32 | 64;
+	wm_decoration_configure_buttons(deco, "Stick",
+		"Shade Minimize Maximize Close");
+	assert(deco->buttons_right_count == 4);
+
+	/* Both gone, and a fixed size too: still the others */
+	test_view.motif_decor = 8;
+	deco->fixed_size = true;
+	wm_decoration_configure_buttons(deco, "Minimize Maximize", "Close");
+	assert(deco->buttons_left == NULL && deco->buttons_left_count == 0);
+	assert(deco->buttons_right_count == 1);
+
+	test_view.motif_buttons_set = false;
+	free_test_decoration(deco);
+	printf("  PASS: configure_buttons_fixed_size_and_motif\n");
+}
+
+/* A window of one size: its minimum and maximum the same (and set) */
+static void
+test_view_is_fixed_size(void)
+{
+	setup();
+	memset(&g_test_hints, 0, sizeof(g_test_hints));
+	assert(!view_is_fixed_size(&test_view));		/* none set */
+
+	g_test_hints = (struct wm_size_hints){ .min_w = 400, .min_h = 300,
+		.max_w = 400, .max_h = 300 };
+	assert(view_is_fixed_size(&test_view));
+
+	g_test_hints.max_w = 800;				/* free to widen */
+	assert(!view_is_fixed_size(&test_view));
+	g_test_hints.max_w = 400;
+	g_test_hints.max_h = 0;					/* no maximum */
+	assert(!view_is_fixed_size(&test_view));
+
+	memset(&g_test_hints, 0, sizeof(g_test_hints));
+	printf("  PASS: view_is_fixed_size\n");
 }
 
 static void
@@ -3333,6 +3457,41 @@ test_xdg_decoration_request_mode_handler(void)
 	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
 	assert(g_deco_set_mode_count == 2);
 
+	/* No preference, or a wish for ours: server-side */
+	assert(g_deco_last_mode ==
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	wlr_deco.requested_mode =
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
+	assert(g_deco_last_mode ==
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+
+	/* A window that draws its own (Electron's frameless ones: Discord):
+	 * told so, and its window gets none of ours */
+	struct wm_view view;
+	memset(&view, 0, sizeof(view));
+	g_deco_view = &view;
+	g_deco_told_view = NULL;
+	g_deco_told_count = 0;
+	wlr_deco.requested_mode =
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
+	assert(g_deco_last_mode ==
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+	assert(g_deco_told_count == 1);
+	assert(g_deco_told_view == &view && g_deco_told_client_side);
+
+	/* ...and if it changes its mind, they come back */
+	wlr_deco.requested_mode =
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+	handle_xdg_decoration_request_mode(&deco->request_mode, NULL);
+	assert(g_deco_last_mode ==
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	assert(g_deco_told_count == 2 && !g_deco_told_client_side);
+
+	/* Nothing before the initial commit */
+	g_deco_view = NULL;
+
 	free(deco);
 	printf("  PASS: xdg_decoration_request_mode_handler\n");
 }
@@ -3671,6 +3830,8 @@ main(void)
 
 	/* configure_buttons */
 	test_configure_buttons();
+	test_configure_buttons_fixed_size_and_motif();
+	test_view_is_fixed_size();
 	test_configure_buttons_null();
 
 	/* button_at */

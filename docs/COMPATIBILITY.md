@@ -194,8 +194,8 @@ Fluxbox's own styles. See [STYLES.md](STYLES.md).
 | `session.screen0.iconbar.iconWidth` | yes |
 | `session.screen0.iconbar.mode` | yes |
 | `session.screen0.iconbar.usePixmap` | yes |
-| `session.screen0.maxDisableMove` | yes |
-| `session.screen0.maxDisableResize` | yes |
+| `session.screen0.maxDisableMove` | yes (pointer and keyboard) |
+| `session.screen0.maxDisableResize` | yes (pointer and keyboard) |
 | `session.screen0.maxIgnoreIncrement` | yes |
 | `session.screen0.menu.alpha` | yes |
 | `session.screen0.menuDelay` | yes |
@@ -231,7 +231,7 @@ Fluxbox's own styles. See [STYLES.md](STYLES.md).
 | `session.screen0.toolbar.height` | yes |
 | `session.screen0.toolbar.layer` | yes |
 | `session.screen0.toolbar.maxOver` | yes |
-| `session.screen0.toolbar.onhead` | yes |
+| `session.screen0.toolbar.onhead` | yes (heads are numbered by position) |
 | `session.screen0.toolbar.placement` | yes |
 | `session.screen0.toolbar.tools` | yes |
 | `session.screen0.toolbar.visible` | yes |
@@ -324,3 +324,43 @@ Fluxbox's own styles. See [STYLES.md](STYLES.md).
 | `wallpapermenu` | yes |
 | `wallpapers` | yes |
 | `workspaces` | yes |
+
+## Differences from Fluxbox
+
+- **Moving a maximized window.** Fluxbox leaves a window that was moved by hand
+  flagged as maximized wherever it is dropped (so restoring jumps back to where it
+  was before it was maximized).  fluxland keeps it maximized on the head it is
+  dropped on: dropped on its own head it goes back, on another head it is
+  maximized there.  The same for windows maximized vertically or horizontally, or
+  tiled to a half.  Resizing is as in Fluxbox: it makes the window no longer
+  maximized, keeping the size it has.
+- **Grid tiling (extension).** `TileTo cols rows col row [colspan rowspan]`
+  places a window in a cell of a grid on its head (thirds, a top row, ...), and
+  `session.screen0.snapLayoutPicker` adds a Windows 11 style picker of layouts
+  (`session.screen0.snapLayouts`) to the top snap zone for doing the same with
+  the mouse.  `SnapStep left|right|up|down` steps a window through halves,
+  quarters, maximize and the next head like the Windows key with an arrow.
+  Fluxbox has none of these; with all unused nothing differs.
+- **Pseudo-transparency (extension).** `session.screen0.pseudoTransparency`, the
+  `[PseudoTransparent]` apps attribute and the `PseudoTransparent` action make a
+  translucent window show the wallpaper behind it rather than the windows
+  below it, as Fluxbox's root-pixmap pseudo-transparency does on X11.  Off
+  unless asked for.
+- **X11 windows with a Shape, and override-redirect stacking.**  XWayland cannot
+  show a window's X Shape (Wine's layered windows, Proton's focus overlays, are
+  rings), so fluxland clips the window to the shape itself, and follows the shape
+  as it changes.  An override-redirect window is on top when it appears, and a
+  window raised afterwards covers it, as on X (a window of its own application
+  and popup menus stay over it).
+- **A monitor that goes away and comes back.**  On X the screen stayed as it was
+  when a monitor was powered off, so windows kept their places.  On Wayland an
+  output that goes away (powered off, unplugged, or turned off by a profile)
+  is gone, and its windows are moved onto the others.  fluxland remembers where
+  each was, by the monitor's connector (HDMI-A-1), and when a monitor comes back on it
+  the windows that have not been moved since go back to it.
+- **Head numbers are by position.**  Fluxbox's heads (`toolbar.onhead`, `[Head]`,
+  `SetHead`) are numbered by the X server in an order that does not change as
+  monitors come and go.  Wayland creates and destroys an output as a monitor does,
+  so fluxland numbers the enabled ones by position (left to right, then top to
+  bottom).  `toolbar.onoutput` and `slit.onoutput` (extensions) name a monitor by
+  connector instead, and `SetToolbarOutput` does so at run time.

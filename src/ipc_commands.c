@@ -194,6 +194,52 @@ view_layer_str(enum wm_view_layer layer)
 	}
 }
 
+/*
+ * Every view, mapped or not, docked in the slit or not: for finding out why
+ * a window isn't where it should be (get_windows lists only the shown ones)
+ */
+static char *
+cmd_get_views(struct wm_server *server)
+{
+	struct strbuf sb;
+	strbuf_init(&sb);
+	strbuf_append(&sb, "{\"success\":true,\"data\":[");
+
+	struct wm_view *view;
+	bool first = true;
+	wl_list_for_each(view, &server->views, link) {
+		if (!first) strbuf_append(&sb, ",");
+		first = false;
+
+		char *title_esc = wm_ipc_json_quote(view->title);
+		char *app_id_esc = wm_ipc_json_quote(view->app_id);
+		struct wm_view *parent = wm_view_parent(view);
+		strbuf_appendf(&sb,
+			"{\"id\":%u,\"title\":%s,\"app_id\":%s,"
+			"\"xwayland\":%s,\"mapped\":%s,\"docked\":%s,"
+			"\"has_surface\":%s,\"enabled\":%s,"
+			"\"no_decoration\":%s,\"no_focus\":%s,"
+			"\"icon_hidden\":%s,\"parent\":%u,"
+			"\"x\":%d,\"y\":%d}",
+			view->id, title_esc, app_id_esc,
+			view->type == WM_VIEW_XWAYLAND ? "true" : "false",
+			view->mapped ? "true" : "false",
+			view->docked ? "true" : "false",
+			wm_view_surface(view) ? "true" : "false",
+			view->scene_tree && view->scene_tree->node.enabled ?
+				"true" : "false",
+			view->no_decoration ? "true" : "false",
+			view->no_focus ? "true" : "false",
+			view->icon_hidden ? "true" : "false",
+			parent ? parent->id : 0, view->x, view->y);
+		free(title_esc);
+		free(app_id_esc);
+	}
+
+	strbuf_append(&sb, "]}");
+	return strbuf_finish(&sb);
+}
+
 static char *
 cmd_get_windows(struct wm_server *server)
 {
@@ -554,6 +600,8 @@ wm_ipc_handle_command(struct wm_ipc_server *ipc,
 
 	if (strcmp(command, "get_workspaces") == 0) {
 		result = cmd_get_workspaces(server);
+	} else if (strcmp(command, "get_views") == 0) {
+		result = cmd_get_views(server);
 	} else if (strcmp(command, "get_windows") == 0) {
 		result = cmd_get_windows(server);
 	} else if (strcmp(command, "get_outputs") == 0) {

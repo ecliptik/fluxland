@@ -26,6 +26,7 @@
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/util/log.h>
 
+#include "eis.h"
 #include "session_lock.h"
 #include "output.h"
 #include "server.h"
@@ -240,6 +241,7 @@ handle_lock_unlock(struct wl_listener *listener, void *data)
 	lock->active_lock = NULL;
 	lock->sent_locked = false;
 	wlr_scene_node_set_enabled(&lock->tree->node, false);
+	wm_eis_session_lock_changed(lock->server);
 
 	/* Remove per-lock listeners */
 	wl_list_remove(&lock->lock_new_surface.link);
@@ -325,6 +327,7 @@ handle_new_lock(struct wl_listener *listener, void *data)
 	lock->active_lock = wlr_lock;
 	lock->locked = true;
 	lock->sent_locked = false;
+	wm_eis_session_lock_changed(lock->server);
 
 	/* Blank every output above all other content */
 	update_blank(lock);

@@ -45,6 +45,24 @@ test_session_env = executable(
 )
 test('session_env', test_session_env)
 
+# --- test_run_dialog: run dialog completion and history ---
+test_run_dialog = executable(
+  'test_run_dialog',
+  files('test_run_dialog.c', '../src/run_dialog.c'),
+  include_directories: test_inc,
+  install: false,
+)
+test('run_dialog', test_run_dialog)
+
+# --- test_tray_grant: windows that may take the focus after a tray click ---
+test_tray_grant = executable(
+  'test_tray_grant',
+  files('test_tray_grant.c', '../src/tray_grant.c'),
+  include_directories: test_inc,
+  install: false,
+)
+test('tray_grant', test_tray_grant)
+
 # --- test_icon: iconbar icons (theme / desktop file lookup, client pixels) ---
 test_icon = executable(
   'test_icon',
@@ -163,7 +181,7 @@ test('workspace', test_workspace)
 # view.c is #included directly in the test to allow stubbing wlroots deps.
 test_view_logic = executable(
   'test_view_logic',
-  files('test_view_logic.c'),
+  files('test_view_logic.c', '../src/tray_grant.c'),
   include_directories: test_inc,
   dependencies: [wlroots, math, pangocairo],
   install: false,
@@ -295,10 +313,43 @@ test_xwayland_logic = executable(
   'test_xwayland_logic',
   files('test_xwayland_logic.c'),
   include_directories: test_inc,
-  dependencies: [wlroots],
+  dependencies: [wlroots, pangocairo],
   install: false,
 )
 test('xwayland_logic', test_xwayland_logic)
+
+# --- test_snap_picker: layout picker geometry and hit-testing ---
+test_snap_picker = executable(
+  'test_snap_picker',
+  files('test_snap_picker.c', '../src/snap_picker.c'),
+  include_directories: test_inc,
+  dependencies: [wayland_server, wlroots, server_protos, pangocairo, math],
+  install: false,
+)
+test('snap_picker', test_snap_picker)
+
+# --- test_pseudo_transparency: what of the desktop is under a window ---
+test_pseudo_transparency = executable(
+  'test_pseudo_transparency',
+  files('test_pseudo_transparency.c', '../src/pseudo_transparency.c'),
+  include_directories: test_inc,
+  dependencies: [wayland_server, wlroots, server_protos, pangocairo, math],
+  install: false,
+)
+test('pseudo_transparency', test_pseudo_transparency)
+
+# --- test_xwayland_shape: what an X Shape leaves of a window ---
+if have_xwayland
+  test_xwayland_shape = executable(
+    'test_xwayland_shape',
+    files('test_xwayland_shape.c', '../src/xwayland_shape.c'),
+    include_directories: test_inc,
+    dependencies: [wayland_server, wlroots, server_protos, pangocairo, math,
+      xcb, xcb_shape],
+    install: false,
+  )
+  test('xwayland_shape', test_xwayland_shape)
+endif
 
 # --- test_cursor_snap: cursor snap zone detection and geometry tests ---
 # cursor.c is #included directly in the test to allow stubbing wlroots/cairo deps.
@@ -372,19 +423,33 @@ test('server', test_server)
 if have_systray
   test_systray = executable(
     'test_systray',
-    files('test_systray.c'),
+    files('test_systray.c', '../src/tray_grant.c'),
     include_directories: test_inc,
     dependencies: [wlroots, pangocairo, libdrm, sdbus_dep],
     c_args: ['-Wno-unused-parameter'],
     install: false,
   )
   test('systray', test_systray)
+
+  # systray_menu.c is #included, with the menu and server stood in for.
+  test_systray_menu = executable(
+    'test_systray_menu',
+    files('test_systray_menu.c'),
+    include_directories: test_inc,
+    dependencies: [wlroots, wayland_server, sdbus_dep],
+    c_args: ['-Wno-unused-parameter'],
+    install: false,
+  )
+  test('systray_menu', test_systray_menu)
 endif
 
 # --- test_main: main.c entry point integration tests ---
 # Invokes the fluxland binary with various CLI flags and checks output/exit codes.
 test_main_env = environment()
 test_main_env.set('FLUXLAND_BIN', fluxland_exe.full_path())
+# Not the desktop's session bus: a compositor started by a test would take
+# the StatusNotifierWatcher name from the running one, and lose it for good
+test_main_env.set('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/nonexistent/fluxland-test-bus')
 test_main = executable(
   'test_main',
   files('test_main.c'),
@@ -582,6 +647,49 @@ if wayland_client.found()
   )
   test('xdg_shell', test_xdg_shell, env: test_main_env, depends: fluxland_exe, timeout: 30, suite: 'integration')
 
+  # --- fifo-v1 and commit-timing-v1 client protocols (for test_frame_pacing) ---
+  fifo_xml = wl_protocol_dir / 'staging/fifo/fifo-v1.xml'
+  commit_timing_xml = wl_protocol_dir / 'staging/commit-timing/commit-timing-v1.xml'
+  fifo_client_h = custom_target(
+    'fifo-v1-client-protocol.h',
+    input: fifo_xml,
+    output: 'fifo-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  fifo_code = custom_target(
+    'fifo-v1-client-protocol.c',
+    input: fifo_xml,
+    output: 'fifo-v1-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+  commit_timing_client_h = custom_target(
+    'commit-timing-v1-client-protocol.h',
+    input: commit_timing_xml,
+    output: 'commit-timing-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  commit_timing_code = custom_target(
+    'commit-timing-v1-client-protocol.c',
+    input: commit_timing_xml,
+    output: 'commit-timing-v1-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+
+  # --- test_frame_pacing: fifo and commit timing against the compositor ---
+  test_frame_pacing = executable(
+    'test_frame_pacing',
+    files('test_frame_pacing.c'),
+    xdg_shell_client_h,
+    fifo_client_h,
+    fifo_code,
+    commit_timing_client_h,
+    commit_timing_code,
+    include_directories: [test_inc, integration_inc],
+    dependencies: [wayland_client, harness_dep],
+    install: false,
+  )
+  test('frame_pacing', test_frame_pacing, env: test_main_env, depends: fluxland_exe, timeout: 60, suite: 'integration')
+
   # --- test_multi_client: multi-client integration tests ---
   test_multi_client = executable(
     'test_multi_client',
@@ -677,6 +785,16 @@ if wayland_client.found()
     dependencies: [wayland_client],
     install: false,
   )
+
+  # --- fluxland-test-xshape: an X11 window with a Shape (Wine's focus
+  # overlays are rings), for the UI tests of XWayland shapes and stacking ---
+  if have_xwayland
+    executable('fluxland-test-xshape',
+      files('ui/tools/xshape_client.c'),
+      dependencies: [xcb, xcb_shape],
+      install: false,
+    )
+  endif
 endif
 
 # --- Visual regression tests (decoration rendering) ---
@@ -862,3 +980,17 @@ test('gesture', test_gesture)
 
 # --- Fuzz targets (requires -fsanitize=fuzzer support) ---
 subdir('fuzz')
+
+# --- test_eis: input emulation of X11 programs (an EIS server for XWayland) ---
+# eis.c is #included, with the server, config and menus stood in for.
+if have_eis
+  test_eis = executable(
+    'test_eis',
+    files('test_eis.c'),
+    include_directories: test_inc,
+    dependencies: [wlroots, wayland_server, libeis_dep, xcb],
+    c_args: ['-Wno-unused-parameter'],
+    install: false,
+  )
+  test('eis', test_eis)
+endif

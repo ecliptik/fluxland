@@ -150,6 +150,25 @@ A configurable panel providing:
 - Customizable tool layout (left/center/right regions)
 - Auto-hide and placement options (top, bottom, per-monitor)
 
+#### System tray: focus on a click
+
+fluxland is the StatusNotifierWatcher and draws the items' menus itself, so an
+item's window is shown or raised by the item's own program, which a
+compositor does not let take the focus by itself. What the user did is
+passed on the way xdg-activation defines:
+
+1. At a click on an item, or on an entry of its menu, fluxland makes an
+   xdg-activation token bound to the seat (`wm_activation_token_create()`)
+   and gives it to the item with KDE's `ProvideXdgActivationToken(s)`
+   method, just before the `Activate`, `SecondaryActivate`, `ContextMenu` or
+   dbusmenu `Event` call (D-Bus delivers them in order).
+2. A Wayland client presents it with `xdg_activation_v1.activate`
+   (`protocols.c`: a token with a seat is the user's). An X11 client sets the
+   token as its window's `_NET_STARTUP_ID` and sends `_NET_ACTIVE_WINDOW`
+   (`xwayland.c`: `wm_activation_token_consume()`).
+3. Without a token, focus-stealing prevention applies as for any request; an
+   item that does not know the method is only marked as wanting attention.
+
 ### 9. Slit
 
 A docking area modeled after Fluxbox's slit:
@@ -167,6 +186,27 @@ Handles X11 application compatibility:
 - Maps X11 window types to appropriate Wayland behaviors
 - Handles X11 selections (clipboard, primary) bridging
 - Supports X11 system tray protocol for legacy tray icons
+
+#### Input emulation (EIS)
+
+X11 programs that inject pointer and keyboard input with XTest (Steam
+Input's desktop controls, xdotool, remote desktops) would reach only
+Xwayland, not the compositor.  Xwayland sends such input to an EIS server
+at `$LIBEI_SOCKET` when it finds one; `eis.c` is that server (libeis), as
+KWin's and GNOME's are.  fluxland sets `LIBEI_SOCKET` before starting
+Xwayland (and strips it from the children it runs) and accepts only the
+Xwayland of its own display.
+
+What arrives is emitted as events of an emulated `wlr_pointer` (attached to
+the cursor, like a virtual pointer) and an emulated `wlr_keyboard` (in the
+keyboard group, so key bindings see it), then handled like any other input.
+Absolute motion is accepted over one region per output; input stops while
+the session is locked; buttons and keys a program leaves held are released
+when it stops or exits.  `session.xwayland.inputEmulation` says whether
+a program may: `ask` (a menu the first time a program does, with Allow,
+Always allow, which adds its name to `inputEmulation.allow`, and Deny),
+`allow` or `deny`, with name lists.  Without libei (`-Dlibei=disabled`)
+Xwayland keeps XTest to itself.
 
 ### 11. IPC Interface
 

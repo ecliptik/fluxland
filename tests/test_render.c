@@ -368,6 +368,60 @@ test_measure_text_width_basic(void)
 	printf("PASS: test_measure_text_width_basic\n");
 }
 
+/*
+ * Sizes in points are drawn at the session's resolution: twice the dpi,
+ * twice the width.  Pixel sizes (an X font's) do not follow it.
+ */
+static void
+test_text_follows_dpi(void)
+{
+	struct wm_font points = { .family = "sans", .size = 12 };
+	struct wm_font pixels = { .family = "sans", .size = 16,
+		.pixel_size = true };
+	struct wm_font described = { .family = "pango:DejaVu Sans 12" };
+
+	assert(wm_render_dpi() == WM_DEFAULT_DPI);
+	wm_render_set_dpi(96);
+	int p96 = wm_measure_text_width("Workspace 1", &points, 1.0f);
+	int x96 = wm_measure_text_width("Workspace 1", &pixels, 1.0f);
+	int d96 = wm_measure_text_width("Workspace 1", &described, 1.0f);
+	int h96 = wm_font_height(&points, 1.0f);
+
+	/* Changed: said so, and the (cached) measurements are redone */
+	assert(wm_render_set_dpi(192));
+	assert(wm_render_dpi() == 192);
+	int p192 = wm_measure_text_width("Workspace 1", &points, 1.0f);
+	/* (glyph advances are rounded at each size: about, not exactly) */
+	assert(p192 * 100 >= p96 * 185 && p192 * 100 <= p96 * 215);
+	int d192 = wm_measure_text_width("Workspace 1", &described, 1.0f);
+	assert(d192 * 100 >= d96 * 185 && d192 * 100 <= d96 * 215);
+	assert(wm_font_height(&points, 1.0f) * 100 >= h96 * 185);
+	assert(wm_measure_text_width("Workspace 1", &pixels, 1.0f) == x96);
+
+	/* The same again: not a change */
+	assert(!wm_render_set_dpi(192));
+
+	/* Out of range is brought in, and back to where it was */
+	wm_render_set_dpi(100000);
+	assert(wm_render_dpi() == 960);
+	wm_render_set_dpi(1);
+	assert(wm_render_dpi() == 24);
+	assert(wm_render_set_dpi(96));
+	assert(wm_measure_text_width("Workspace 1", &points, 1.0f) == p96);
+	printf("PASS: test_text_follows_dpi\n");
+}
+
+/* The init's dpi, else the style's, else 96 */
+static void
+test_dpi_resolve(void)
+{
+	assert(wm_dpi_resolve(0, 0) == 96);
+	assert(wm_dpi_resolve(0, 120) == 120);
+	assert(wm_dpi_resolve(144, 0) == 144);
+	assert(wm_dpi_resolve(144, 120) == 144);
+	printf("PASS: test_dpi_resolve\n");
+}
+
 static void
 test_measure_text_uses_ink_extents(void)
 {
@@ -734,6 +788,8 @@ main(void)
 	/* Text measurement */
 	test_measure_text_width_null();
 	test_measure_text_width_basic();
+	test_text_follows_dpi();
+	test_dpi_resolve();
 	test_measure_text_uses_ink_extents();
 	test_measure_text_bold_vs_regular();
 

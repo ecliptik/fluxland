@@ -38,6 +38,121 @@ write_file(const char *path, const char *contents)
 	fclose(f);
 }
 
+/*
+ * A tray icon's tooltip: a dark rounded box by default, set by the style's
+ * systray.tooltip.* keys -- read exactly, so the wildcards of a style (the
+ * *.color, *.font and *.textColor nearly every style has) leave it alone.
+ */
+static void
+test_systray_tooltip(void)
+{
+	struct wm_style *s = style_create();
+	assert(strcmp(s->systray_tooltip_font.family,
+		"pango:DejaVu Sans 11") == 0);
+	assert(s->systray_tooltip_color.r == 0 &&
+		s->systray_tooltip_color.g == 0 &&
+		s->systray_tooltip_color.b == 0);
+	assert(s->systray_tooltip_border_color.r == 0x19);
+	assert(s->systray_tooltip_text_color.r == 255);
+	assert(s->systray_tooltip_padding_left == 13);
+	assert(s->systray_tooltip_padding_right == 14);
+	assert(s->systray_tooltip_padding_top == 8);
+	assert(s->systray_tooltip_padding_bottom == 8);
+	assert(s->systray_tooltip_radius == 5);
+	assert(s->systray_tooltip_alpha == 255);
+
+	/* A style with wildcards and no tooltip keys: still the defaults */
+	write_file(TEST_STYLE,
+		"*.font: dejavu sans-8:bold\n"
+		"*.color: grey30\n"
+		"*.borderColor: grey60\n"
+		"*.textColor: red\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(strcmp(s->systray_tooltip_font.family,
+		"pango:DejaVu Sans 11") == 0);
+	assert(s->systray_tooltip_color.r == 0);
+	assert(s->systray_tooltip_border_color.r == 0x19);
+	assert(s->systray_tooltip_text_color.r == 255 &&
+		s->systray_tooltip_text_color.g == 255);
+
+	/* Set by the style, every part */
+	write_file(TEST_STYLE,
+		"systray.tooltip.font: pango:Terminus 9\n"
+		"systray.tooltip.color: #102030\n"
+		"systray.tooltip.borderColor: #405060\n"
+		"systray.tooltip.textColor: #708090\n"
+		"systray.tooltip.paddingLeft: 1\n"
+		"systray.tooltip.paddingRight: 2\n"
+		"systray.tooltip.paddingTop: 3\n"
+		"systray.tooltip.paddingBottom: 4\n"
+		"systray.tooltip.radius: 7\n"
+		"systray.tooltip.alpha: 128\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(strcmp(s->systray_tooltip_font.family,
+		"pango:Terminus 9") == 0);
+	assert(s->systray_tooltip_color.r == 0x10 &&
+		s->systray_tooltip_color.b == 0x30);
+	assert(s->systray_tooltip_border_color.r == 0x40);
+	assert(s->systray_tooltip_text_color.r == 0x70);
+	assert(s->systray_tooltip_padding_left == 1);
+	assert(s->systray_tooltip_padding_right == 2);
+	assert(s->systray_tooltip_padding_top == 3);
+	assert(s->systray_tooltip_padding_bottom == 4);
+	assert(s->systray_tooltip_radius == 7);
+	assert(s->systray_tooltip_alpha == 128);
+
+	/* Out of range: kept to what can be drawn */
+	write_file(TEST_STYLE,
+		"systray.tooltip.paddingTop: -5\n"
+		"systray.tooltip.radius: -1\n"
+		"systray.tooltip.alpha: 999\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->systray_tooltip_padding_top == 0);
+	assert(s->systray_tooltip_radius == 0);
+	assert(s->systray_tooltip_alpha == 255);
+
+	/* A key taken out of the style: the default again, on reload */
+	write_file(TEST_STYLE, "systray.tooltip.radius: 9\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->systray_tooltip_radius == 9);
+	write_file(TEST_STYLE, "toolbar.height: 20\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->systray_tooltip_radius == 5);
+
+	style_destroy(s);
+	printf("  PASS: test_systray_tooltip\n");
+}
+
+/* Test: dpi of the style (the init's overrides it; 0 = not set) */
+static void
+test_dpi(void)
+{
+	struct wm_style *s = style_create();
+	assert(s != NULL);
+	assert(s->dpi == 0);
+
+	write_file(TEST_STYLE, "dpi: 120\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->dpi == 120);
+
+	/* Out of range is not set; so is a key taken out, on reload */
+	write_file(TEST_STYLE, "dpi: 5000\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->dpi == 0);
+	write_file(TEST_STYLE, "dpi: -4\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->dpi == 0);
+	write_file(TEST_STYLE, "dpi: 96\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->dpi == 96);
+	write_file(TEST_STYLE, "toolbar.height: 20\n");
+	assert(style_load(s, TEST_STYLE) == 0);
+	assert(s->dpi == 0);
+
+	style_destroy(s);
+	printf("  PASS: test_dpi\n");
+}
+
 /* Test: style_create returns valid defaults, style_destroy frees cleanly */
 static void
 test_create_destroy(void)
@@ -441,6 +556,12 @@ static void
 test_font_parsing(void)
 {
 	struct wm_font f;
+
+	/* A Pango description, as GTK writes it, is kept whole */
+	f = style_parse_font("pango:DejaVu Sans Semi-Condensed 11");
+	assert(f.family != NULL);
+	assert(strcmp(f.family, "pango:DejaVu Sans Semi-Condensed 11") == 0);
+	free(f.family);
 
 	f = style_parse_font("monospace-12:bold");
 	assert(f.family != NULL);
@@ -1198,6 +1319,8 @@ main(void)
 	test_texture_parent_relative();
 	test_texture_null_empty();
 	test_font_parsing();
+	test_systray_tooltip();
+	test_dpi();
 	test_load_style_file();
 	test_load_nonexistent();
 	test_argb_conversion();

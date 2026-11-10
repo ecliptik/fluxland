@@ -733,6 +733,9 @@ style_border_width(const struct wm_style *style)
 
 /* --- Decoration create --- */
 
+static bool view_is_fixed_size(struct wm_view *view);
+static void configure_buttons_from_config(struct wm_decoration *deco);
+
 struct wm_decoration *
 wm_decoration_create(struct wm_view *view, struct wm_style *style)
 {
@@ -848,15 +851,8 @@ wm_decoration_create(struct wm_view *view, struct wm_style *style)
 	}
 
 	/* Button layout from config or defaults */
-	const char *left_str = "Stick";
-	const char *right_str = "Minimize Maximize Close";
-	if (view->server->config) {
-		if (view->server->config->titlebar_left)
-			left_str = view->server->config->titlebar_left;
-		if (view->server->config->titlebar_right)
-			right_str = view->server->config->titlebar_right;
-	}
-	wm_decoration_configure_buttons(deco, left_str, right_str);
+	deco->fixed_size = view_is_fixed_size(view);
+	configure_buttons_from_config(deco);
 
 	/* Render initial state */
 	wm_decoration_update(deco, style);
@@ -1156,13 +1152,24 @@ wm_decoration_refresh_geometry(struct wm_decoration *decoration,
 		return;
 	}
 
+	/* It may have become of one size, or stopped being */
+	bool fixed = view_is_fixed_size(decoration->view);
+	bool buttons_changed = fixed != decoration->fixed_size;
+	if (buttons_changed) {
+		decoration->fixed_size = fixed;
+		configure_buttons_from_config(decoration);
+	}
+
 	struct wlr_box geo;
 	wm_view_content_geometry(decoration->view, &geo);
-	if (geo.width > 0 && geo.height > 0 &&
-	    (geo.width != decoration->content_width ||
-	     geo.height != decoration->content_height)) {
-		decoration->content_width = geo.width;
-		decoration->content_height = geo.height;
+	if (buttons_changed ||
+	    (geo.width > 0 && geo.height > 0 &&
+	     (geo.width != decoration->content_width ||
+	      geo.height != decoration->content_height))) {
+		if (geo.width > 0 && geo.height > 0) {
+			decoration->content_width = geo.width;
+			decoration->content_height = geo.height;
+		}
 		layout_and_render(decoration, style);
 	}
 }
@@ -1178,6 +1185,52 @@ wm_decoration_set_focused(struct wm_decoration *decoration,
 	wm_decoration_update(decoration, style);
 }
 
+/* Take the buttons of a type out of a list (their nodes are already gone) */
+static void
+drop_buttons(struct wm_decor_button **buttons, int *count,
+	enum wm_button_type type)
+{
+	int kept = 0;
+	for (int i = 0; i < *count; i++)
+		if ((*buttons)[i].type != type)
+			(*buttons)[kept++] = (*buttons)[i];
+	*count = kept;
+	if (kept == 0) {
+		free(*buttons);
+		*buttons = NULL;
+	}
+}
+
+/*
+ * Whether the window is of one size: its minimum and maximum the same, as
+ * Fluxbox's FluxboxWindow::isResizable finds out.  Real Fluxbox leaves such
+ * a window's maximize button off (a dialog that can't grow can't be
+ * maximized).
+ */
+static bool
+view_is_fixed_size(struct wm_view *view)
+{
+	struct wm_size_hints h;
+	wm_view_size_hints(view, &h);
+	return h.min_w > 0 && h.min_h > 0 && h.min_w == h.max_w &&
+		h.min_h == h.max_h;
+}
+
+/* The titlebar buttons the config asks for (session.screen0.titlebar.*) */
+static void
+configure_buttons_from_config(struct wm_decoration *deco)
+{
+	const char *left_str = "Stick";
+	const char *right_str = "Minimize Maximize Close";
+	if (deco->view->server->config) {
+		if (deco->view->server->config->titlebar_left)
+			left_str = deco->view->server->config->titlebar_left;
+		if (deco->view->server->config->titlebar_right)
+			right_str = deco->view->server->config->titlebar_right;
+	}
+	wm_decoration_configure_buttons(deco, left_str, right_str);
+}
+
 void
 wm_decoration_configure_buttons(struct wm_decoration *decoration,
 	const char *left_str, const char *right_str)
@@ -1186,14 +1239,47 @@ wm_decoration_configure_buttons(struct wm_decoration *decoration,
 		return;
 	}
 
-	/* Free old buttons (but not their scene nodes, we'll recreate) */
-	free(decoration->buttons_left);
-	free(decoration->buttons_right);
+	/* The old buttons and their scene nodes (made again when drawn) */
+	for (int side = 0; side < 2; side++) {
+		struct wm_decor_button *old = side ?
+			decoration->buttons_right : decoration->buttons_left;
+		int count = side ? decoration->buttons_right_count :
+			decoration->buttons_left_count;
+		for (int i = 0; i < count; i++)
+			if (old[i].node)
+				wlr_scene_node_destroy(&old[i].node->node);
+		free(old);
+	}
 
 	decoration->buttons_left = parse_button_layout(left_str,
 		&decoration->buttons_left_count);
 	decoration->buttons_right = parse_button_layout(right_str,
 		&decoration->buttons_right_count);
+
+	/* A window that can't be resized can't be maximized: no button */
+	if (decoration->fixed_size) {
+		drop_buttons(&decoration->buttons_left,
+			&decoration->buttons_left_count, WM_BUTTON_MAXIMIZE);
+		drop_buttons(&decoration->buttons_right,
+			&decoration->buttons_right_count, WM_BUTTON_MAXIMIZE);
+	}
+
+	/* Motif's decorations name the buttons it wants, as to Fluxbox */
+	if (decoration->view && decoration->view->motif_buttons_set) {
+		static const struct { enum wm_button_type type; uint32_t bit; }
+		wants[] = {
+			{ WM_BUTTON_MENUICON, 16 }, { WM_BUTTON_ICONIFY, 32 },
+			{ WM_BUTTON_MAXIMIZE, 64 },
+		};
+		for (size_t i = 0; i < sizeof(wants) / sizeof(wants[0]); i++) {
+			if (decoration->view->motif_decor & wants[i].bit)
+				continue;
+			drop_buttons(&decoration->buttons_left,
+				&decoration->buttons_left_count, wants[i].type);
+			drop_buttons(&decoration->buttons_right,
+				&decoration->buttons_right_count, wants[i].type);
+		}
+	}
 }
 
 struct wm_decor_button *
@@ -1220,6 +1306,12 @@ wm_decoration_button_at(struct wm_decoration *decoration, double x, double y)
 	}
 
 	return NULL;
+}
+
+bool
+wm_decoration_has_titlebar(struct wm_decoration *decoration)
+{
+	return decoration && preset_has_titlebar(decoration->preset);
 }
 
 enum wm_decor_region
@@ -1523,15 +1615,24 @@ handle_xdg_decoration_destroy(struct wl_listener *listener, void *data)
 }
 
 /*
- * Always server-side. The mode goes out with a configure, which an
- * xdg_surface may only get from its initial commit on.
+ * Server-side, unless the window asks to draw its own (Electron's frameless
+ * windows do: Discord).  Then it is told so, and gets none of ours.  The
+ * mode goes out with a configure, which an xdg_surface may only get from its
+ * initial commit on.
  */
 static void
 xdg_decoration_send_mode(struct wm_xdg_decoration *deco)
 {
-	if (!deco->wlr_decoration->toplevel->base->initialized)
+	struct wlr_xdg_toplevel *toplevel = deco->wlr_decoration->toplevel;
+	if (!toplevel->base->initialized)
 		return;
+
+	bool client_side = deco->wlr_decoration->requested_mode ==
+		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+	wm_view_set_client_decorated(wm_view_from_surface(deco->server,
+		toplevel->base->surface), client_side);
 	wlr_xdg_toplevel_decoration_v1_set_mode(deco->wlr_decoration,
+		client_side ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE :
 		WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
@@ -1587,6 +1688,67 @@ handle_new_xdg_decoration(struct wl_listener *listener, void *data)
 	xdg_decoration_send_mode(deco);
 }
 
+/* --- KDE server-decoration protocol (GTK3, older Qt) --- */
+
+struct wm_kde_decoration {
+	struct wm_server *server;
+	struct wlr_server_decoration *wlr_decoration;
+	struct wl_listener mode;
+	struct wl_listener destroy;
+};
+
+/* Whether the window is framed by us follows the mode it was given: only
+ * server-side is ours to draw (client-side, or none at all, is not) */
+static void
+kde_decoration_apply(struct wm_kde_decoration *kd)
+{
+	struct wm_view *view = wm_view_from_surface(kd->server,
+		kd->wlr_decoration->surface);
+	if (view)
+		wm_view_set_client_decorated(view, kd->wlr_decoration->mode !=
+			WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+}
+
+static void
+handle_kde_decoration_mode(struct wl_listener *listener, void *data)
+{
+	struct wm_kde_decoration *kd = wl_container_of(listener, kd, mode);
+	kde_decoration_apply(kd);
+}
+
+static void
+handle_kde_decoration_destroy(struct wl_listener *listener, void *data)
+{
+	struct wm_kde_decoration *kd = wl_container_of(listener, kd, destroy);
+	wl_list_remove(&kd->mode.link);
+	wl_list_remove(&kd->destroy.link);
+	free(kd);
+}
+
+/* The listener for new ones, with the server it belongs to */
+struct wm_kde_listener {
+	struct wm_server *server;
+	struct wl_listener new_decoration;
+};
+static struct wm_kde_listener *kde_listener;
+
+static void
+handle_new_kde_decoration(struct wl_listener *listener, void *data)
+{
+	struct wm_kde_listener *kl =
+		wl_container_of(listener, kl, new_decoration);
+	struct wm_kde_decoration *kd = calloc(1, sizeof(*kd));
+	if (!kd)
+		return;
+	kd->server = kl->server;
+	kd->wlr_decoration = data;
+	kd->mode.notify = handle_kde_decoration_mode;
+	wl_signal_add(&kd->wlr_decoration->events.mode, &kd->mode);
+	kd->destroy.notify = handle_kde_decoration_destroy;
+	wl_signal_add(&kd->wlr_decoration->events.destroy, &kd->destroy);
+	kde_decoration_apply(kd);
+}
+
 void
 wm_xdg_decoration_init(struct wm_server *server)
 {
@@ -1608,10 +1770,21 @@ wm_xdg_decoration_init(struct wm_server *server)
 	 */
 	server->kde_decoration_mgr =
 		wlr_server_decoration_manager_create(server->wl_display);
-	if (server->kde_decoration_mgr)
+	if (server->kde_decoration_mgr) {
 		wlr_server_decoration_manager_set_default_mode(
 			server->kde_decoration_mgr,
 			WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+		/* A window that asks for it this way (GTK3 does) is framed by
+		 * us, as one that asks through xdg-decoration is */
+		kde_listener = calloc(1, sizeof(*kde_listener));
+		if (kde_listener) {
+			kde_listener->server = server;
+			kde_listener->new_decoration.notify =
+				handle_new_kde_decoration;
+			wl_signal_add(&server->kde_decoration_mgr->events
+				.new_decoration, &kde_listener->new_decoration);
+		}
+	}
 }
 
 void
@@ -1619,4 +1792,9 @@ wm_xdg_decoration_finish(struct wm_server *server)
 {
 	if (server->xdg_decoration_mgr)
 		wl_list_remove(&server->new_xdg_decoration.link);
+	if (kde_listener) {
+		wl_list_remove(&kde_listener->new_decoration.link);
+		free(kde_listener);
+		kde_listener = NULL;
+	}
 }

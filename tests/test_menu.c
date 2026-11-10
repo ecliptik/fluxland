@@ -41,8 +41,13 @@ int wm_measure_text_width(const char *text, const struct wm_font *f,
 	{ (void)f; (void)s;
 	  return text ? (int)(strlen(text) * 7) : 0; }
 void wm_slit_relayout(struct wm_slit *slit) { (void)slit; }
+/* A tray icon's menu entry (systray_menu.c): nothing is listening */
+void wm_systray_menu_activate(struct wm_server *server, const char *spec)
+	{ (void)server; (void)spec; }
 void wm_cut_corners(cairo_surface_t *s, int x, int y, int w, int h,
 	uint8_t c) { (void)s; (void)x; (void)y; (void)w; (void)h; (void)c; }
+bool wm_corner_cut_at(int w, int h, uint8_t c, int x, int y)
+	{ (void)w; (void)h; (void)c; (void)x; (void)y; return false; }
 int config_set_resource(struct wm_config *c, const char *k, const char *v)
 	{ (void)c; (void)k; (void)v; return 0; }
 int wm_font_height(const struct wm_font *f, float s)

@@ -269,6 +269,55 @@ test_invalid_alpha(void)
 }
 
 static void
+test_dpi_validation(void)
+{
+	write_file(TEST_INIT, "session.dpi: 96\n");
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(config_result_has_errors(&result) == false);
+	config_result_destroy(&result);
+
+	/* Out of range is a warning, as for every number */
+	write_file(TEST_INIT, "session.dpi: 5000\n");
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	bool found_range = false;
+	for (int i = 0; i < result.count; i++) {
+		if (result.errors[i].message &&
+		    strstr(result.errors[i].message, "out of range"))
+			found_range = true;
+	}
+	assert(found_range);
+	config_result_destroy(&result);
+	printf("  PASS: test_dpi_validation\n");
+}
+
+static void
+test_input_emulation_validation(void)
+{
+	write_file(TEST_INIT,
+		"session.xwayland.inputEmulation: ask\n"
+		"session.xwayland.inputEmulation.allow: steam xdotool\n"
+		"session.xwayland.inputEmulation.deny: x11vnc\n"
+	);
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(config_result_has_errors(&result) == false);
+	config_result_destroy(&result);
+
+	write_file(TEST_INIT,
+		"session.xwayland.inputEmulation: sometimes\n"
+	);
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(config_result_has_errors(&result) == true);
+	config_result_destroy(&result);
+	printf("  PASS: test_input_emulation_validation\n");
+}
+
+static void
 test_invalid_focus_model(void)
 {
 	write_file(TEST_INIT,
@@ -1078,6 +1127,24 @@ test_init_empty_value(void)
 	printf("  PASS: test_init_empty_value\n");
 }
 
+/* An empty text setting is a value (no buttons, no pins), not a mistake */
+static void
+test_init_empty_string_value(void)
+{
+	write_file(TEST_INIT,
+		"session.screen0.titlebar.left:\t\n"
+		"session.screen0.systray.pinLeft:\n"
+	);
+
+	struct config_result result;
+	config_result_init(&result);
+	validate_init_file(TEST_INIT, &result);
+	assert(result.count == 0);
+
+	config_result_destroy(&result);
+	printf("  PASS: test_init_empty_string_value\n");
+}
+
 /* ---- Init file: missing colon warning ---- */
 
 static void
@@ -1332,6 +1399,8 @@ main(void)
 	test_invalid_workspace_count();
 	test_invalid_alpha();
 	test_invalid_focus_model();
+	test_input_emulation_validation();
+	test_dpi_validation();
 	test_invalid_placement();
 	test_invalid_bool();
 	test_invalid_int();
@@ -1370,6 +1439,7 @@ main(void)
 	test_nonexistent_keys_file();
 	test_nonexistent_style_file();
 	test_init_empty_value();
+	test_init_empty_string_value();
 	test_init_missing_colon();
 	test_style_negative_integer();
 	test_keys_missing_colon();

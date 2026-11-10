@@ -172,6 +172,15 @@ wm_view_move_to_workspace(struct wm_view *view, struct wm_workspace *ws)
 	view->workspace = ws;
 }
 
+/* view.c: a frame asked for, whatever the window asked for */
+static int g_force_deco_count;
+void
+wm_view_force_decoration(struct wm_view *view)
+{
+	g_force_deco_count++;
+	view->no_decoration = false;
+}
+
 /* decoration.c */
 
 void
@@ -188,6 +197,14 @@ wm_decoration_set_shaded(struct wm_decoration *d, bool shaded,
 {
 	(void)style;
 	d->shaded = shaded;
+}
+
+/* pseudo_transparency.c */
+
+void
+wm_pseudo_update(struct wm_view *view)
+{
+	(void)view;
 }
 
 /* workspace.c */
@@ -606,6 +623,23 @@ TEST(test_states)
 	assert(late.maximized_horiz);
 }
 
+TEST(test_pseudo_transparent_attribute)
+{
+	load("[app] (a)\n  [PseudoTransparent] {yes}\n[end]\n"
+		"[app] (b)\n  [PseudoTransparent] {no}\n[end]\n"
+		"[app] (c)\n  [Workspace] {1}\n[end]\n");
+	struct wm_view a, b, c;
+	new_view(&a, "a", NULL, "");
+	new_view(&b, "b", NULL, "");
+	new_view(&c, "c", NULL, "");
+	map_view(&a);
+	map_view(&b);
+	map_view(&c);
+	assert(a.pseudo_rule == 1);	/* WM_PSEUDO_YES */
+	assert(b.pseudo_rule == 2);	/* WM_PSEUDO_NO */
+	assert(c.pseudo_rule == 0);	/* follows the global setting */
+}
+
 TEST(test_hidden_alpha_deco_protection)
 {
 	load("[app] (a)\n  [Hidden] {yes}\n  [Alpha] {300}\n"
@@ -632,6 +666,37 @@ TEST(test_hidden_alpha_deco_protection)
 	/* FocusNewWindow doesn't contradict an earlier Gain */
 	assert(c.focus_protection == WM_FOCUS_PROT_GAIN);
 	assert(c.decoration->preset == WM_DECOR_NORMAL);  /* 1027: +handle */
+}
+
+/*
+ * A [Deco] rule is an explicit wish: it gives a window a frame whatever the
+ * window asked for (a window drawing its own, one with Motif hints).  A
+ * {NONE} rule doesn't need to make one.
+ */
+TEST(test_deco_rule_forces_a_frame)
+{
+	load("[app] (a)\n  [Deco] {NORMAL}\n[end]\n"
+		"[app] (b)\n  [Deco] {NONE}\n[end]\n"
+		"[app] (c)\n  [Workspace] {2}\n[end]\n");
+	struct wm_view a, b, c;
+	new_view(&a, "a", NULL, "");
+	new_view(&b, "b", NULL, "");
+	new_view(&c, "c", NULL, "");
+	a.no_decoration = b.no_decoration = c.no_decoration = true;
+
+	g_force_deco_count = 0;
+	map_view(&a);
+	assert(g_force_deco_count == 1);
+	assert(!a.no_decoration);
+
+	map_view(&b);
+	assert(g_force_deco_count == 1);
+	assert(b.no_decoration);
+
+	/* No [Deco] at all: left as it asked */
+	map_view(&c);
+	assert(g_force_deco_count == 1);
+	assert(c.no_decoration);
 }
 
 TEST(test_workspace_jump)
@@ -839,10 +904,12 @@ main(void)
 	run_test_head();
 	run_test_states();
 	run_test_hidden_alpha_deco_protection();
+	run_test_deco_rule_forces_a_frame();
 	run_test_workspace_jump();
 	run_test_fluxland_1x_syntax();
 	run_test_group();
 	run_test_group_without_settings_and_startup();
+	run_test_pseudo_transparent_attribute();
 	run_test_remember_round_trip();
 	run_test_remember_replaces_fluxland_1x_entry();
 	run_test_close_saves_state();

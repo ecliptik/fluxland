@@ -131,13 +131,29 @@ class CompositorManager:
         # Build environment for compositor
         env = os.environ.copy()
         env["WLR_BACKENDS"] = "headless"
-        env["WLR_RENDERER"] = "pixman"
+        # pixman keeps the tests independent of a GPU; FLUXLAND_TEST_RENDERER=gles2
+        # runs them on the render node (XWayland then uses dmabufs, as on a desktop)
+        env["WLR_RENDERER"] = os.environ.get("FLUXLAND_TEST_RENDERER", "pixman")
         env["XDG_RUNTIME_DIR"] = self._runtime_dir
         env["XDG_CONFIG_HOME"] = os.path.join(self._tmp_dir, "config")
         env["HOME"] = self._tmp_dir
+        # Never the desktop's session bus: the compositor takes the
+        # StatusNotifierWatcher name there, from the running one, and gives
+        # it up for good when it exits (and a test would leave the real
+        # session's environment and tray icons in its hands)
+        env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + os.path.join(
+            self._runtime_dir, "no-bus")
         # Only the test's files: no defaults copied in on first start
         env["FLUXLAND_CONFIG_DIR"] = self._config_dir
         env["WLR_HEADLESS_OUTPUTS"] = str(outputs)
+        # Terminals the tests start (foot, xterm) run a shell, and the
+        # system's bashrc (Arch's /etc/bash.bashrc, systemd's OSC context)
+        # retitles its window to user@host:cwd at the first prompt, so a
+        # window opened with --title no longer has it by the time the test
+        # looks. A plain sh reads none of that.
+        env["SHELL"] = "/bin/sh"
+        for name in ("PROMPT_COMMAND", "BASH_ENV", "ENV", "PS1"):
+            env.pop(name, None)
         env.update(extra_env or {})
 
         # Launch compositor. Log to a file: an unread stderr pipe fills

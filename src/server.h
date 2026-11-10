@@ -46,6 +46,8 @@
 
 /* Forward declarations for types defined by other modules */
 struct wm_view;
+struct wm_eis;
+struct wm_xwayland_grab;
 struct wm_workspace;
 struct wm_config;
 struct wm_style;
@@ -67,6 +69,7 @@ struct wlr_single_pixel_buffer_manager_v1;
 struct wlr_gamma_control_manager_v1;
 struct wlr_data_control_manager_v1;
 struct wlr_presentation;
+struct wm_frame_pacing;
 struct wlr_virtual_keyboard_manager_v1;
 struct wlr_virtual_pointer_manager_v1;
 struct wlr_keyboard_shortcuts_inhibit_manager_v1;
@@ -102,7 +105,6 @@ struct wlr_drm_lease_v1_manager;
 struct wlr_transient_seat_manager_v1;
 struct wlr_linux_drm_syncobj_manager_v1;
 
-#define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
 
 enum wm_cursor_mode {
@@ -137,6 +139,9 @@ struct wm_server {
 	struct wlr_scene_tree *xdg_popup_tree;
 	struct wlr_scene_tree *layer_top;
 	struct wlr_scene_tree *layer_overlay;
+	/* X11 override-redirect windows (xlock's, menus, tooltips): above
+	 * everything but the session lock, as on X, so also the toolbar */
+	struct wlr_scene_tree *xwayland_override_tree;
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
@@ -197,6 +202,18 @@ struct wm_server {
 	double grab_x, grab_y;
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
+	/* The head a move began on (its place in the layout): a maximized
+	 * window goes with it to another (wm_view_settle_on_head) */
+	int grab_head_x, grab_head_y;
+	/* Where the pointer was when a move began, and whether a maximized
+	 * window has since been pulled off its maximize (wm_view_pull_restore) */
+	double grab_pointer_x, grab_pointer_y;
+	bool grab_pulled;
+	/* What a move began with: the window's place and size, when it was in
+	 * no snapped or maximized state, which a snap by the drag is to be
+	 * restored to */
+	struct wlr_box grab_start;
+	bool grab_start_plain;
 
 	/* Show window position/size overlay during move/resize */
 	bool show_position;
@@ -206,6 +223,12 @@ struct wm_server {
 	int snap_zone; /* enum wm_snap_zone from config.h */
 	struct wlr_box snap_preview_box;
 	struct wlr_scene_buffer *snap_preview;
+	/* The layout picker (snap_picker.c), and what a drop on it tiles */
+	struct wlr_scene_buffer *snap_picker;
+	bool snap_picker_shown;
+	int snap_picker_layout, snap_picker_cell; /* hovered, -1 for none */
+	struct wlr_box snap_picker_usable; /* the head it is on */
+	int snap_tile[4]; /* WM_SNAP_ZONE_TILE: the cell, x y w h in permille */
 
 	/* Wireframe move/resize (opaqueMove: false / opaqueResize: false) */
 	struct wlr_scene_rect *wireframe_rects[4]; /* top, right, bottom, left */
@@ -228,6 +251,15 @@ struct wm_server {
 		bool active;
 		struct wm_view *restore_minimized; /* de-iconified by cycling */
 	} focus_cycle;
+	/*
+	 * SnapStep down minimized this window while these modifiers were held:
+	 * SnapStep up restores it for as long as they stay held (Windows' undo
+	 * of a minimize by accident).
+	 */
+	struct {
+		struct wm_view *view;
+		uint32_t mods;	/* enum wlr_keyboard_modifier bits */
+	} snap_step;
 	uint64_t focus_seq_counter;
 
 	/* Auto-raise timer for focus-follows-mouse modes */
@@ -261,6 +293,13 @@ struct wm_server {
 	struct wl_list keymodes;    /* wm_keymode.link */
 	char *current_keymode;      /* active keymode name ("default") */
 	struct wm_chain_state chain_state; /* multi-key chain state */
+	struct wm_key_repeat {
+		struct wl_event_source *timer;
+		struct wm_keyboard *keyboard; /* holding the key */
+		uint32_t keycode;	/* the held key (xkb) */
+		bool requested;	/* the binding just run said Repeat */
+		int rate;	/* ...and how often a second (0: the default) */
+	} key_repeat;		/* a held Repeat binding (keyboard.c) */
 	uint32_t arg_key;	/* the key an Arg in a chain matched */
 	char *action_result;	/* ClientPatternTest's, for the IPC reply */
 	struct wm_window_mark {
@@ -364,6 +403,9 @@ struct wm_server {
 	/* Presentation time (wp-presentation-time for frame timing) */
 	struct wlr_presentation *presentation;
 
+	/* fifo-v1 and commit-timing-v1 (held content updates) */
+	struct wm_frame_pacing *frame_pacing;
+
 	/* Text input / input method relay (IME support) */
 	struct wm_text_input_relay text_input_relay;
 
@@ -432,6 +474,8 @@ struct wm_server {
 
 	/* Toolbar */
 	struct wm_toolbar *toolbar;
+	/* SetToolbarHead's choice, by connector name; NULL: toolbar.onhead */
+	char *toolbar_output_name;
 
 	/* Slit (dockapp container) */
 	struct wm_slit *slit;
@@ -458,6 +502,9 @@ struct wm_server {
 	struct wm_menu *custom_menu;
 	struct wm_dialog *dialog;	/* CommandDialog... while open */
 	struct wm_tooltip *tooltip;	/* tooltipDelay's window */
+
+	struct wm_eis *eis;	/* XTest input of X11 programs */
+	struct wm_xwayland_grab *xwayland_grab;	/* XGrabKeyboard of X11 programs */
 
 #ifdef WM_HAS_XWAYLAND
 	/* XWayland bridge */
@@ -494,6 +541,10 @@ void wm_server_reconfigure(struct wm_server *server);
 
 /* Read the keys file again; the key mode stays when keep_mode */
 void wm_server_reload_keys(struct wm_server *server, bool keep_mode);
+
+/* Update every window's frame after a style change and refit the windows
+ * that fill their head (maximized...); they keep their state */
+void wm_server_refresh_frames(struct wm_server *server);
 
 /* Load and apply a style chosen by the user (SetStyle, a menu's [style]) */
 void wm_server_set_style(struct wm_server *server, const char *path);

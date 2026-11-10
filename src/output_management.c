@@ -17,6 +17,7 @@
 #include <wlr/util/log.h>
 
 #include "output.h"
+#include "output_buffer.h"
 #include "output_management.h"
 #include "server.h"
 
@@ -73,6 +74,15 @@ handle_output_configuration(struct wm_server *server,
 		wlr_output_configuration_v1_send_failed(config);
 		wlr_output_configuration_v1_destroy(config);
 		return;
+	}
+
+	/* Outputs it turns on need a frame, which only the single-output
+	 * commit attaches by itself (see output_buffer.h) */
+	if (!wm_output_states_add_buffers(states, states_len)) {
+		wlr_log(WLR_ERROR, "%s", "output management: cannot make a "
+			"frame for an output");
+		wlr_output_configuration_v1_send_failed(config);
+		goto cleanup;
 	}
 
 	/* Test the configuration atomically against the backend */

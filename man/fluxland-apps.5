@@ -268,7 +268,10 @@ Whether the window takes the focus when it opens, overriding
 .BI [FocusProtection] " {" "flags" }
 A comma-separated list:
 .B Gain
-(take the focus when opening),
+(take the focus when opening, and when it asks to be activated: an
+application that raises its own window, such as one of a tray menu's
+entries, gets it while no Lock window is focused and the user is not
+typing),
 .B Refuse
 (don't),
 .B Deny
@@ -289,6 +292,14 @@ program's aspect ratio).
 .TP
 .BI [Dock] " {" yes | no }
 Put the window into the slit (fluxland extension).
+.TP
+.BI [PseudoTransparent] " {" yes | no }
+Whether the window, where it is translucent, shows the desktop behind it
+(the wallpaper) instead of the windows below it, whatever
+.B session.screen0.pseudoTransparency
+says (fluxland extension).  The same as the
+.B PseudoTransparent
+action.
 .TP
 .B [Tab]
 Accepted for compatibility; like Fluxbox, it has no effect.

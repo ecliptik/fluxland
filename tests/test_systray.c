@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* Enable systray code paths */
 #ifndef WM_HAS_SYSTRAY
@@ -38,6 +39,7 @@
 #define WLR_UTIL_BOX_H
 #define WM_SERVER_H
 #define WM_TOOLBAR_H
+#define WM_SYSTRAY_MENU_H
 #define WM_SYSTRAY_H
 #define DRM_FOURCC_H
 #define CAIRO_H
@@ -216,18 +218,28 @@ cairo_image_surface_create(cairo_format_t format, int width, int height)
 	return s;
 }
 
+/*
+ * In tests PNG files are not decoded: only those below g_png_dir (a test
+ * makes a directory of empty files) "load", as a small surface, and the
+ * path is kept.  Every other one fails, as the system's icons are not
+ * what is tested.
+ */
+static const char *g_png_dir;
+static char g_png_loaded[512];
+
 static cairo_surface_t *
 cairo_image_surface_create_from_png(const char *filename)
 {
-	(void)filename;
-	/* In tests we never actually load PNG files */
 	cairo_surface_t *s = calloc(1, sizeof(*s));
-	s->width = 0;
-	s->height = 0;
-	s->stride = 0;
-	s->data = NULL;
 	s->refcount = 1;
 	s->status = CAIRO_STATUS_INVALID_SIZE;
+	if (g_png_dir && !strncmp(filename, g_png_dir, strlen(g_png_dir))) {
+		snprintf(g_png_loaded, sizeof(g_png_loaded), "%s", filename);
+		s->width = s->height = 8;
+		s->stride = 32;
+		s->data = calloc(1, 8 * 32);
+		s->status = CAIRO_STATUS_SUCCESS;
+	}
 	return s;
 }
 
@@ -263,6 +275,12 @@ cairo_surface_status(cairo_surface_t *s)
 
 static void
 cairo_surface_flush(cairo_surface_t *s)
+{
+	(void)s;
+}
+
+static void
+cairo_surface_mark_dirty(cairo_surface_t *s)
 {
 	(void)s;
 }
@@ -455,16 +473,67 @@ int sd_bus_match_signal(sd_bus *bus, sd_bus_slot **slot,
 	return 0;
 }
 
+static int g_bus_events;
+static uint64_t g_bus_timeout;
+
 int sd_bus_get_fd(sd_bus *bus)
 {
 	(void)bus;
 	return -1;
 }
 
+int sd_bus_get_events(sd_bus *bus)
+{
+	(void)bus;
+	return g_bus_events;
+}
+
+int sd_bus_get_timeout(sd_bus *bus, uint64_t *timeout_usec)
+{
+	(void)bus;
+	*timeout_usec = g_bus_timeout;
+	return 0;
+}
+
 int sd_bus_process(sd_bus *bus, sd_bus_message **ret)
 {
 	(void)bus; (void)ret;
 	return g_sdbus_process_ret;
+}
+
+static sd_bus_message_handler_t g_last_async_callback;
+static void *g_last_async_userdata;
+static char g_last_async_member[32];
+/* the order of the calls on the item: ProvideXdgActivationToken, Activate */
+static char g_async_members[8][40];
+static char g_async_token[8][16];
+static int g_async_members_count;
+/* The format string of the last call: "(null)", or "(bad)" for a number
+ * that was passed in its place (a shifted argument list) */
+static char g_last_async_types[16];
+/* The process the bus says an item belongs to; 0: none known */
+static int g_creds_pid;
+
+int sd_bus_get_name_creds(sd_bus *bus, const char *name, uint64_t mask,
+	sd_bus_creds **creds)
+{
+	(void)bus; (void)name; (void)mask;
+	if (g_creds_pid <= 0)
+		return -2;
+	*creds = (sd_bus_creds *)&g_creds_pid;
+	return 0;
+}
+
+int sd_bus_creds_get_pid(sd_bus_creds *creds, pid_t *pid)
+{
+	*pid = *(int *)creds;
+	return 0;
+}
+
+sd_bus_creds *sd_bus_creds_unref(sd_bus_creds *creds)
+{
+	(void)creds;
+	return NULL;
 }
 
 int sd_bus_call_method_async(sd_bus *bus, sd_bus_slot **slot,
@@ -474,9 +543,35 @@ int sd_bus_call_method_async(sd_bus *bus, sd_bus_slot **slot,
 	const char *types, ...)
 {
 	(void)bus; (void)slot; (void)destination; (void)path;
-	(void)interface; (void)member; (void)callback; (void)userdata;
-	(void)types;
+	(void)interface; (void)types;
 	g_sdbus_call_method_async_count++;
+	g_last_async_callback = callback;
+	g_last_async_userdata = userdata;
+	snprintf(g_last_async_member, sizeof(g_last_async_member), "%s",
+		member);
+	if (types == NULL)
+		snprintf(g_last_async_types, sizeof(g_last_async_types),
+			"(null)");
+	else if ((uintptr_t)types < 4096)
+		snprintf(g_last_async_types, sizeof(g_last_async_types),
+			"(bad)");
+	else
+		snprintf(g_last_async_types, sizeof(g_last_async_types), "%s",
+			types);
+	if (g_async_members_count < 8) {
+		snprintf(g_async_members[g_async_members_count],
+			sizeof(g_async_members[0]), "%s", member);
+		g_async_token[g_async_members_count][0] = '\0';
+		if (strcmp(member, "ProvideXdgActivationToken") == 0) {
+			va_list ap;
+			va_start(ap, types);
+			snprintf(g_async_token[g_async_members_count],
+				sizeof(g_async_token[0]), "%s",
+				va_arg(ap, const char *));
+			va_end(ap);
+		}
+		g_async_members_count++;
+	}
 	return 0;
 }
 
@@ -524,7 +619,7 @@ int sd_bus_message_read(sd_bus_message *m, const char *types, ...)
 		*p3 = g_sdbus_read_str3;
 	} else if (strcmp(types, "v") == 0) {
 		const char *vtype = va_arg(ap, const char *);
-		if (strcmp(vtype, "s") == 0) {
+		if (strcmp(vtype, "s") == 0 || strcmp(vtype, "o") == 0) {
 			const char **p = va_arg(ap, const char **);
 			*p = g_sdbus_read_str1;
 		}
@@ -607,6 +702,47 @@ wl_event_source_remove(struct wl_event_source *source)
 	(void)source;
 }
 
+typedef int (*wl_event_loop_timer_func_t)(void *data);
+typedef void (*wl_event_loop_idle_func_t)(void *data);
+
+static struct wl_event_source *
+wl_event_loop_add_timer(struct wl_event_loop *loop,
+	wl_event_loop_timer_func_t func, void *data)
+{
+	(void)loop; (void)func; (void)data;
+	return NULL;
+}
+
+static struct wl_event_source *
+wl_event_loop_add_idle(struct wl_event_loop *loop,
+	wl_event_loop_idle_func_t func, void *data)
+{
+	(void)loop; (void)func; (void)data;
+	return NULL;
+}
+
+/* What the tray last asked of the event loop for sd-bus */
+static uint32_t g_fd_mask;
+static int g_fd_updates;
+static int g_timer_ms = -1;
+
+static int
+wl_event_source_fd_update(struct wl_event_source *source, uint32_t mask)
+{
+	(void)source;
+	g_fd_mask = mask;
+	g_fd_updates++;
+	return 0;
+}
+
+static int
+wl_event_source_timer_update(struct wl_event_source *source, int ms)
+{
+	(void)source;
+	g_timer_ms = ms;
+	return 0;
+}
+
 /* --- Stub wm types for server.h and toolbar.h --- */
 
 struct wm_toolbar {
@@ -633,6 +769,15 @@ struct wm_server {
 	struct wlr_scene_tree *layer_top;
 };
 
+/* protocols.h: the user's xdg-activation token ("" for none, as without a seat) */
+static const char *g_token_name;
+const char *wm_activation_token_create(struct wm_server *server);
+const char *wm_activation_token_create(struct wm_server *server)
+{
+	(void)server;
+	return g_token_name;
+}
+
 /* --- Systray header contents (normally from systray.h) --- */
 
 #define WM_SYSTRAY_ICON_SIZE 18
@@ -644,6 +789,11 @@ struct wm_systray_item {
 	char *id;
 	int order;
 	char *icon_name;
+	char *icon_theme_path;
+	char *menu_path;
+	bool is_menu;
+	char *title;
+	char *tooltip;
 	cairo_surface_t *icon_pixmap;
 	struct wlr_scene_buffer *icon_buf;
 	struct wm_systray *systray;
@@ -654,17 +804,22 @@ struct wm_systray {
 	struct wm_server *server;
 	sd_bus *bus;
 	struct wl_event_source *bus_event;
+	struct wl_event_source *bus_timer;
+	struct wl_event_source *bus_idle;
 	struct wl_list items;
 	int item_count;
 	struct wlr_scene_tree *scene_tree;
 	sd_bus_slot *watcher_slot;
 	sd_bus_slot *name_slot;
+	sd_bus_slot *signal_slots[3];
+	struct wl_list menu_requests;
 	int icon_size;
 	int x, y, width, height;
 	bool vertical;
 };
 
 /* Forward declarations of public API (normally from systray.h) */
+void wm_systray_bus_kick(struct wm_systray *systray);
 struct wm_systray *wm_systray_create(struct wm_server *server);
 void wm_systray_destroy(struct wm_systray *systray);
 void wm_systray_layout(struct wm_systray *systray, int x, int y,
@@ -672,9 +827,34 @@ void wm_systray_layout(struct wm_systray *systray, int x, int y,
 int wm_systray_get_width(struct wm_systray *systray);
 bool wm_systray_handle_click(struct wm_systray *systray,
 	double local_x, double local_y, uint32_t button);
+const char *wm_systray_tooltip_at(struct wm_systray *systray, double lx,
+	double ly);
 
 /* --- Include systray.c source directly --- */
 #include "pixel_buffer.c"
+/* systray_menu.c's entry points: what they were asked is remembered */
+static int g_menu_open_count;
+static char g_menu_open_bus[64];
+static char g_menu_open_path[64];
+static char g_menu_open_title[64];
+static int g_menu_open_x, g_menu_open_y;
+static void
+wm_systray_menu_open(struct wm_systray *systray, const char *bus_name,
+	const char *item_path, const char *menu_path, const char *title,
+	int x, int y)
+{
+	(void)systray; (void)item_path;
+	g_menu_open_count++;
+	snprintf(g_menu_open_bus, sizeof(g_menu_open_bus), "%s", bus_name);
+	snprintf(g_menu_open_path, sizeof(g_menu_open_path), "%s", menu_path);
+	snprintf(g_menu_open_title, sizeof(g_menu_open_title), "%s",
+		title ? title : "");
+	g_menu_open_x = x;
+	g_menu_open_y = y;
+}
+static void wm_systray_menu_cancel_all(struct wm_systray *systray)
+	{ (void)systray; }
+
 #include "../src/systray.c"
 
 /* --- Test helpers --- */
@@ -706,6 +886,12 @@ reset_globals(void)
 	g_sdbus_open_user_ret = -1;
 	g_sdbus_emit_signal_count = 0;
 	g_sdbus_call_method_async_count = 0;
+	g_async_members_count = 0;
+	g_creds_pid = 0;
+	g_last_async_callback = NULL;
+	g_last_async_userdata = NULL;
+	g_last_async_types[0] = '\0';
+	g_token_name = NULL;
 	g_sdbus_reply_method_return_count = 0;
 	g_sdbus_reply_method_errorf_count = 0;
 }
@@ -1065,6 +1251,108 @@ test_handle_click_buttons(void)
 }
 
 /*
+ * What the tray asks of the event loop for its D-Bus connection: readable
+ * always, writable only while sd-bus has something half sent (a socket is
+ * nearly always writable, and asking for that all the time kept the whole
+ * compositor busy), and a timer only while sd-bus has a timeout.
+ */
+static void
+test_bus_sources_follow_what_sd_bus_wants(void)
+{
+	struct wm_systray *systray = make_test_systray();
+	reset_globals();
+	/* any non-NULL bus or source will do: the stubs only record */
+	sd_bus *saved_bus = systray->bus;
+	systray->bus = (sd_bus *)systray;
+	systray->bus_event = (struct wl_event_source *)systray;
+	systray->bus_timer = (struct wl_event_source *)&systray->x;
+
+	g_bus_events = POLLIN;
+	g_bus_timeout = UINT64_MAX;
+	g_timer_ms = -1;
+	bus_sync_sources(systray);
+	assert(g_fd_mask & WL_EVENT_READABLE);
+	assert(!(g_fd_mask & WL_EVENT_WRITABLE));
+	assert(g_timer_ms == 0);	/* no timeout: the timer is off */
+
+	g_bus_events = POLLIN | POLLOUT;
+	bus_sync_sources(systray);
+	assert(g_fd_mask & WL_EVENT_WRITABLE);
+
+	/* a timeout in a moment: a timer of at least a millisecond */
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	g_bus_timeout = (uint64_t)now.tv_sec * 1000000 +
+		(uint64_t)now.tv_nsec / 1000 + 250000;
+	bus_sync_sources(systray);
+	assert(g_timer_ms >= 1 && g_timer_ms <= 251);
+	/* one that has passed already: as soon as can be */
+	g_bus_timeout = 1;
+	bus_sync_sources(systray);
+	assert(g_timer_ms == 1);
+
+	systray->bus = saved_bus;
+	systray->bus_event = NULL;
+	systray->bus_timer = NULL;
+	destroy_test_systray(systray);
+	printf("  PASS: test_bus_sources_follow_what_sd_bus_wants\n");
+}
+
+/*
+ * A left click on an icon that has a menu: Activate is tried, and the menu
+ * opens only if the application says it has no such method (Steam's
+ * libappindicator item has none, and its icon did nothing).
+ */
+static void
+test_left_click_menu_when_there_is_no_activate(void)
+{
+	struct wm_systray *systray = make_test_systray();
+	reset_globals();
+
+	struct wm_systray_item *item = add_test_item(systray, ":1.60", true);
+	item->menu_path = strdup("/org/ayatana/NotificationItem/steam/Menu");
+	item->is_menu = false;
+	wm_systray_layout(systray, 0, 0, 200, 24);
+
+	g_menu_open_count = 0;
+	g_last_async_callback = NULL;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	/* Activate was called, with a callback, and no menu yet */
+	assert(strcmp(g_last_async_member, "Activate") == 0);
+	assert(g_last_async_callback != NULL);
+	assert(g_menu_open_count == 0);
+
+	/* It had the method: nothing more */
+	g_sdbus_is_method_error_ret = 0;
+	g_last_async_callback(NULL, g_last_async_userdata, NULL);
+	assert(g_menu_open_count == 0);
+
+	/* It had none: the menu, where the click was */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	g_sdbus_is_method_error_ret = 1;
+	g_last_async_callback(NULL, g_last_async_userdata, NULL);
+	assert(g_menu_open_count == 1);
+	assert(strcmp(g_menu_open_bus, ":1.60") == 0);
+	assert(strcmp(g_menu_open_path,
+		"/org/ayatana/NotificationItem/steam/Menu") == 0);
+	g_sdbus_is_method_error_ret = 0;
+
+	/* The item went before the answer: nothing is done with it */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	void *stale = g_last_async_userdata;
+	sd_bus_message_handler_t cb = g_last_async_callback;
+	int opened = g_menu_open_count;
+	systray_item_destroy(item);
+	g_sdbus_is_method_error_ret = 1;
+	cb(NULL, stale, NULL);
+	assert(g_menu_open_count == opened);
+	g_sdbus_is_method_error_ret = 0;
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_left_click_menu_when_there_is_no_activate\n");
+}
+
+/*
  * Test 9: find_item_by_bus_name locates existing items and returns
  * NULL for non-existent ones.
  */
@@ -1361,7 +1649,7 @@ test_load_icon_null_name(void)
 {
 	reset_globals();
 
-	cairo_surface_t *result = load_icon_by_name(NULL, 18);
+	cairo_surface_t *result = load_icon_by_name(NULL, 18, NULL);
 	assert(result == NULL);
 
 	printf("  PASS: test_load_icon_null_name\n");
@@ -1375,10 +1663,91 @@ test_load_icon_empty_name(void)
 {
 	reset_globals();
 
-	cairo_surface_t *result = load_icon_by_name("", 18);
+	cairo_surface_t *result = load_icon_by_name("", 18, NULL);
 	assert(result == NULL);
 
 	printf("  PASS: test_load_icon_empty_name\n");
+}
+
+/* An empty file at DIR/REL, the directories in between made */
+static void
+touch_test_file(const char *dir, const char *rel)
+{
+	char path[512];
+	snprintf(path, sizeof(path), "%s/%s", dir, rel);
+	for (char *p = strchr(path + strlen(dir) + 1, '/'); p;
+	     p = strchr(p + 1, '/')) {
+		*p = '\0';
+		mkdir(path, 0755);
+		*p = '/';
+	}
+	FILE *f = fopen(path, "w");
+	assert(f);
+	fclose(f);
+}
+
+/* The path load_icon_by_name loaded the icon from, without the directory */
+static const char *
+loaded_from(const char *dir, const char *name, const char *theme_path)
+{
+	g_png_loaded[0] = '\0';
+	cairo_surface_t *img = load_icon_by_name(name, 22, theme_path);
+	if (!img) {
+		return NULL;
+	}
+	cairo_surface_destroy(img);
+	return g_png_loaded + strlen(dir) + 1;
+}
+
+/*
+ * IconThemePath: the directory of icons an application brings along
+ * (Spotify's, flat) is searched first; a theme inside it works too; a
+ * path that isn't absolute, or has no such icon, is not used.
+ */
+static void
+test_load_icon_from_item_theme_path(void)
+{
+	reset_globals();
+	char dir[] = "/tmp/fluxland-systray-XXXXXX";
+	assert(mkdtemp(dir));
+	g_png_dir = dir;
+
+	touch_test_file(dir, "flat/spotify-test-icon.png");
+	touch_test_file(dir, "themed/hicolor/22x22/apps/only-in-theme.png");
+	touch_test_file(dir, "bare/24x24/status/bare-theme.png");
+	touch_test_file(dir, "both/both-icon.png");
+	touch_test_file(dir, "both/hicolor/22x22/apps/both-icon.png");
+	char flat[600], themed[600], bare[600], both[600];
+	snprintf(flat, sizeof(flat), "%s/flat", dir);
+	snprintf(themed, sizeof(themed), "%s/themed", dir);
+	snprintf(bare, sizeof(bare), "%s/bare", dir);
+	snprintf(both, sizeof(both), "%s/both", dir);
+
+	/* Flat: DIR/name.png */
+	assert(!strcmp(loaded_from(dir, "spotify-test-icon", flat),
+		"flat/spotify-test-icon.png"));
+	/* A theme laid out as hicolor, and one without that directory */
+	assert(!strcmp(loaded_from(dir, "only-in-theme", themed),
+		"themed/hicolor/22x22/apps/only-in-theme.png"));
+	assert(!strcmp(loaded_from(dir, "bare-theme", bare),
+		"bare/24x24/status/bare-theme.png"));
+	/* The file named is the first choice */
+	assert(!strcmp(loaded_from(dir, "both-icon", both),
+		"both/both-icon.png"));
+
+	/* Not there, or not an absolute path: no icon (and no crash) */
+	assert(loaded_from(dir, "not-there-anywhere", flat) == NULL);
+	assert(loaded_from(dir, "spotify-test-icon", "flat") == NULL);
+	assert(loaded_from(dir, "spotify-test-icon", "") == NULL);
+	assert(loaded_from(dir, "spotify-test-icon", NULL) == NULL);
+	/* A name is a file name, never a path out of the directory */
+	assert(loaded_from(dir, "../flat/spotify-test-icon", themed) == NULL);
+
+	g_png_dir = NULL;
+	char cmd[700];
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", dir);
+	assert(system(cmd) == 0);
+	printf("  PASS: test_load_icon_from_item_theme_path\n");
 }
 
 /*
@@ -1572,6 +1941,17 @@ test_systray_destroy_null(void)
 	printf("  PASS: test_systray_destroy_null\n");
 }
 
+/* An async reply's userdata: the callback finds the item in the list and frees this */
+static struct item_query *
+make_query(struct wm_systray *systray, struct wm_systray_item *item)
+{
+	struct item_query *q = malloc(sizeof(*q));
+	assert(q);
+	q->systray = systray;
+	q->item = item;
+	return q;
+}
+
 /*
  * Test 29: handle_get_id with successful read sets item->id.
  */
@@ -1588,7 +1968,7 @@ test_handle_get_id_success(void)
 	g_sdbus_read_str1 = "myapp";
 	g_sdbus_is_method_error_ret = 0;
 
-	int ret = handle_get_id(NULL, item, NULL);
+	int ret = handle_get_id(NULL, make_query(systray, item), NULL);
 	assert(ret == 0);
 	assert(item->id != NULL);
 	assert(strcmp(item->id, "myapp") == 0);
@@ -1609,7 +1989,7 @@ test_handle_get_id_error(void)
 
 	g_sdbus_is_method_error_ret = 1;
 
-	int ret = handle_get_id(NULL, item, NULL);
+	int ret = handle_get_id(NULL, make_query(systray, item), NULL);
 	assert(ret == 0);
 	assert(item->id == NULL); /* not set */
 
@@ -1633,7 +2013,7 @@ test_handle_get_icon_name_success(void)
 	g_sdbus_read_str1 = "network-wireless";
 	g_sdbus_is_method_error_ret = 0;
 
-	int ret = handle_get_icon_name(NULL, item, NULL);
+	int ret = handle_get_icon_name(NULL, make_query(systray, item), NULL);
 	assert(ret == 0);
 	assert(item->icon_name != NULL);
 	assert(strcmp(item->icon_name, "network-wireless") == 0);
@@ -1659,7 +2039,7 @@ test_handle_get_icon_name_error(void)
 
 	g_sdbus_is_method_error_ret = 1;
 
-	int ret = handle_get_icon_name(NULL, item, NULL);
+	int ret = handle_get_icon_name(NULL, make_query(systray, item), NULL);
 	assert(ret == 0);
 	assert(item->icon_name == NULL);
 
@@ -1693,8 +2073,9 @@ test_register_item_bus_name(void)
 	assert(item != NULL);
 	assert(strcmp(item->object_path, "/StatusNotifierItem") == 0);
 
-	/* query_item_properties should have been called (2 async calls) */
-	assert(g_sdbus_call_method_async_count == 2);
+	/* query_item_properties should have been called (8 async calls: Id, IconThemePath, IconName, IconPixmap, ToolTip,
+	 * Title, Menu, ItemIsMenu) */
+	assert(g_sdbus_call_method_async_count == 8);
 
 	destroy_test_systray(systray);
 	printf("  PASS: test_register_item_bus_name\n");
@@ -2002,8 +2383,9 @@ test_query_item_properties(void)
 
 	query_item_properties(systray, item);
 
-	/* Should have made 2 async method calls (Id + IconName) */
-	assert(g_sdbus_call_method_async_count == 2);
+	/* Should have made 8 async method calls (Id, IconThemePath, IconName,
+	 * IconPixmap, ToolTip, Title, Menu, ItemIsMenu) */
+	assert(g_sdbus_call_method_async_count == 8);
 
 	destroy_test_systray(systray);
 	printf("  PASS: test_query_item_properties\n");
@@ -2083,6 +2465,325 @@ test_pin_order(void)
 	printf("  PASS: pin_order\n");
 }
 
+/*
+ * Test: a reply for an item that is gone (its application quit) is
+ * ignored, not used.
+ */
+static void
+test_query_reply_for_gone_item(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.d0", false);
+	struct item_query *q = make_query(systray, item);
+
+	/* The item goes before the reply comes */
+	systray_item_destroy(item);
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = "late";
+	g_sdbus_is_method_error_ret = 0;
+	int ret = handle_get_id(NULL, q, NULL);
+	assert(ret == 0);
+	assert(systray->item_count == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_query_reply_for_gone_item\n");
+}
+
+/*
+ * Test: set_tooltip puts the title, then the description, on lines.
+ */
+static void
+test_set_tooltip_text(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.d1", false);
+
+	set_tooltip(item, "BAT0", "Charge: 99%\nPower: connected");
+	assert(item->tooltip != NULL);
+	assert(strcmp(item->tooltip, "BAT0\nCharge: 99%\nPower: connected") == 0);
+
+	/* Carriage returns and trailing line breaks go */
+	set_tooltip(item, "T", "a\r\nb\n\n");
+	assert(strcmp(item->tooltip, "T\na\nb") == 0);
+
+	set_tooltip(item, "Only a title", "");
+	assert(strcmp(item->tooltip, "Only a title") == 0);
+
+	set_tooltip(item, "", "Only text");
+	assert(strcmp(item->tooltip, "Only text") == 0);
+
+	set_tooltip(item, "", "");
+	assert(item->tooltip == NULL);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_set_tooltip_text\n");
+}
+
+/*
+ * Test: wm_systray_tooltip_at finds the icon under the pointer, in
+ * layout coordinates, and falls back to the title and the id.
+ */
+static void
+test_tooltip_at(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *a = add_test_item(systray, ":1.d2", true);
+	struct wm_systray_item *b = add_test_item(systray, ":1.d3", true);
+	struct wm_systray_item *c = add_test_item(systray, ":1.d4", true);
+	a->tooltip = strdup("first");
+	b->title = strdup("second title");
+	c->id = strdup("third-id");
+
+	/* The tray at (100, 50), 24 high: icons at x=102, 122, 142; y=53 */
+	wm_systray_layout(systray, 100, 50, 200, 24);
+
+	const char *t = wm_systray_tooltip_at(systray, 110.0, 60.0);
+	assert(t && strcmp(t, "first") == 0);
+	t = wm_systray_tooltip_at(systray, 130.0, 60.0);
+	assert(t && strcmp(t, "second title") == 0);
+	t = wm_systray_tooltip_at(systray, 150.0, 60.0);
+	assert(t && strcmp(t, "third-id") == 0);
+
+	/* Between icons, past them, above them, elsewhere in the toolbar */
+	assert(wm_systray_tooltip_at(systray, 121.0, 60.0) == NULL);
+	assert(wm_systray_tooltip_at(systray, 300.0, 60.0) == NULL);
+	assert(wm_systray_tooltip_at(systray, 110.0, 51.0) == NULL);
+	assert(wm_systray_tooltip_at(systray, 10.0, 60.0) == NULL);
+	assert(wm_systray_tooltip_at(NULL, 110.0, 60.0) == NULL);
+
+	/* A click lands on the same icons, wherever the tray is */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110) == true);
+	assert(wm_systray_handle_click(systray, 110.0, 60.0, 0x110) == false);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_tooltip_at\n");
+}
+
+/*
+ * Test: IconPixmap's ARGB bytes become premultiplied native pixels.
+ */
+static void
+test_pixmap_to_surface(void)
+{
+	reset_globals();
+
+	/* 2x1: opaque red, then half-transparent pure green (A,R,G,B) */
+	const uint8_t argb[] = {
+		0xff, 0xff, 0x00, 0x00,
+		0x80, 0x00, 0xff, 0x00,
+	};
+	cairo_surface_t *s = pixmap_to_surface(argb, 2, 1);
+	assert(s != NULL);
+	assert(cairo_image_surface_get_width(s) == 2);
+	assert(cairo_image_surface_get_height(s) == 1);
+
+	const uint32_t *px = (const uint32_t *)cairo_image_surface_get_data(s);
+	assert(px[0] == 0xffff0000u);
+	/* 0xff * 0x80 / 255, rounded, is 0x80 */
+	assert(px[1] == 0x80008000u);
+
+	cairo_surface_destroy(s);
+	printf("  PASS: test_pixmap_to_surface\n");
+}
+
+/*
+ * Test: where a click goes -- an icon with a menu shows it (right
+ * button; the left one too when the icon is only a menu), the others get
+ * the item's own Activate / ContextMenu / SecondaryActivate.
+ */
+static void
+test_click_routing_with_menu(void)
+{
+	reset_globals();
+	g_menu_open_count = 0;
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.e0", true);
+	item->id = strdup("the-app");
+	wm_systray_layout(systray, 100, 50, 200, 24);
+
+	/* No menu: the item is called, nothing is shown */
+	int before = g_sdbus_call_method_async_count;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x111));
+	assert(g_menu_open_count == 0);
+	assert(g_sdbus_call_method_async_count == before + 1);
+
+	/* A menu: the right button shows it, nobody is called */
+	item->menu_path = strdup("/MenuBar");
+	before = g_sdbus_call_method_async_count;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x111));
+	assert(g_menu_open_count == 1);
+	assert(strcmp(g_menu_open_bus, ":1.e0") == 0);
+	assert(strcmp(g_menu_open_path, "/MenuBar") == 0);
+	assert(strcmp(g_menu_open_title, "the-app") == 0);
+	assert(g_menu_open_x == 110 && g_menu_open_y == 60);
+	assert(g_sdbus_call_method_async_count == before);
+
+	/* The left button still activates it... */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	assert(g_menu_open_count == 1);
+	assert(g_sdbus_call_method_async_count == before + 1);
+
+	/* ...unless it is only a menu; its title is the one it gave */
+	item->is_menu = true;
+	item->title = strdup("The App");
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	assert(g_menu_open_count == 2);
+	assert(strcmp(g_menu_open_title, "The App") == 0);
+
+	/* The middle button is always the item's */
+	before = g_sdbus_call_method_async_count;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x112));
+	assert(g_menu_open_count == 2);
+	assert(g_sdbus_call_method_async_count == before + 1);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_click_routing_with_menu\n");
+}
+
+/*
+ * Test: a click on an item gives it the user's xdg-activation token first,
+ * so what it does about the click (focusing its window) is the user's doing.
+ */
+static void
+test_click_provides_an_activation_token(void)
+{
+	reset_globals();
+	g_token_name = "tok-1";
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.f0", true);
+	wm_systray_layout(systray, 100, 50, 200, 24);
+
+	/* The left button: the token, then Activate */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	assert(g_async_members_count == 2);
+	assert(strcmp(g_async_members[0], "ProvideXdgActivationToken") == 0);
+	assert(strcmp(g_async_token[0], "tok-1") == 0);
+	assert(strcmp(g_async_members[1], "Activate") == 0);
+
+	/* The middle button and an item with a menu: the same */
+	g_async_members_count = 0;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x112));
+	assert(strcmp(g_async_members[0], "ProvideXdgActivationToken") == 0);
+	assert(strcmp(g_async_members[1], "SecondaryActivate") == 0);
+	g_async_members_count = 0;
+	item->menu_path = strdup("/MenuBar");
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	assert(strcmp(g_async_members[0], "ProvideXdgActivationToken") == 0);
+	assert(strcmp(g_async_members[1], "Activate") == 0);
+
+	/* The menu shown by the tray is no call on the item (its entries are) */
+	g_async_members_count = 0;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x111));
+	assert(g_async_members_count == 0);
+
+	/* No token to give (no seat): only the call */
+	g_async_members_count = 0;
+	g_token_name = NULL;
+	item->menu_path = NULL;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x110));
+	assert(g_async_members_count == 1);
+	assert(strcmp(g_async_members[0], "Activate") == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_click_provides_an_activation_token\n");
+}
+
+/*
+ * Test: a call on the item (SecondaryActivate here) carries its x and y, and
+ * with activationGrace its reply ends the grant. The arguments of the call
+ * once slipped by one place, which made the format string the grant's id (a
+ * small number the bus library then read as a pointer: a crash when a tray
+ * menu was closed).
+ */
+static void
+test_item_method_call_arguments(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	add_test_item(systray, ":1.f0", true);
+	wm_systray_layout(systray, 100, 50, 200, 24);
+
+	/* No grace: no reply to wait for, and the coordinates are there */
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x112));
+	assert(strcmp(g_last_async_member, "SecondaryActivate") == 0);
+	assert(strcmp(g_last_async_types, "ii") == 0);
+	assert(g_last_async_callback == NULL);
+	assert(g_last_async_userdata == NULL);
+
+	/* The grace on, and the item's process known: the grant's id goes
+	 * back to the reply, and the format string is still the format */
+	struct wm_config config = {0};
+	config.systray_activation_grace_ms = 1000;
+	test_server.config = &config;
+	g_creds_pid = 4242;
+	assert(wm_systray_handle_click(systray, 10.0, 10.0, 0x112));
+	assert(strcmp(g_last_async_member, "SecondaryActivate") == 0);
+	assert(strcmp(g_last_async_types, "ii") == 0);
+	assert(g_last_async_callback == wm_systray_grant_reply);
+	assert(g_last_async_userdata != NULL);
+
+	test_server.config = NULL;
+	destroy_test_systray(systray);
+	printf("  PASS: test_item_method_call_arguments\n");
+}
+
+/*
+ * Test: a menu entry's item gets the token, found by its menu.
+ */
+static void
+test_menu_token_goes_to_the_item_of_the_menu(void)
+{
+	reset_globals();
+	g_token_name = "tok-2";
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *a = add_test_item(systray, ":1.f1", true);
+	struct wm_systray_item *b = add_test_item(systray, ":1.f2", true);
+	a->menu_path = strdup("/MenuA");
+	b->menu_path = strdup("/MenuB");
+
+	wm_systray_provide_menu_token(systray, ":1.f2", "/MenuB");
+	assert(g_async_members_count == 1);
+	assert(strcmp(g_async_members[0], "ProvideXdgActivationToken") == 0);
+
+	/* An unknown menu: nothing */
+	g_async_members_count = 0;
+	wm_systray_provide_menu_token(systray, ":1.f2", "/MenuA");
+	wm_systray_provide_menu_token(systray, ":1.zz", "/MenuB");
+	assert(g_async_members_count == 0);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_menu_token_goes_to_the_item_of_the_menu\n");
+}
+
+/*
+ * Test: the Menu and ItemIsMenu properties; "/" means no menu.
+ */
+static void
+test_handle_get_menu(void)
+{
+	reset_globals();
+	struct wm_systray *systray = make_test_systray();
+	struct wm_systray_item *item = add_test_item(systray, ":1.e1", false);
+
+	g_sdbus_read_ret = 0;
+	g_sdbus_read_str1 = "/com/canonical/dbusmenu";
+	g_sdbus_is_method_error_ret = 0;
+	assert(handle_get_menu(NULL, make_query(systray, item), NULL) == 0);
+	assert(item->menu_path &&
+		strcmp(item->menu_path, "/com/canonical/dbusmenu") == 0);
+
+	g_sdbus_read_str1 = "/";
+	assert(handle_get_menu(NULL, make_query(systray, item), NULL) == 0);
+	assert(item->menu_path == NULL);
+
+	destroy_test_systray(systray);
+	printf("  PASS: test_handle_get_menu\n");
+}
+
 int
 main(void)
 {
@@ -2096,6 +2797,8 @@ main(void)
 	test_handle_click_hit();
 	test_handle_click_empty();
 	test_handle_click_buttons();
+	test_left_click_menu_when_there_is_no_activate();
+	test_bus_sources_follow_what_sd_bus_wants();
 	test_find_item_by_bus_name();
 	test_item_destroy();
 	test_layout_small_height();
@@ -2108,6 +2811,7 @@ main(void)
 	test_item_update_scene_placeholder();
 	test_load_icon_null_name();
 	test_load_icon_empty_name();
+	test_load_icon_from_item_theme_path();
 	test_buffer_from_cairo_valid();
 	test_buffer_from_cairo_null();
 	test_buffer_from_cairo_zero();
@@ -2120,6 +2824,15 @@ main(void)
 	test_handle_get_id_error();
 	test_handle_get_icon_name_success();
 	test_handle_get_icon_name_error();
+	test_query_reply_for_gone_item();
+	test_set_tooltip_text();
+	test_tooltip_at();
+	test_pixmap_to_surface();
+	test_click_routing_with_menu();
+	test_click_provides_an_activation_token();
+	test_item_method_call_arguments();
+	test_menu_token_goes_to_the_item_of_the_menu();
+	test_handle_get_menu();
 	test_register_item_bus_name();
 	test_register_item_object_path();
 	test_register_item_null_sender();

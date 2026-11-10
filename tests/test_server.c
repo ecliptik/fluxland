@@ -356,6 +356,7 @@ enum wm_workspace_mode {
 
 struct wm_config {
 	int focus_policy;
+	int dpi;
 	bool show_window_position;
 	char *keys_file;
 	char *style_file;
@@ -400,7 +401,7 @@ struct wm_view {
 };
 
 /* Forward declares for pointer types */
-struct wm_style { int dummy; };
+struct wm_style { int dpi; };
 struct wm_menu { int dummy; };
 struct wm_toolbar { int dummy; };
 struct wm_slit { int dummy; };
@@ -409,7 +410,6 @@ struct wm_wallpaper { int dummy; };
 struct wm_ws_transition { int dummy; };
 struct wm_atspi_bridge { int dummy; };
 
-#define WM_XCURSOR_DEFAULT "left_ptr"
 #define WM_XCURSOR_SIZE 24
 #define WM_WLR_COMPOSITOR_VERSION 6
 
@@ -437,6 +437,7 @@ struct wm_server {
 	struct wlr_scene_tree *view_layer_normal;
 	struct wlr_scene_tree *view_layer_above;
 	struct wlr_scene_tree *xdg_popup_tree;
+	struct wlr_scene_tree *xwayland_override_tree;
 	struct wlr_scene_tree *layer_top;
 	struct wlr_scene_tree *layer_overlay;
 
@@ -617,6 +618,7 @@ struct wm_server {
 	struct wlr_linux_drm_syncobj_manager_v1 *syncobj_mgr;
 
 	struct wm_toolbar *toolbar;
+	char *toolbar_output_name;
 	struct wm_slit *slit;
 	struct wm_wallpaper *wallpaper;
 	bool style_background;
@@ -946,6 +948,20 @@ wlr_xcursor_manager_destroy(struct wlr_xcursor_manager *mgr)
 /* --- fluxland module stubs --- */
 
 static void wm_render_cleanup(void) { }
+static int g_stub_dpi = 96;
+static int
+wm_dpi_resolve(int init_dpi, int style_dpi)
+{
+	return init_dpi > 0 ? init_dpi : style_dpi > 0 ? style_dpi : 96;
+}
+static bool
+wm_render_set_dpi(int dpi)
+{
+	bool changed = dpi != g_stub_dpi;
+	g_stub_dpi = dpi;
+	return changed;
+}
+static int wm_render_dpi(void) { return g_stub_dpi; }
 
 static void config_reload(struct wm_config *config)
 {
@@ -1172,6 +1188,13 @@ static void wm_slit_destroy(struct wm_slit *slit)
 	(void)slit;
 }
 
+static int g_refit_all_count;
+static void wm_view_refit_all(struct wm_server *server)
+{
+	(void)server;
+	g_refit_all_count++;
+}
+
 static void wm_decoration_update(struct wm_decoration *dec,
 	struct wm_style *style)
 {
@@ -1205,6 +1228,7 @@ static void wm_fractional_scale_init(struct wm_server *s) { (void)s; }
 static void wm_foreign_toplevel_init(struct wm_server *s) { (void)s; }
 static void wm_viewporter_init(struct wm_server *s) { (void)s; }
 static void wm_presentation_init(struct wm_server *s) { (void)s; }
+static void wm_frame_pacing_init(struct wm_server *s) { (void)s; }
 static void wm_input_init(struct wm_server *s) { (void)s; }
 static void wm_input_finish(struct wm_server *s) { (void)s; }
 static void wm_protocols_init(struct wm_server *s) { (void)s; }
@@ -1221,6 +1245,10 @@ static void wm_drm_syncobj_init(struct wm_server *s) { (void)s; }
 static void wm_drm_syncobj_finish(struct wm_server *s) { (void)s; }
 static void wm_xwayland_init(struct wm_server *s) { (void)s; }
 static void wm_xwayland_finish(struct wm_server *s) { (void)s; }
+static void wm_xwayland_apply_resources(struct wm_server *s) { (void)s; }
+static void wm_eis_init(struct wm_server *s) { (void)s; }
+static void wm_xwayland_grab_init(struct wm_server *s) { (void)s; }
+static void wm_eis_finish(struct wm_server *s) { (void)s; }
 static struct wm_wallpaper *wm_wallpaper_create(struct wm_server *s) { (void)s; return NULL; }
 static void wm_wallpaper_destroy(struct wm_wallpaper *wp) { (void)wp; }
 static void wm_wallpaper_reload(struct wm_wallpaper *wp) { (void)wp; }

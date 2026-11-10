@@ -102,6 +102,9 @@ struct wm_decoration {
 	struct wm_decor_button *buttons_right;
 	int buttons_right_count;
 
+	/* A window of one size has no maximize button (Fluxbox's) */
+	bool fixed_size;
+
 	/* Decoration state */
 	bool focused;
 	bool shaded;
@@ -177,6 +180,13 @@ struct wm_decor_button *wm_decoration_button_at(
  * Determine what region was clicked at (x, y) relative to the
  * decoration tree.
  */
+/*
+ * Whether the frame has a titlebar: its top border is then the titlebar's
+ * for the pointer (it is joined to it, and a window at the top of the screen
+ * is taken by its topmost pixel)
+ */
+bool wm_decoration_has_titlebar(struct wm_decoration *decoration);
+
 enum wm_decor_region wm_decoration_region_at(
 	struct wm_decoration *decoration, double x, double y);
 

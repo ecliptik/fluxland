@@ -29,6 +29,7 @@
 #include "output.h"
 #include "placement.h"
 #include "rules.h"
+#include "pseudo_transparency.h"
 #include "server.h"
 #include "slit.h"
 #include "tabgroup.h"
@@ -274,6 +275,7 @@ wm_view_move(struct wm_view *view, int x, int y)
 	view->x = x;
 	view->y = y;
 	wlr_scene_node_set_position(&view->scene_tree->node, x, y);
+	wm_pseudo_update(view);
 	if (impl_of(view)->moved)
 		impl_of(view)->moved(view);
 	/* Its tabs share the frame */
@@ -325,10 +327,40 @@ wm_view_begin_interactive(struct wm_view *view,
 		return;
 	}
 
+	/* maxDisableMove, maxDisableResize: as Fluxbox, a maximized or
+	 * fullscreen window then can't be moved or resized by hand */
+	if ((view->maximized || view->fullscreen) && server->config &&
+	    ((mode == WM_CURSOR_MOVE && server->config->max_disable_move) ||
+	     (mode == WM_CURSOR_RESIZE &&
+	      server->config->max_disable_resize)))
+		return;
+
 	server->grabbed_view = view;
 	server->cursor_mode = mode;
 
+	/* A hand-made size is not maximized: kept as it is, from here
+	 * (Fluxbox's startResizing disables maximization) */
+	if (mode == WM_CURSOR_RESIZE)
+		wm_view_clear_maximized(view);
+
 	if (mode == WM_CURSOR_MOVE) {
+		struct wm_output *head = wm_output_for_view(view);
+		struct wlr_box head_box = { 0 };
+		if (head)
+			wm_output_layout_box(head, &head_box);
+		server->grab_head_x = head_box.x;
+		server->grab_head_y = head_box.y;
+		server->grab_pointer_x = server->cursor->x;
+		server->grab_pointer_y = server->cursor->y;
+		server->grab_pulled = false;
+		server->grab_start_plain = !view->maximized &&
+			!view->fullscreen && !view->maximized_vert &&
+			!view->maximized_horiz && !view->lhalf &&
+			!view->rhalf && !view->tile.active;
+		struct wlr_box start_geo;
+		wm_view_get_geometry(view, &start_geo);
+		server->grab_start = (struct wlr_box){ view->x, view->y,
+			start_geo.width, start_geo.height };
 		server->grab_x = server->cursor->x - view->x;
 		server->grab_y = server->cursor->y - view->y;
 		/* Reset grab_geobox so stale resize values don't affect move */
@@ -449,6 +481,11 @@ wm_view_ensure_decoration(struct wm_view *view)
 	    preset != WM_DECOR_NORMAL)
 		wm_decoration_set_preset(view->decoration, preset,
 			view->server->style);
+	/* what the window asked for beats the default */
+	if (view->decoration && view->deco_hint != WM_DECOR_NORMAL)
+		wm_decoration_set_preset(view->decoration,
+			(enum wm_decor_preset)view->deco_hint,
+			view->server->style);
 	if (view->decoration)
 		offset_surface_tree(view);
 }
@@ -458,6 +495,7 @@ wm_view_map_common(struct wm_view *view, bool want_maximized,
 	bool want_fullscreen)
 {
 	view->mapped = true;
+	wm_pseudo_update(view);
 	view->app_id_at_map = view->app_id && *view->app_id;
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
@@ -637,6 +675,8 @@ wm_view_unmap_common(struct wm_view *view)
 		view->server->config ? view->server->config->apps_file : NULL);
 	if (view->server->focus_cycle.restore_minimized == view)
 		view->server->focus_cycle.restore_minimized = NULL;
+	if (view->server->snap_step.view == view)
+		wm_snap_step_forget(view->server);
 
 	/* Cancel any running fade-in animation */
 	if (view->animation)
@@ -730,6 +770,8 @@ wm_view_destroy_common(struct wm_view *view)
 	}
 	if (view->server->focus_cycle.restore_minimized == view)
 		view->server->focus_cycle.restore_minimized = NULL;
+	if (view->server->snap_step.view == view)
+		wm_snap_step_forget(view->server);
 	if (view->server->menu_view == view)
 		view->server->menu_view = NULL;
 
@@ -754,6 +796,7 @@ wm_view_destroy_common(struct wm_view *view)
 	/* The frame tree (the client's surface tree goes with it) */
 	wlr_scene_node_destroy(&view->scene_tree->node);
 	view->scene_tree = NULL;
+	view->pseudo_tree = NULL;
 }
 
 static void
@@ -903,10 +946,18 @@ wm_view_update_icon(struct wm_view *view)
 
 /* --- Toggle decoration --- */
 
+void wm_view_force_decoration(struct wm_view *view);
+
 void
 wm_view_toggle_decoration(struct wm_view *view)
 {
-	if (!view || !view->decoration) {
+	if (!view) {
+		return;
+	}
+	if (!view->decoration) {
+		/* one that draws its own: asked for, it gets ours too */
+		if (view->no_decoration)
+			wm_view_force_decoration(view);
 		return;
 	}
 
@@ -945,6 +996,52 @@ wm_view_toggle_decoration(struct wm_view *view)
 				break;
 			}
 		}
+	}
+}
+
+/*
+ * An explicit wish for a frame (a [Deco] rule, ToggleDecor) beats what the
+ * window asked for: it gets one, and shown
+ */
+void
+wm_view_force_decoration(struct wm_view *view)
+{
+	if (!view)
+		return;
+	view->no_decoration = false;
+	if (view->decoration) {
+		if (!view->show_decoration)
+			wm_view_toggle_decoration(view);
+		return;
+	}
+	wm_view_ensure_decoration(view);
+	if (view->decoration && view == view->server->focused_view &&
+	    view->server->style)
+		wm_decoration_set_focused(view->decoration, true,
+			view->server->style);
+}
+
+/*
+ * A window that draws its own decorations (it asked for client-side ones
+ * through xdg-decoration: Electron's frameless windows, Discord's among
+ * them) gets none of ours; one that gives that up gets them.  What
+ * _MOTIF_WM_HINTS does for an X11 window.  Mostly this is before the map,
+ * which only sets the flag; a window already shown has its frame hidden or
+ * shown.
+ */
+void
+wm_view_set_client_decorated(struct wm_view *view, bool client_side)
+{
+	if (!view || view->no_decoration == client_side)
+		return;
+	view->no_decoration = client_side;
+
+	if (view->decoration) {
+		/* shown when it should hide, or hidden when it should show */
+		if (view->show_decoration == client_side)
+			wm_view_toggle_decoration(view);
+	} else if (!client_side && view->mapped) {
+		wm_view_ensure_decoration(view);
 	}
 }
 

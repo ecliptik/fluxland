@@ -29,6 +29,8 @@
 #   [FocusNewWindow] {yes|no}     - focus when opened
 #   [FocusProtection] {Gain|Refuse|Deny|Lock|None, ...}
 #   [Close]          {yes|no}     - save the window's state when it closes
+#   [PseudoTransparent] {yes|no}  - where translucent, show the wallpaper behind
+#                                   the window, not the windows below it
 #
 # Tab groups:
 #   [group] (workspace)   <- optional: join a window on this workspace
@@ -209,4 +211,10 @@
   [app] (class=Alacritty)
   [app] (class=kitty)
   [app] (class=xterm)
+[end]
+
+# The run window (fluxland-run, RunDialog): in the middle of the head, as
+# fbrun -center was
+[app] (class=fluxland-run)
+  [Position] (Center) {0 0}
 [end]

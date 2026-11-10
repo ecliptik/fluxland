@@ -23,6 +23,7 @@
 #include "cursor_snap.h"
 #include "pixel_buffer.h"
 #include "server.h"
+#include "snap_picker.h"
 #include "output.h"
 #include "render.h"
 #include "style.h"
@@ -220,7 +221,7 @@ snap_zone_detect(struct wm_server *server, struct wlr_box *usable)
 	if (at_right)
 		return WM_SNAP_ZONE_RIGHT_HALF;
 	if (at_top)
-		return WM_SNAP_ZONE_TOP_HALF;
+		return WM_SNAP_ZONE_MAXIMIZE;
 	if (at_bottom)
 		return WM_SNAP_ZONE_BOTTOM_HALF;
 
@@ -251,11 +252,9 @@ snap_zone_geometry(enum wm_snap_zone zone, struct wlr_box *usable)
 		box.width = usable->width - half_w;
 		box.height = usable->height;
 		break;
-	case WM_SNAP_ZONE_TOP_HALF:
-		box.x = usable->x;
-		box.y = usable->y;
-		box.width = usable->width;
-		box.height = half_h;
+	case WM_SNAP_ZONE_MAXIMIZE:
+		/* The top edge fills the head, as on Windows and KDE */
+		box = *usable;
 		break;
 	case WM_SNAP_ZONE_BOTTOM_HALF:
 		box.x = usable->x;
@@ -296,14 +295,38 @@ snap_zone_geometry(enum wm_snap_zone zone, struct wlr_box *usable)
 /*
  * Destroy the snap preview overlay.
  */
-void
-snap_preview_destroy(struct wm_server *server)
+static void
+preview_clear(struct wm_server *server)
 {
 	if (server->snap_preview) {
 		wlr_scene_node_destroy(&server->snap_preview->node);
 		server->snap_preview = NULL;
 	}
 	server->snap_zone = WM_SNAP_ZONE_NONE;
+}
+
+void
+snap_preview_destroy(struct wm_server *server)
+{
+	preview_clear(server);
+	snap_picker_destroy(server);
+}
+
+/*
+ * The preview is above every window but the one being dragged, which stays
+ * over it (as on Windows): in the dragged window's own tree, just under it.
+ */
+static void
+snap_preview_stack(struct wm_server *server)
+{
+	struct wm_view *view = server->grabbed_view;
+	if (!server->snap_preview || !view || !view->scene_tree ||
+	    !view->scene_tree->node.parent)
+		return;
+	struct wlr_scene_node *node = &server->snap_preview->node;
+	if (node->parent != view->scene_tree->node.parent)
+		wlr_scene_node_reparent(node, view->scene_tree->node.parent);
+	wlr_scene_node_place_below(node, &view->scene_tree->node);
 }
 
 /*
@@ -355,6 +378,7 @@ snap_preview_update(struct wm_server *server, struct wlr_box *box)
 	if (server->snap_preview) {
 		wlr_scene_node_set_position(
 			&server->snap_preview->node, box->x, box->y);
+		snap_preview_stack(server);
 	}
 }
 
@@ -399,6 +423,59 @@ snap_zone_check(struct wm_server *server)
 
 	enum wm_snap_zone zone = snap_zone_detect(server, &usable);
 
+	if (server->config->snap_layout_picker) {
+		struct wm_snap_picker_geom geom;
+		double cx = server->cursor->x, cy = server->cursor->y;
+		bool have = wm_snap_picker_geometry(server->config, &usable,
+			&geom);
+		bool on_head = server->snap_picker_shown &&
+			server->snap_picker_usable.x == usable.x &&
+			server->snap_picker_usable.y == usable.y;
+		bool show = have && (zone == WM_SNAP_ZONE_MAXIMIZE ||
+			(on_head && wm_snap_picker_contains(&geom, &usable,
+				cx, cy)));
+		if (!show) {
+			snap_picker_destroy(server);
+		} else {
+			int layout = -1, cell = -1;
+			bool hit = wm_snap_picker_hit(&geom, server->config,
+				cx, cy, &layout, &cell);
+			if (!hit) {
+				layout = cell = -1;
+			}
+			if (!server->snap_picker_shown ||
+			    layout != server->snap_picker_layout ||
+			    cell != server->snap_picker_cell) {
+				server->snap_picker_layout = layout;
+				server->snap_picker_cell = cell;
+				server->snap_picker_usable = usable;
+				snap_picker_show(server, &usable, layout, cell);
+			}
+			if (hit) {
+				struct wlr_box box;
+				wm_snap_picker_target(server->config, &usable,
+					layout, cell, server->snap_tile, &box);
+				if (server->snap_zone != WM_SNAP_ZONE_TILE ||
+				    memcmp(&box, &server->snap_preview_box,
+						sizeof(box)) != 0) {
+					server->snap_zone = WM_SNAP_ZONE_TILE;
+					server->snap_preview_box = box;
+					snap_preview_update(server,
+						&server->snap_preview_box);
+				}
+				return;
+			}
+			if (zone != WM_SNAP_ZONE_MAXIMIZE) {
+				/* On the panel, between cells */
+				if (server->snap_zone != WM_SNAP_ZONE_NONE)
+					preview_clear(server);
+				return;
+			}
+			if (server->snap_zone == WM_SNAP_ZONE_TILE)
+				preview_clear(server);
+		}
+	}
+
 	if (zone == WM_SNAP_ZONE_NONE) {
 		if (server->snap_zone != WM_SNAP_ZONE_NONE)
 			snap_preview_destroy(server);
@@ -406,8 +483,10 @@ snap_zone_check(struct wm_server *server)
 	}
 
 	/* Zone changed — update the preview */
-	if ((int)zone != server->snap_zone) {
+	if ((int)zone != server->snap_zone ||
+	    memcmp(&usable, &server->snap_picker_usable, sizeof(usable)) != 0) {
 		server->snap_zone = zone;
+		server->snap_picker_usable = usable;
 		server->snap_preview_box = snap_zone_geometry(zone, &usable);
 		snap_preview_update(server, &server->snap_preview_box);
 	}

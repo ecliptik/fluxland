@@ -27,6 +27,8 @@
 #include "decoration.h"
 #include "keyboard.h"
 #include "foreign_toplevel.h"
+#include "eis.h"
+#include "xwayland_grab.h"
 #include "ipc.h"
 #include "keybind.h"
 #include "layer_shell.h"
@@ -39,6 +41,7 @@
 #include "output_management.h"
 #include "protocols.h"
 #include "gamma_control.h"
+#include "frame_pacing.h"
 #include "presentation.h"
 #include "screencopy.h"
 #include "session_lock.h"
@@ -56,6 +59,7 @@
 #include "tooltip.h"
 #include "transient_seat.h"
 #include "view.h"
+#include "view_geometry.h"
 #include "viewporter.h"
 #include "workspace.h"
 #include "tablet.h"
@@ -122,6 +126,23 @@ wm_server_check_rules_reload(struct wm_server *server)
 }
 
 /*
+ * The frames of all windows again, after a style changed their borders,
+ * fonts or titlebars: a window that fills its head (maximized, fullscreen,
+ * a half, a tile) is fitted to it again, as the frame around it is another
+ * size now, and stays in its state
+ */
+void
+wm_server_refresh_frames(struct wm_server *server)
+{
+	struct wm_view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->decoration)
+			wm_decoration_update(view->decoration, server->style);
+	}
+	wm_view_refit_all(server);
+}
+
+/*
  * A style chosen (SetStyle, a menu's [style]): loaded with the overlay,
  * kept as the init's styleFile for the session, and everything drawn
  * with it again; its background shows over the last wallpaper, as
@@ -152,11 +173,7 @@ wm_server_set_style(struct wm_server *server, const char *path)
 		wm_toolbar_relayout(server->toolbar);
 	if (server->slit)
 		wm_slit_relayout(server->slit);
-	struct wm_view *v;
-	wl_list_for_each(v, &server->views, link) {
-		if (v->decoration)
-			wm_decoration_update(v->decoration, server->style);
-	}
+	wm_server_refresh_frames(server);
 	if (server->wallpaper)
 		wm_wallpaper_reload(server->wallpaper);
 	else
@@ -202,6 +219,18 @@ wm_server_reload_keys(struct wm_server *server, bool keep_mode)
 			server->config->mouse_button_map);
 }
 
+/*
+ * The resolution of text in points: the init's session.dpi, else the
+ * style's dpi, else 96.  True when it is not what text was drawn with.
+ */
+static bool
+apply_dpi(struct wm_server *server)
+{
+	return wm_render_set_dpi(wm_dpi_resolve(
+		server->config ? server->config->dpi : 0,
+		server->style ? server->style->dpi : 0));
+}
+
 void
 wm_server_reconfigure(struct wm_server *server)
 {
@@ -213,6 +242,15 @@ wm_server_reconfigure(struct wm_server *server)
 		wm_input_apply_config(server);
 		wm_output_apply_config(server);
 	}
+
+	/* The X resources file, if it changed: for programs started now */
+	wm_xwayland_apply_resources(server);
+
+	/*
+	 * Fonts are sized in it: a new dpi of the init is a reason to read
+	 * the style again, which has everything that depends on them redone
+	 */
+	bool dpi_changed = apply_dpi(server);
 
 	/* Broadcast config_reloaded event to IPC subscribers */
 	wm_ipc_broadcast_event(&server->ipc,
@@ -232,6 +270,8 @@ wm_server_reconfigure(struct wm_server *server)
 	if (server->config && server->config->style_overlay &&
 	    config_file_changed(server->config->style_overlay,
 			&server->config->style_overlay_mtime))
+		style_changed = true;
+	if (dpi_changed)
 		style_changed = true;
 	bool menu_changed = !server->config ||
 		!server->config->menu_file ||
@@ -254,6 +294,8 @@ wm_server_reconfigure(struct wm_server *server)
 				server->config->style_overlay);
 			style_load(server->style,
 				server->config->style_file);
+			/* The style may have its own */
+			apply_dpi(server);
 
 			/* Broadcast style_changed event to IPC subscribers */
 			wm_ipc_broadcast_event(&server->ipc,
@@ -344,15 +386,8 @@ wm_server_reconfigure(struct wm_server *server)
 	}
 
 	/* 11. Refresh all view decorations (if style changed) */
-	if (style_changed && server->style) {
-		struct wm_view *view;
-		wl_list_for_each(view, &server->views, link) {
-			if (view->decoration) {
-				wm_decoration_update(view->decoration,
-					server->style);
-			}
-		}
-	}
+	if (style_changed && server->style)
+		wm_server_refresh_frames(server);
 
 	wlr_log(WLR_INFO, "%s", "configuration reloaded");
 }
@@ -449,6 +484,8 @@ wm_server_init(struct wm_server *server)
 	server->xdg_popup_tree = wlr_scene_tree_create(&server->scene->tree);
 	server->layer_top = wlr_scene_tree_create(&server->scene->tree);
 	server->layer_overlay = wlr_scene_tree_create(&server->scene->tree);
+	server->xwayland_override_tree =
+		wlr_scene_tree_create(&server->scene->tree);
 
 	/* Output layout and scene integration */
 	wm_output_init(server);
@@ -494,6 +531,7 @@ wm_server_init(struct wm_server *server)
 
 	/* Presentation time for frame timing feedback */
 	wm_presentation_init(server);
+	wm_frame_pacing_init(server);
 
 	/* Seat for input (keyboard/pointer) */
 	server->seat = wlr_seat_create(server->wl_display, "seat0");
@@ -507,7 +545,7 @@ wm_server_init(struct wm_server *server)
 	wlr_cursor_attach_output_layout(server->cursor,
 		server->output_layout);
 	server->cursor_mgr = wlr_xcursor_manager_create(
-		WM_XCURSOR_DEFAULT, WM_XCURSOR_SIZE);
+		NULL, WM_XCURSOR_SIZE);
 
 	/* Init lists */
 	wl_list_init(&server->views);
@@ -559,6 +597,8 @@ wm_server_init(struct wm_server *server)
 				server->config->style_file);
 		}
 	}
+	apply_dpi(server);
+	wlr_log(WLR_INFO, "text is drawn at %d dpi", wm_render_dpi());
 
 	/* Load keybindings into keymode system */
 	wl_list_init(&server->keybindings);
@@ -639,11 +679,23 @@ wm_server_init(struct wm_server *server)
 	}
 	server->window_menu = wm_menu_create_window_menu(server);
 
+	/*
+	 * The Wayland socket before the IPC server: that socket is named
+	 * after it (not the WAYLAND_DISPLAY of the compositor we may be
+	 * running inside of, whose IPC socket it would replace)
+	 */
+	server->socket = wl_display_add_socket_auto(server->wl_display);
+
 	/* IPC server */
 	wm_ipc_init(&server->ipc, server);
 
+	/* Where X11 programs' input emulation goes: before XWayland, which
+	 * looks for it when it starts */
+	wm_eis_init(server);
+
 	/* XWayland: X11 application support (compile-time optional) */
 	wm_xwayland_init(server);
+	wm_xwayland_grab_init(server);
 
 	return true;
 }
@@ -651,8 +703,10 @@ wm_server_init(struct wm_server *server)
 bool
 wm_server_start(struct wm_server *server)
 {
-	/* Add a Unix socket to the Wayland display */
-	server->socket = wl_display_add_socket_auto(server->wl_display);
+	/* Add a Unix socket to the Wayland display (unless init did) */
+	if (!server->socket)
+		server->socket = wl_display_add_socket_auto(
+			server->wl_display);
 	if (!server->socket) {
 		wlr_log(WLR_ERROR, "%s", "unable to open wayland socket");
 		return false;
@@ -677,6 +731,7 @@ void
 wm_server_destroy(struct wm_server *server)
 {
 	wm_xwayland_finish(server);
+	wm_eis_finish(server);
 	wl_display_destroy_clients(server->wl_display);
 
 #ifdef WM_HAS_SYSTRAY
@@ -691,6 +746,8 @@ wm_server_destroy(struct wm_server *server)
 	server->action_result = NULL;
 	wm_toolbar_destroy(server->toolbar);
 	server->toolbar = NULL;
+	free(server->toolbar_output_name);
+	server->toolbar_output_name = NULL;
 	wm_ipc_destroy(&server->ipc);
 	wm_menu_destroy(server->root_menu);
 	wm_menu_destroy(server->window_menu);

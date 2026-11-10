@@ -70,6 +70,13 @@ cairo_surface_t *wm_render_text(const char *text, const struct wm_font *font,
 int wm_measure_text_width(const char *text, const struct wm_font *font,
 	float scale);
 
+/*
+ * How far the first len bytes of text advance (spaces at the end count,
+ * which a measure of what is drawn leaves out): where a text cursor goes.
+ */
+int wm_text_advance(const char *text, size_t len, const struct wm_font *font,
+	float scale);
+
 /* A font's height (ascent and descent) in pixels, as Fluxbox's
  * Font::height() */
 int wm_font_height(const struct wm_font *font, float scale);
@@ -111,6 +118,19 @@ PangoDirection find_base_dir(const char *text);
 /* --- Cleanup --- */
 
 /*
+ * The resolution that sizes in points are drawn at (a font of size 8 is
+ * 8 / 72 inch, so 10.67 pixels at 96): session.dpi of the init, else the
+ * style's dpi, else 96.  Fonts sized in pixels (an X font's) are not
+ * affected.  wm_dpi_resolve() picks among the two as the config and style
+ * hold them (0: not set); wm_render_set_dpi() applies it, from 24 to 960,
+ * and returns whether that changed what text looks like.
+ */
+#define WM_DEFAULT_DPI 96
+int wm_dpi_resolve(int init_dpi, int style_dpi);
+bool wm_render_set_dpi(int dpi);
+int wm_render_dpi(void);
+
+/*
  * Free the cached measurement context used by text rendering.
  * Call during compositor shutdown.
  */
@@ -131,6 +151,10 @@ void wm_render_cleanup(void);
  */
 void wm_cut_corners(cairo_surface_t *surface, int x, int y, int frame_w,
 	int frame_h, uint8_t corners);
+
+/* Whether those corners cut away pixel (px, py) of a frame_w x frame_h frame */
+bool wm_corner_cut_at(int frame_w, int frame_h, uint8_t corners, int px,
+	int py);
 
 void wm_render_rounded_rect_path(cairo_t *cr, double x, double y,
 	double width, double height, double radius, uint8_t corners);

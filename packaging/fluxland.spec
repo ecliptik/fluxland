@@ -23,6 +23,7 @@ BuildRequires:  pkgconfig(glesv2)
 BuildRequires:  pkgconfig(lcms2)
 BuildRequires:  pkgconfig(libdisplay-info)
 BuildRequires:  pkgconfig(libdrm)
+BuildRequires:  pkgconfig(libeis-1.0)
 BuildRequires:  pkgconfig(libffi)
 BuildRequires:  pkgconfig(libinput) >= 1.14
 BuildRequires:  pkgconfig(libliftoff)

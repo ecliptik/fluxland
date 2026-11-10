@@ -453,8 +453,10 @@ menu_update_render(struct wm_menu *menu)
 	struct wm_style *style = menu->server->style;
 
 	cairo_surface_t *items_surf = render_menu_items(menu, style);
-	wm_cut_corners(items_surf, menu->border_width, menu->items_y,
-		menu->width, menu->height, style->menu_round_corners);
+	wm_cut_corners(items_surf, 0, menu->items_y - menu->border_width,
+		menu->width - 2 * menu->border_width,
+		menu->height - 2 * menu->border_width,
+		style->menu_round_corners);
 	struct wlr_buffer *items_buf = wlr_buffer_from_cairo(items_surf);
 	if (menu->items_buf) {
 		wlr_scene_buffer_set_buffer(menu->items_buf, items_buf);

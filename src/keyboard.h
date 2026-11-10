@@ -44,6 +44,9 @@ void wm_keyboard_group_finish(struct wm_server *server);
 void wm_keyboard_next_layout(struct wm_server *server);
 void wm_keyboard_prev_layout(struct wm_server *server);
 
+/* End a held Repeat binding's repeating (a reload, a keyboard going away) */
+void wm_key_repeat_stop(struct wm_server *server);
+
 /* Recreate keymaps on all keyboards (e.g., after config reload) */
 void wm_keyboard_apply_config(struct wm_server *server);
 

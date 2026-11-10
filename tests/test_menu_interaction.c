@@ -754,6 +754,10 @@ static cairo_status_t cairo_surface_status(cairo_surface_t *s)
 }
 
 static void cairo_surface_flush(cairo_surface_t *s) { (void)s; }
+static void cairo_surface_mark_dirty(cairo_surface_t *s) { (void)s; }
+/* A tray icon's menu entry (systray_menu.c): nothing is listening */
+void wm_systray_menu_activate(struct wm_server *server, const char *spec)
+	{ (void)server; (void)spec; }
 static void cairo_surface_destroy(cairo_surface_t *s) { (void)s; }
 
 static int cairo_image_surface_get_width(cairo_surface_t *s)
@@ -801,6 +805,8 @@ static void cairo_set_source_rgb(cairo_t *cr, double r, double g, double b)
 	{ (void)cr; (void)r; (void)g; (void)b; }
 static void wm_cut_corners(cairo_surface_t *s, int x, int y, int w, int h,
 	uint8_t c) { (void)s; (void)x; (void)y; (void)w; (void)h; (void)c; }
+static bool wm_corner_cut_at(int w, int h, uint8_t c, int x, int y)
+	{ (void)w; (void)h; (void)c; (void)x; (void)y; return false; }
 static void cairo_set_source_rgba(cairo_t *cr, double r, double g, double b, double a)
 {
 	(void)cr; (void)r; (void)g; (void)b; (void)a;
@@ -2244,6 +2250,63 @@ test_button_activates_item(void)
 
 	wm_menu_destroy(menu);
 	printf("  PASS: button_activates_item\n");
+}
+
+/* A callback item calls the compositor's function; a menu that hides
+ * tells its owner (once), before the item chosen runs */
+static int g_callback_order, g_callback_ran_at, g_close_ran_at, g_close_count;
+static void *g_callback_data;
+static void
+callback_item_ran(struct wm_server *server, void *data)
+{
+	(void)server;
+	g_callback_data = data;
+	g_callback_ran_at = ++g_callback_order;
+}
+static void
+menu_closed(struct wm_menu *menu, void *data)
+{
+	(void)menu; (void)data;
+	g_close_count++;
+	g_close_ran_at = ++g_callback_order;
+}
+
+static void
+test_callback_item_and_on_close(void)
+{
+	setup_server();
+	g_callback_order = g_callback_ran_at = g_close_ran_at = 0;
+	g_close_count = 0;
+	g_callback_data = NULL;
+	static int token;
+
+	struct wm_menu *menu = menu_create(&test_server, "Prompt");
+	struct wm_menu_item *item = menu_item_create(WM_MENU_CALLBACK,
+		"Allow");
+	assert(item != NULL);
+	item->callback = callback_item_ran;
+	item->callback_data = &token;
+	wl_list_insert(menu->items.prev, &item->link);
+	menu->on_close = menu_closed;
+	prepare_menu(menu, 100, 100);
+	menu->scene_tree = wlr_scene_tree_create(&test_scene.tree);
+
+	double lx = 100 + menu->border_width + 5;
+	double ly = 100 + menu->items_y + 5;
+	assert(click_for(menu, lx, ly, 0x110));
+	assert(!menu->visible);
+	assert(g_callback_data == &token);
+	assert(g_close_count == 1);
+	/* The menu is hidden first: what it learns is for the owner to
+	 * settle after the item has run */
+	assert(g_close_ran_at == 1 && g_callback_ran_at == 2);
+
+	/* Hidden again: not told again */
+	wm_menu_hide(menu);
+	assert(g_close_count == 1);
+
+	wm_menu_destroy(menu);
+	printf("  PASS: callback_item_and_on_close\n");
 }
 
 /* FbTk::Menu: a press highlights, the release over it runs; toggles and
@@ -6271,6 +6334,7 @@ main(void)
 	test_key_skips_separator();
 	test_key_up_skips_separator();
 	test_key_escape_hides_menu();
+	test_callback_item_and_on_close();
 	test_key_right_enters_submenu();
 	test_key_left_leaves_submenu();
 	test_key_not_visible();

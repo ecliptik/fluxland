@@ -69,13 +69,35 @@ enum wm_snap_zone {
 	WM_SNAP_ZONE_NONE = 0,
 	WM_SNAP_ZONE_LEFT_HALF,
 	WM_SNAP_ZONE_RIGHT_HALF,
-	WM_SNAP_ZONE_TOP_HALF,
+	WM_SNAP_ZONE_MAXIMIZE,	/* the top edge */
 	WM_SNAP_ZONE_BOTTOM_HALF,
 	WM_SNAP_ZONE_TOPLEFT,
 	WM_SNAP_ZONE_TOPRIGHT,
 	WM_SNAP_ZONE_BOTTOMLEFT,
 	WM_SNAP_ZONE_BOTTOMRIGHT,
+	WM_SNAP_ZONE_TILE,	/* a cell of the layout picker */
 };
+
+/* A layout of the snap layout picker: cells of a head, in permille of its
+ * usable area (x, y, width, height) */
+#define WM_SNAP_LAYOUTS_MAX 12
+#define WM_SNAP_CELLS_MAX 8
+struct wm_snap_cell {
+	int x, y, w, h;
+};
+struct wm_snap_layout {
+	int cell_count;
+	struct wm_snap_cell cells[WM_SNAP_CELLS_MAX];
+};
+
+/*
+ * Layouts from text: layouts separated by ';', each a list of cells
+ * "x,y,w,h" in percent of the head ("0,0,50,100 50,0,50,100" is two equal
+ * columns).  What is not a cell (or not inside the head) is skipped, and a
+ * layout with no cell; returns how many layouts, at most max.
+ */
+int wm_snap_layouts_parse(const char *text, struct wm_snap_layout *out,
+	int max);
 
 /* Workspace transition type */
 enum wm_workspace_transition {
@@ -170,6 +192,13 @@ enum wm_tab_placement {
 	WM_TAB_RIGHT_BOTTOM,
 };
 
+/* session.xwayland.inputEmulation */
+enum wm_eis_policy {
+	WM_EIS_ASK,	/* ask the first time a program does (default) */
+	WM_EIS_ALLOW,	/* Xorg's way: any program may */
+	WM_EIS_DENY,	/* none may */
+};
+
 struct wm_config {
 	/* Workspaces */
 	int workspace_count;
@@ -192,6 +221,7 @@ struct wm_config {
 	bool focus_same_head;            /* focus reverts on the pointer's head */
 	bool max_ignore_increment;       /* maximized: size hints ignored */
 	int no_focus_while_typing_ms;    /* noFocusWhileTypingDelay */
+	int key_repeat_rate;             /* session.keyRepeatRate: Repeat, per second */
 	int demands_attention_ms;        /* demandsAttentionTimeout: flashes */
 	bool ignore_border;              /* session.ignoreBorder */
 	bool tabs_attach_titlebar;       /* session.tabsAttachArea: Titlebar */
@@ -214,9 +244,21 @@ struct wm_config {
 	int toolbar_auto_hide_delay_ms;
 	int toolbar_width_percent;
 	int toolbar_height;
+	int dpi;		/* session.dpi; 0 = the style's, else 96 */
+	char *xwayland_resources; /* session.xwayland.resources: X resources
+				   * (an Xresources file) for XWayland */
+	bool xwayland_keyboard_grab; /* session.xwayland.keyboardGrab */
+	bool pseudo_transparency;	/* session.screen0.pseudoTransparency */
+	/* The layout picker of a window dragged to the top edge */
+	bool snap_layout_picker;	/* session.screen0.snapLayoutPicker */
+	int snap_layout_picker_size;	/* a layout's width, in pixels */
+	int snap_layout_picker_columns;	/* in a row; 0: as many as fit */
+	int snap_layout_count;
+	struct wm_snap_layout snap_layouts[WM_SNAP_LAYOUTS_MAX];
 	int toolbar_layer;
 	int toolbar_alpha;
 	int toolbar_on_head;
+	char *toolbar_on_output; /* toolbar.onoutput: a connector name, or NULL */
 	char *toolbar_tools; /* configurable tool layout string */
 	/* toolbar.button.NAME.label and .commands (a command for each
 	 * mouse button, separated by ':') */
@@ -260,6 +302,12 @@ struct wm_config {
 	bool clientmenu_use_pixmap; /* clientMenu.usePixmap: icons in window lists */
 	char *systray_pin_left;     /* systray.pinLeft: ids, the first leftmost */
 	char *systray_pin_right;    /* systray.pinRight */
+	int systray_activation_grace_ms; /* systray.activationGrace: 0 = off */
+	/* xwayland.inputEmulation: what X11 programs injecting input
+	 * (XTest) may do; the programs' names, separated by spaces or commas */
+	int eis_policy;             /* enum wm_eis_policy */
+	char *eis_allow;
+	char *eis_deny;
 	int tab_placement;          /* enum wm_tab_placement */
 	int tab_width;              /* an external tab's length (64) */
 	int tab_padding;            /* padding between tabs in pixels */
@@ -268,6 +316,8 @@ struct wm_config {
 	bool full_maximization;
 	bool max_disable_move;     /* maximized windows can't be moved */
 	bool max_disable_resize;   /* ...or resized */
+	int max_pull_threshold;    /* pull a maximized window down this far to
+				    * restore it (0: never) */
 
 	/* Window opacity (0-255) */
 	int window_focus_alpha;
@@ -294,6 +344,7 @@ struct wm_config {
 	int slit_direction;
 	int slit_layer;
 	int slit_on_head;
+	char *slit_on_output;  /* slit.onoutput: a connector name, or NULL */
 	int slit_alpha;       /* 0-255, default 255 */
 	bool slit_max_over;   /* default false */
 	char *slitlist_file;  /* path to slitlist file */

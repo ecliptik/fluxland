@@ -158,7 +158,19 @@ if have_xwayland
   xcb = dependency('xcb')
   xcb_ewmh = dependency('xcb-ewmh')
   xcb_icccm = dependency('xcb-icccm')
+  xcb_shape = dependency('xcb-shape')
   add_project_arguments('-DWM_HAS_XWAYLAND', language: 'c')
+endif
+
+# Input emulation for X11 programs: an EIS server for XWayland (libei)
+libeis_dep = dependency('libeis-1.0', required: get_option('libei'))
+have_eis = have_xwayland and libeis_dep.found() and cc.has_function(
+  'eis_backend_socket_get_client_pid', dependencies: libeis_dep)
+if get_option('libei').enabled() and not have_eis
+  error('libei support requested but XWayland or libeis (1.0+) is missing')
+endif
+if have_eis
+  add_project_arguments('-DWM_HAS_EIS', language: 'c')
 endif
 
 # System tray (StatusNotifierItem via sd-bus)
@@ -249,6 +261,8 @@ endif
 wm_sources = files(
   'src/import.c',
   'src/dialog.c',
+  'src/run_dialog.c',
+  'src/tray_grant.c',
   'src/tooltip.c',
   'src/animation.c',
   'src/atspi_bridge.c',
@@ -262,6 +276,7 @@ wm_sources = files(
   'src/ext_workspace.c',
   'src/output.c',
   'src/output_config.c',
+  'src/output_memory.c',
   'src/pixel_buffer.c',
   'src/input.c',
   'src/input_config.c',
@@ -270,8 +285,11 @@ wm_sources = files(
   'src/cursor.c',
   'src/cursor_actions.c',
   'src/cursor_snap.c',
+  'src/snap_picker.c',
+  'src/pseudo_transparency.c',
   'src/view.c',
   'src/view_xdg.c',
+  'src/view_internal.c',
   'src/view_focus.c',
   'src/view_geometry.c',
   'src/workspace.c',
@@ -296,8 +314,10 @@ wm_sources = files(
   'src/placement.c',
   'src/idle.c',
   'src/layer_shell.c',
+  'src/output_buffer.c',
   'src/output_management.c',
   'src/protocols.c',
+  'src/frame_pacing.c',
   'src/presentation.c',
   'src/screencopy.c',
   'src/session_lock.c',
@@ -317,14 +337,21 @@ wm_sources = files(
   'src/validate.c',
   'src/wallpaper.c',
   'src/xwayland.c',
+  'src/xwayland_shape.c',
+  'src/xwayland_grab.c',
+  'src/eis.c',
 )
 
 if have_xwayland
-  wm_deps += [xcb, xcb_ewmh, xcb_icccm]
+  wm_deps += [xcb, xcb_ewmh, xcb_icccm, xcb_shape]
+endif
+
+if have_eis
+  wm_deps += [libeis_dep]
 endif
 
 if have_systray
-  wm_sources += files('src/systray.c')
+  wm_sources += files('src/systray.c', 'src/systray_menu.c')
   wm_deps += [sdbus_dep]
 elif have_atspi
   # AT-SPI uses sd-bus but systray already added it if both are enabled
@@ -367,6 +394,35 @@ endif
 executable(
   'fluxland-ctl',
   files('tools/fluxland-ctl.c'),
+  install: true,
+)
+
+# --- fluxland-run: a window to type a program in (fbrun's place) ---
+
+fs = import('fs')
+fl_scanner = find_program('wayland-scanner')
+fl_proto_dir = wayland_protos.get_variable('pkgdatadir')
+fl_run_protocols = []
+foreach xml : [
+  fl_proto_dir / 'stable/xdg-shell/xdg-shell.xml',
+  fl_proto_dir / 'unstable/xdg-decoration/xdg-decoration-unstable-v1.xml',
+]
+  base = fs.stem(xml)
+  fl_run_protocols += custom_target(base + '-client-protocol.h',
+    input: xml,
+    output: base + '-client-protocol.h',
+    command: [fl_scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
+  fl_run_protocols += custom_target(base + '-protocol.c',
+    input: xml,
+    output: base + '-protocol.c',
+    command: [fl_scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
+endforeach
+executable(
+  'fluxland-run',
+  files('tools/fluxland-run.c', 'src/run_dialog.c'),
+  fl_run_protocols,
+  include_directories: include_directories('src'),
+  dependencies: [dependency('wayland-client'), xkbcommon, pangocairo],
   install: true,
 )
 

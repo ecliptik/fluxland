@@ -186,20 +186,53 @@ Choose **Fluxland** in your display manager, or run `fluxland` from a text conso
 | ninja | `ninja-build` | `ninja` |
 | C17 compiler | `gcc` or `clang` | `gcc` or `clang` |
 | wlroots 0.20 | built from `subprojects/` (or a system `wlroots-0.20`) | `wlroots0.20` |
-| wayland | `libwayland-dev` | `wayland` |
-| wayland-protocols (>= 1.32) | `wayland-protocols` | `wayland-protocols` |
+| wayland (>= 1.24, with wayland-client) | `libwayland-dev` | `wayland` |
+| wayland-protocols (>= 1.47) | `wayland-protocols` | `wayland-protocols` |
 | xkbcommon | `libxkbcommon-dev` | `libxkbcommon` |
 | libinput (>= 1.14) | `libinput-dev` | `libinput` |
-| pixman | `libpixman-1-dev` | `pixman` |
+| pixman (>= 0.46) | `libpixman-1-dev` | `pixman` |
 | pangocairo | `libpango1.0-dev` | `pango` |
 | libdrm | `libdrm-dev` | `libdrm` |
+| pkg-config | `pkgconf` | `pkgconf` |
+| wayland-scanner | `libwayland-bin` | `wayland` |
 
 ### Optional dependencies
 
 | Dependency | Debian/Ubuntu | Arch | Purpose |
 |---|---|---|---|
 | XWayland | `xwayland` | `xorg-xwayland` | X11 application support |
-| xcb, xcb-ewmh, xcb-icccm | `libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev` | `libxcb xcb-util-wm` | XWayland EWMH/ICCCM |
+| xcb, xcb-ewmh, xcb-icccm, xcb-shape | `libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-shape0-dev` | `libxcb xcb-util-wm` | XWayland EWMH/ICCCM, X Shape clipping |
+| gdk-pixbuf (>= 2.36) | `libgdk-pixbuf-2.0-dev` | `gdk-pixbuf2` | XPM/JPEG/BMP images in styles and icons (`-Dpixbuf`) |
+| libsystemd or libelogind | `libsystemd-dev` | `systemd-libs` | D-Bus (system tray, notifications, session) |
+| gettext (libintl) | `gettext` | `gettext` | translations (`libintl` is part of glibc on Linux) |
+| libei (libeis) | `libei-dev` | `libei` | Input emulation of X11 programs (Steam Input, xdotool); needs XWayland |
+
+### Runtime programs
+
+Programs fluxland starts itself, or that its features rely on:
+
+| Program | Debian/Ubuntu | Arch | Needed for |
+|---|---|---|---|
+| dbus (`dbus-update-activation-environment`) | `dbus-bin` | `dbus` | giving the session's environment to D-Bus activated programs |
+| xdg-desktop-portal + xdg-desktop-portal-wlr | `xdg-desktop-portal xdg-desktop-portal-wlr` | `xdg-desktop-portal xdg-desktop-portal-wlr` | screen sharing and recording (see `docs/SCREEN_RECORDING.md`) |
+| a `/bin/sh` | | | `Exec`, `fluxland-run` and menu commands run through the shell |
+
+`RunDialog` starts `fluxland-run`, installed with fluxland (it needs only libwayland-client and the libraries above); the lines run are kept in `$XDG_STATE_HOME/fluxland/run_history`.
+
+### Test dependencies
+
+For `python3 -m pytest tests/ui/` (end-to-end tests that start a headless fluxland):
+
+| Dependency | Debian/Ubuntu | Arch | Purpose |
+|---|---|---|---|
+| python3, pytest, pytest-timeout, pytest-html, Pillow | `python3-pytest python3-pytest-timeout python3-pytest-html python3-pil` | `python-pytest python-pytest-timeout python-pytest-html python-pillow` | the test runner and screenshot comparison (`tests/ui/requirements.txt`) |
+| wtype | `wtype` | `wtype` | typing into the compositor (dialogs, key bindings) |
+| wlrctl | `wlrctl` | `wlrctl` | pointer input |
+| grim | `grim` | `grim` | screenshots |
+| foot | `foot` | `foot` | the test windows |
+| xterm, xwininfo, xdotool | `xterm x11-utils xdotool` | `xterm xorg-xwininfo xdotool` | XWayland tests (skipped without) |
+| swaybg, wlr-randr, wayland-info | `swaybg wlr-randr wayland-utils` | `swaybg wlr-randr wayland-utils` | wallpaper, output and protocol tests (skipped without) |
+| clang | `clang` | `clang` | the fuzz targets (`tools/ci.sh fuzz`) |
 
 ### Runtime companions (recommended)
 
@@ -327,6 +360,68 @@ The socket path is auto-detected from `$FLUXLAND_SOCK` or
 | fluxland-startup(5) | 5 | Startup script reference |
 
 After installation, access with `man fluxland`, `man fluxland-keys`, etc.
+
+## Known issues
+
+### An X11 window moved by the compositor can highlight what slides under the start of the drag
+
+Seen with Wine/Chromium: a frameless Electron window (the ROTK Launcher)
+dragged by its own title bar. While fluxland moves it, the entries of its
+title bar that pass under the point where the drag began light up as if the
+pointer were over them, mostly in fast drags, and the cursor can show the
+hand of the entry it thinks it is over. Cosmetic; there is no workaround.
+
+What was observed:
+
+- While fluxland runs a move or resize it sends the pointer to nobody
+  (`process_cursor_motion` in `src/cursor.c` returns after
+  `process_cursor_move`). XWayland's idea of the pointer (`xdotool
+  getmouselocation`) stayed where the grab began, mid-drag and after the
+  release, until the next real motion: 866,82 with the real pointer at
+  626,82.
+- X11 windows are sent their new position once a frame
+  (`wm_xwayland_sync_positions`), so the window slides under that stale
+  pointer.
+
+The suspected cause, **not confirmed**: XWayland makes the pointer's place on
+the X screen from each `wl_pointer.motion` as (the position the X server has
+for the window now) + (the surface-local position sent), when it reads the
+Wayland event (`dispatch_absolute_motion` in XWayland's `xwayland-input.c`).
+The window's position is other state, set by the window manager's
+`ConfigureWindow` over the X connection, which is not the Wayland connection,
+and nothing orders one before the other. An X client that asks where the
+pointer is (Wine's `GetCursorPos`, so Chromium) can therefore see them out of
+step.
+
+A workaround was tried and removed because it changed nothing in testing: send
+the pointer to XWayland once a frame, only relative to a window position the
+X server had confirmed with its own `ConfigureNotify` (seen through
+`wlr_xwayland.user_event_handler`, which sees every X event before wlroots
+does), and again when a position was confirmed. That it made no difference
+means the cause is different, or there is more to it (what Chromium hovers
+from may not be what the X server reports), so any real fix should start by
+finding out which.
+
+What a real fix would look like, if the cause is the one above:
+
+- **wlroots**: a signal emitted for every `ConfigureNotify` of a managed
+  window. Today `xsurface->events.set_geometry` only fires when the
+  notify differs from the position `wlr_xwayland_surface_configure()` already
+  wrote into `xsurface->x, y` at once, which is never for a move we asked for,
+  so the compositor cannot tell when the X server has the new position. The
+  `user_event_handler` hook can see it, but it is a single slot shared with
+  `src/xwayland_shape.c`, and a library should offer an event.
+- **Smithay** (a compositor written on it): `XwmHandler::configure_notify` is
+  called for every `ConfigureNotify` the X server sends for a mapped window
+  (`src/xwayland/xwm/mod.rs`). When a grab moves an X11 window: `configure()`
+  it, wait for `configure_notify()` with the new position, then send the
+  pointer relative to that position. No static state, no event hook, no
+  timeout.
+- **XWayland / the protocol**: to end it, XWayland would take the pointer's
+  place from the compositor, or one request would set the window position and
+  the pointer together. Without that, from the X server having the new window
+  position to it having the matching pointer there is a short time in which an
+  X client that asks sees them out of step, whatever the compositor does.
 
 ## Contributing
 

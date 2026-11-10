@@ -267,6 +267,7 @@ struct wm_config {
 	int slit_direction;
 	int slit_layer;
 	int slit_on_head;
+	char *slit_on_output;
 	int slit_alpha;
 	bool slit_max_over;
 	char *slitlist_file;
@@ -476,6 +477,14 @@ wm_output_arrange(struct wm_output *output)
 	wm_output_layout_box(output, &usable);
 	wm_slit_reserve(g_arrange_slit, output, &usable);
 	output->usable_area = usable;
+}
+
+static struct wm_output *
+wm_output_by_name(struct wm_server *server, const char *name)
+{
+	/* no output of these tests has a name */
+	(void)server; (void)name;
+	return NULL;
 }
 
 static struct wm_output *

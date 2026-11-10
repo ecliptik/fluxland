@@ -16,6 +16,7 @@ Build-Depends:
  libcairo2-dev,
  libdisplay-info-dev,
  libdrm-dev,
+ libei-dev,
  libegl-dev,
  libexpat1-dev,
  libffi-dev,

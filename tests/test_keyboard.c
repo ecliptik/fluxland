@@ -188,6 +188,12 @@ struct wl_signal {
 struct wlr_keyboard {
 	void *xkb_state;
 	void *keymap;
+	size_t num_keycodes;
+	uint32_t keycodes[32];
+	struct {
+		int32_t rate;
+		int32_t delay;
+	} repeat_info;
 	struct wlr_keyboard_modifiers modifiers;
 	struct {
 		struct wl_signal modifiers;
@@ -485,12 +491,10 @@ wm_dialog_open(struct wm_server *s, const char *title, const char *pre,
 	snprintf(g_dialog_precommand, sizeof(g_dialog_precommand), "%s",
 		pre ? pre : "");
 }
-static bool wm_dialog_is_open(struct wm_server *s)
-	{ (void)s; return g_dialog_open; }
 static bool
-wm_dialog_handle_key(struct wm_server *s, xkb_keysym_t sym,
+wm_internal_view_key(struct wm_view *v, xkb_keysym_t sym,
 	const char *utf8, uint32_t mods)
-	{ (void)s; (void)sym; (void)utf8; (void)mods; return true; }
+	{ (void)v; (void)sym; (void)utf8; (void)mods; return g_dialog_open; }
 
 static int
 xkb_state_key_get_syms(struct xkb_state *state, xkb_keycode_t key,
@@ -519,6 +523,14 @@ xkb_keymap_key_get_syms_by_level(struct xkb_keymap *keymap,
 	(void)keymap; (void)key; (void)layout; (void)level;
 	*syms_out = stub_level0_keysyms;
 	return stub_level0_nsyms;
+}
+
+static bool stub_key_repeats = true;
+static bool
+xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t key)
+{
+	(void)keymap; (void)key;
+	return stub_key_repeats;
 }
 
 static xkb_layout_index_t stub_num_layouts_value = 1;
@@ -714,6 +726,9 @@ enum wm_action {
 	WM_ACTION_CASCADE_WINDOWS,
 	WM_ACTION_LHALF,
 	WM_ACTION_RHALF,
+	WM_ACTION_TILE_TO,
+	WM_ACTION_SNAP_STEP,
+	WM_ACTION_PSEUDO_TRANSPARENT,
 	WM_ACTION_RESIZE_HORIZ,
 	WM_ACTION_RESIZE_VERT,
 	WM_ACTION_FOCUS_LEFT,
@@ -721,6 +736,8 @@ enum wm_action {
 	WM_ACTION_FOCUS_UP,
 	WM_ACTION_FOCUS_DOWN,
 	WM_ACTION_SET_HEAD,
+	WM_ACTION_SET_TOOLBAR_HEAD,
+	WM_ACTION_SET_TOOLBAR_OUTPUT,
 	WM_ACTION_SEND_TO_NEXT_HEAD,
 	WM_ACTION_SEND_TO_PREV_HEAD,
 	WM_ACTION_ARRANGE_STACK_LEFT,
@@ -745,6 +762,7 @@ enum wm_action {
 	WM_ACTION_SET_WORKSPACE_NAME,
 	WM_ACTION_SET_WORKSPACE_NAME_DIALOG,
 	WM_ACTION_COMMAND_DIALOG,
+	WM_ACTION_RUN_DIALOG,
 	WM_ACTION_SET_TITLE,
 	WM_ACTION_SET_TITLE_DIALOG,
 	WM_ACTION_SET_RESOURCE_VALUE,
@@ -779,6 +797,7 @@ enum wm_action {
 	WM_ACTION_FOCUS_PREV_ELEMENT,
 	WM_ACTION_FOCUS_ACTIVATE,
 	WM_ACTION_FOCUS_SLIT,
+	WM_ACTION_REPEAT,
 };
 
 /* command.h / client_pattern.h: stubbed below */
@@ -788,6 +807,7 @@ struct wm_client_pattern;
 struct wm_command {
 	enum wm_action action;
 	char *argument;
+	int repeat_rate;
 };
 
 struct wm_window_list_spec {
@@ -906,6 +926,7 @@ enum wm_wallpaper_mode {
 };
 
 struct wm_config {
+	int key_repeat_rate;
 	char *keys_file;
 	time_t keys_file_mtime;
 	char *style_file;
@@ -954,6 +975,8 @@ struct wm_view {
 	bool maximized_horiz;
 	bool lhalf;
 	bool rhalf;
+	struct wm_tile { bool active; int x, y, w, h; } tile;
+	struct wm_tile snap_return;
 	bool show_decoration;
 	char *title;
 	bool title_override;
@@ -970,6 +993,10 @@ struct wm_view {
 	bool mapped, docked;
 	uint64_t focus_seq;
 	bool ignore_size_hints;
+	int pseudo_rule;
+	struct wlr_scene_tree *pseudo_tree;
+	struct wlr_box pseudo_box;
+	unsigned pseudo_generation;
 	void *foreign_toplevel_handle;
 	struct wm_decoration *decoration;
 	struct wl_listener request_maximize;
@@ -1048,6 +1075,10 @@ struct wm_server {
 		bool active;
 		struct wm_view *restore_minimized;
 	} focus_cycle;
+	struct {
+		struct wm_view *view;
+		uint32_t mods;
+	} snap_step;
 	uint64_t focus_seq_counter;
 	struct wl_list pending_commands;
 	bool show_position;
@@ -1064,6 +1095,13 @@ struct wm_server {
 	struct wl_list keymodes;
 	char *current_keymode;
 	struct wm_chain_state chain_state;
+	struct wm_key_repeat {
+		struct wl_event_source *timer;
+		struct wm_keyboard *keyboard;
+		uint32_t keycode;
+		bool requested;
+		int rate;
+	} key_repeat;
 	uint32_t arg_key;
 	char *action_result;
 	struct { uint32_t key; struct wm_view *view; } marks[64];
@@ -1232,6 +1270,21 @@ void wm_view_toggle_fullscreen(struct wm_view *v) { (void)v; stub_fullscreen_lis
 void wm_view_minimize(struct wm_view *v) { (void)v; stub_minimize_listener_count++; }
 void wm_view_lhalf(struct wm_view *v) { (void)v; stub_lhalf_count++; }
 void wm_view_rhalf(struct wm_view *v) { (void)v; stub_rhalf_count++; }
+static int stub_tile_count, stub_tile_cell[4];
+static int stub_pseudo_update_count;
+void wm_pseudo_update(struct wm_view *v) { (void)v; stub_pseudo_update_count++; }
+bool wm_view_pseudo_transparent(const struct wm_view *v)
+{ return v->pseudo_rule == 1; }
+static int stub_snap_step_count;
+bool wm_view_snap_step(struct wm_server *s, struct wm_view *v, const char *d)
+{ (void)v; stub_snap_step_count++; return d != NULL; }
+void wm_view_tile(struct wm_view *v, int x, int y, int w, int h)
+{
+	(void)v;
+	stub_tile_count++;
+	stub_tile_cell[0] = x; stub_tile_cell[1] = y;
+	stub_tile_cell[2] = w; stub_tile_cell[3] = h;
+}
 void wm_view_resize_by(struct wm_view *v, int w, int h) { (void)v; (void)w; (void)h; stub_resize_by_count++; }
 void wm_view_focus_direction(struct wm_server *s, int dx, int dy) { (void)s; (void)dx; (void)dy; stub_focus_direction_count++; }
 void wm_view_set_head(struct wm_view *v, int h) { (void)v; (void)h; stub_set_head_count++; }
@@ -1337,6 +1390,10 @@ void wm_view_get_geometry(struct wm_view *v, struct wlr_box *b) { (void)v; b->x 
 void wm_tab_group_activate(struct wm_tab_group *g, struct wm_view *v) { (void)g; (void)v; }
 static int stub_cycle_end_count;
 void wm_focus_cycle_end(struct wm_server *s) { (void)s; stub_cycle_end_count++; }
+static int stub_snap_modifiers_count;
+static uint32_t stub_snap_modifiers_held;
+void wm_snap_step_modifiers_changed(struct wm_server *s, uint32_t held)
+{ (void)s; stub_snap_modifiers_count++; stub_snap_modifiers_held = held; }
 void wm_decoration_set_preset(struct wm_decoration *d, enum wm_decor_preset p, struct wm_style *s) { (void)d; (void)p; (void)s; stub_decoration_set_preset_count++; }
 void wm_decoration_set_shaded(struct wm_decoration *d, bool shaded, struct wm_style *s) { (void)d; (void)s; stub_decoration_set_shaded_count++; stub_decoration_shaded_value = shaded; }
 
@@ -1351,6 +1408,19 @@ int config_set_resource(struct wm_config *c, const char *k, const char *v)
 }
 
 void wm_toolbar_relayout(struct wm_toolbar *t) { (void)t; stub_toolbar_relayout_count++; }
+static char stub_toolbar_head[64];
+bool wm_toolbar_set_head(struct wm_server *s, const char *arg)
+{
+	(void)s;
+	snprintf(stub_toolbar_head, sizeof(stub_toolbar_head), "head %s", arg ? arg : "");
+	return arg && strcmp(arg, "9") != 0;
+}
+bool wm_toolbar_set_output(struct wm_server *s, const char *arg)
+{
+	(void)s;
+	snprintf(stub_toolbar_head, sizeof(stub_toolbar_head), "output %s", arg ? arg : "");
+	return arg && strcmp(arg, "nowhere") != 0;
+}
 void wm_toolbar_toggle_above(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_above_count++; }
 void wm_toolbar_toggle_visible(struct wm_toolbar *t) { (void)t; stub_toolbar_toggle_visible_count++; }
 void wm_toolbar_update_iconbar(struct wm_toolbar *t) { (void)t; }
@@ -1359,6 +1429,14 @@ void wm_slit_toggle_hidden(struct wm_slit *s) { (void)s; stub_slit_toggle_hidden
 
 void wm_server_reconfigure(struct wm_server *s) { (void)s; stub_reconfigure_count++; }
 static int stub_reload_keys_count;
+void wm_server_refresh_frames(struct wm_server *s)
+{
+	struct wm_view *v;
+	wl_list_for_each(v, &s->views, link) {
+		if (v->decoration)
+			wm_decoration_update(v->decoration, s->style);
+	}
+}
 void wm_server_reload_keys(struct wm_server *s, bool keep)
 	{ (void)s; (void)keep; stub_reload_keys_count++; }
 bool config_file_changed(const char *p, time_t *m)
@@ -1409,6 +1487,13 @@ int config_reload(struct wm_config *c) { (void)c; return 0; }
 void wm_idle_notify_activity(struct wm_server *s) { (void)s; stub_idle_notify_count++; }
 bool wm_session_is_locked(struct wm_server *s) { (void)s; return stub_session_locked; }
 bool wm_protocols_kb_shortcuts_inhibited(struct wm_server *s) { (void)s; return stub_kb_inhibited; }
+/* An X11 program's keyboard grab (xwayland-keyboard-grab): a surface, or none */
+static struct wlr_surface *stub_x_grab_surface;
+static int stub_x_grab_focus_count;
+struct wlr_surface *wm_xwayland_grab_surface(struct wm_server *s)
+	{ (void)s; return stub_x_grab_surface; }
+void wm_xwayland_grab_focus(struct wm_server *s)
+	{ (void)s; stub_x_grab_focus_count++; }
 
 void wm_foreign_toplevel_set_minimized(struct wm_view *v, bool m) { (void)v; (void)m; }
 
@@ -1459,6 +1544,10 @@ wm_command_execute(struct wm_server *server, struct wm_command *cmd,
 	case WM_ACTION_MAP:
 	case WM_ACTION_DELAY:
 		return true; /* compound: covered by test_command */
+	case WM_ACTION_REPEAT:
+		server->key_repeat.requested = true;
+		server->key_repeat.rate = cmd->repeat_rate;
+		return true;
 	default:
 		return wm_execute_action_on(server, cmd->action,
 			cmd->argument, target);
@@ -1642,6 +1731,7 @@ reset_all_counters(void)
 	stub_toggle_decoration_count = 0;
 	stub_lhalf_count = 0;
 	stub_rhalf_count = 0;
+	stub_tile_count = 0;
 	stub_resize_by_count = 0;
 	stub_focus_direction_count = 0;
 	stub_set_head_count = 0;
@@ -1722,8 +1812,11 @@ reset_all_counters(void)
 	stub_fullscreen_listener_count = 0;
 	stub_minimize_listener_count = 0;
 	stub_idle_notify_count = 0;
+	stub_key_repeats = true;
 	stub_session_locked = 0;
 	stub_kb_inhibited = 0;
+	stub_x_grab_surface = NULL;
+	stub_x_grab_focus_count = 0;
 	stub_menu_handle_key_result = 0;
 	stub_keybind_find_result = NULL;
 	stub_active_workspace = NULL;
@@ -2196,6 +2289,86 @@ test_action_maximize_horiz(void)
 	assert(wm_execute_action(&test_server, WM_ACTION_MAXIMIZE_HORIZ, NULL) == true);
 	assert(stub_maximize_horiz_count == 1);
 	printf("  PASS: test_action_maximize_horiz\n");
+}
+
+/* TileTo cols rows col row [colspan rowspan]: a cell of a grid, in permille;
+ * a grid or cell that is not one does nothing and says so */
+static void
+test_action_tile_to(void)
+{
+	setup_with_view();
+
+	/* The middle of three columns: the boundaries 333 and 666 */
+	assert(wm_execute_action(&test_server, WM_ACTION_TILE_TO,
+		"3 1 2 1") == true);
+	assert(stub_tile_count == 1);
+	assert(stub_tile_cell[0] == 333 && stub_tile_cell[1] == 0);
+	assert(stub_tile_cell[2] == 333 && stub_tile_cell[3] == 1000);
+
+	/* Neighbouring cells meet exactly: the last of three ends at 1000 */
+	assert(wm_execute_action(&test_server, WM_ACTION_TILE_TO,
+		"3 1 3 1") == true);
+	assert(stub_tile_cell[0] == 666 && stub_tile_cell[2] == 334);
+
+	/* The whole top row of two rows, with spans */
+	assert(wm_execute_action(&test_server, WM_ACTION_TILE_TO,
+		"2 2 1 1 2 1") == true);
+	assert(stub_tile_cell[0] == 0 && stub_tile_cell[1] == 0);
+	assert(stub_tile_cell[2] == 1000 && stub_tile_cell[3] == 500);
+
+	/* Not a cell: nothing is done */
+	int before = stub_tile_count;
+	const char *bad[] = { NULL, "", "3 1", "3 1 2", "3 1 4 1", "3 1 0 1",
+		"0 1 1 1", "3 1 3 1 2 1", "2 2 1 1 3 1", "a b c d",
+		"3 1 2 1 1" };
+	for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++)
+		assert(wm_execute_action(&test_server, WM_ACTION_TILE_TO,
+			bad[i]) == false);
+	assert(stub_tile_count == before);
+	printf("  PASS: test_action_tile_to\n");
+}
+
+/* SnapStep goes to the window code with its direction */
+static void
+test_action_snap_step(void)
+{
+	setup_with_view();
+	int before = stub_snap_step_count;
+	assert(wm_execute_action(&test_server, WM_ACTION_SNAP_STEP, "left"));
+	assert(stub_snap_step_count == before + 1);
+	assert(!wm_execute_action(&test_server, WM_ACTION_SNAP_STEP, NULL));
+	printf("  PASS: test_action_snap_step\n");
+}
+
+/* PseudoTransparent sets the window's own say, and updates its copy of the
+ * desktop */
+static void
+test_action_pseudo_transparent(void)
+{
+	setup_with_view();
+	struct wm_view *v = test_server.focused_view;
+	assert(v);
+	int before = stub_pseudo_update_count;
+
+	assert(wm_execute_action(&test_server, WM_ACTION_PSEUDO_TRANSPARENT,
+		"on"));
+	assert(v->pseudo_rule == 1);
+	assert(wm_execute_action(&test_server, WM_ACTION_PSEUDO_TRANSPARENT,
+		"off"));
+	assert(v->pseudo_rule == 2);
+	/* No argument toggles what it is now: off becomes on */
+	assert(wm_execute_action(&test_server, WM_ACTION_PSEUDO_TRANSPARENT,
+		NULL));
+	assert(v->pseudo_rule == 1);
+	assert(wm_execute_action(&test_server, WM_ACTION_PSEUDO_TRANSPARENT,
+		"default"));
+	assert(v->pseudo_rule == 0);
+	assert(stub_pseudo_update_count == before + 4);
+
+	assert(!wm_execute_action(&test_server, WM_ACTION_PSEUDO_TRANSPARENT,
+		"sideways"));
+	assert(stub_pseudo_update_count == before + 4);
+	printf("  PASS: test_action_pseudo_transparent\n");
 }
 
 /* Test LHalf / RHalf actions */
@@ -3111,6 +3284,59 @@ test_handle_key_inhibited_forward(void)
 	printf("  PASS: test_handle_key_inhibited_forward\n");
 }
 
+/* An X11 program has the keyboard grabbed (xlock): the keys go to it, and the
+ * grabbed surface has the focus first; the emergency keys still work */
+static void
+test_handle_key_x_grab(void)
+{
+	static struct wlr_surface grabbed;
+
+	setup_keyboard();
+	stub_x_grab_surface = &grabbed;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a; /* any key, Tab included */
+	stub_modifiers_value = 0;
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100,
+		.keycode = 23,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	assert(stub_x_grab_focus_count == 1);
+	assert(stub_seat_notify_key_count == 1);
+	assert(stub_seat_notify_key_keycode == 23);
+
+	/* A binding does not run: Mod4+a is the client's */
+	setup_keyboard();
+	stub_x_grab_surface = &grabbed;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+	event.keycode = 38;
+	handle_key(&test_kb.key, &event);
+	assert(stub_seat_notify_key_count == 1);
+	assert(stub_seat_notify_key_keycode == 38);
+
+	/* The VT switch is not taken from the user */
+	setup_keyboard();
+	stub_x_grab_surface = &grabbed;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_XF86Switch_VT_1 + 1;
+	stub_modifiers_value = WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT;
+	handle_key(&test_kb.key, &event);
+	assert(stub_vt_switch_called == 1 && stub_vt_number == 2);
+	assert(stub_seat_notify_key_count == 0);
+
+	/* No grab: the focus is not touched */
+	setup_keyboard();
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = 0;
+	handle_key(&test_kb.key, &event);
+	assert(stub_x_grab_focus_count == 0);
+	printf("  PASS: test_handle_key_x_grab\n");
+}
+
 /* Test: menu consumes the key */
 static void
 test_handle_key_menu_consumed(void)
@@ -3203,6 +3429,193 @@ test_handle_key_release_forward(void)
 	assert(stub_seat_notify_key_count == 1);
 	assert(stub_seat_notify_key_state == WL_KEYBOARD_KEY_STATE_RELEASED);
 	printf("  PASS: test_handle_key_release_forward\n");
+}
+
+/* Test: a held Repeat binding runs again at the keyboard's rate */
+static void
+test_key_repeat_held(void)
+{
+	setup_keyboard();
+	test_wlr_kb.repeat_info.rate = 25;
+	test_wlr_kb.repeat_info.delay = 600;
+	test_wlr_kb.keycodes[0] = 38;
+	test_wlr_kb.num_keycodes = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+
+	struct wm_command cmd = { .action = WM_ACTION_REPEAT };
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_REPEAT;
+	bind.command = &cmd;
+	stub_keybind_find_result = &bind;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100, .keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	assert(stub_command_execute_count == 1);
+	struct wl_event_source *timer = test_server.key_repeat.timer;
+	assert(timer && timer->next_ms == 600);
+	assert(test_server.key_repeat.keycode == 38 + 8);
+	assert(stub_seat_notify_key_count == 0);
+
+	/* Each tick runs the binding again and waits one period */
+	int idle = stub_idle_notify_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == 2);
+	assert(timer->next_ms == 100); /* the default, 10 a second */
+	assert(stub_idle_notify_count == idle + 1);
+	test_config.key_repeat_rate = 25; /* session.keyRepeatRate */
+	timer->callback(timer->data);
+	assert(timer->next_ms == 40);
+	test_config.key_repeat_rate = 0;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == 4);
+
+	/* Repeat {command} N: its own rate, whatever the setting says */
+	test_config.key_repeat_rate = 25;
+	cmd.repeat_rate = 4;
+	timer->callback(timer->data);
+	assert(timer->next_ms == 250);
+	cmd.repeat_rate = 0;
+	test_config.key_repeat_rate = 0;
+
+	/* Letting go of the key ends it */
+	event.state = WL_KEYBOARD_KEY_STATE_RELEASED;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+	printf("  PASS: test_key_repeat_held\n");
+}
+
+/* Test: what a repeat does not do */
+static void
+test_key_repeat_not_without_opt_in(void)
+{
+	setup_keyboard();
+	test_wlr_kb.repeat_info.rate = 25;
+	test_wlr_kb.repeat_info.delay = 600;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+
+	/* A binding that doesn't say Repeat */
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_RAISE;
+	stub_keybind_find_result = &bind;
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100, .keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	assert(!test_server.key_repeat.timer ||
+		test_server.key_repeat.timer->next_ms == 0);
+	assert(!test_server.key_repeat.keyboard);
+
+	/* A Repeat on a key the keymap doesn't repeat */
+	struct wm_command cmd = { .action = WM_ACTION_REPEAT };
+	bind.command = &cmd;
+	stub_key_repeats = false;
+	handle_key(&test_kb.key, &event);
+	assert(!test_server.key_repeat.keyboard);
+
+	/* ...or with the repeat turned off (rate 0) */
+	stub_key_repeats = true;
+	test_wlr_kb.repeat_info.rate = 0;
+	handle_key(&test_kb.key, &event);
+	assert(!test_server.key_repeat.keyboard);
+	printf("  PASS: test_key_repeat_not_without_opt_in\n");
+}
+
+/* Test: the ways a repeat ends */
+static void
+test_key_repeat_stops(void)
+{
+	setup_keyboard();
+	test_wlr_kb.repeat_info.rate = 25;
+	test_wlr_kb.repeat_info.delay = 600;
+	test_wlr_kb.keycodes[0] = 38;
+	test_wlr_kb.num_keycodes = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+	struct wm_command cmd = { .action = WM_ACTION_REPEAT };
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_REPEAT;
+	bind.command = &cmd;
+	stub_keybind_find_result = &bind;
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100, .keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	struct wl_event_source *timer = test_server.key_repeat.timer;
+	assert(timer && timer->next_ms == 600);
+
+	/* The binding no longer matches (a modifier let go): it ends */
+	stub_keybind_find_result = NULL;
+	int count = stub_command_execute_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == count);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+
+	/* The key is no longer held */
+	stub_keybind_find_result = &bind;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 600);
+	test_wlr_kb.num_keycodes = 0;
+	count = stub_command_execute_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == count);
+	assert(timer->next_ms == 0);
+	test_wlr_kb.num_keycodes = 1;
+
+	/* The session locks */
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 600);
+	stub_session_locked = true;
+	count = stub_command_execute_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == count);
+	assert(timer->next_ms == 0);
+	stub_session_locked = false;
+
+	/* Another key is pressed: it ends, and follows the new key if bound */
+	handle_key(&test_kb.key, &event);
+	assert(test_server.key_repeat.keycode == 38 + 8);
+	event.keycode = 39;
+	handle_key(&test_kb.key, &event);
+	assert(test_server.key_repeat.keycode == 39 + 8);
+	stub_keybind_find_result = NULL;
+	event.keycode = 40;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+
+	/* A reload ends it too, and so does the keyboard going away */
+	stub_keybind_find_result = &bind;
+	event.keycode = 38;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 600);
+	wm_keyboard_apply_config(&test_server);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+	handle_key(&test_kb.key, &event);
+	assert(test_server.key_repeat.keyboard == &test_kb);
+	struct wm_keyboard *dying = calloc(1, sizeof(*dying));
+	assert(dying != NULL);
+	dying->server = &test_server;
+	dying->wlr_keyboard = &test_wlr_kb;
+	wl_list_init(&dying->modifiers.link);
+	wl_list_init(&dying->key.link);
+	wl_list_init(&dying->destroy.link);
+	wl_list_insert(&test_server.keyboards, &dying->link);
+	test_server.key_repeat.keyboard = dying;
+	handle_keyboard_destroy(&dying->destroy, NULL);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+	printf("  PASS: test_key_repeat_stops\n");
 }
 
 /* Test: idle notify on keypress */
@@ -3813,6 +4226,25 @@ test_action_set_head(void)
 	wm_execute_action(&test_server, WM_ACTION_SET_HEAD, "1");
 	assert(stub_set_head_count == 1);
 	printf("  PASS: test_action_set_head\n");
+}
+
+/* SetToolbarHead (a number) and SetToolbarOutput (a connector): the argument
+ * goes to the toolbar, which says whether there was such a head */
+static void
+test_action_set_toolbar_head(void)
+{
+	setup_with_view();
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_TOOLBAR_OUTPUT,
+		"HDMI-A-1"));
+	assert(strcmp(stub_toolbar_head, "output HDMI-A-1") == 0);
+	assert(!wm_execute_action(&test_server, WM_ACTION_SET_TOOLBAR_OUTPUT,
+		"nowhere"));
+	assert(wm_execute_action(&test_server, WM_ACTION_SET_TOOLBAR_HEAD,
+		"2"));
+	assert(strcmp(stub_toolbar_head, "head 2") == 0);
+	assert(!wm_execute_action(&test_server, WM_ACTION_SET_TOOLBAR_HEAD,
+		"9"));
+	printf("  PASS: test_action_set_toolbar_head\n");
 }
 
 /* Test SendToNextHead/SendToPrevHead actions */
@@ -4556,6 +4988,9 @@ main(void)
 	test_action_maximize_vert();
 	test_action_maximize_horiz();
 	test_action_lhalf_rhalf();
+	test_action_tile_to();
+	test_action_snap_step();
+	test_action_pseudo_transparent();
 	test_action_arrange_windows();
 	test_action_arrange_stack();
 	test_action_set_alpha_absolute();
@@ -4610,11 +5045,15 @@ main(void)
 	test_handle_key_inhibited_vt_switch();
 	test_handle_key_inhibited_emergency_exit();
 	test_handle_key_inhibited_forward();
+	test_handle_key_x_grab();
 	test_handle_key_menu_consumed();
 	test_handle_key_binding_match();
 	test_handle_key_no_binding_forward();
 	test_handle_key_release_forward();
 	test_handle_key_idle_notify();
+	test_key_repeat_held();
+	test_key_repeat_not_without_opt_in();
+	test_key_repeat_stops();
 
 	printf("\n  Group H: handle_modifiers()\n");
 	test_handle_modifiers_forward();
@@ -4664,6 +5103,7 @@ main(void)
 	test_action_set_workspace_name_no_arg();
 	test_action_right_left_workspace();
 	test_action_set_head();
+	test_action_set_toolbar_head();
 	test_action_send_to_head();
 	test_action_remember();
 	test_action_remember_no_file();

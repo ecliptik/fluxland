@@ -219,6 +219,29 @@ handle_new_connection(int fd, uint32_t mask, void *data)
 	return 0;
 }
 
+/*
+ * Is a server listening on this socket path?  A connect that is accepted,
+ * or would block because the listen backlog is full, means one is.
+ */
+static bool
+socket_in_use(const char *path)
+{
+	struct sockaddr_un addr = {0};
+	addr.sun_family = AF_UNIX;
+	size_t len = strlen(path);
+	if (len >= sizeof(addr.sun_path))
+		return false;
+	memcpy(addr.sun_path, path, len);
+
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+	if (fd < 0)
+		return false;
+	int rc = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
+	int err = errno;
+	close(fd);
+	return rc == 0 || err == EAGAIN || err == EINPROGRESS;
+}
+
 int
 wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 {
@@ -282,8 +305,25 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 	snprintf(ipc->socket_path, path_len, "%s/fluxland.%s.sock",
 		runtime_dir, wl_display);
 
-	/* Remove stale socket */
-	unlink(ipc->socket_path);
+	/*
+	 * Take the path over only if it is a stale socket.  Never remove a
+	 * live server's socket (another compositor, or a test run that shares
+	 * the runtime dir), or a file that is not a socket at all.
+	 */
+	struct stat old_st;
+	if (lstat(ipc->socket_path, &old_st) == 0) {
+		if (!S_ISSOCK(old_st.st_mode)) {
+			wlr_log(WLR_ERROR, "IPC: %s exists and is not a socket; "
+				"not replacing it", ipc->socket_path);
+			goto err;
+		}
+		if (socket_in_use(ipc->socket_path)) {
+			wlr_log(WLR_ERROR, "IPC: %s is in use by another "
+				"process; not replacing it", ipc->socket_path);
+			goto err;
+		}
+		unlink(ipc->socket_path);
+	}
 
 	/* Create Unix domain socket */
 	ipc->socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -320,6 +360,13 @@ wm_ipc_init(struct wm_ipc_server *ipc, struct wm_server *server)
 		goto err;
 	}
 	umask(old_umask);
+
+	/* Remember which file is ours, so destroy never removes another's */
+	struct stat bound_st;
+	if (lstat(ipc->socket_path, &bound_st) == 0) {
+		ipc->socket_dev = bound_st.st_dev;
+		ipc->socket_ino = bound_st.st_ino;
+	}
 
 	/* Defense-in-depth: also explicitly set permissions */
 	if (fchmod(ipc->socket_fd, 0600) < 0) {
@@ -374,7 +421,12 @@ wm_ipc_destroy(struct wm_ipc_server *ipc)
 	}
 
 	if (ipc->socket_path) {
-		unlink(ipc->socket_path);
+		/* Only the file we bound: it may have been replaced since */
+		struct stat st;
+		if (lstat(ipc->socket_path, &st) == 0 &&
+		    st.st_dev == ipc->socket_dev &&
+		    st.st_ino == ipc->socket_ino)
+			unlink(ipc->socket_path);
 		free(ipc->socket_path);
 	}
 

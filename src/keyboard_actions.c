@@ -10,6 +10,7 @@
 
 #define _GNU_SOURCE
 #include <fcntl.h>
+#include <limits.h>
 #include <ctype.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -31,6 +32,7 @@
 #include "keyboard_actions.h"
 #include "dialog.h"
 #include "keyboard.h"
+#include "pseudo_transparency.h"
 #include "server.h"
 #include "config.h"
 #include "util.h"
@@ -313,6 +315,62 @@ leave_maximized(struct wm_view *view, bool resizing)
 		wm_view_maximize_horiz(view);
 	if (view->maximized_vert)
 		wm_view_maximize_vert(view);
+	return true;
+}
+
+/*
+ * TileTo cols rows col row [colspan rowspan]: the window into a cell of a
+ * grid over its head, counting from 1; the middle column of three is
+ * "TileTo 3 1 2 1", the top row of two "TileTo 1 2 1 1" (or, 2 rows of 2
+ * columns, "TileTo 2 2 1 1 2 1").  False for a grid or cell that is not one.
+ */
+static bool
+handle_tile_to(struct wm_view *view, const char *argument)
+{
+	int v[6] = { 0, 0, 0, 0, 1, 1 };
+	int n = argument ? sscanf(argument, "%d %d %d %d %d %d", &v[0], &v[1],
+		&v[2], &v[3], &v[4], &v[5]) : 0;
+	int cols = v[0], rows = v[1], col = v[2], row = v[3];
+	int col_span = v[4], row_span = v[5];
+	if (!view || (n != 4 && n != 6) || cols < 1 || cols > 100 ||
+	    rows < 1 || rows > 100 || col < 1 || row < 1 || col_span < 1 ||
+	    row_span < 1 || col - 1 + col_span > cols ||
+	    row - 1 + row_span > rows)
+		return false;
+	/* Boundaries in permille: a cell ends where its neighbour starts */
+	int x = 1000 * (col - 1) / cols;
+	int y = 1000 * (row - 1) / rows;
+	int w = 1000 * (col - 1 + col_span) / cols - x;
+	int h = 1000 * (row - 1 + row_span) / rows - y;
+	wm_view_tile(view, x, y, w, h);
+	return true;
+}
+
+/*
+ * PseudoTransparent [on|off|toggle|default]: whether the window shows the
+ * desktop behind it where it is translucent; "default" goes back to the
+ * session.screen0.pseudoTransparency setting.  Toggles with no argument.
+ */
+static bool
+handle_pseudo_transparent(struct wm_view *view, const char *argument)
+{
+	if (!view)
+		return true;
+	const char *a = argument ? argument : "";
+	while (*a == ' ')
+		a++;
+	if (!*a || !strcasecmp(a, "toggle"))
+		view->pseudo_rule = wm_view_pseudo_transparent(view) ?
+			WM_PSEUDO_NO : WM_PSEUDO_YES;
+	else if (!strcasecmp(a, "on") || !strcasecmp(a, "yes"))
+		view->pseudo_rule = WM_PSEUDO_YES;
+	else if (!strcasecmp(a, "off") || !strcasecmp(a, "no"))
+		view->pseudo_rule = WM_PSEUDO_NO;
+	else if (!strcasecmp(a, "default") || !strcasecmp(a, "follow"))
+		view->pseudo_rule = WM_PSEUDO_FOLLOW;
+	else
+		return false;
+	wm_pseudo_update(view);
 	return true;
 }
 
@@ -700,14 +758,8 @@ handle_reload_style(struct wm_server *server)
 			server->config->style_file);
 	if (server->toolbar)
 		wm_toolbar_relayout(server->toolbar);
-	if (server->style) {
-		struct wm_view *v;
-		wl_list_for_each(v, &server->views, link) {
-			if (v->decoration)
-				wm_decoration_update(v->decoration,
-					server->style);
-		}
-	}
+	if (server->style)
+		wm_server_refresh_frames(server);
 	return true;
 }
 
@@ -1105,6 +1157,33 @@ wm_execute_action(struct wm_server *server,
 	return wm_execute_action_on(server, action, argument, NULL);
 }
 
+/*
+ * RunDialog: fluxland-run, an ordinary window of its own (as fbrun is), from
+ * next to this program when it is there (a build, an unpacked tree), else
+ * from PATH
+ */
+static void
+run_dialog_spawn(void)
+{
+	char exe[PATH_MAX];
+	ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+	char cmd[PATH_MAX + 32];
+	if (n > 0) {
+		exe[n] = '\0';
+		char *slash = strrchr(exe, '/');
+		if (slash) {
+			snprintf(slash + 1, sizeof(exe) - (size_t)(slash + 1 - exe),
+				"fluxland-run");
+			if (access(exe, X_OK) == 0 && !strchr(exe, '\'')) {
+				snprintf(cmd, sizeof(cmd), "exec '%s'", exe);
+				wm_spawn_command(cmd);
+				return;
+			}
+		}
+	}
+	wm_spawn_command("exec fluxland-run");
+}
+
 bool
 wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	const char *argument, struct wm_view *target)
@@ -1166,6 +1245,9 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	}
 	case WM_ACTION_COMMAND_DIALOG:
 		wm_dialog_open(server, _("Fluxbox Command"), NULL, NULL, NULL);
+		return true;
+	case WM_ACTION_RUN_DIALOG:
+		run_dialog_spawn();
 		return true;
 	case WM_ACTION_SET_TITLE:
 		/* The window keeps it, whatever it calls itself after */
@@ -1513,6 +1595,12 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 		if (view)
 			wm_view_rhalf(view);
 		return true;
+	case WM_ACTION_TILE_TO:
+		return handle_tile_to(view, argument);
+	case WM_ACTION_SNAP_STEP:
+		return wm_view_snap_step(server, view, argument);
+	case WM_ACTION_PSEUDO_TRANSPARENT:
+		return handle_pseudo_transparent(view, argument);
 
 	/* Resize by delta */
 	case WM_ACTION_RESIZE_HORIZ:
@@ -1542,6 +1630,10 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 				wm_view_set_head(view, head);
 		}
 		return true;
+	case WM_ACTION_SET_TOOLBAR_HEAD:
+		return wm_toolbar_set_head(server, argument);
+	case WM_ACTION_SET_TOOLBAR_OUTPUT:
+		return wm_toolbar_set_output(server, argument);
 	case WM_ACTION_SEND_TO_NEXT_HEAD:
 	case WM_ACTION_SEND_TO_PREV_HEAD: {
 		int offset = 1;
@@ -1617,7 +1709,8 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_IF:
 	case WM_ACTION_FOREACH:
 	case WM_ACTION_MAP:
-	case WM_ACTION_DELAY: {
+	case WM_ACTION_DELAY:
+	case WM_ACTION_REPEAT: {
 		/* Compound commands given as action + argument text */
 		struct wm_command *cmd = wm_command_create(action, argument);
 		bool ok = cmd && wm_command_execute(server, cmd, target);

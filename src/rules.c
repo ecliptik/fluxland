@@ -31,6 +31,7 @@
 #include "fbcompat.h"
 #include "output.h"
 #include "rules.h"
+#include "pseudo_transparency.h"
 #include "server.h"
 #include "util.h"
 #include "view.h"
@@ -182,9 +183,14 @@ wm_rules_apply(struct wm_rules *rules, struct wm_view *view)
 		view->icon_hidden = app->icon_hidden;
 	if (app->has_layer)
 		wm_view_set_layer(view, app->layer);
-	if (app->has_deco && view->decoration)
-		wm_decoration_set_preset(view->decoration, app->deco,
-			server->style);
+	if (app->has_deco) {
+		/* a frame asked for here beats what the window asked for */
+		if (app->deco != WM_DECOR_NONE)
+			wm_view_force_decoration(view);
+		if (view->decoration)
+			wm_decoration_set_preset(view->decoration, app->deco,
+				server->style);
+	}
 	if (app->has_focus_protection)
 		view->focus_protection = app->focus_protection;
 	if (app->has_alpha) {
@@ -193,6 +199,10 @@ wm_rules_apply(struct wm_rules *rules, struct wm_view *view)
 	}
 	if (app->has_ignore_size_hints)
 		view->ignore_size_hints = app->ignore_size_hints;
+	if (app->has_pseudo) {
+		view->pseudo_rule = app->pseudo ? WM_PSEUDO_YES : WM_PSEUDO_NO;
+		wm_pseudo_update(view);
+	}
 
 	if (app->has_workspace) {
 		struct wm_workspace *ws = wm_workspace_get(server,

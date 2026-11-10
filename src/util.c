@@ -55,6 +55,9 @@ wm_spawn(void (*exec_fn)(void *), void *data)
 		unsetenv("LD_AUDIT");
 		unsetenv("LD_DEBUG");
 		unsetenv("LD_PROFILE");
+		/* The way into the compositor's input emulation: for XWayland
+		 * alone */
+		unsetenv("LIBEI_SOCKET");
 
 		exec_fn(data);
 		_exit(127);

@@ -42,6 +42,7 @@
 /* view.c backend accessors (xdg-only stand-ins) */
 #define VIEW_STUB_PID
 #define VIEW_STUB_PARENT
+#define VIEW_STUB_SURFACE
 #include "view_backend_stubs.c"
 
 /* --- Screen cast stubs (referenced by ipc_commands.c) --- */

@@ -84,7 +84,7 @@ The manual pages have every key: `fluxland-init(5)`.
 | Fluxbox | fluxland |
 |---|---|
 | `fluxbox-remote 'command'` | `fluxland-ctl action 'command'` (any command line, `MacroCmd {...} {...}` too) |
-| `fbrun` | the `CommandDialog` command |
+| `fbrun` | the `RunDialog` command (the `fluxland-run` window; `CommandDialog` types fluxland commands instead) |
 | `wmctrl`, `xdotool` | `fluxland-ctl get_windows`, `fluxland-ctl -w ID action ...`; `wtype` to type |
 | `import`, `scrot` | `grim` (and `slurp` for a region) |
 | screen sharing | `xdg-desktop-portal-wlr`, which fluxland sets up |

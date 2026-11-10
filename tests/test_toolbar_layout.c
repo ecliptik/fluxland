@@ -116,6 +116,7 @@ struct wlr_box {
 
 struct wlr_output {
 	int width, height;
+	const char *name;
 };
 
 struct wlr_scene_output {
@@ -409,6 +410,7 @@ struct wm_config {
 	int iconbar_wheel_mode;
 	char *iconbar_iconified_pattern;
 	int toolbar_on_head;
+	char *toolbar_on_output;
 	bool toolbar_max_over;
 	bool iconbar_use_pixmap;
 };
@@ -478,6 +480,8 @@ struct wm_systray { bool vertical; };
 
 struct wm_server {
 	struct wl_list outputs;
+	struct wm_toolbar *toolbar;
+	char *toolbar_output_name;
 	struct wl_list views;
 	struct wl_list workspaces;
 	struct wm_workspace *current_workspace;
@@ -662,6 +666,47 @@ wm_output_arrange(struct wm_output *output)
 {
 	(void)output;
 	g_arrange_count++;
+}
+
+static int g_arrange_all_count;
+static void
+wm_output_arrange_all(struct wm_server *server)
+{
+	(void)server;
+	g_arrange_all_count++;
+}
+
+/* Every output of these tests is on, in the order they are listed */
+static int
+wm_output_head_number(struct wm_output *output)
+{
+	return output->wlr_output ? 1 : 0;
+}
+
+static struct wm_output *
+wm_output_head(struct wm_server *server, int head)
+{
+	struct wm_output *output;
+	int n = 1;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (n++ == head)
+			return output;
+	}
+	return NULL;
+}
+
+static struct wm_output *
+wm_output_by_name(struct wm_server *server, const char *name)
+{
+	struct wm_output *output;
+	if (!name || !*name)
+		return NULL;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (output->wlr_output && output->wlr_output->name &&
+		    !strcmp(output->wlr_output->name, name))
+			return output;
+	}
+	return NULL;
 }
 
 static struct wm_output *
@@ -2904,6 +2949,108 @@ test_toolbar_on_second_head(void)
 	printf("  PASS: toolbar_on_second_head\n");
 }
 
+/* SetToolbarOutput (by connector name) and SetToolbarHead (by number): the
+ * toolbar on an output, until it is cleared; no change of toolbar.onhead,
+ * and toolbar.onoutput is used while it is not overridden */
+static void
+test_toolbar_set_head(void)
+{
+	reset_globals();
+	setup_test_server();
+	test_config.toolbar_tools = "iconbar";
+	test_config.toolbar_placement = WM_TOOLBAR_BOTTOM_CENTER;
+	test_config.toolbar_width_percent = 50;
+	test_wlr_output.name = "DP-A";
+
+	struct wm_workspace ws;
+	memset(&ws, 0, sizeof(ws));
+	ws.name = "1";
+	wl_list_insert(&test_server.workspaces, &ws.link);
+	test_server.current_workspace = &ws;
+	test_server.workspace_count = 1;
+
+	struct wlr_output wlr2;
+	memset(&wlr2, 0, sizeof(wlr2));
+	wlr2.width = 1280;
+	wlr2.height = 1024;
+	wlr2.name = "DP-B";
+	struct wm_output out2;
+	memset(&out2, 0, sizeof(out2));
+	out2.wlr_output = &wlr2;
+	out2.lx = 1920;
+	wl_list_insert(test_server.outputs.prev, &out2.link);
+
+	test_config.toolbar_on_head = 1;
+	struct wm_toolbar *toolbar = wm_toolbar_create(&test_server);
+	assert(toolbar != NULL);
+	test_server.toolbar = toolbar;
+	assert(toolbar->x == (1920 - 960) / 2);	/* on DP-A */
+
+	/* By connector name */
+	g_arrange_all_count = 0;
+	assert(wm_toolbar_set_output(&test_server, "DP-B"));
+	assert(toolbar->x == 1920 + (1280 - 640) / 2);
+	assert(g_arrange_all_count == 1);
+	assert(strcmp(test_server.toolbar_output_name, "DP-B") == 0);
+
+	/* It stays through a reconfigure, whatever onhead says */
+	test_config.toolbar_on_head = 1;
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->x == 1920 + (1280 - 640) / 2);
+
+	/* No such output (or head): nothing changes */
+	assert(!wm_toolbar_set_output(&test_server, "DP-Z"));
+	assert(!wm_toolbar_set_head(&test_server, "9"));
+	/* a head is a number: a name is not one */
+	assert(!wm_toolbar_set_head(&test_server, "DP-A"));
+	assert(strcmp(test_server.toolbar_output_name, "DP-B") == 0);
+	assert(toolbar->x == 1920 + (1280 - 640) / 2);
+
+	/* By head number, as onhead has them */
+	assert(wm_toolbar_set_head(&test_server, "1"));
+	assert(strcmp(test_server.toolbar_output_name, "DP-A") == 0);
+	assert(toolbar->x == (1920 - 960) / 2);
+
+	/* 0 or nothing: onhead's again */
+	test_config.toolbar_on_head = 2;
+	assert(wm_toolbar_set_head(&test_server, "0"));
+	assert(test_server.toolbar_output_name == NULL);
+	assert(toolbar->x == 1920 + (1280 - 640) / 2);
+	assert(wm_toolbar_set_output(&test_server, "DP-A"));
+	assert(wm_toolbar_set_output(&test_server, ""));
+	assert(test_server.toolbar_output_name == NULL);
+
+	/* toolbar.onoutput: that monitor while it is there, over onhead */
+	test_config.toolbar_on_head = 1;
+	test_config.toolbar_on_output = "DP-B";
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->x == 1920 + (1280 - 640) / 2);
+	test_config.toolbar_on_output = "DP-Z";	/* not connected: onhead */
+	wm_toolbar_relayout(toolbar);
+	assert(toolbar->x == (1920 - 960) / 2);
+	/* an override comes before it */
+	test_config.toolbar_on_output = "DP-B";
+	assert(wm_toolbar_set_output(&test_server, "DP-A"));
+	assert(toolbar->x == (1920 - 960) / 2);
+	assert(wm_toolbar_set_output(&test_server, ""));
+	test_config.toolbar_on_output = NULL;
+
+	/* An output that is gone is not where the toolbar is */
+	assert(wm_toolbar_set_output(&test_server, "DP-A"));
+	wl_list_remove(&test_output.link);
+	assert(toolbar_output(&test_server) == &out2);
+	wl_list_insert(&test_server.outputs, &test_output.link);
+
+	test_server.toolbar = NULL;
+	assert(!wm_toolbar_set_output(&test_server, "DP-A"));
+	free(test_server.toolbar_output_name);
+	test_server.toolbar_output_name = NULL;
+	wm_toolbar_destroy(toolbar);
+	wl_list_remove(&out2.link);
+	wl_list_remove(&ws.link);
+	printf("  PASS: toolbar_set_head\n");
+}
+
 static void
 test_toolbar_reserve(void)
 {
@@ -3395,6 +3542,7 @@ main(void)
 	test_toolbar_render_not_visible();
 	test_get_primary_output_empty();
 	test_toolbar_on_second_head();
+	test_toolbar_set_head();
 	test_toolbar_reserve();
 	test_render_tool_zero_width();
 

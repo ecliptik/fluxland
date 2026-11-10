@@ -8,6 +8,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <assert.h>
+#include "../src/tray_grant.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -468,6 +469,8 @@ struct wm_view;
 
 /* Config */
 struct wm_config {
+	bool max_disable_move;
+	bool max_disable_resize;
 	int workspace_count;
 	char **workspace_names;
 	int workspace_name_count;
@@ -554,6 +557,10 @@ static int g_event_count[8];
 static struct wm_view *g_event_view;
 static int g_rebase_count;
 static void wm_cursor_rebase(struct wm_server *s) { (void)s; g_rebase_count++; }
+static void wm_pseudo_update(struct wm_view *v) { (void)v; }
+static int g_xwayland_raised_count;
+static void wm_xwayland_view_raised(struct wm_view *v)
+{ (void)v; g_xwayland_raised_count++; }
 
 static void
 wm_cursor_run_event(struct wm_server *s, uint32_t ctx, int event,
@@ -696,6 +703,8 @@ struct wm_view {
 	bool maximized_horiz;
 	bool lhalf;
 	bool rhalf;
+	struct wm_tile { bool active; int x, y, w, h; } tile;
+	struct wm_tile snap_return;
 	bool show_decoration;
 	char *title;
 	bool title_override;
@@ -704,6 +713,9 @@ struct wm_view {
 	char *role;
 	bool app_id_at_map;
 	bool no_decoration;
+	int deco_hint;
+	bool motif_buttons_set;
+	uint32_t motif_decor;
 	bool no_focus;
 	bool pending_maximize, pending_fullscreen, pending_minimize;
 	bool pending_maximize_horiz, pending_maximize_vert;
@@ -730,6 +742,10 @@ struct wm_view {
 	int64_t mapped_ms;
 	struct wm_view_prop *props;
 	bool ignore_size_hints;
+	int pseudo_rule;
+	struct wlr_scene_tree *pseudo_tree;
+	struct wlr_box pseudo_box;
+	unsigned pseudo_generation;
 	bool docked;
 	bool focus_hidden;
 	bool icon_hidden;
@@ -761,6 +777,11 @@ struct wm_view {
 
 /* Server struct */
 struct wm_server {
+	int grab_head_x, grab_head_y;
+	double grab_pointer_x, grab_pointer_y;
+	bool grab_pulled;
+	struct wlr_box grab_start;
+	bool grab_start_plain;
 	struct wl_display *wl_display;
 	struct wl_event_loop *wl_event_loop;
 	struct wlr_backend *backend;
@@ -835,6 +856,10 @@ struct wm_server {
 		bool active;
 		struct wm_view *restore_minimized;
 	} focus_cycle;
+	struct {
+		struct wm_view *view;
+		uint32_t mods;
+	} snap_step;
 	uint64_t focus_seq_counter;
 	struct wl_list pending_commands;
 	struct wl_event_source *auto_raise_timer;
@@ -1155,12 +1180,15 @@ wlr_output_layout_output_at(struct wlr_output_layout *layout,
 	return g_output_at_return;
 }
 
+/* Where the head is in the layout: a test of a second head sets it */
+static int g_layout_origin_x;
+
 static void
 wlr_output_layout_get_box(struct wlr_output_layout *layout,
 	struct wlr_output *output, struct wlr_box *box)
 {
 	(void)layout; (void)output;
-	box->x = 0; box->y = 0;
+	box->x = g_layout_origin_x; box->y = 0;
 	box->width = 1920; box->height = 1080;
 }
 
@@ -1446,6 +1474,7 @@ void wm_view_unminimize(struct wm_view *view);
 void wm_view_set_urgent(struct wm_view *view, bool urgent);
 void wm_view_present(struct wm_view *view);
 bool wm_view_request_activate(struct wm_view *view, bool allowed);
+pid_t wm_view_pid(struct wm_view *view);
 #define WM_ICON_SIZE 32
 void wm_view_set_icon(struct wm_view *view, struct _cairo_surface *icon,
 	bool from_client);
@@ -3061,6 +3090,54 @@ test_view_toggle_decoration_off(void)
 	printf("  PASS: view_toggle_decoration_off\n");
 }
 
+/*
+ * A window that draws its own decorations (Discord) gets none of ours, and
+ * gets them when it stops: before it is shown that's only a flag; after, its
+ * frame is hidden or shown.
+ */
+static void
+test_view_set_client_decorated(void)
+{
+	/* Before it is shown: a flag */
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_views[0].decoration = NULL;
+	test_views[0].no_decoration = false;
+	test_views[0].mapped = false;
+	wm_view_set_client_decorated(&test_views[0], true);
+	assert(test_views[0].no_decoration == true);
+	assert(test_views[0].decoration == NULL);
+	/* the same again changes nothing */
+	wm_view_set_client_decorated(&test_views[0], true);
+	assert(test_views[0].no_decoration == true);
+	wm_view_set_client_decorated(&test_views[0], false);
+	assert(test_views[0].no_decoration == false);
+	/* not shown yet: ours is made at the map, not now */
+	assert(test_views[0].decoration == NULL);
+	wm_view_set_client_decorated(NULL, true);
+	wl_list_remove(&test_views[0].link);
+
+	/* After it is shown: the frame goes, and comes back */
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_decoration(&test_views[0]);
+	test_views[0].show_decoration = true;
+	test_views[0].no_decoration = false;
+	wm_view_set_client_decorated(&test_views[0], true);
+	assert(test_views[0].no_decoration == true);
+	assert(test_views[0].show_decoration == false);
+	assert(test_deco_tree.node.enabled == false);
+	wm_view_set_client_decorated(&test_views[0], false);
+	assert(test_views[0].no_decoration == false);
+	assert(test_views[0].show_decoration == true);
+	assert(test_deco_tree.node.enabled == true);
+
+	wl_list_remove(&test_deco_tree.node.link);
+	test_views[0].decoration = NULL;
+	wl_list_remove(&test_views[0].link);
+	printf("  PASS: view_set_client_decorated\n");
+}
+
 static void
 test_view_toggle_decoration_on(void)
 {
@@ -4327,6 +4404,88 @@ test_set_app_id_stored(void)
 	printf("  PASS: set_app_id_stored\n");
 }
 
+/* ===== SnapStep: the undo of a minimize while its modifiers are held ===== */
+
+static void
+test_snap_step_minimize_undo(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	test_config.animate_minimize = false;
+	g_seat_has_keyboard = true;
+	struct wm_view *v = &test_views[0];
+
+	/* No modifier held: nothing is remembered to undo */
+	g_kb_modifiers = 0;
+	wm_snap_step_minimized(v);
+	assert(test_server.snap_step.view == NULL);
+
+	/* Super held while it was minimized: remembered, with Super */
+	g_kb_modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CAPS;
+	wm_snap_step_minimized(v);
+	assert(test_server.snap_step.view == v);
+	assert(test_server.snap_step.mods == WLR_MODIFIER_LOGO);  /* no locks */
+
+	/* It is not minimized (shown): nothing to restore */
+	assert(!wm_snap_step_restore(&test_server));
+	assert(test_server.snap_step.view == NULL);
+
+	/* Minimized, Super still held (and Shift too: extra is fine) */
+	v->scene_tree->node.enabled = false;
+	g_kb_modifiers = WLR_MODIFIER_LOGO;
+	wm_snap_step_minimized(v);
+	g_kb_modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT;
+	assert(wm_snap_step_restore(&test_server));
+	assert(v->scene_tree->node.enabled == true);
+	assert(test_server.focused_view == v);
+	assert(test_server.snap_step.view == NULL);
+
+	/* Super was let go in between: no */
+	v->scene_tree->node.enabled = false;
+	g_kb_modifiers = WLR_MODIFIER_LOGO;
+	wm_snap_step_minimized(v);
+	g_kb_modifiers = 0;
+	wm_snap_step_modifiers_changed(&test_server, g_kb_modifiers);
+	assert(test_server.snap_step.view == NULL);
+	assert(!wm_snap_step_restore(&test_server));
+	assert(v->scene_tree->node.enabled == false);
+
+	/* Two modifiers went down; letting go of either ends it */
+	g_kb_modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL;
+	wm_snap_step_minimized(v);
+	wm_snap_step_modifiers_changed(&test_server, WLR_MODIFIER_LOGO |
+		WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT);
+	assert(test_server.snap_step.view == v);
+	wm_snap_step_modifiers_changed(&test_server, WLR_MODIFIER_LOGO);
+	assert(test_server.snap_step.view == NULL);
+
+	/* While it can be undone it is pending: other keys are about it */
+	v->scene_tree->node.enabled = false;
+	g_kb_modifiers = WLR_MODIFIER_LOGO;
+	wm_snap_step_minimized(v);
+	assert(wm_snap_step_pending(&test_server));
+	assert(wm_snap_step_pending(&test_server));	/* asking changes nothing */
+	/* no longer once it was let go, or the window is shown again */
+	g_kb_modifiers = 0;
+	assert(!wm_snap_step_pending(&test_server));
+	assert(test_server.snap_step.view == NULL);
+	g_kb_modifiers = WLR_MODIFIER_LOGO;
+	wm_snap_step_minimized(v);
+	v->scene_tree->node.enabled = true;
+	assert(!wm_snap_step_pending(&test_server));
+
+	/* Another step begins: forgotten */
+	g_kb_modifiers = WLR_MODIFIER_LOGO;
+	wm_snap_step_minimized(v);
+	wm_snap_step_forget(&test_server);
+	assert(test_server.snap_step.view == NULL);
+
+	g_kb_modifiers = 0;
+	g_seat_has_keyboard = false;
+	wl_list_remove(&v->link);
+	printf("  PASS: snap_step_minimize_undo\n");
+}
+
 /* ===== deiconify_view tests ===== */
 
 static void
@@ -4560,6 +4719,262 @@ test_maximize_enter_full_max(void)
 	wl_list_remove(&test_outputs[0].link);
 	g_output_at_return = NULL;
 	printf("  PASS: maximize_enter_full_max\n");
+}
+
+/* A window the user resizes by hand is not maximized any more, but stays
+ * where it is, as big as it is; fullscreen is not its business */
+static void
+test_clear_maximized_keeps_geometry(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+
+	wm_view_toggle_maximize(&test_views[0]);
+	assert(test_views[0].maximized);
+	test_views[0].maximized_vert = true;
+	test_views[0].maximized_horiz = true;
+	test_views[0].lhalf = true;
+	test_views[0].rhalf = true;
+	test_views[0].fullscreen = true;
+	int x = test_views[0].x, y = test_views[0].y;
+	struct wlr_box saved = test_views[0].saved_geometry;
+
+	wm_view_clear_maximized(&test_views[0]);
+	assert(!test_views[0].maximized && !test_views[0].maximized_vert &&
+		!test_views[0].maximized_horiz && !test_views[0].lhalf &&
+		!test_views[0].rhalf);
+	assert(test_views[0].fullscreen);
+	assert(test_views[0].x == x && test_views[0].y == y);
+	assert(memcmp(&saved, &test_views[0].saved_geometry,
+		sizeof(saved)) == 0);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: clear_maximized_keeps_geometry\n");
+}
+
+/* A maximized window moved by hand and dropped on its own head goes back */
+static void
+test_settle_on_same_head(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	g_layout_origin_x = 0;
+
+	wm_view_toggle_maximize(&test_views[0]);
+	int max_x = test_views[0].x, max_y = test_views[0].y;
+	test_views[0].x += 40;
+	test_views[0].y += 25;
+	struct wlr_box saved = test_views[0].saved_geometry;
+
+	wm_view_settle_on_head(&test_views[0], 0, 0);
+	assert(test_views[0].maximized);
+	assert(test_views[0].x == max_x && test_views[0].y == max_y);
+	assert(memcmp(&saved, &test_views[0].saved_geometry,
+		sizeof(saved)) == 0);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: settle_on_same_head\n");
+}
+
+/* Dropped on another head it is maximized there, and what undoing that
+ * returns it to is on that head too */
+static void
+test_settle_on_other_head(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	g_layout_origin_x = 0;
+
+	wm_view_toggle_maximize(&test_views[0]);
+	test_views[0].saved_geometry = (struct wlr_box){ 100, 150, 800, 600 };
+
+	/* Dragged across: it is on head 2 now */
+	test_views[0].x = 1920 + 300;
+	g_output_at_return = &test_wlr_outputs[1];
+	g_layout_origin_x = 1920;
+	wm_view_settle_on_head(&test_views[0], 0, 0);
+
+	assert(test_views[0].maximized);
+	assert(test_views[0].x == 1920);
+	assert(test_views[0].saved_geometry.x == 100 + 1920);
+	assert(test_views[0].saved_geometry.y == 150);
+	assert(test_views[0].saved_geometry.width == 800);
+
+	g_layout_origin_x = 0;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: settle_on_other_head\n");
+}
+
+/* A plain window has nothing to settle */
+static void
+test_settle_plain_window_untouched(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	test_views[0].x = 321;
+	test_views[0].y = 123;
+	test_views[0].saved_geometry = (struct wlr_box){ 1, 2, 3, 4 };
+
+	wm_view_settle_on_head(&test_views[0], 0, 0);
+	assert(test_views[0].x == 321 && test_views[0].y == 123);
+	assert(test_views[0].saved_geometry.x == 1);
+	assert(!test_views[0].maximized);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: settle_plain_window_untouched\n");
+}
+
+/* A maximized window pulled down comes off its maximize: back to the size it
+ * had, the pointer in the same place across it and as far down */
+static void
+test_pull_restore(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[0];
+	g_layout_origin_x = 0;
+	double gx = -1, gy = -1;
+
+	/* Not maximized: nothing to pull from */
+	assert(!wm_view_pull_restore(&test_views[0], 960, 30, &gx, &gy));
+
+	wm_view_toggle_maximize(&test_views[0]);
+	assert(test_views[0].maximized);
+	test_views[0].saved_geometry = (struct wlr_box){ 100, 150, 800, 600 };
+	/* The client has committed the maximized size */
+	test_xdg_surfaces[0].geometry = (struct wlr_box){ 0, 0, 1920, 1080 };
+
+	assert(wm_view_pull_restore(&test_views[0], 960, 30, &gx, &gy));
+	assert(!test_views[0].maximized);
+	/* Half way across 1920, so half way across 800: x = 960 - 400 */
+	assert(test_views[0].x == 560);
+	assert(test_views[0].y == 0);
+	assert(gx == 400 && gy == 30);
+
+	/* No size to go back to (it began maximized): left as it is */
+	wm_view_toggle_maximize(&test_views[0]);
+	test_views[0].saved_geometry = (struct wlr_box){ 0, 0, 0, 0 };
+	assert(!wm_view_pull_restore(&test_views[0], 960, 30, &gx, &gy));
+	assert(test_views[0].maximized);
+
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: pull_restore\n");
+}
+
+/* Dropped in the maximize zone of the second head: maximized there, and a
+ * window that was maximized keeps what it is restored to, on that head */
+static void
+test_snap_maximize_on_another_head(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1920, 1080);
+	setup_mock_output(1, 1920, 0, 1920, 1080);
+	g_output_at_return = &test_wlr_outputs[1];
+	g_layout_origin_x = 1920;
+	struct wlr_box area = { 1920, 0, 1920, 1080 };
+
+	/* A plain window, dropped at x = 1000 (half off the head) */
+	test_views[0].x = 1000;
+	wm_view_snap_maximize(&test_views[0], &area, NULL, 0, 0);
+	assert(test_views[0].maximized);
+	assert(test_views[0].x == 1920 && test_views[0].y == 0);
+
+	/* One that was maximized on head 1, restore to (100, 150, 800x600) */
+	wm_view_clear_maximized(&test_views[0]);
+	struct wlr_box prev = { 100, 150, 800, 600 };
+	wm_view_snap_maximize(&test_views[0], &area, &prev, 0, 0);
+	assert(test_views[0].maximized);
+	assert(test_views[0].saved_geometry.x == 100 + 1920);
+	assert(test_views[0].saved_geometry.y == 150);
+	assert(test_views[0].saved_geometry.width == 800);
+
+	g_layout_origin_x = 0;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: snap_maximize_on_another_head\n");
+}
+
+/* A tile is a cell of the head's usable area, in permille: neighbours meet at
+ * the same pixel even for thirds of an odd width; the same cell again puts the
+ * window back; a maximize or a hand resize clears it; it follows the window
+ * to another head */
+static void
+test_tile_cells(void)
+{
+	init_test_server();
+	setup_mock_view(0, &test_workspace);
+	setup_mock_output(0, 0, 0, 1000, 700);
+	setup_mock_output(1, 1000, 0, 1001, 700);
+	g_output_at_return = &test_wlr_outputs[0];
+	g_layout_origin_x = 0;
+	test_views[0].x = 123;
+	test_views[0].y = 45;
+
+	/* The middle third of 1000: 333..666 */
+	wm_view_tile(&test_views[0], 333, 0, 333, 1000);
+	assert(test_views[0].tile.active);
+	assert(test_views[0].x == 333 && test_views[0].y == 0);
+	assert(test_views[0].saved_geometry.x == 123);
+
+	/* Not a cell: nothing changes */
+	wm_view_tile(&test_views[0], 900, 0, 200, 1000);
+	wm_view_tile(&test_views[0], 0, 0, 0, 1000);
+	assert(test_views[0].x == 333);
+
+	/* Another cell: no new save (it would be the tile), the cell moves */
+	wm_view_tile(&test_views[0], 666, 0, 334, 1000);
+	assert(test_views[0].x == 666);
+	assert(test_views[0].saved_geometry.x == 123);
+
+	/* The same cell again: back where it was */
+	wm_view_tile(&test_views[0], 666, 0, 334, 1000);
+	assert(!test_views[0].tile.active);
+	assert(test_views[0].x == 123 && test_views[0].y == 45);
+
+	/* A maximize, or a hand resize, is not a tile */
+	wm_view_tile(&test_views[0], 0, 0, 500, 500);
+	assert(test_views[0].tile.active);
+	wm_view_clear_maximized(&test_views[0]);
+	assert(!test_views[0].tile.active);
+
+	/* It goes to the head the window is on (999 wide: 1001 for head 2) */
+	wm_view_tile(&test_views[0], 500, 0, 500, 1000);
+	test_views[0].x = 1000 + 300;
+	g_output_at_return = &test_wlr_outputs[1];
+	g_layout_origin_x = 1000;
+	wm_view_refit(&test_views[0]);
+	assert(test_views[0].x == 1000 + 1001 * 500 / 1000);
+
+	g_layout_origin_x = 0;
+	wl_list_remove(&test_views[0].link);
+	wl_list_remove(&test_outputs[1].link);
+	wl_list_remove(&test_outputs[0].link);
+	g_output_at_return = NULL;
+	printf("  PASS: tile_cells\n");
 }
 
 static void
@@ -5275,6 +5690,38 @@ test_activate_refused_marks_urgent(void)
 	assert(test_server.focused_view == &test_views[1]);
 	test_views[1].focus_protection = 0;
 
+	/* [FocusProtection] Gain: it may ask for the focus... */
+	test_server.focused_view = &test_views[1];
+	test_views[0].focus_protection = WM_FOCUS_PROT_GAIN;
+	assert(wm_view_request_activate(&test_views[0], false));
+	assert(test_server.focused_view == &test_views[0]);
+	/* ...but not from a focused Lock window */
+	test_server.focused_view = &test_views[1];
+	test_views[1].focus_protection = WM_FOCUS_PROT_LOCK;
+	assert(!wm_view_request_activate(&test_views[0], false));
+	test_views[0].focus_protection = 0;
+	test_views[1].focus_protection = 0;
+	test_views[0].urgent = false;
+
+	/* A click in the tray menu of its program (systray.activationGrace):
+	 * allowed while the grant lasts, not before or after (a client, so
+	 * that the window has a pid: 4242, as the stub gives) */
+	static char client_resource;
+	test_xdg_surfaces[0].resource = (struct wl_resource *)&client_resource;
+	test_server.focused_view = &test_views[1];
+	assert(!wm_view_request_activate(&test_views[0], false));
+	test_views[0].urgent = false;
+	uint64_t grant = wm_tray_grant_begin(4242, wm_tray_grant_now_ms(),
+		60000);
+	assert(grant != 0);
+	assert(wm_view_request_activate(&test_views[0], false));
+	assert(test_server.focused_view == &test_views[0]);
+	wm_tray_grant_clear();
+	test_server.focused_view = &test_views[1];
+	assert(!wm_view_request_activate(&test_views[0], false));
+	test_views[0].urgent = false;
+	test_server.focused_view = &test_views[0];
+
 	/* Unmapped or no-focus windows are ignored entirely */
 	test_views[0].urgent = false;
 	test_views[0].no_focus = true;
@@ -5567,6 +6014,7 @@ main(void)
 
 	/* toggle decoration extended */
 	test_view_toggle_decoration_off();
+	test_view_set_client_decorated();
 	test_view_toggle_decoration_on();
 	test_view_toggle_decoration_double_toggle();
 	test_view_toggle_decoration_null_view();
@@ -5630,6 +6078,7 @@ main(void)
 	test_set_app_id_stored();
 
 	/* deiconify_view */
+	test_snap_step_minimize_undo();
 	test_deiconify_view_basic();
 	test_deiconify_view_with_animation();
 
@@ -5651,6 +6100,13 @@ main(void)
 
 	/* maximize edge cases */
 	test_maximize_enter_full_max();
+	test_clear_maximized_keeps_geometry();
+	test_settle_on_same_head();
+	test_settle_on_other_head();
+	test_settle_plain_window_untouched();
+	test_pull_restore();
+	test_tile_cells();
+	test_snap_maximize_on_another_head();
 	test_maximize_already_lhalf();
 	test_maximize_already_rhalf();
 	test_maximize_vert_with_output();

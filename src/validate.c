@@ -164,6 +164,10 @@ strip(char *s)
 /* ---- Init file validation ---- */
 
 /* Valid focus model values */
+static const char *valid_eis_policies[] = {
+	"ask", "allow", "deny", NULL
+};
+
 static const char *valid_focus_models[] = {
 	"MouseFocus", "ClickToFocus", "ClickFocus",
 	"StrictMouseFocus", NULL
@@ -299,6 +303,12 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.fullMaximization", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.maxDisableMove", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.maxDisableResize", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.maxPullThreshold", VT_INT, 0, 2000, NULL},
+	{"session.screen0.pseudoTransparency", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.snapLayoutPicker", VT_BOOL, 0, 0, NULL},
+	{"session.screen0.snapLayoutPickerSize", VT_INT, 60, 300, NULL},
+	{"session.screen0.snapLayoutPickerColumns", VT_INT, 0, 12, NULL},
+	{"session.screen0.snapLayouts", VT_STRING, 0, 0, NULL},
 	{"session.screen0.showWindowPosition", VT_BOOL, 0, 0, NULL},
 
 	/* Placement */
@@ -314,9 +324,13 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.toolbar.autoHideDelay", VT_INT, 0, 10000, NULL},
 	{"session.screen0.toolbar.widthPercent", VT_INT, 10, 100, NULL},
 	{"session.screen0.toolbar.height", VT_INT, 0, 200, NULL},
+	{"session.dpi", VT_INT, 0, 960, NULL},
+	{"session.xwayland.resources", VT_STRING, 0, 0, NULL},
+	{"session.xwayland.keyboardGrab", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.toolbar.layer", VT_LAYER, 0, 0, NULL},
 	{"session.screen0.toolbar.alpha", VT_INT, 0, 255, NULL},
 	{"session.screen0.toolbar.onhead", VT_INT, 0, 32, NULL},
+	{"session.screen0.toolbar.onoutput", VT_STRING, 0, 0, NULL},
 	{"session.screen0.toolbar.maxOver", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.toolbar.tools", VT_STRING, 0, 0, NULL},
 
@@ -366,6 +380,7 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.slit.direction", VT_ENUM, 0, 0, valid_slit_directions},
 	{"session.screen0.slit.layer", VT_LAYER, 0, 0, NULL},
 	{"session.screen0.slit.onhead", VT_INT, 0, 32, NULL},
+	{"session.screen0.slit.onoutput", VT_STRING, 0, 0, NULL},
 	{"session.screen0.slit.alpha", VT_INT, 0, 255, NULL},
 	{"session.screen0.slit.maxOver", VT_BOOL, 0, 0, NULL},
 
@@ -431,6 +446,10 @@ static const struct init_key_spec init_keys[] = {
 	{"session.screen0.toolbar.button.*", VT_STRING, 0, 0, NULL},
 	{"session.screen0.systray.pinLeft", VT_STRING, 0, 0, NULL},
 	{"session.screen0.systray.pinRight", VT_STRING, 0, 0, NULL},
+	{"session.screen0.systray.activationGrace", VT_INT, 0, 10000, NULL},
+	{"session.xwayland.inputEmulation", VT_ENUM, 0, 0, valid_eis_policies},
+	{"session.xwayland.inputEmulation.allow", VT_STRING, 0, 0, NULL},
+	{"session.xwayland.inputEmulation.deny", VT_STRING, 0, 0, NULL},
 	{"session.screen0.slit.autoRaise", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.workspacewarpinghorizontal", VT_BOOL, 0, 0, NULL},
 	{"session.screen0.workspacewarpingvertical", VT_BOOL, 0, 0, NULL},
@@ -449,6 +468,9 @@ static const struct init_key_spec init_keys[] = {
 	{"session.styleFile", VT_PATH, 0, 0, NULL},
 	{"session.styleOverlay", VT_PATH, 0, 0, NULL},
 	{"session.slitlistFile", VT_PATH, 0, 0, NULL},
+
+	/* fluxland's own */
+	{"session.keyRepeatRate", VT_INT, 1, 100, NULL},
 
 	/* XKB */
 	{"session.xkb.rules", VT_STRING, 0, 0, NULL},
@@ -744,7 +766,9 @@ validate_init_file(const char *path, struct config_result *result)
 			continue;
 		}
 
-		if (*value == '\0') {
+		/* Empty is a value for a text setting: Fluxbox writes
+		 * "titlebar.left:" for no buttons on the left */
+		if (*value == '\0' && spec->type != VT_STRING) {
 			config_result_add_warning(result, path, lineno,
 				"empty value for '%s'", key);
 			continue;

@@ -21,6 +21,7 @@
 #include "animation.h"
 #include "client_pattern.h"
 #include "tabgroup.h"
+#include "tray_grant.h"
 #include "atspi_bridge.h"
 #include "config.h"
 #include "decoration.h"
@@ -37,6 +38,7 @@
 #include "mousebind.h"
 #include "view.h"
 #include "view_focus.h"
+#include "xwayland.h"
 #include "workspace.h"
 
 /* --- Focus Management --- */
@@ -80,7 +82,10 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 	/* Callers may pass NULL for "the view's own surface" */
 	if (!surface)
 		surface = wm_view_surface(view);
-	if (prev_surface == surface) {
+	/* (Two windows with no surface, an internal one, are told apart by
+	 * which has the focus) */
+	if (prev_surface == surface &&
+	    (surface || server->focused_view == view)) {
 		server->focus_user_initiated = false;
 		return;
 	}
@@ -91,9 +96,10 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 		wm_view_set_urgent(view, false);
 
 	/* Deactivate the previously focused toplevel */
-	if (prev_surface) {
-		struct wm_view *prev_view =
-			wm_view_from_surface(server, prev_surface);
+	if (prev_surface || server->focused_view) {
+		struct wm_view *prev_view = prev_surface ?
+			wm_view_from_surface(server, prev_surface) :
+			server->focused_view;
 		if (prev_view && prev_view != view)
 			wm_view_set_activated(prev_view, false);
 		/* Update decoration on previously focused view */
@@ -118,6 +124,7 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 
 		/* Raise in the scene graph */
 		wlr_scene_node_raise_to_top(&view->scene_tree->node);
+		wm_xwayland_view_raised(view);
 	}
 
 	/* Focus order stays frozen while NextWindow cycling is active */
@@ -190,13 +197,16 @@ focus_view(struct wm_view *view, struct wlr_surface *surface, bool raise)
 		/* With no keyboard yet too: the focus is the window's, and
 		 * a keyboard plugged in later types into it (wlroots sends
 		 * it the enter); the input method relay looks it up */
-		if (keyboard)
-			wlr_seat_keyboard_notify_enter(seat,
-				wm_view_surface(view), keyboard->keycodes,
-				keyboard->num_keycodes, &keyboard->modifiers);
+		struct wlr_surface *ksurface = wm_view_surface(view);
+		if (!ksurface)	/* an internal window types by itself */
+			wlr_seat_keyboard_notify_clear_focus(seat);
+		else if (keyboard)
+			wlr_seat_keyboard_notify_enter(seat, ksurface,
+				keyboard->keycodes, keyboard->num_keycodes,
+				&keyboard->modifiers);
 		else
-			wlr_seat_keyboard_notify_enter(seat,
-				wm_view_surface(view), NULL, 0, NULL);
+			wlr_seat_keyboard_notify_enter(seat, ksurface, NULL,
+				0, NULL);
 	}
 
 	/* Notify text input relay of focus change for IME */
@@ -340,6 +350,7 @@ wm_view_raise(struct wm_view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(&view->server->views, &view->link);
 	wlr_scene_node_raise_to_top(&view->scene_tree->node);
+	wm_xwayland_view_raised(view);
 	wm_cursor_rebase(view->server);
 }
 
@@ -397,6 +408,7 @@ wm_view_set_layer(struct wm_view *view, enum wm_view_layer layer)
 
 	wlr_scene_node_reparent(&view->scene_tree->node, target);
 	wlr_scene_node_raise_to_top(&view->scene_tree->node);
+	wm_xwayland_view_raised(view);
 }
 
 void
@@ -542,6 +554,83 @@ modifiers_held(struct wm_server *server)
 	/* Lock modifiers don't count as "held" */
 	return (wlr_keyboard_get_modifiers(kb) &
 		~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2)) != 0;
+}
+
+/* The modifiers held, not counting the locks */
+static uint32_t
+held_modifiers(struct wm_server *server)
+{
+	struct wlr_keyboard *kb = wlr_seat_get_keyboard(server->seat);
+	if (!kb)
+		return 0;
+	return wlr_keyboard_get_modifiers(kb) &
+		~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
+}
+
+void
+wm_snap_step_minimized(struct wm_view *view)
+{
+	struct wm_server *server = view->server;
+	uint32_t mods = held_modifiers(server);
+	/* Nothing held, nothing to undo it while */
+	server->snap_step.view = mods ? view : NULL;
+	server->snap_step.mods = mods;
+}
+
+void wm_snap_step_forget(struct wm_server *server);
+
+bool
+wm_snap_step_pending(struct wm_server *server)
+{
+	struct wm_view *view = server->snap_step.view;
+	if (!view)
+		return false;
+	if (!view->mapped || !view->scene_tree ||
+	    view->scene_tree->node.enabled ||
+	    (held_modifiers(server) & server->snap_step.mods) !=
+	    server->snap_step.mods) {
+		wm_snap_step_forget(server);
+		return false;
+	}
+	return true;
+}
+
+bool
+wm_snap_step_restore(struct wm_server *server)
+{
+	struct wm_view *view = server->snap_step.view;
+	if (!view)
+		return false;
+	uint32_t mods = server->snap_step.mods;
+	server->snap_step.view = NULL;
+	server->snap_step.mods = 0;
+	/* Still minimized, and the keys that were down still are */
+	if (!view->mapped || !view->scene_tree ||
+	    view->scene_tree->node.enabled ||
+	    (held_modifiers(server) & mods) != mods)
+		return false;
+
+	server->focus_user_initiated = true;
+	if (!view->sticky && view->workspace &&
+	    view->workspace != wm_workspace_get_active(server))
+		wm_workspace_switch(server, view->workspace->index);
+	deiconify_view(view);
+	return true;
+}
+
+void
+wm_snap_step_forget(struct wm_server *server)
+{
+	server->snap_step.view = NULL;
+	server->snap_step.mods = 0;
+}
+
+void
+wm_snap_step_modifiers_changed(struct wm_server *server, uint32_t held)
+{
+	if (server->snap_step.view &&
+	    (held & server->snap_step.mods) != server->snap_step.mods)
+		wm_snap_step_forget(server);
 }
 
 void
@@ -855,6 +944,15 @@ wm_view_request_activate(struct wm_view *view, bool allowed)
 	if (!view || !view->mapped || view->docked || view->no_focus)
 		return false;
 	struct wm_view *focused = view->server->focused_view;
+
+	/* [FocusProtection] {Gain}: this window may ask for the focus */
+	if (view->focus_protection & WM_FOCUS_PROT_GAIN)
+		allowed = true;
+	/* Or it is the answer to a click in the tray menu of its program
+	 * (systray.activationGrace) */
+	if (!allowed && wm_tray_grant_allows(wm_view_pid(view),
+			wm_tray_grant_now_ms()))
+		allowed = true;
 
 	if (!focus_request_allowed(view, true))
 		allowed = false;

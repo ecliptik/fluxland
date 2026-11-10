@@ -17,6 +17,9 @@ struct wm_server;
 struct wm_view;
 struct wlr_surface;
 
+/* Whether the toolbar is under the pointer (not under a fullscreen window) */
+bool wm_pointer_on_toolbar(struct wm_server *server, double lx, double ly);
+
 /* Find the view under the given layout coordinates */
 struct wm_view *view_at(struct wm_server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy);

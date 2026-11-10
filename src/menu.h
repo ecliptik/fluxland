@@ -58,6 +58,8 @@ enum wm_menu_item_type {
 	WM_MENU_WINDOW_ENTRY,	/* window list entry (focus/deiconify) */
 	WM_MENU_REMEMBER,	/* remember window properties to apps file */
 	WM_MENU_ICONS,		/* [icons]: the iconified windows */
+	WM_MENU_DBUSMENU,	/* an entry of a tray icon's menu */
+	WM_MENU_CALLBACK,	/* calls a function of the compositor */
 };
 
 /* --- Menu item --- */
@@ -71,6 +73,8 @@ struct wm_menu_item {
 	struct _cairo_surface *icon;	/* a window's icon (a reference) */
 	struct wm_menu *submenu;	/* for submenu type */
 	void *data;		/* opaque data (e.g. view ptr for window list) */
+	void (*callback)(struct wm_server *server, void *data);
+	void *callback_data;	/* WM_MENU_CALLBACK */
 	bool checked;		/* Fluxbox-style state dot indicator */
 	bool toggle;		/* on or off: menu.unselected.pixmap when off */
 	struct wl_list link;	/* wm_menu.items */
@@ -113,6 +117,11 @@ struct wm_menu {
 	char **sources;
 	int source_count;
 	long long sources_mtime;
+
+	/* Called once when it is hidden (after any item was activated):
+	 * a prompt learns that it was dismissed */
+	void (*on_close)(struct wm_menu *menu, void *data);
+	void *on_close_data;
 
 	/* Type-ahead search buffer */
 	char search_buf[64];

@@ -41,7 +41,6 @@
 #include "config.h"
 #include "cursor.h"
 #include "command.h"
-#include "dialog.h"
 #include "cursor_actions.h"
 #include "cursor_snap.h"
 #include "server.h"
@@ -141,11 +140,32 @@ process_cursor_move(struct wm_server *server, uint32_t time)
 		return;
 	}
 
+	struct wm_view *view = server->grabbed_view;
+
+	/*
+	 * A maximized window pulled down, more than sideways (a window
+	 * thrown to another head goes with it there instead), comes off its
+	 * maximize: back to the size it had, under the pointer
+	 */
+	if (!server->grab_pulled && view->maximized && server->config &&
+	    server->config->max_pull_threshold > 0) {
+		double dy = server->cursor->y - server->grab_pointer_y;
+		double dx = server->cursor->x - server->grab_pointer_x;
+		if (dy >= server->config->max_pull_threshold &&
+		    dy > fabs(dx)) {
+			server->grab_pulled = wm_view_pull_restore(view,
+				server->cursor->x, server->cursor->y,
+				&server->grab_x, &server->grab_y);
+			/* The origin of the grab is the window's own now */
+			memset(&server->grab_geobox, 0,
+				sizeof(server->grab_geobox));
+		}
+	}
+
 	double new_x = server->cursor->x - server->grab_x +
 		server->grab_geobox.x;
 	double new_y = server->cursor->y - server->grab_y +
 		server->grab_geobox.y;
-	struct wm_view *view = server->grabbed_view;
 
 	if (warp_workspace(server, view)) {
 		new_x = server->cursor->x - server->grab_x +
@@ -527,10 +547,6 @@ process_cursor_motion(struct wm_server *server, uint32_t time)
 	 * When locked, don't interact with normal views. Lock surfaces
 	 * (e.g. gtklock's buttons) still get pointer input.
 	 */
-	if (wm_dialog_handle_motion(server, server->cursor->x,
-	    server->cursor->y))
-		return;
-
 	if (wm_session_is_locked(server)) {
 		double sx, sy;
 		struct wlr_surface *ls = wm_session_lock_surface_at(server,
@@ -700,7 +716,7 @@ rebase_now(void *data)
 	if (!server->cursor || !server->seat ||
 	    server->cursor_mode != WM_CURSOR_PASSTHROUGH ||
 	    server->seat->pointer_state.button_count > 0 ||
-	    wm_session_is_locked(server) || wm_dialog_is_open(server))
+	    wm_session_is_locked(server))
 		return;
 
 	double sx, sy;
@@ -807,7 +823,7 @@ handle_cursor_motion_absolute(struct wl_listener *listener, void *data)
 static uint32_t
 pointer_context(struct wm_server *server, struct wm_view **view)
 {
-	if (wm_toolbar_contains(server->toolbar, server->cursor->x,
+	if (wm_pointer_on_toolbar(server, server->cursor->x,
 	    server->cursor->y)) {
 		*view = NULL;
 		return WM_MOUSE_CTX_TOOLBAR;
@@ -931,12 +947,6 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 		wm_layer_shell_focus_on_click(server,
 			server->seat->pointer_state.focused_surface);
 
-	/* An open dialog: its title drags it, a click elsewhere ends it */
-	if (wm_dialog_handle_button(server, server->cursor->x,
-	    server->cursor->y,
-	    event->state == WL_POINTER_BUTTON_STATE_PRESSED))
-		return;
-
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		/* A titlebar button shows window.button.pressed while held */
 		if (ms->pressed_decor_button >= 0 && ms->pressed_view &&
@@ -945,7 +955,9 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 				NULL, server->style);
 
 		/* An arrow button of the toolbar acts on release */
-		if (wm_toolbar_handle_release(server->toolbar,
+		if (wm_pointer_on_toolbar(server, server->cursor->x,
+				server->cursor->y) &&
+		    wm_toolbar_handle_release(server->toolbar,
 				server->cursor->x, server->cursor->y,
 				event->button)) {
 			ms->button_pressed = false;
@@ -1005,21 +1017,49 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 				struct wlr_box sb =
 					server->snap_preview_box;
 
-				/* Save original geometry for restore */
-				if (!sv->maximized && !sv->fullscreen &&
-				    !sv->lhalf && !sv->rhalf) {
-					struct wlr_box geo;
-					wm_view_get_geometry(sv, &geo);
-					sv->saved_geometry.x = sv->x;
-					sv->saved_geometry.y = sv->y;
-					sv->saved_geometry.width =
-						geo.width;
-					sv->saved_geometry.height =
-						geo.height;
-				}
+				/* What it is restored to: what it was before
+				 * the drag began (not where the drag took it,
+				 * at an edge), or, if it was snapped or
+				 * maximized already, what it was restored to */
+				if (server->grab_start_plain)
+					sv->saved_geometry = server->grab_start;
+				struct wlr_box prev_saved = sv->saved_geometry;
 
-				/* The whole frame fills the zone */
-				wm_view_set_frame_box(sv, &sb);
+				/* Every zone but the top edge is a cell of the
+				 * head, as the layout picker's are */
+				static const int zone_cells[][4] = {
+					[WM_SNAP_ZONE_LEFT_HALF] =
+						{ 0, 0, 500, 1000 },
+					[WM_SNAP_ZONE_RIGHT_HALF] =
+						{ 500, 0, 500, 1000 },
+					[WM_SNAP_ZONE_BOTTOM_HALF] =
+						{ 0, 500, 1000, 500 },
+					[WM_SNAP_ZONE_TOPLEFT] =
+						{ 0, 0, 500, 500 },
+					[WM_SNAP_ZONE_TOPRIGHT] =
+						{ 500, 0, 500, 500 },
+					[WM_SNAP_ZONE_BOTTOMLEFT] =
+						{ 0, 500, 500, 500 },
+					[WM_SNAP_ZONE_BOTTOMRIGHT] =
+						{ 500, 500, 500, 500 },
+				};
+				wm_view_clear_maximized(sv);
+				if (server->snap_zone == WM_SNAP_ZONE_MAXIMIZE) {
+					wm_view_snap_maximize(sv, &sb,
+						&prev_saved,
+						server->grab_head_x,
+						server->grab_head_y);
+				} else {
+					wm_view_snap_tile(sv,
+						&server->snap_picker_usable,
+						server->snap_zone ==
+						WM_SNAP_ZONE_TILE ?
+						server->snap_tile :
+						zone_cells[server->snap_zone],
+						&prev_saved,
+						server->grab_head_x,
+						server->grab_head_y);
+				}
 
 				snap_preview_destroy(server);
 				if (server->wireframe_active)
@@ -1073,6 +1113,12 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 				}
 				wireframe_hide(server);
 			}
+			/* A window in a maximize state moved by hand goes
+			 * with it to the head it was dropped on */
+			if (server->cursor_mode == WM_CURSOR_MOVE &&
+			    server->grabbed_view)
+				wm_view_settle_on_head(server->grabbed_view,
+					server->grab_head_x, server->grab_head_y);
 			server->cursor_mode = WM_CURSOR_PASSTHROUGH;
 			server->grabbed_view = NULL;
 			position_overlay_destroy(server);
@@ -1099,39 +1145,19 @@ handle_cursor_button(struct wl_listener *listener, void *data)
 	}
 
 #ifdef WM_HAS_SYSTRAY
-	/* Check if click is in the systray area */
-	if (server->systray && server->toolbar &&
-	    server->toolbar->visible) {
-		struct wm_toolbar *tb = server->toolbar;
-		double cx = server->cursor->x;
-		double cy = server->cursor->y;
-		double tb_local_x = cx - tb->x;
-		double tb_local_y = cy - tb->y;
-		if (tb_local_x >= 0 && tb_local_x < tb->width &&
-		    tb_local_y >= 0 && tb_local_y < tb->height) {
-			/* Compute systray x offset within toolbar */
-			int systray_x = 0;
-			if (tb->tool_count > 0) {
-				struct wm_toolbar_tool *last =
-					&tb->tools[tb->tool_count - 1];
-				systray_x = last->x + last->width;
-			}
-			double st_local_x = tb_local_x - systray_x;
-			int st_width = wm_systray_get_width(
-				server->systray);
-			if (st_local_x >= 0 && st_local_x < st_width) {
-				if (wm_systray_handle_click(
-					server->systray,
-					st_local_x, tb_local_y,
-					event->button)) {
-					wlr_seat_pointer_notify_button(
-						server->seat,
-						event->time_msec,
-						event->button,
-						event->state);
-					return;
-				}
-			}
+	/* A click on a tray icon, wherever the systemtray tool is */
+	if (server->systray && wm_pointer_on_toolbar(server,
+		server->cursor->x, server->cursor->y)) {
+		if (wm_systray_handle_click(server->systray,
+			server->cursor->x - server->systray->x,
+			server->cursor->y - server->systray->y,
+			event->button)) {
+			wlr_seat_pointer_notify_button(
+				server->seat,
+				event->time_msec,
+				event->button,
+				event->state);
+			return;
 		}
 	}
 #endif
@@ -1543,6 +1569,8 @@ handle_cursor_axis(struct wl_listener *listener, void *data)
 
 	/* Check if toolbar consumes this scroll event */
 	if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL &&
+	    wm_pointer_on_toolbar(server, server->cursor->x,
+		    server->cursor->y) &&
 	    wm_toolbar_handle_scroll(server->toolbar,
 		    server->cursor->x, server->cursor->y, event->delta)) {
 		return;

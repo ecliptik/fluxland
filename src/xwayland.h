@@ -16,6 +16,7 @@
 #include <wayland-server-core.h>
 
 struct wm_server;
+struct wm_view;
 
 #ifdef WM_HAS_XWAYLAND
 
@@ -36,8 +37,11 @@ struct wm_xwayland_atoms {
 	xcb_atom_t net_wm_window_type_popup_menu;
 	xcb_atom_t net_wm_window_type_tooltip;
 	xcb_atom_t net_wm_window_type_notification;
+	xcb_atom_t net_wm_window_type_combo;
+	xcb_atom_t net_wm_window_type_dnd;
 	xcb_atom_t net_wm_window_type_dock;
 	xcb_atom_t net_wm_window_type_desktop;
+	xcb_atom_t motif_wm_hints;
 };
 
 /* Classification of an X11 window for compositor management */
@@ -75,5 +79,23 @@ void wm_xwayland_finish(struct wm_server *server);
  * each frame, so every code path that moves a window is covered.
  */
 void wm_xwayland_sync_positions(struct wm_server *server);
+
+/*
+ * Put the X resources file of session.xwayland.resources (an Xresources
+ * file: Xft.dpi, Xft.hintstyle, XTerm*...) into XWayland's
+ * RESOURCE_MANAGER, as xrdb would; programs started afterwards read them.
+ * Done each time XWayland comes up (it is started when needed and goes when
+ * nothing uses it, taking what xrdb set with it), and on a reconfigure.
+ * Nothing when there is no file set, or XWayland is not running.
+ */
+void wm_xwayland_apply_resources(struct wm_server *server);
+
+/*
+ * A view was raised to the top of its stack: the override-redirect X11
+ * windows are stacked against it as X would (they are on top when they
+ * appear; what is raised later covers them, except a window of their own
+ * application).
+ */
+void wm_xwayland_view_raised(struct wm_view *view);
 
 #endif /* WM_XWAYLAND_H */

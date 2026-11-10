@@ -24,6 +24,7 @@
 #include "decoration.h"
 #include "menu.h"
 #include "rules.h"
+#include "pseudo_transparency.h"
 #include "server.h"
 #include "slit.h"
 #include "view.h"
@@ -224,8 +225,10 @@ handle_xdg_toplevel_commit(struct wl_listener *listener, void *data)
 			view->server->style);
 	}
 	/* Its size may have changed under the pointer */
-	if (view->mapped)
+	if (view->mapped) {
+		wm_pseudo_update(view);
 		wm_cursor_rebase(view->server);
+	}
 }
 
 static void
@@ -370,6 +373,16 @@ handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 		free(view);
 		return;
 	}
+
+	/*
+	 * xdg-decoration: "If compositor and client do not negotiate the use
+	 * of a server-side decoration using this protocol, clients continue to
+	 * self-decorate as they see fit."  So a window that never uses it gets
+	 * no frame of ours (a GTK3 window would have two); one that does, and
+	 * wants ours (or has no preference), gets it when its decoration object
+	 * is made.
+	 */
+	view->no_decoration = true;
 
 	/* Attach the XDG surface to the scene tree */
 	struct wlr_scene_tree *surface_tree =

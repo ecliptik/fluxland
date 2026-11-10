@@ -68,3 +68,41 @@ class TestStyles:
             pass  # Expected — command may reject the path
         # Verify compositor is still responsive
         assert ipc.ping() is True
+
+
+class TestStyleChangeKeepsFilled:
+    """A style with other borders or titlebar changes the frame around a
+    window: one that fills its head stays maximized and fills it again."""
+
+    def test_maximized_window_refits_after_set_style(self, ipc, windows,
+                                                    tmp_path):
+        bigger = tmp_path / "bigger.style"
+        bigger.write_text(open(STYLE_DEFAULT).read() +
+                          "\nwindow.borderWidth: 14\nwindow.title.height: 40\n")
+        windows.open("StyleFill")
+        time.sleep(SETTLE)
+        ipc.command("Maximize")
+        time.sleep(SETTLE)
+        before = ipc.get_window_by_title("StyleFill")
+        assert before["maximized"] is True
+        try:
+            ipc.command(f"SetStyle {bigger}")
+            time.sleep(SETTLE * 3)
+            after = ipc.get_window_by_title("StyleFill")
+            assert after["maximized"] is True
+            # As a window maximized under this style fills it (the
+            # toolbar may have another height too)
+            ipc.command("Maximize")
+            time.sleep(SETTLE)
+            ipc.command("Maximize")
+            time.sleep(SETTLE)
+            fresh = ipc.get_window_by_title("StyleFill")
+            assert fresh["maximized"] is True
+            assert after["frame"] == fresh["frame"]
+            assert after["width"] < before["width"]
+        finally:
+            ipc.command(f"SetStyle {STYLE_DEFAULT}")
+            time.sleep(SETTLE)
+        again = ipc.get_window_by_title("StyleFill")
+        assert again["maximized"] is True
+        assert again["frame"] == before["frame"]

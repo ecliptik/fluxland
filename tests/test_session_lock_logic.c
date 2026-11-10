@@ -248,6 +248,10 @@ struct wm_server {
 	struct wl_list outputs;
 };
 
+/* Emulated input stops while locked: not under test here */
+void wm_eis_session_lock_changed(struct wm_server *server);
+void wm_eis_session_lock_changed(struct wm_server *server) { (void)server; }
+
 void wm_session_lock_output_changed(struct wm_server *server);
 void wm_session_lock_output_frame(struct wm_server *server,
 	struct wm_output *output);

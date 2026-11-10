@@ -231,6 +231,9 @@ parse_setting(struct wm_rules *rules, const char *line,
 	} else if (strcasecmp(key, "IgnoreSizeHints") == 0) {
 		app->has_ignore_size_hints = true;
 		app->ignore_size_hints = yes(val);
+	} else if (strcasecmp(key, "PseudoTransparent") == 0) {
+		app->has_pseudo = true;
+		app->pseudo = yes(val);
 	} else if (strcasecmp(key, "Dock") == 0) {
 		app->has_dock = true;
 		app->dock = yes(val);

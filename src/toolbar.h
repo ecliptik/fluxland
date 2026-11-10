@@ -175,6 +175,18 @@ void wm_toolbar_reserve(struct wm_toolbar *toolbar, struct wm_output *output,
 /* Recalculate toolbar geometry (call on output resize) */
 void wm_toolbar_relayout(struct wm_toolbar *toolbar);
 
+/*
+ * SetToolbarHead: put the toolbar on a head, given by number as toolbar.onhead
+ * has (from 1), until the next one or until it is "" or 0 (the configured
+ * place again).  SetToolbarOutput: the same, given by connector name
+ * (HDMI-A-1), as toolbar.onoutput has.  Unlike a change of those settings
+ * they neither rewrite the init nor reconfigure.  The monitor is what is
+ * kept: when it goes away the toolbar goes to its configured place, and when
+ * it returns it goes back.  False when there is no such enabled head.
+ */
+bool wm_toolbar_set_head(struct wm_server *server, const char *argument);
+bool wm_toolbar_set_output(struct wm_server *server, const char *argument);
+
 /* Handle scroll/wheel on toolbar; returns true if consumed */
 bool wm_toolbar_handle_scroll(struct wm_toolbar *toolbar,
 	double lx, double ly, double delta);
