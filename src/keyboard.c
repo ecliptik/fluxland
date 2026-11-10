@@ -253,6 +253,117 @@ handle_compositor_keybinding(struct wm_server *server,
 	return wm_execute_keybind_action(server, bind);
 }
 
+/* --- Repeat: a held key whose binding ran a Repeat {command} --- */
+
+/* Wayland has no server-side repeat (a client repeats the keys it is
+ * sent), so a binding that opts in with Repeat runs again here, at the
+ * keyboard's repeat rate, while its key is held. */
+
+void
+wm_key_repeat_stop(struct wm_server *server)
+{
+	struct wm_key_repeat *kr = &server->key_repeat;
+	if (kr->timer)
+		wl_event_source_timer_update(kr->timer, 0);
+	kr->keyboard = NULL;
+	kr->keycode = 0;
+}
+
+/* Whether an xkb keycode is held down on the keyboard */
+static bool
+key_is_down(const struct wlr_keyboard *kb, uint32_t keycode)
+{
+	for (size_t i = 0; i < kb->num_keycodes; i++) {
+		if (kb->keycodes[i] + 8 == keycode)
+			return true;
+	}
+	return false;
+}
+
+static int key_repeat_tick(void *data);
+
+static void
+key_repeat_start(struct wm_keyboard *keyboard, uint32_t keycode)
+{
+	struct wm_server *server = keyboard->server;
+	struct wlr_keyboard *kb = keyboard->wlr_keyboard;
+	struct wm_key_repeat *kr = &server->key_repeat;
+	if (kb->repeat_info.rate <= 0 ||
+	    !xkb_keymap_key_repeats(kb->keymap, keycode))
+		return;
+	if (!kr->timer) {
+		kr->timer = wl_event_loop_add_timer(server->wl_event_loop,
+			key_repeat_tick, server);
+		if (!kr->timer)
+			return;
+	}
+	kr->keyboard = keyboard;
+	kr->keycode = keycode;
+	wl_event_source_timer_update(kr->timer,
+		kb->repeat_info.delay > 0 ? kb->repeat_info.delay : 1);
+}
+
+static int key_candidates(struct wlr_keyboard *kb, uint32_t keycode,
+	const xkb_keysym_t *syms, int nsyms, xkb_keysym_t *out, int max);
+
+/*
+ * A key press against the compositor's bindings.  *repeat is set when
+ * the binding that ran said Repeat.
+ */
+static bool
+dispatch_key(struct wm_server *server, struct wlr_keyboard *kb,
+	uint32_t keycode, const xkb_keysym_t *syms, int nsyms,
+	uint32_t modifiers, bool *repeat)
+{
+	xkb_keysym_t cands[16];
+	int ncands = key_candidates(kb, keycode, syms, nsyms, cands, 16);
+	server->key_repeat.requested = false;
+	bool handled = handle_compositor_keybinding(server,
+		modifiers & ~WM_MODIFIERS_IGNORED, cands, ncands);
+	*repeat = handled && server->key_repeat.requested;
+	server->key_repeat.requested = false;
+	return handled;
+}
+
+static int
+key_repeat_tick(void *data)
+{
+	struct wm_server *server = data;
+	struct wm_keyboard *keyboard = server->key_repeat.keyboard;
+	uint32_t keycode = server->key_repeat.keycode;
+	if (!keyboard)
+		return 0;
+	struct wlr_keyboard *kb = keyboard->wlr_keyboard;
+	if (!key_is_down(kb, keycode) || wm_session_is_locked(server) ||
+	    wm_xwayland_grab_surface(server) ||
+	    wm_protocols_kb_shortcuts_inhibited(server)) {
+		wm_key_repeat_stop(server);
+		return 0;
+	}
+
+	wm_idle_notify_activity(server);
+	const xkb_keysym_t *syms;
+	int nsyms = xkb_state_key_get_syms(kb->xkb_state, keycode, &syms);
+	bool repeat = false;
+	/* Looked up afresh: the modifiers, a condition or the bindings
+	 * themselves may have changed since the press */
+	dispatch_key(server, kb, keycode, syms, nsyms,
+		wlr_keyboard_get_modifiers(kb), &repeat);
+
+	/* The binding may have ended it (or moved it) itself */
+	if (server->key_repeat.keyboard != keyboard ||
+	    server->key_repeat.keycode != keycode)
+		return 0;
+	if (!repeat) {
+		wm_key_repeat_stop(server);
+		return 0;
+	}
+	int rate = kb->repeat_info.rate > 0 ? kb->repeat_info.rate : 1;
+	wl_event_source_timer_update(server->key_repeat.timer,
+		1000 / rate > 0 ? 1000 / rate : 1);
+	return 0;
+}
+
 /* The keysyms a key press can be bound as (see above) */
 static int
 key_candidates(struct wlr_keyboard *kb, uint32_t keycode,
@@ -290,6 +401,11 @@ handle_key(struct wl_listener *listener, void *data)
 
 	/* Translate libinput keycode -> xkbcommon */
 	uint32_t keycode = event->keycode + 8;
+
+	/* A repeat ends when its key is let go, or another is pressed */
+	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED ||
+	    keycode == server->key_repeat.keycode)
+		wm_key_repeat_stop(server);
 	const xkb_keysym_t *syms;
 	int nsyms = xkb_state_key_get_syms(
 		keyboard->wlr_keyboard->xkb_state, keycode, &syms);
@@ -413,12 +529,11 @@ handle_key(struct wl_listener *listener, void *data)
 		}
 
 		if (!handled) {
-			xkb_keysym_t cands[16];
-			int ncands = key_candidates(keyboard->wlr_keyboard,
-				keycode, syms, nsyms, cands, 16);
-			handled = handle_compositor_keybinding(server,
-				modifiers & ~WM_MODIFIERS_IGNORED,
-				cands, ncands);
+			bool repeat = false;
+			handled = dispatch_key(server, keyboard->wlr_keyboard,
+				keycode, syms, nsyms, modifiers, &repeat);
+			if (repeat)
+				key_repeat_start(keyboard, keycode);
 		}
 	}
 
@@ -484,6 +599,9 @@ handle_keyboard_destroy(struct wl_listener *listener, void *data)
 {
 	struct wm_keyboard *keyboard =
 		wl_container_of(listener, keyboard, destroy);
+
+	if (keyboard->server->key_repeat.keyboard == keyboard)
+		wm_key_repeat_stop(keyboard->server);
 
 	/* Group members have no event listeners of their own */
 	wl_list_remove(&keyboard->modifiers.link);
@@ -568,6 +686,8 @@ wm_keyboard_group_finish(struct wm_server *server)
 	struct wm_keyboard *keyboard = server->group_keyboard;
 	if (!keyboard)
 		return;
+	if (server->key_repeat.keyboard == keyboard)
+		wm_key_repeat_stop(server);
 	wl_list_remove(&keyboard->modifiers.link);
 	wl_list_remove(&keyboard->key.link);
 	free(keyboard);
@@ -683,6 +803,7 @@ wm_keyboard_prev_layout(struct wm_server *server)
 void
 wm_keyboard_apply_config(struct wm_server *server)
 {
+	wm_key_repeat_stop(server);
 	struct xkb_keymap *keymap = config_keymap(server, false);
 	if (!keymap) {
 		wlr_log(WLR_ERROR, "%s",

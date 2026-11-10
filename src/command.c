@@ -426,6 +426,18 @@ parse_delay(struct wm_command *cmd, const char *args, int depth)
 	return true;
 }
 
+/* {command} for Repeat */
+static bool
+parse_repeat(struct wm_command *cmd, const char *args, int depth)
+{
+	const char *p = args;
+	skip_ws(&p);
+	if (*p != '{')
+		return false;
+	cmd->then_cmd = parse_block_command(&p, depth);
+	return cmd->then_cmd != NULL;
+}
+
 static struct wm_command *
 create_command(enum wm_action action, const char *arg, int depth)
 {
@@ -463,6 +475,9 @@ create_command(enum wm_action action, const char *arg, int depth)
 		break;
 	case WM_ACTION_DELAY:
 		ok = cmd->argument && parse_delay(cmd, cmd->argument, depth);
+		break;
+	case WM_ACTION_REPEAT:
+		ok = cmd->argument && parse_repeat(cmd, cmd->argument, depth);
 		break;
 	default:
 		break;
@@ -700,6 +715,11 @@ wm_command_execute(struct wm_server *server, struct wm_command *cmd,
 		return execute_foreach(server, cmd);
 	case WM_ACTION_DELAY:
 		return execute_delay(server, cmd);
+	case WM_ACTION_REPEAT:
+		/* A key press that ran this repeats while the key is held
+		 * (keyboard.c); anything else just runs the command */
+		server->key_repeat.requested = true;
+		return wm_command_execute(server, cmd->then_cmd, target);
 	default:
 		return wm_execute_action_on(server, cmd->action,
 			cmd->argument, target);

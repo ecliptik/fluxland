@@ -293,6 +293,12 @@ struct wm_server {
 	struct wl_list keymodes;    /* wm_keymode.link */
 	char *current_keymode;      /* active keymode name ("default") */
 	struct wm_chain_state chain_state; /* multi-key chain state */
+	struct wm_key_repeat {
+		struct wl_event_source *timer;
+		struct wm_keyboard *keyboard; /* holding the key */
+		uint32_t keycode;	/* the held key (xkb) */
+		bool requested;	/* the binding just run said Repeat */
+	} key_repeat;		/* a held Repeat binding (keyboard.c) */
 	uint32_t arg_key;	/* the key an Arg in a chain matched */
 	char *action_result;	/* ClientPatternTest's, for the IPC reply */
 	struct wm_window_mark {

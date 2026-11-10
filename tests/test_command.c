@@ -593,6 +593,41 @@ test_delay_debounces(void)
 }
 
 static void
+test_repeat(void)
+{
+	reset();
+	struct wm_command *c = wm_command_parse("Repeat {MacroCmd {Raise} {Lower}}");
+	assert(c && c->action == WM_ACTION_REPEAT);
+	assert(wm_command_contains(c, WM_ACTION_LOWER));
+
+	/* It runs the command, and says a held key should repeat it */
+	assert(!server.key_repeat.requested);
+	assert(wm_command_execute(&server, c, NULL));
+	assert(call_count == 2);
+	assert(server.key_repeat.requested);
+	wm_command_destroy(c);
+
+	/* A command alone does not */
+	server.key_repeat.requested = false;
+	c = wm_command_parse("Raise");
+	assert(wm_command_execute(&server, c, NULL));
+	assert(!server.key_repeat.requested);
+	wm_command_destroy(c);
+
+	/* It needs a {command}; a bare one or a missing one is no command */
+	assert(!wm_command_parse("Repeat"));
+	assert(!wm_command_parse("Repeat Raise"));
+	assert(!wm_command_parse("Repeat {}"));
+
+	/* Inside an If, only the branch taken asks */
+	server.key_repeat.requested = false;
+	assert(wm_command_run(&server, "If {Matches (name=nothing-matches)} "
+		"{Repeat {Raise}} {Lower}", NULL));
+	assert(!server.key_repeat.requested);
+	printf("  PASS: repeat\n");
+}
+
+static void
 test_run_string(void)
 {
 	reset();
@@ -630,6 +665,7 @@ main(void)
 	test_foreach_fluxbox_and_legacy_order();
 	test_foreach_survives_closed_windows();
 	test_delay_debounces();
+	test_repeat();
 	test_run_string();
 
 	wl_display_destroy(display);

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `Repeat {command}`: a key binding that runs it repeats while its key is
+  held, at the keyboard's repeat rate, so a volume key can be held down.
+  Bindings are not repeated otherwise (a Wayland compositor is sent a key
+  once, where X repeated every key).
+
 ### Fixed
 - The compositor no longer crashes when a client sets a tearing hint
   (`wp_tearing_control_v1`, which Wine's Wayland driver does for games). The

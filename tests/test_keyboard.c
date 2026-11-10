@@ -188,6 +188,12 @@ struct wl_signal {
 struct wlr_keyboard {
 	void *xkb_state;
 	void *keymap;
+	size_t num_keycodes;
+	uint32_t keycodes[32];
+	struct {
+		int32_t rate;
+		int32_t delay;
+	} repeat_info;
 	struct wlr_keyboard_modifiers modifiers;
 	struct {
 		struct wl_signal modifiers;
@@ -519,6 +525,14 @@ xkb_keymap_key_get_syms_by_level(struct xkb_keymap *keymap,
 	return stub_level0_nsyms;
 }
 
+static bool stub_key_repeats = true;
+static bool
+xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t key)
+{
+	(void)keymap; (void)key;
+	return stub_key_repeats;
+}
+
 static xkb_layout_index_t stub_num_layouts_value = 1;
 static xkb_layout_index_t stub_active_layout_index;
 
@@ -783,6 +797,7 @@ enum wm_action {
 	WM_ACTION_FOCUS_PREV_ELEMENT,
 	WM_ACTION_FOCUS_ACTIVATE,
 	WM_ACTION_FOCUS_SLIT,
+	WM_ACTION_REPEAT,
 };
 
 /* command.h / client_pattern.h: stubbed below */
@@ -1078,6 +1093,12 @@ struct wm_server {
 	struct wl_list keymodes;
 	char *current_keymode;
 	struct wm_chain_state chain_state;
+	struct wm_key_repeat {
+		struct wl_event_source *timer;
+		struct wm_keyboard *keyboard;
+		uint32_t keycode;
+		bool requested;
+	} key_repeat;
 	uint32_t arg_key;
 	char *action_result;
 	struct { uint32_t key; struct wm_view *view; } marks[64];
@@ -1520,6 +1541,9 @@ wm_command_execute(struct wm_server *server, struct wm_command *cmd,
 	case WM_ACTION_MAP:
 	case WM_ACTION_DELAY:
 		return true; /* compound: covered by test_command */
+	case WM_ACTION_REPEAT:
+		server->key_repeat.requested = true;
+		return true;
 	default:
 		return wm_execute_action_on(server, cmd->action,
 			cmd->argument, target);
@@ -1784,6 +1808,7 @@ reset_all_counters(void)
 	stub_fullscreen_listener_count = 0;
 	stub_minimize_listener_count = 0;
 	stub_idle_notify_count = 0;
+	stub_key_repeats = true;
 	stub_session_locked = 0;
 	stub_kb_inhibited = 0;
 	stub_x_grab_surface = NULL;
@@ -3402,6 +3427,181 @@ test_handle_key_release_forward(void)
 	printf("  PASS: test_handle_key_release_forward\n");
 }
 
+/* Test: a held Repeat binding runs again at the keyboard's rate */
+static void
+test_key_repeat_held(void)
+{
+	setup_keyboard();
+	test_wlr_kb.repeat_info.rate = 25;
+	test_wlr_kb.repeat_info.delay = 600;
+	test_wlr_kb.keycodes[0] = 38;
+	test_wlr_kb.num_keycodes = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+
+	struct wm_command cmd = { .action = WM_ACTION_REPEAT };
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_REPEAT;
+	bind.command = &cmd;
+	stub_keybind_find_result = &bind;
+
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100, .keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	assert(stub_command_execute_count == 1);
+	struct wl_event_source *timer = test_server.key_repeat.timer;
+	assert(timer && timer->next_ms == 600);
+	assert(test_server.key_repeat.keycode == 38 + 8);
+	assert(stub_seat_notify_key_count == 0);
+
+	/* Each tick runs the binding again and waits one period */
+	int idle = stub_idle_notify_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == 2);
+	assert(timer->next_ms == 40);
+	assert(stub_idle_notify_count == idle + 1);
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == 3);
+
+	/* Letting go of the key ends it */
+	event.state = WL_KEYBOARD_KEY_STATE_RELEASED;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+	printf("  PASS: test_key_repeat_held\n");
+}
+
+/* Test: what a repeat does not do */
+static void
+test_key_repeat_not_without_opt_in(void)
+{
+	setup_keyboard();
+	test_wlr_kb.repeat_info.rate = 25;
+	test_wlr_kb.repeat_info.delay = 600;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+
+	/* A binding that doesn't say Repeat */
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_RAISE;
+	stub_keybind_find_result = &bind;
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100, .keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	assert(!test_server.key_repeat.timer ||
+		test_server.key_repeat.timer->next_ms == 0);
+	assert(!test_server.key_repeat.keyboard);
+
+	/* A Repeat on a key the keymap doesn't repeat */
+	struct wm_command cmd = { .action = WM_ACTION_REPEAT };
+	bind.command = &cmd;
+	stub_key_repeats = false;
+	handle_key(&test_kb.key, &event);
+	assert(!test_server.key_repeat.keyboard);
+
+	/* ...or with the repeat turned off (rate 0) */
+	stub_key_repeats = true;
+	test_wlr_kb.repeat_info.rate = 0;
+	handle_key(&test_kb.key, &event);
+	assert(!test_server.key_repeat.keyboard);
+	printf("  PASS: test_key_repeat_not_without_opt_in\n");
+}
+
+/* Test: the ways a repeat ends */
+static void
+test_key_repeat_stops(void)
+{
+	setup_keyboard();
+	test_wlr_kb.repeat_info.rate = 25;
+	test_wlr_kb.repeat_info.delay = 600;
+	test_wlr_kb.keycodes[0] = 38;
+	test_wlr_kb.num_keycodes = 1;
+	stub_nsyms = 1;
+	stub_keysyms[0] = XKB_KEY_a;
+	stub_modifiers_value = WLR_MODIFIER_LOGO;
+	struct wm_command cmd = { .action = WM_ACTION_REPEAT };
+	struct wm_keybind bind = {0};
+	wl_list_init(&bind.children);
+	bind.action = WM_ACTION_REPEAT;
+	bind.command = &cmd;
+	stub_keybind_find_result = &bind;
+	struct wlr_keyboard_key_event event = {
+		.time_msec = 100, .keycode = 38,
+		.state = WL_KEYBOARD_KEY_STATE_PRESSED,
+	};
+	handle_key(&test_kb.key, &event);
+	struct wl_event_source *timer = test_server.key_repeat.timer;
+	assert(timer && timer->next_ms == 600);
+
+	/* The binding no longer matches (a modifier let go): it ends */
+	stub_keybind_find_result = NULL;
+	int count = stub_command_execute_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == count);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+
+	/* The key is no longer held */
+	stub_keybind_find_result = &bind;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 600);
+	test_wlr_kb.num_keycodes = 0;
+	count = stub_command_execute_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == count);
+	assert(timer->next_ms == 0);
+	test_wlr_kb.num_keycodes = 1;
+
+	/* The session locks */
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 600);
+	stub_session_locked = true;
+	count = stub_command_execute_count;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == count);
+	assert(timer->next_ms == 0);
+	stub_session_locked = false;
+
+	/* Another key is pressed: it ends, and follows the new key if bound */
+	handle_key(&test_kb.key, &event);
+	assert(test_server.key_repeat.keycode == 38 + 8);
+	event.keycode = 39;
+	handle_key(&test_kb.key, &event);
+	assert(test_server.key_repeat.keycode == 39 + 8);
+	stub_keybind_find_result = NULL;
+	event.keycode = 40;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+
+	/* A reload ends it too, and so does the keyboard going away */
+	stub_keybind_find_result = &bind;
+	event.keycode = 38;
+	handle_key(&test_kb.key, &event);
+	assert(timer->next_ms == 600);
+	wm_keyboard_apply_config(&test_server);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+	handle_key(&test_kb.key, &event);
+	assert(test_server.key_repeat.keyboard == &test_kb);
+	struct wm_keyboard *dying = calloc(1, sizeof(*dying));
+	assert(dying != NULL);
+	dying->server = &test_server;
+	dying->wlr_keyboard = &test_wlr_kb;
+	wl_list_init(&dying->modifiers.link);
+	wl_list_init(&dying->key.link);
+	wl_list_init(&dying->destroy.link);
+	wl_list_insert(&test_server.keyboards, &dying->link);
+	test_server.key_repeat.keyboard = dying;
+	handle_keyboard_destroy(&dying->destroy, NULL);
+	assert(timer->next_ms == 0 && !test_server.key_repeat.keyboard);
+	printf("  PASS: test_key_repeat_stops\n");
+}
+
 /* Test: idle notify on keypress */
 static void
 test_handle_key_idle_notify(void)
@@ -4835,6 +5035,9 @@ main(void)
 	test_handle_key_no_binding_forward();
 	test_handle_key_release_forward();
 	test_handle_key_idle_notify();
+	test_key_repeat_held();
+	test_key_repeat_not_without_opt_in();
+	test_key_repeat_stops();
 
 	printf("\n  Group H: handle_modifiers()\n");
 	test_handle_modifiers_forward();

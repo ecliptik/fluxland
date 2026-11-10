@@ -1709,7 +1709,8 @@ wm_execute_action_on(struct wm_server *server, enum wm_action action,
 	case WM_ACTION_IF:
 	case WM_ACTION_FOREACH:
 	case WM_ACTION_MAP:
-	case WM_ACTION_DELAY: {
+	case WM_ACTION_DELAY:
+	case WM_ACTION_REPEAT: {
 		/* Compound commands given as action + argument text */
 		struct wm_command *cmd = wm_command_create(action, argument);
 		bool ok = cmd && wm_command_execute(server, cmd, target);

@@ -459,6 +459,19 @@ The next command each time.
 .BI Delay " {command} \fR[\fImicroseconds\fP]"
 Run it once the binding stops repeating (200 by default).
 .TP
+.BI Repeat " {command}"
+Run it, and run the binding again at the keyboard's repeat rate while its key
+is held (after the repeat delay).
+A binding repeats only if it says so: Fluxbox's did, because X repeated every
+key, but a Wayland compositor is sent a key once.
+The binding is looked up each time, so letting go of a modifier, or an
+.B If
+going the other way, ends it.
+Run from a menu, a mouse binding or IPC, it is just the command.
+.nf
+XF86AudioRaiseVolume :Repeat {Exec playerctl volume 0.05+}
+.fi
+.TP
 .BI If " {condition} {then} \fR[{\fIelse\fP}]" "\fR (" Cond )
 .TP
 .BI ForEach " {command} \fR[{\fIcondition\fP}]" "\fR (" Map )

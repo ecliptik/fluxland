@@ -126,6 +126,7 @@ static const struct action_map actions[] = {
 	{"Remember",           WM_ACTION_REMEMBER},
 	{"RootMenu",           WM_ACTION_ROOT_MENU},
 	{"Reconfigure",        WM_ACTION_RECONFIGURE},
+	{"Repeat",             WM_ACTION_REPEAT},
 	{"Reconfig",           WM_ACTION_RECONFIGURE},
 	/* A compositor can't restart under its clients: re-read everything */
 	{"Restart",            WM_ACTION_RECONFIGURE},
