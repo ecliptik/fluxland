@@ -14,6 +14,7 @@
 #define WM_IPC_H
 
 #include <stdint.h>
+#include <sys/types.h>
 #include <time.h>
 #include <wayland-server-core.h>
 
@@ -59,6 +60,9 @@ struct wm_ipc_server {
 	struct wm_server *server;
 	int socket_fd;
 	char *socket_path;
+	/* The socket file we created (so destroy removes only that one) */
+	dev_t socket_dev;
+	ino_t socket_ino;
 	struct wl_event_source *event_source;
 	struct wl_list clients; /* wm_ipc_client.link */
 	int client_count;

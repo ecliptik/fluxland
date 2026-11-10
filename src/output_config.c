@@ -42,9 +42,20 @@ wm_output_config_build(struct wlr_output *output,
 		return state->committed != 0;
 
 	if (rule->enabled == 0) {
-		if (output->enabled)
+		/*
+		 * Nothing else matters for a disabled output, and wlroots
+		 * rejects a mode (or any other setting) on one, so drop what
+		 * the caller staged.  A new output starts out disabled while
+		 * its caller stages "enabled + preferred mode", so check the
+		 * staged state as well as the output's.
+		 */
+		bool on = output->enabled ||
+			((state->committed & WLR_OUTPUT_STATE_ENABLED) &&
+			 state->enabled);
+		wlr_output_state_finish(state);
+		wlr_output_state_init(state);
+		if (on)
 			wlr_output_state_set_enabled(state, false);
-		/* Nothing else matters for a disabled output */
 		return state->committed != 0;
 	}
 	if (rule->enabled == 1 && !output->enabled)

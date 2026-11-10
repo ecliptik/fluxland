@@ -10,12 +10,16 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <dirent.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -186,6 +190,8 @@ struct wm_ipc_server {
 	struct wm_server *server;
 	int socket_fd;
 	char *socket_path;
+	dev_t socket_dev;
+	ino_t socket_ino;
 	struct wl_event_source *event_source;
 	struct wl_list clients;
 	int client_count;
@@ -1376,6 +1382,9 @@ test_ipc_destroy_unlinks_socket(void)
 	ipc.server = &test_server;
 	ipc.socket_fd = -1;
 	ipc.socket_path = strdup(tmppath);
+	/* It is the file this server created */
+	ipc.socket_dev = st.st_dev;
+	ipc.socket_ino = st.st_ino;
 	ipc.event_source = NULL;
 	wl_list_init(&ipc.clients);
 
@@ -1550,6 +1559,158 @@ test_init_xdg_runtime_dir_not_dir(void)
 	}
 
 	printf("  PASS: test_init_xdg_runtime_dir_not_dir\n");
+}
+
+/* A listening Unix socket at path, like another compositor's IPC socket */
+static int
+make_listener(const char *path)
+{
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	assert(fd >= 0);
+	struct sockaddr_un addr = {0};
+	addr.sun_family = AF_UNIX;
+	assert(strlen(path) < sizeof(addr.sun_path));
+	strcpy(addr.sun_path, path);
+	assert(bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+	assert(listen(fd, 4) == 0);
+	return fd;
+}
+
+static bool
+can_connect(const char *path)
+{
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	assert(fd >= 0);
+	struct sockaddr_un addr = {0};
+	addr.sun_family = AF_UNIX;
+	strcpy(addr.sun_path, path);
+	bool ok = connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0;
+	close(fd);
+	return ok;
+}
+
+/* Where wm_ipc_init puts the socket for the server name "ipc-guard" */
+static void
+guard_path(char *buf, size_t size)
+{
+	snprintf(buf, size, "%s/fluxland.ipc-guard.sock",
+		getenv("XDG_RUNTIME_DIR"));
+}
+
+/*
+ * wm_ipc_init must never remove a live server's socket: with the default
+ * name that is the running compositor's control socket, and a test run (or
+ * a second compositor) shares its XDG_RUNTIME_DIR.
+ */
+static void
+test_init_keeps_live_socket(void)
+{
+	reset_globals();
+	char path[256];
+	guard_path(path, sizeof(path));
+	int live = make_listener(path);
+
+	test_server.socket = "ipc-guard";
+	struct wm_ipc_server ipc;
+	assert(wm_ipc_init(&ipc, &test_server) == -1);
+
+	/* Still there, and still the live server's */
+	assert(can_connect(path));
+
+	close(live);
+	unlink(path);
+	test_server.socket = "wayland-test";
+	printf("  PASS: test_init_keeps_live_socket\n");
+}
+
+/* A stale socket (its server is gone) is replaced as before */
+static void
+test_init_replaces_stale_socket(void)
+{
+	reset_globals();
+	char path[256];
+	guard_path(path, sizeof(path));
+	int old = make_listener(path);
+	close(old); /* the file stays, nobody listens */
+
+	test_server.socket = "ipc-guard";
+	struct wm_ipc_server ipc;
+	assert(wm_ipc_init(&ipc, &test_server) == 0);
+	assert(can_connect(path));
+	wm_ipc_destroy(&ipc);
+
+	struct stat st;
+	assert(stat(path, &st) != 0);
+	test_server.socket = "wayland-test";
+	printf("  PASS: test_init_replaces_stale_socket\n");
+}
+
+/* Something that is not a socket is left alone */
+static void
+test_init_keeps_non_socket(void)
+{
+	reset_globals();
+	char path[256];
+	guard_path(path, sizeof(path));
+	int fd = open(path, O_CREAT | O_WRONLY, 0600);
+	assert(fd >= 0);
+	close(fd);
+
+	test_server.socket = "ipc-guard";
+	struct wm_ipc_server ipc;
+	assert(wm_ipc_init(&ipc, &test_server) == -1);
+
+	struct stat st;
+	assert(stat(path, &st) == 0 && S_ISREG(st.st_mode));
+
+	unlink(path);
+	test_server.socket = "wayland-test";
+	printf("  PASS: test_init_keeps_non_socket\n");
+}
+
+/* destroy removes only the socket file it created */
+static void
+test_destroy_keeps_replaced_socket(void)
+{
+	reset_globals();
+	char path[256];
+	guard_path(path, sizeof(path));
+
+	test_server.socket = "ipc-guard";
+	struct wm_ipc_server ipc;
+	assert(wm_ipc_init(&ipc, &test_server) == 0);
+
+	/* Another server takes the path over while this one still runs */
+	unlink(path);
+	int other = make_listener(path);
+
+	wm_ipc_destroy(&ipc);
+	assert(can_connect(path));
+
+	close(other);
+	unlink(path);
+	test_server.socket = "wayland-test";
+	printf("  PASS: test_destroy_keeps_replaced_socket\n");
+}
+
+/* Remove a private test runtime dir and what the tests left in it */
+static void
+remove_runtime_dir(const char *dir)
+{
+	DIR *d = opendir(dir);
+	if (d) {
+		struct dirent *e;
+		while ((e = readdir(d)) != NULL) {
+			if (strcmp(e->d_name, ".") == 0 ||
+			    strcmp(e->d_name, "..") == 0)
+				continue;
+			char p[512];
+			snprintf(p, sizeof(p), "%s/%s", dir, e->d_name);
+			unlink(p);
+		}
+		closedir(d);
+	}
+	rmdir(dir);
 }
 
 /* Test 37: broadcast destroys client when ipc_send fails */
@@ -1790,6 +1951,19 @@ main(void)
 {
 	printf("test_ipc_server:\n");
 
+	/*
+	 * Run in a private runtime dir.  Several tests start the IPC server
+	 * under its default name, which in the real XDG_RUNTIME_DIR is the
+	 * running compositor's control socket.
+	 */
+	char runtime[] = "/tmp/fluxland-ipc-test-XXXXXX";
+	if (!mkdtemp(runtime)) {
+		perror("mkdtemp");
+		return 1;
+	}
+	setenv("XDG_RUNTIME_DIR", runtime, 1);
+	unsetenv("WAYLAND_DISPLAY");
+
 	test_ipc_send_basic();
 	test_ipc_send_empty();
 	test_ipc_send_bad_fd();
@@ -1827,6 +2001,10 @@ main(void)
 	test_init_null_server_socket();
 	test_init_null_display_fallback();
 	test_init_xdg_runtime_dir_not_dir();
+	test_init_keeps_live_socket();
+	test_init_replaces_stale_socket();
+	test_init_keeps_non_socket();
+	test_destroy_keeps_replaced_socket();
 	test_broadcast_destroys_client_on_send_failure();
 	test_ipc_destroy_with_event_source();
 	test_handle_client_readable_cap_clamp();
@@ -1834,6 +2012,7 @@ main(void)
 	test_throttle_window_title();
 	test_throttle_focus_changed();
 
+	remove_runtime_dir(runtime);
 	printf("All ipc_server tests passed.\n");
 	return 0;
 }

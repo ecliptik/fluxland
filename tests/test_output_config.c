@@ -124,6 +124,46 @@ test_build_state(void)
 }
 
 static void
+test_disabled_new_output(void)
+{
+	/*
+	 * A newly created output (e.g. one the driver announces again after a
+	 * resume) starts disabled, and handle_new_output() stages "enabled +
+	 * preferred mode" before asking for the rule.  A disabled rule must
+	 * win: the result is a disable-only state, since wlroots rejects a
+	 * mode on a disabled output.
+	 */
+	struct wlr_output o;
+	fake_output(&o);
+	o.enabled = false;
+	struct wm_output_rule r = rule();
+	r.enabled = 0;
+	struct wlr_output_state st;
+
+	wlr_output_state_init(&st);
+	wlr_output_state_set_enabled(&st, true);
+	wlr_output_state_set_mode(&st, &modes[0]);
+	assert(wm_output_config_build(&o, &r, &st));
+	assert(st.committed == WLR_OUTPUT_STATE_ENABLED && !st.enabled);
+	wlr_output_state_finish(&st);
+
+	/* Already disabled and nothing staged: nothing to commit */
+	wlr_output_state_init(&st);
+	assert(!wm_output_config_build(&o, &r, &st));
+	assert(st.committed == 0);
+	wlr_output_state_finish(&st);
+
+	/* An enabled output with a staged mode is disabled, mode dropped */
+	o.enabled = true;
+	wlr_output_state_init(&st);
+	wlr_output_state_set_mode(&st, &modes[3]);
+	assert(wm_output_config_build(&o, &r, &st));
+	assert(st.committed == WLR_OUTPUT_STATE_ENABLED && !st.enabled);
+	wlr_output_state_finish(&st);
+	printf("  PASS: disabled_new_output\n");
+}
+
+static void
 test_custom_mode_without_modes(void)
 {
 	/* Nested and headless outputs list no modes: any size goes */
@@ -148,6 +188,7 @@ main(void)
 	printf("output_config tests:\n");
 	test_pick_mode();
 	test_build_state();
+	test_disabled_new_output();
 	test_custom_mode_without_modes();
 	printf("All output_config tests passed.\n");
 	return 0;
