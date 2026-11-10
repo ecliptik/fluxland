@@ -298,6 +298,7 @@ struct wm_server {
 		struct wm_keyboard *keyboard; /* holding the key */
 		uint32_t keycode;	/* the held key (xkb) */
 		bool requested;	/* the binding just run said Repeat */
+		int rate;	/* ...and how often a second (0: the default) */
 	} key_repeat;		/* a held Repeat binding (keyboard.c) */
 	uint32_t arg_key;	/* the key an Arg in a chain matched */
 	char *action_result;	/* ClientPatternTest's, for the IPC reply */

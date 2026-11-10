@@ -672,6 +672,7 @@ config_create(void)
 	config->focus_same_head = false;
 	config->max_ignore_increment = true;
 	config->no_focus_while_typing_ms = 0;
+	config->key_repeat_rate = 10;
 	config->demands_attention_ms = 500;
 	config->ignore_border = false;
 	config->tabs_attach_titlebar = false;
@@ -849,6 +850,10 @@ apply_focus_config(struct wm_config *config, struct rc_database *db)
 		"session.screen0.maxIgnoreIncrement", true);
 	config->no_focus_while_typing_ms = rc_get_int(db,
 		"session.screen0.noFocusWhileTypingDelay", 0);
+	config->key_repeat_rate = rc_get_int(db,
+		"session.keyRepeatRate", 10);
+	if (config->key_repeat_rate < 1 || config->key_repeat_rate > 100)
+		config->key_repeat_rate = 10;
 	config->demands_attention_ms = rc_get_int(db,
 		"session.screen0.demandsAttentionTimeout", 500);
 	config->ignore_border =

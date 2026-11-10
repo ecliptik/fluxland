@@ -318,6 +318,7 @@ dispatch_key(struct wm_server *server, struct wlr_keyboard *kb,
 	xkb_keysym_t cands[16];
 	int ncands = key_candidates(kb, keycode, syms, nsyms, cands, 16);
 	server->key_repeat.requested = false;
+	server->key_repeat.rate = 0;
 	bool handled = handle_compositor_keybinding(server,
 		modifiers & ~WM_MODIFIERS_IGNORED, cands, ncands);
 	*repeat = handled && server->key_repeat.requested;
@@ -358,7 +359,13 @@ key_repeat_tick(void *data)
 		wm_key_repeat_stop(server);
 		return 0;
 	}
-	int rate = kb->repeat_info.rate > 0 ? kb->repeat_info.rate : 1;
+	/* The binding's own rate (Repeat {command} N), else
+	 * session.keyRepeatRate: slower than typing's, each run may start a
+	 * program */
+	int rate = server->key_repeat.rate;
+	if (rate <= 0)
+		rate = server->config && server->config->key_repeat_rate > 0 ?
+			server->config->key_repeat_rate : 10;
 	wl_event_source_timer_update(server->key_repeat.timer,
 		1000 / rate > 0 ? 1000 / rate : 1);
 	return 0;

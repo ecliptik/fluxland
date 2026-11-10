@@ -67,6 +67,7 @@ struct wm_command {
 	struct wm_command *then_cmd;    /* If, ForEach/Map body, Delay body */
 	struct wm_command *else_cmd;    /* If */
 	int delay_us;                   /* Delay */
+	int repeat_rate;                /* Repeat: per second; 0, the default */
 };
 
 /* Parse "Action [args]". Returns NULL for unknown or malformed commands. */

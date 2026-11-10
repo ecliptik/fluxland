@@ -807,6 +807,7 @@ struct wm_client_pattern;
 struct wm_command {
 	enum wm_action action;
 	char *argument;
+	int repeat_rate;
 };
 
 struct wm_window_list_spec {
@@ -925,6 +926,7 @@ enum wm_wallpaper_mode {
 };
 
 struct wm_config {
+	int key_repeat_rate;
 	char *keys_file;
 	time_t keys_file_mtime;
 	char *style_file;
@@ -1098,6 +1100,7 @@ struct wm_server {
 		struct wm_keyboard *keyboard;
 		uint32_t keycode;
 		bool requested;
+		int rate;
 	} key_repeat;
 	uint32_t arg_key;
 	char *action_result;
@@ -1543,6 +1546,7 @@ wm_command_execute(struct wm_server *server, struct wm_command *cmd,
 		return true; /* compound: covered by test_command */
 	case WM_ACTION_REPEAT:
 		server->key_repeat.requested = true;
+		server->key_repeat.rate = cmd->repeat_rate;
 		return true;
 	default:
 		return wm_execute_action_on(server, cmd->action,
@@ -3462,10 +3466,22 @@ test_key_repeat_held(void)
 	int idle = stub_idle_notify_count;
 	timer->callback(timer->data);
 	assert(stub_command_execute_count == 2);
-	assert(timer->next_ms == 40);
+	assert(timer->next_ms == 100); /* the default, 10 a second */
 	assert(stub_idle_notify_count == idle + 1);
+	test_config.key_repeat_rate = 25; /* session.keyRepeatRate */
 	timer->callback(timer->data);
-	assert(stub_command_execute_count == 3);
+	assert(timer->next_ms == 40);
+	test_config.key_repeat_rate = 0;
+	timer->callback(timer->data);
+	assert(stub_command_execute_count == 4);
+
+	/* Repeat {command} N: its own rate, whatever the setting says */
+	test_config.key_repeat_rate = 25;
+	cmd.repeat_rate = 4;
+	timer->callback(timer->data);
+	assert(timer->next_ms == 250);
+	cmd.repeat_rate = 0;
+	test_config.key_repeat_rate = 0;
 
 	/* Letting go of the key ends it */
 	event.state = WL_KEYBOARD_KEY_STATE_RELEASED;

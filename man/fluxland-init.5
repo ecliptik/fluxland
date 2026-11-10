@@ -772,6 +772,16 @@ Layout variant (e.g.\&
 .B session.xkb.options
 XKB options (e.g.\&
 .IR grp:alt_shift_toggle,caps:escape ).
+.SH KEY BINDINGS
+.TP
+.B session.keyRepeatRate
+How many times a second a key binding written
+.BI Repeat " {command}"
+runs again while its key is held, once the keyboard's repeat delay has
+passed (1 to 100; default: 10); a binding can set its own, see
+.BR fluxland-keys (5).
+It is separate from the typing repeat rate that programs get, since each
+run may start a program.
 .SH SESSION
 .TP
 .B session.updateActivationEnvironment

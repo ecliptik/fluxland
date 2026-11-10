@@ -435,7 +435,18 @@ parse_repeat(struct wm_command *cmd, const char *args, int depth)
 	if (*p != '{')
 		return false;
 	cmd->then_cmd = parse_block_command(&p, depth);
-	return cmd->then_cmd != NULL;
+	if (!cmd->then_cmd)
+		return false;
+	/* {command} [times a second]; one out of range is the default */
+	skip_ws(&p);
+	if (*p) {
+		char *end;
+		errno = 0;
+		long val = strtol(p, &end, 10);
+		if (!errno && end != p && val >= 1 && val <= 100)
+			cmd->repeat_rate = (int)val;
+	}
+	return true;
 }
 
 static struct wm_command *
@@ -719,6 +730,7 @@ wm_command_execute(struct wm_server *server, struct wm_command *cmd,
 		/* A key press that ran this repeats while the key is held
 		 * (keyboard.c); anything else just runs the command */
 		server->key_repeat.requested = true;
+		server->key_repeat.rate = cmd->repeat_rate;
 		return wm_command_execute(server, cmd->then_cmd, target);
 	default:
 		return wm_execute_action_on(server, cmd->action,

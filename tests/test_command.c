@@ -614,6 +614,23 @@ test_repeat(void)
 	assert(!server.key_repeat.requested);
 	wm_command_destroy(c);
 
+	/* An optional rate, per second */
+	c = wm_command_parse("Repeat {Raise} 4");
+	assert(c && c->repeat_rate == 4);
+	server.key_repeat.rate = 0;
+	assert(wm_command_execute(&server, c, NULL));
+	assert(server.key_repeat.rate == 4);
+	wm_command_destroy(c);
+	c = wm_command_parse("Repeat {Raise}");
+	assert(c && c->repeat_rate == 0);
+	wm_command_destroy(c);
+	c = wm_command_parse("Repeat {Raise} 0");
+	assert(c && c->repeat_rate == 0);
+	wm_command_destroy(c);
+	c = wm_command_parse("Repeat {Raise} 1000");
+	assert(c && c->repeat_rate == 0);
+	wm_command_destroy(c);
+
 	/* It needs a {command}; a bare one or a missing one is no command */
 	assert(!wm_command_parse("Repeat"));
 	assert(!wm_command_parse("Repeat Raise"));

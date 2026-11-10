@@ -554,6 +554,7 @@ test_fluxbox_init_keys(void)
 		"session.screen0.struts.2:	0,0,30,0\n"
 		"session.screen0.focusSameHead:	true\n"
 		"session.screen0.noFocusWhileTypingDelay:	750\n"
+		"session.keyRepeatRate:	20\n"
 		"session.ignoreBorder:	true\n"
 		"session.tabsAttachArea:	Titlebar\n"
 		"session.screen0.toolbar.autoRaise:	true\n"
@@ -564,12 +565,14 @@ test_fluxbox_init_keys(void)
 	struct wm_config *c = config_create();
 	/* Fluxbox's defaults */
 	assert(!c->focus_same_head && c->no_focus_while_typing_ms == 0);
+	assert(c->key_repeat_rate == 10);
 	assert(!c->ignore_border && !c->tabs_attach_titlebar);
 	assert(c->workspace_warping_vertical &&
 		c->workspace_warping_vertical_offset == 1);
 	config_load(c, TEST_INIT);
 
 	assert(c->focus_same_head && c->no_focus_while_typing_ms == 750);
+	assert(c->key_repeat_rate == 20);
 	assert(c->ignore_border && c->tabs_attach_titlebar);
 	assert(c->toolbar_auto_raise && c->slit_auto_raise);
 	assert(!c->workspace_warping_vertical &&

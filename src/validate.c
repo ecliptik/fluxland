@@ -469,6 +469,9 @@ static const struct init_key_spec init_keys[] = {
 	{"session.styleOverlay", VT_PATH, 0, 0, NULL},
 	{"session.slitlistFile", VT_PATH, 0, 0, NULL},
 
+	/* fluxland's own */
+	{"session.keyRepeatRate", VT_INT, 1, 100, NULL},
+
 	/* XKB */
 	{"session.xkb.rules", VT_STRING, 0, 0, NULL},
 	{"session.xkb.model", VT_STRING, 0, 0, NULL},

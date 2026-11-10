@@ -221,6 +221,7 @@ struct wm_config {
 	bool focus_same_head;            /* focus reverts on the pointer's head */
 	bool max_ignore_increment;       /* maximized: size hints ignored */
 	int no_focus_while_typing_ms;    /* noFocusWhileTypingDelay */
+	int key_repeat_rate;             /* session.keyRepeatRate: Repeat, per second */
 	int demands_attention_ms;        /* demandsAttentionTimeout: flashes */
 	bool ignore_border;              /* session.ignoreBorder */
 	bool tabs_attach_titlebar;       /* session.tabsAttachArea: Titlebar */
